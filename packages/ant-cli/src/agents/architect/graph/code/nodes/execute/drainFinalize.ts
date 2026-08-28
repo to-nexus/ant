@@ -151,10 +151,23 @@ export function computeNextNoProgressStreak(
  */
 export function computeNextNoOutputStreak(
   state: Pick<ArchitectGraphState, '_noOutputStreak'>,
-  turn: { progressed: boolean; toolCallCount: number; drainFinalizing: boolean },
+  turn: {
+    progressed: boolean;
+    toolCallCount: number;
+    drainFinalizing: boolean;
+    subagentReportDelivered?: boolean;
+    subagentsPending?: boolean;
+  },
 ): number {
   const prev = state._noOutputStreak || 0;
   if (turn.progressed) return 0;
+  // Subagent fairness (small-longing-drive, design twin): a delivered
+  // commissioned explore report is progress (new evidence restarts the
+  // clock); turns spent while commissioned explores are still pending are
+  // infra latency, not model stuckness — freeze, bounded by the subagent
+  // runner timeout + max pending age (recursion limit stays the backstop).
+  if (turn.subagentReportDelivered) return 0;
+  if (turn.subagentsPending) return prev;
   if (turn.toolCallCount > 0 || turn.drainFinalizing) return prev + 1;
   return 0;
 }

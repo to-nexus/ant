@@ -23,7 +23,7 @@ import {
   findInAntSourceRoots,
   antSourceToCodebasePath,
 } from '../../src/agents/common/tool/antSource/core';
-import { handleReadAntSource } from '../../src/agents/common/tool/handlers/antSource';
+import { handleReadAntSource, handleListAntFiles, handleSearchAntCode } from '../../src/agents/common/tool/handlers/antSource';
 import { handleReadFile } from '../../src/agents/common/tool/handlers/readFile';
 import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
 import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
@@ -180,5 +180,114 @@ describe('handleReadAntSource — workspace-clone redirect', () => {
     });
     expect(res.error).toBeUndefined();
     expect(res.content).toContain('WorkflowStateUpdatePort');
+  });
+});
+
+// The clone redirect must cover the SIBLINGS too (small-longing-drive: 21
+// un-redirected list/search calls explored the in-image tree and seeded a
+// sealed plan with in-image-coordinate citations, which execute could not
+// resolve). Same rule as read: redirect only when the workspace-equivalent
+// tool is dispatchable; ask-shaped tool sets keep in-image serving.
+describe('handleListAntFiles / handleSearchAntCode — workspace-clone redirect', () => {
+  function siblingCtx(opts: { cloneExists: boolean; tools: string[] }): ToolExecutionContext {
+    return {
+      fileSystem: {
+        isDirectory: async (p: string) => opts.cloneExists && p === 'codebase/packages/ant-cli/src',
+      } as any,
+      chatStatus: silentChatStatus(),
+      workingDir: '/tmp',
+      availableToolNames: new Set(opts.tools),
+    } as ToolExecutionContext;
+  }
+
+  it('list: clone + list_files dispatchable → instructive redirect naming the mapped path', async () => {
+    const res = await handleListAntFiles(siblingCtx({ cloneExists: true, tools: ['list_files', 'list_ant_files'] }), {
+      path: 'agents', source: 'cli',
+    });
+    expect(res.error).toBeDefined();
+    expect(res.content).toContain('list_files("codebase/packages/ant-cli/src/agents")');
+    expect(res.content).toContain('DIFFERENT version');
+  });
+
+  it('list: clone but list_files NOT dispatchable → in-image listing proceeds', async () => {
+    const res = await handleListAntFiles(siblingCtx({ cloneExists: true, tools: ['list_ant_files'] }), {
+      path: 'agents', source: 'cli',
+    });
+    expect(res.error).toBeUndefined();
+    expect(res.content).toContain('common');
+  });
+
+  it('search: clone + search_code dispatchable → instructive redirect', async () => {
+    const res = await handleSearchAntCode(siblingCtx({ cloneExists: true, tools: ['search_code', 'search_ant_code'] }), {
+      query: 'ToolExecutionContext', source: 'cli',
+    });
+    expect(res.error).toBeDefined();
+    expect(res.content).toContain('search_code');
+    expect(res.content).toContain('codebase/packages/ant-cli/src');
+  });
+
+  it('search: no clone → in-image search proceeds', async () => {
+    const res = await handleSearchAntCode(siblingCtx({ cloneExists: false, tools: ['search_code', 'search_ant_code'] }), {
+      query: 'ToolExecutionContext', source: 'cli',
+    });
+    expect(res.error).toBeUndefined();
+    expect(res.content).toContain('ToolExecutionContext');
+  });
+});
+
+// Suffix-tolerant not-found resolve (small-longing-drive friction ①): a
+// citation omitting one intermediate directory (the `packages/` monorepo
+// level) is served directly on a UNIQUE match instead of costing list_files
+// rediscovery turns; ambiguity names the candidates instead of guessing.
+describe('handleReadFile — unique segment-insertion fallback on not-found', () => {
+  let ws: string;
+
+  beforeAll(() => {
+    ws = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-segment-probe-'));
+    fs.mkdirSync(path.join(ws, 'codebase/packages/ant-ui/src/utils'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'codebase/packages/ant-ui/src/utils/actor-utils.ts'), 'export const ACTOR_INFO = 1;\n');
+  });
+  afterAll(() => {
+    fs.rmSync(ws, { recursive: true, force: true });
+  });
+
+  function wsCtx(): ToolExecutionContext {
+    return {
+      fileSystem: new FileSystemAdapter(ws),
+      chatStatus: silentChatStatus(),
+      workingDir: ws,
+    } as ToolExecutionContext;
+  }
+
+  it('a unique one-segment insertion is served with the corrected path named', async () => {
+    const res = await handleReadFile(wsCtx(), { path: 'codebase/ant-ui/src/utils/actor-utils.ts' });
+    expect(res.error).toBeUndefined();
+    expect(res.content).toContain('[Path corrected:');
+    expect(res.content).toContain('codebase/packages/ant-ui/src/utils/actor-utils.ts');
+    expect(res.content).toContain('export const ACTOR_INFO = 1;');
+  });
+
+  it('ambiguous insertions name the candidates instead of guessing', async () => {
+    fs.mkdirSync(path.join(ws, 'codebase/vendored/ant-ui/src/utils'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'codebase/vendored/ant-ui/src/utils/actor-utils.ts'), 'export const OTHER = 2;\n');
+    const res = await handleReadFile(wsCtx(), { path: 'codebase/ant-ui/src/utils/actor-utils.ts' });
+    expect(res.error).toBeDefined();
+    expect(res.content).toContain('Similar paths exist');
+    expect(res.content).toContain('codebase/packages/ant-ui/src/utils/actor-utils.ts');
+    expect(res.content).toContain('codebase/vendored/ant-ui/src/utils/actor-utils.ts');
+    fs.rmSync(path.join(ws, 'codebase/vendored'), { recursive: true, force: true });
+  });
+
+  it('an exact-match read stays byte-faithful with no correction note', async () => {
+    const res = await handleReadFile(wsCtx(), { path: 'codebase/packages/ant-ui/src/utils/actor-utils.ts' });
+    expect(res.error).toBeUndefined();
+    expect(res.content).not.toContain('[Path corrected:');
+    expect(res.content).toContain('export const ACTOR_INFO = 1;');
+  });
+
+  it('a genuinely absent file still errors with the canonical guidance', async () => {
+    const res = await handleReadFile(wsCtx(), { path: 'codebase/no-such/anything.ts' });
+    expect(res.error).toBeDefined();
+    expect(res.content).toContain('File not found');
   });
 });

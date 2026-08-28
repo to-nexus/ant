@@ -181,3 +181,5 @@ game-art-spec.json    (read_file tokens.json + assets.json → reference their k
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
 
 {{> jobs/shared/injections/explore-delegation}}
+
+{{> jobs/design/nodes/execute/injections/file-authoring-channel}}

@@ -72,3 +72,5 @@ create_file(path="visual/game-art/ant/game-art-tokens.json", content="{ \"palett
 Output it ONLY after the catalog content has been written via `create_file` / `append_file` and you have no more tool calls to make.
 
 {{> jobs/shared/injections/explore-delegation}}
+
+{{> jobs/design/nodes/execute/injections/file-authoring-channel}}

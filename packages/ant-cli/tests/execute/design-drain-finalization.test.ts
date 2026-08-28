@@ -37,7 +37,12 @@ import {
   RECURSION_DRAIN_THRESHOLD,
   DRAIN_FINALIZE_MARGIN,
   NO_OUTPUT_HARD_CAP,
+  routeAfterExecute,
 } from '../../src/agents/architect/graph/design/routers/executeRouter';
+import {
+  reportMarker,
+  subagentReportDeliveredThisTurn,
+} from '../../src/agents/common/subagent';
 
 const TOOLS = [{ name: 'read_file' }, { name: 'search_code' }];
 
@@ -264,6 +269,105 @@ describe('computeNextNoOutputCount', () => {
       });
     }
     expect(streak).toBeGreaterThanOrEqual(NO_OUTPUT_HARD_CAP);
+  });
+
+  // Subagent fairness (small-longing-drive): the clock detects a STUCK model,
+  // not infra latency — waiting on commissioned explores freezes it, and a
+  // delivered report restarts it like a file write does.
+  it('a turn spent while commissioned explores are pending freezes the streak (no +1, no reset)', () => {
+    expect(
+      computeNextNoOutputCount(19, {
+        hasNewFileOutput: false, hasToolCallsOnly: true, drainFinalizing: false, subagentsPending: true,
+      }),
+    ).toBe(19);
+  });
+
+  it('a delivered subagent report resets the streak like a file write', () => {
+    expect(
+      computeNextNoOutputCount(24, {
+        hasNewFileOutput: false, hasToolCallsOnly: false, drainFinalizing: true, subagentReportDelivered: true,
+      }),
+    ).toBe(0);
+  });
+
+  it('delivery reset wins over a residual pending sibling (staggered explore arrivals)', () => {
+    expect(
+      computeNextNoOutputCount(22, {
+        hasNewFileOutput: false, hasToolCallsOnly: true, drainFinalizing: true,
+        subagentReportDelivered: true, subagentsPending: true,
+      }),
+    ).toBe(0);
+  });
+
+  it('a file write still wins over everything', () => {
+    expect(
+      computeNextNoOutputCount(22, {
+        hasNewFileOutput: true, hasToolCallsOnly: false, drainFinalizing: true, subagentsPending: true,
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('subagentReportDeliveredThisTurn — delivery-turn predicate', () => {
+  it('detects a report marker in the LAST user message (string and block content)', () => {
+    expect(subagentReportDeliveredThisTurn([
+      userMsg('do the task'),
+      { role: 'assistant', content: 'reading' },
+      userMsg(`${reportMarker('abc123')} (goal: x)\nfindings`),
+    ] as any)).toBe(true);
+    expect(subagentReportDeliveredThisTurn([
+      userMsg([{ type: 'tool_result', content: 'ok' }, { type: 'text', text: `${reportMarker('abc123')} body` }]),
+    ] as any)).toBe(true);
+  });
+
+  it('a report older than the last user message does NOT count (delivery turn only)', () => {
+    expect(subagentReportDeliveredThisTurn([
+      userMsg(`${reportMarker('abc123')} body`),
+      { role: 'assistant', content: 'digesting' },
+      userMsg('tool results without any report'),
+    ] as any)).toBe(false);
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Breaker escapes (small-longing-drive): the router must not guillotine a
+// pending salvage write, and a zero-output task gets exactly one re-ask
+// turn before design_no_output discards the run.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('routeAfterExecute — no-output breaker escapes', () => {
+  const atCap = (over: Record<string, unknown>) => ({
+    _noOutputCallCount: NO_OUTPUT_HARD_CAP,
+    _executeCallIndex: 30,
+    llmResponse: { textResponse: 'let me write now', done: false },
+    ...over,
+  }) as any;
+
+  it('a pending write tool call at the cap routes to tool (the salvage write must execute)', () => {
+    expect(routeAfterExecute(atCap({
+      llmResponse: { toolCalls: [{ name: 'create_file', arguments: {} }], done: false },
+      _breakerReAsked: true,
+    }))).toBe('tool');
+  });
+
+  it('zero output + unspent grant routes back to execute for the one-shot final turn', () => {
+    expect(routeAfterExecute(atCap({ _taskFilesWritten: 0 }))).toBe('execute');
+  });
+
+  it('grant already spent → checkTaskStatus (the breaker stays terminal)', () => {
+    expect(routeAfterExecute(atCap({ _taskFilesWritten: 0, _breakerReAsked: true }))).toBe('checkTaskStatus');
+  });
+
+  it('a non-write tool call at the cap with the grant spent is discarded → checkTaskStatus', () => {
+    expect(routeAfterExecute(atCap({
+      llmResponse: { toolCalls: [{ name: 'read_file', arguments: {} }], done: false },
+      _taskFilesWritten: 0,
+      _breakerReAsked: true,
+    }))).toBe('checkTaskStatus');
+  });
+
+  it('task already produced files → breaker diverts as before (no grant needed)', () => {
+    expect(routeAfterExecute(atCap({ _taskFilesWritten: 2 }))).toBe('checkTaskStatus');
   });
 });
 

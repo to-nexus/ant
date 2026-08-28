@@ -78,7 +78,29 @@ export function routeAfterExecute(state: DesignGraphState): string {
   // loop early — the drain-finalize salvage turn already had its one shot at
   // NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN. Diverting with zero output
   // lands on the completion output-gate → resumable design_no_output pause.
+  //
+  // Two escapes before the guillotine (small-longing-drive: the model
+  // announced "let me write the document now" on the exact breaker turn and
+  // 614k tokens of exploration were discarded one turn short of the write):
+  //  1. A pending WRITE tool call at/past the cap executes — this check runs
+  //     before the tool branch, so without the escape the salvage write
+  //     itself would be discarded.
+  //  2. Zero task output and the one-shot grant unspent → one final execute
+  //     turn (the execute node injects the last-chance note and consumes the
+  //     grant via `_breakerReAsked`). In-conversation re-ask, same pattern as
+  //     the subagent exhaustion re-ask (slow-fleeing-camel), instead of
+  //     discarding a converged run.
   if (noOutputCount >= NO_OUTPUT_HARD_CAP) {
+    const pendingWriteCall = (response.toolCalls ?? []).some((tc: { name?: string }) =>
+      tc.name === 'create_file' || tc.name === 'append_file' || tc.name === 'edit_file');
+    if (pendingWriteCall) {
+      console.warn(`⚠️  [ExecuteRouter] Breaker reached (streak=${noOutputCount}) but a write tool call is pending → tool`);
+      return 'tool';
+    }
+    if ((state._taskFilesWritten || 0) === 0 && !state._breakerReAsked) {
+      console.warn(`⚠️  [ExecuteRouter] Breaker reached (streak=${noOutputCount}) with zero output — granting one final write turn → execute`);
+      return 'execute';
+    }
     console.warn(`⚠️  [ExecuteRouter] No-output circuit breaker (streak=${noOutputCount} ≥ ${NO_OUTPUT_HARD_CAP}) → checkTaskStatus`);
     return 'checkTaskStatus';
   }

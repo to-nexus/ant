@@ -87,3 +87,5 @@ Apply the contract matching the target file's kind.
 3. ⚠️ Do NOT keep re-reading the file to verify — a successful `edit_file` result IS the confirmation.
 
 **⚠️ Without `<done>true</done>` the task never completes; the system will keep asking you to continue.**
+
+{{> jobs/design/nodes/execute/injections/file-authoring-channel}}

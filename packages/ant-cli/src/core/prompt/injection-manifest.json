@@ -8,7 +8,7 @@
       "content"
     ],
     "output-tag-policy": [],
-  "ant-platform-identity": [],
+    "ant-platform-identity": [],
     "directive-qa": [],
     "clarify-policy": [
       "clarifyBudget",
@@ -245,7 +245,8 @@
       "appendAnchor"
     ],
     "spec-impl-guide-service": [],
-    "spec-impl-guide-game": []
+    "spec-impl-guide-game": [],
+    "file-authoring-channel": []
   },
   "jobs/design/nodes/plan/injections": {
     "plan-tools-batch": []

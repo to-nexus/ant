@@ -155,6 +155,22 @@ describe('computeNextNoOutputStreak — truth table', () => {
     })).toBe(0);
   });
 
+  // Subagent fairness (small-longing-drive, design twin — same rule here).
+  it('freezes while commissioned explores are pending (no +1, no reset)', () => {
+    const state = { _noOutputStreak: 9 };
+    expect(computeNextNoOutputStreak(state, {
+      progressed: false, toolCallCount: 1, drainFinalizing: false, subagentsPending: true,
+    })).toBe(9);
+  });
+
+  it('resets when a commissioned explore report was delivered this turn', () => {
+    const state = { _noOutputStreak: 14 };
+    expect(computeNextNoOutputStreak(state, {
+      progressed: false, toolCallCount: 0, drainFinalizing: true,
+      subagentReportDelivered: true, subagentsPending: true,
+    })).toBe(0);
+  });
+
   it('starts from 0 when the channel is unset', () => {
     expect(computeNextNoOutputStreak({}, {
       progressed: false, toolCallCount: 1, drainFinalizing: false,

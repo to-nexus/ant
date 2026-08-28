@@ -45,7 +45,7 @@ import { cleanFileContentFromResponse } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
-import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
+import { hasPendingSubagents, maybeJoinSubagents, ownerKeyFor, subagentReportDeliveredThisTurn } from '../../../../../common/subagent';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
@@ -548,6 +548,8 @@ export async function execute(
       progressed,
       toolCallCount: toolCalls.length,
       drainFinalizing,
+      subagentReportDelivered: subagentReportDeliveredThisTurn(messages),
+      subagentsPending: hasPendingSubagents(ownerKeyFor(state._httpJobId)),
     });
 
     console.log(

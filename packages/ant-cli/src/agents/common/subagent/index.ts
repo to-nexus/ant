@@ -8,6 +8,8 @@ export {
   buildReportBlocks,
   detectOrphanedLaunches,
   reportMarker,
+  SUBAGENT_REPORT_MARKER_PREFIX,
+  subagentReportDeliveredThisTurn,
 } from './drain';
 export { foldSubagentUsage } from './tokens';
 export { compactReport, extractOutline } from './compactReport';

@@ -50,6 +50,15 @@ export interface DrainFinalizeResult<TTool> {
  * code job's `computeNextNoOutputStreak` (code/nodes/execute/drainFinalize.ts).
  *
  * - Forward output (a successful file write this turn) → 0.
+ * - A commissioned explore report delivered into this turn's prompt → 0. New
+ *   evidence the model itself requested restarts the clock the same way a
+ *   write does — the streak exists to detect a STUCK loop, and digesting a
+ *   report is progress (small-longing-drive: the last report landed inside the
+ *   salvage window and the digest turn was also the breaker turn).
+ * - Commissioned explores still pending → freeze (no +1, no reset). Waiting on
+ *   evidence the model delegated is infra latency, not model stuckness; the
+ *   wait is bounded by the subagent runner timeout + max pending age, and the
+ *   recursion limit remains the runaway backstop.
  * - A turn with tool calls, OR a tool-stripped salvage turn that produced
  *   nothing → +1. The `drainFinalizing` clause is load-bearing: once the strip
  *   PERSISTS (this file's header), the tool node stops running, so without
@@ -61,9 +70,17 @@ export interface DrainFinalizeResult<TTool> {
  */
 export function computeNextNoOutputCount(
   prev: number,
-  turn: { hasNewFileOutput: boolean; hasToolCallsOnly: boolean; drainFinalizing: boolean },
+  turn: {
+    hasNewFileOutput: boolean;
+    hasToolCallsOnly: boolean;
+    drainFinalizing: boolean;
+    subagentReportDelivered?: boolean;
+    subagentsPending?: boolean;
+  },
 ): number {
   if (turn.hasNewFileOutput) return 0;
+  if (turn.subagentReportDelivered) return 0;
+  if (turn.subagentsPending) return prev;
   if (turn.hasToolCallsOnly || turn.drainFinalizing) return prev + 1;
   return prev;
 }

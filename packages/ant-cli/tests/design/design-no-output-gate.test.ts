@@ -135,13 +135,34 @@ describe('DesignNoOutputError classifier', () => {
 describe('routeAfterExecute — no-output circuit breaker', () => {
   const ampleRecursion = { recursionLimit: 800, recursionCount: 100 };
 
-  it('diverts to checkTaskStatus once the streak hits NO_OUTPUT_HARD_CAP (even with tool calls pending)', () => {
+  it('diverts to checkTaskStatus at NO_OUTPUT_HARD_CAP once the one-shot grant is spent (pending READ calls are discarded)', () => {
     const state = {
       ...ampleRecursion,
       _noOutputCallCount: NO_OUTPUT_HARD_CAP,
+      _breakerReAsked: true,
       llmResponse: { done: false, toolCalls: [{ name: 'read_file' }] },
     } as any;
     expect(routeAfterExecute(state)).toBe('checkTaskStatus');
+  });
+
+  it('grants exactly one final execute turn at the cap while the task has zero output (small-longing-drive)', () => {
+    const state = {
+      ...ampleRecursion,
+      _noOutputCallCount: NO_OUTPUT_HARD_CAP,
+      _taskFilesWritten: 0,
+      llmResponse: { done: false, toolCalls: [{ name: 'read_file' }] },
+    } as any;
+    expect(routeAfterExecute(state)).toBe('execute');
+  });
+
+  it('a pending WRITE tool call at the cap routes to tool — the salvage write must execute', () => {
+    const state = {
+      ...ampleRecursion,
+      _noOutputCallCount: NO_OUTPUT_HARD_CAP,
+      _breakerReAsked: true,
+      llmResponse: { done: false, toolCalls: [{ name: 'create_file' }] },
+    } as any;
+    expect(routeAfterExecute(state)).toBe('tool');
   });
 
   it('keeps routing to the tool node while below the cap', () => {

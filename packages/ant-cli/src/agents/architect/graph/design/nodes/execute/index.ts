@@ -21,8 +21,9 @@
 import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { DesignGraphState } from '../../state';
-import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
+import { hasPendingSubagents, maybeJoinSubagents, ownerKeyFor, subagentReportDeliveredThisTurn } from '../../../../../common/subagent';
 import { applyDrainFinalization, computeNextNoOutputCount } from './drainFinalize';
+import { NO_OUTPUT_HARD_CAP } from '../../routers/executeRouter';
 import { designTargetExists } from '../checkTaskStatus/outputVerification';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
@@ -207,6 +208,38 @@ export async function execute(
     isPrdSync ? [] : await getTools(state, { useSourceFileTool }),
     { targetExists },
   );
+
+  // Breaker one-shot final turn (small-longing-drive): the router granted one
+  // more execute turn past NO_OUTPUT_HARD_CAP because the task has zero output
+  // and the grant was unspent. Say so explicitly — this is the in-conversation
+  // exhaustion re-ask (subagent slow-fleeing-camel pattern, main-loop port) —
+  // and consume the grant via `_breakerReAsked` in the returns below.
+  const breakerFinalTurn =
+    noOutputCount >= NO_OUTPUT_HARD_CAP &&
+    (state._taskFilesWritten || 0) === 0 &&
+    !state._breakerReAsked;
+  if (breakerFinalTurn) {
+    const leadTool = salvageTools?.[0] ?? 'create_file';
+    const finalNote =
+      `\n\n[SYSTEM] FINAL TURN — the turn budget is exhausted. If this response does not write ` +
+      `the document, the run is discarded and all gathered context is lost. Respond with the ` +
+      `${leadTool} tool call itself, carrying the complete document body as its argument. ` +
+      `No further reading. Do not draft the document in your reasoning or announce what you ` +
+      `will do — emit the tool call.`;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === 'user') {
+      if (Array.isArray(lastMsg.content)) {
+        (lastMsg.content as any[]).push({ type: 'text', text: finalNote });
+      } else if (typeof lastMsg.content === 'string') {
+        lastMsg.content = [
+          { type: 'text', text: lastMsg.content },
+          { type: 'text', text: finalNote },
+        ];
+      }
+    }
+    console.warn(`🧯 [Execute] Breaker final turn — one-shot last-chance write (streak=${noOutputCount})`);
+  }
+  const breakerGrantPatch = breakerFinalTurn ? { _breakerReAsked: true } : {};
   
   // ✅ Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -406,10 +439,15 @@ export async function execute(
     // (drainFinalize.ts header) the tool node stops running, so without this
     // the counter freezes one margin below the cap and the router breaker is
     // never reached (round-grading-sable). See computeNextNoOutputCount.
+    // Subagent fairness (small-longing-drive): a turn that received a
+    // commissioned explore report resets the clock; a turn spent while
+    // commissioned explores are still pending freezes it.
     const newNoOutputCount = computeNextNoOutputCount(prevNoOutputCount, {
       hasNewFileOutput,
       hasToolCallsOnly,
       drainFinalizing,
+      subagentReportDelivered: subagentReportDeliveredThisTurn(messages),
+      subagentsPending: hasPendingSubagents(ownerKeyFor(state._httpJobId)),
     });
 
     // R5 — artifact-mutation-then-no-done detection is tool-channel-only:
@@ -529,6 +567,7 @@ export async function execute(
             recursionCount: state.recursionCount,
             recursionLimit: state.recursionLimit,
             llmResponse: { textResponse, done: false },
+            ...breakerGrantPatch,
             ...(joined.tokenDelta as any),
             ...clarifyPatch,
           };
@@ -575,6 +614,7 @@ export async function execute(
         textResponse,
         done: explicitDone,
       },
+      ...breakerGrantPatch,
       ...clarifyPatch,
     };
   } catch (error) {

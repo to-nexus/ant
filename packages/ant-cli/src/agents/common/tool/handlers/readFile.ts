@@ -53,6 +53,44 @@ function binaryFileMessage(displayPath: string, sizeBytes?: number): string {
   }\nTo check if file exists: use list_files("${path.dirname(displayPath)}")\nTo use in code: reference the path directly (e.g., url('${displayPath}') or <img src="${displayPath}" />)\nTo copy: use copy_file(source, destination)\n\nProceed with your next action.`;
 }
 
+/**
+ * Not-found fallback: probe for a UNIQUE single-segment insertion that makes
+ * the path exist — the dominant miss shape is a citation that omits one
+ * intermediate directory (`codebase/ant-ui/src/x.ts` for a monorepo whose real
+ * layout is `codebase/packages/ant-ui/src/x.ts`; small-longing-drive burned 5
+ * turns rediscovering the tree from exactly this). Same philosophy as the
+ * NFC/NFD Stage-2 fallback: byte-exact resolution first, a uniquely-matching
+ * tolerant resolve on the miss path, ambiguity reported instead of guessed.
+ * Bounded: one readDirectory per existing prefix, fileExists per subdirectory.
+ */
+async function probeSegmentInsertion(
+  ctx: ToolExecutionContext,
+  displayPath: string,
+): Promise<{ match?: string; candidates: string[] }> {
+  const segs = displayPath.split('/').filter(Boolean);
+  const candidates: string[] = [];
+  if (segs.length < 2) return { candidates };
+  for (let i = 1; i < segs.length && candidates.length < 4; i++) {
+    const prefix = segs.slice(0, i).join('/');
+    const rest = segs.slice(i).join('/');
+    try {
+      if (!(await ctx.fileSystem.isDirectory(prefix))) continue;
+      const entries = await ctx.fileSystem.readDirectory(prefix);
+      for (const entry of entries) {
+        if (!entry.isDirectory || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        const candidate = `${prefix}/${entry.name}/${rest}`;
+        if (await ctx.fileSystem.fileExists(candidate)) {
+          candidates.push(candidate);
+          if (candidates.length >= 4) break;
+        }
+      }
+    } catch {
+      // Unreadable prefix — keep probing the other split points.
+    }
+  }
+  return candidates.length === 1 ? { match: candidates[0], candidates } : { candidates };
+}
+
 export async function handleReadFile(
   ctx: ToolExecutionContext,
   args: { path: string; startLine?: number | string; endLine?: number | string },
@@ -174,10 +212,30 @@ export async function handleReadFile(
     });
 
     if (!fileContent) {
+      // Tolerant resolve: a unique one-segment insertion (typically a missing
+      // `packages/`-style monorepo level) is served directly with the corrected
+      // path named — the alternative is the model spending list_files turns
+      // rediscovering the tree. Ambiguity falls through to candidates-named error.
+      const probe = await probeSegmentInsertion(ctx, resolved.displayPath);
+      if (probe.match) {
+        const note =
+          `[Path corrected: "${resolved.displayPath}" does not exist — serving the unique match ` +
+          `"${probe.match}". Use and cite the corrected path from now on.]`;
+        await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, { error: note });
+        const inner = await handleReadFile(ctx, { ...args, path: probe.match });
+        if (inner.error) return inner;
+        return { ...inner, content: `${note}\n\n${inner.content}` };
+      }
       let errorMsg =
         `File not found: ${resolved.displayPath}\n\n` +
         `Before retrying: use list_files("${path.dirname(resolved.displayPath)}") to verify the exact path, ` +
         `or if this file is meant to be new, call create_file("${resolved.displayPath}") to create it instead of reading it.`;
+      if (probe.candidates.length > 1) {
+        errorMsg =
+          `File not found: ${resolved.displayPath}\n\n` +
+          `Similar paths exist — specify the one you meant:\n` +
+          probe.candidates.map((c) => `  - ${c}`).join('\n');
+      }
       // Cross-namespace backstop: a bare platform-source citation (e.g. from a
       // sealed plan) gets Rule-4'd into codebase/ and misses — probe the
       // ORIGINAL path against the ant-source roots and redirect instead of

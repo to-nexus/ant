@@ -31,3 +31,5 @@ create_file(path="plan/<document-name>.md", overwrite=true, content="""
 After the tool result confirms the updated document was written, output `<done>true</done>`.
 
 A brief note to the user (one or two sentences) goes in a `<reply>...</reply>` tag. Free text outside a registered tag is dropped.
+
+{{> jobs/design/nodes/execute/injections/file-authoring-channel}}

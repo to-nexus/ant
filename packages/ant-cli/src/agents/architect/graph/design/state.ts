@@ -200,6 +200,13 @@ export interface DesignGraphState extends TriageableState {
    * no longer a terminal gate (LangGraph `recursionLimit` is the backstop). */
   _noOutputCallCount?: number;
 
+  /** The no-output breaker's one-shot final-turn grant was already consumed
+   * for the current task. When the streak reaches NO_OUTPUT_HARD_CAP with zero
+   * task output, the router grants exactly one more execute turn (a converged
+   * model announcing its write must not be guillotined — small-longing-drive);
+   * this flag is what makes the grant one-shot. Reset on task boundary. */
+  _breakerReAsked?: boolean;
+
   /** The drain-salvage allow-list the JUST-RUN execute round actually
    * advertised (drainFinalize `toolChoice.allow`), or null when not draining.
    * The tool node's `gateCall` refuses calls outside it — `{ allow }` only

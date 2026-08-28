@@ -13,7 +13,11 @@ import type { SubagentEntry } from './types';
 import { knownIds } from './registry';
 
 export const LAUNCH_ACK_RE = /Subagent launched \(id: ([A-Za-z0-9_-]{4,})\)/g;
-export const reportMarker = (id: string): string => `[SUBAGENT REPORT ${id}]`;
+/** Stable prefix of the pairing marker — consumers that only need "is there a
+ * report in this message" (e.g. the no-output streak's delivery-turn reset)
+ * key on this rather than re-spelling the literal. */
+export const SUBAGENT_REPORT_MARKER_PREFIX = '[SUBAGENT REPORT ';
+export const reportMarker = (id: string): string => `${SUBAGENT_REPORT_MARKER_PREFIX}${id}]`;
 
 export function buildLaunchAck(id: string, goal: string): string {
   // NOTE: must NOT contain the literal `[SUBAGENT REPORT <id>]` pairing marker
@@ -27,6 +31,30 @@ export function buildLaunchAck(id: string, goal: string): string {
     `do not need to wait or poll. Continue your own work now; if you finish ` +
     `before the report arrives, it will be delivered to you before this phase concludes.`
   );
+}
+
+/**
+ * Delivery-turn predicate for the execute no-output streaks: did THIS turn's
+ * prompt carry a freshly drained subagent report? Reports live in history
+ * forever, so only the LAST user message (the tool-result/drain message
+ * assembled for this turn) is inspected.
+ */
+export function subagentReportDeliveredThisTurn(
+  messages: Array<{ role: string; content: string | unknown[] }>,
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== 'user') continue;
+    if (typeof msg.content === 'string') return msg.content.includes(SUBAGENT_REPORT_MARKER_PREFIX);
+    if (Array.isArray(msg.content)) {
+      return msg.content.some(
+        (b) => typeof (b as { text?: unknown })?.text === 'string'
+          && ((b as { text: string }).text).includes(SUBAGENT_REPORT_MARKER_PREFIX),
+      );
+    }
+    return false;
+  }
+  return false;
 }
 
 export function buildReportBlocks(entries: SubagentEntry[]): MessageContentBlock[] {

@@ -72,8 +72,17 @@ describe('join call-site policy (static)', () => {
     for (const rel of sites) {
       const body = fs.readFileSync(path.resolve(__dirname, '../..', rel), 'utf-8');
       expect(body, `${rel} must call maybeJoinSubagents`).toContain('maybeJoinSubagents(');
-      expect(body, `${rel} must not pre-gate the join on hasPendingSubagents`)
-        .not.toMatch(/hasPendingSubagents/);
+      // The offense is a pre-GATE on the join specifically — hasPendingSubagents
+      // is legitimately consulted elsewhere in these files (the no-output
+      // streak's pending-freeze, small-longing-drive). Scan the lines
+      // immediately preceding each join call for a pending guard.
+      const lines = body.split('\n');
+      lines.forEach((line, idx) => {
+        if (!line.includes('maybeJoinSubagents(')) return;
+        const windowBefore = lines.slice(Math.max(0, idx - 8), idx).join('\n');
+        expect(windowBefore, `${rel}:${idx + 1} must not pre-gate the join on hasPendingSubagents`)
+          .not.toMatch(/if\s*\(\s*!?\s*(await\s+)?hasPendingSubagents/);
+      });
     }
   });
 });

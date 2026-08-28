@@ -53,16 +53,63 @@ export async function handleReadAntSource(
   return adapt(await coreReadAntSource(args as { path: string; source?: AntSource }));
 }
 
+/**
+ * Clone probe shared by the list/search siblings: does this workspace's
+ * codebase contain the platform tree for `source`? Read's per-path probe
+ * generalized — the siblings have no 1:1 path to map, so presence of the
+ * mapped root is the signal. Same failure tolerance as the read probe.
+ */
+async function workspaceCloneRoot(
+  ctx: ToolExecutionContext,
+  source: AntSource,
+): Promise<string | undefined> {
+  try {
+    const root = antSourceToCodebasePath(source, '').replace(/\/$/, '');
+    return (await ctx.fileSystem.isDirectory(root)) ? root : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function handleListAntFiles(
-  _ctx: ToolExecutionContext,
+  ctx: ToolExecutionContext,
   args: Record<string, any>,
 ): Promise<ToolResult> {
+  // Workspace-copy priority (same rule as handleReadAntSource): in-image
+  // results carry in-image coordinates that poison later phases' citations,
+  // and may be a different version from the clone being edited
+  // (small-longing-drive: 21 un-redirected list/search calls seeded a sealed
+  // plan with in-image paths). Redirect only where the equivalent workspace
+  // tool is dispatchable.
+  const source: AntSource = (args?.source as AntSource) || 'cli';
+  if (ctx.availableToolNames?.has('list_files')) {
+    const cloneRoot = await workspaceCloneRoot(ctx, source);
+    if (cloneRoot) {
+      const target = args?.path ? `${cloneRoot}/${String(args.path).replace(/^\.?\//, '')}` : cloneRoot;
+      const msg =
+        `This workspace's codebase IS a clone of the platform: ${cloneRoot}. ` +
+        `Your job operates on the workspace copy — list it with list_files("${target}") and cite that path. ` +
+        `list_ant_files serves the RUNNING platform's in-image copy, which may be a DIFFERENT version from the code you are editing.`;
+      return { content: msg, error: msg };
+    }
+  }
   return adapt(await coreListAntFiles(args as { path: string; source?: AntSource }));
 }
 
 export async function handleSearchAntCode(
-  _ctx: ToolExecutionContext,
+  ctx: ToolExecutionContext,
   args: Record<string, any>,
 ): Promise<ToolResult> {
+  const source: AntSource = (args?.source as AntSource) || 'cli';
+  if (ctx.availableToolNames?.has('search_code')) {
+    const cloneRoot = await workspaceCloneRoot(ctx, source);
+    if (cloneRoot) {
+      const msg =
+        `This workspace's codebase IS a clone of the platform: ${cloneRoot}. ` +
+        `Your job operates on the workspace copy — search it with search_code({ pattern: ..., file_pattern: "${cloneRoot}/**/*" }) and cite those paths. ` +
+        `search_ant_code serves the RUNNING platform's in-image copy, which may be a DIFFERENT version from the code you are editing.`;
+      return { content: msg, error: msg };
+    }
+  }
   return adapt(await coreSearchAntCode(args as { query: string; source?: AntSource; filePattern?: string }));
 }
