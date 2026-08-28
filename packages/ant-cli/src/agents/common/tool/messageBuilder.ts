@@ -65,6 +65,23 @@ export function buildAssistantMessage(
   return { role: 'assistant' as const, content };
 }
 
+/**
+ * One agent round's assistant history entry. A tool round keeps its streamed
+ * text alongside the tool_use blocks — dropping the text erases the model's
+ * own protocol emissions (e.g. `<checklist>`) from history, starving
+ * self-sustained re-emit protocols (clear-dotting-mouse). Returns undefined
+ * for a round with neither text nor tool calls.
+ */
+export function buildRoundAssistantMessage(
+  responseText: string,
+  toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>,
+): ReturnType<typeof buildAssistantMessage> | undefined {
+  if (toolCalls.length) {
+    return buildAssistantMessage({ ...(responseText && { text: responseText }), toolCalls });
+  }
+  return responseText ? buildAssistantMessage({ text: responseText }) : undefined;
+}
+
 export interface ToolResultMessageParts {
   toolUseBlocks: ToolUseContentBlock[];
   toolResultBlocks: ToolResultContentBlock[];

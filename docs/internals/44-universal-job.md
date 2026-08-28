@@ -868,8 +868,9 @@ channels (§ Why the directory is named `on-demand/`) are destinations a
 designer assigns from the WORK the material describes; the source's file
 boundaries, directory names, and counts assign nothing.
 
-Two incidents, opposite poles of one axis — anchoring output shape to input
-file shape:
+Three incidents — the first two are opposite poles of one axis (anchoring
+output shape to input file shape); the third is what the mirroring fix left
+unnamed:
 
 - **cosmic-grasping-forge** (2026-08-27, `4f09abd23`): 26 per-task work
   documents produced one agent, zero intents, and all 26 documents routed to
@@ -884,6 +885,27 @@ file shape:
   whose own text declared them dead, and the collection's owners/schedule
   bookkeeping — copied verbatim into `on-demand/`. A source directory that
   happened to be named `intent/` was treated as the design.
+- **clear-dotting-mouse** (2026-08-28): with the mirroring fixed, two delivery
+  channels the prose never named went unserved. (1) Zero `hooks.yaml` across
+  13 intents — the build prose framed an intent as "two files", never
+  mentioning the optional completion contract, and the loader tolerates
+  absent hooks (`readIntentDir`, `loadCustomJob`), so nothing failed loud;
+  every intent carried a prose-only "done" the runtime cannot gate. (2)
+  Schedule and dependency prose absorbed into intents — 10 of 13 `infer.md`
+  opened with a calendar ("on the 1st of each month") instead of a
+  condition: the definition text named no owner for calendars, and the
+  builder structurally cannot write one (`isAllowedDefinitionPath` rejects
+  pipeline paths; its self-api token is pinned to `/account/agents`). The
+  corrected text reframes the intent as two prose files plus an optional
+  observable-completion contract, and draws the jurisdiction line: calendars
+  and cross-intent run order are pipeline material the build job FILTERS —
+  authored by the separate pipeline surface (today a person in the Pipelines
+  tab, § 46; eventually a dedicated pipeline-authoring builtin job that
+  reads the finished agent plus the same source), never proposed or
+  preserved by the builder, so the two authoring jobs keep single ownership
+  of their halves. In-task time rules — a filing deadline, a do-not-resend
+  window — stay in `prompt.md` because they change what the agent does, not
+  when it is started.
 
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
@@ -902,7 +924,10 @@ and was removed.
 The tests assert structure only (intent id set, every builder intent ships a
 `prompt.md`, hooks, the on-demand filename set, Latin script,
 `tests/customAgents/builtin-agents.test.ts`) — prose is never regex-pinned,
-per the no-prose-pinning policy.
+per the no-prose-pinning policy. The hook-authoring criterion and the
+schedule/pipeline boundary are prose and are likewise not pinned — the gated
+inverse remains the structural suite above, including the
+`/account/agents` allow pin (the builder cannot write a pipeline).
 
 ## Streaming & turn identity (A14/A15)
 

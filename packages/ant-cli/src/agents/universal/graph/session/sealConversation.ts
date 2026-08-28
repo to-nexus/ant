@@ -13,8 +13,10 @@
  * owner rather than one-per-writer.
  */
 
+import type { UniversalChecklist } from '@ant/shared';
 import { trimConversationToByteBudget } from '../../../../core/session/stateBudget';
 import type { ConversationMessage } from '../../../../core/context/types';
+import { CONV_KEYS } from '../../../common/graph/conversations';
 
 /**
  * Generic over the message shape: the graph's `ConversationMessage` is a
@@ -33,4 +35,23 @@ export function sealUniversalConversation<T extends { role: string; content: unk
     );
   }
   return trim.messages as unknown as T[];
+}
+
+/**
+ * The runner's error-path seal state. `updateArtifacts` replaces `state`
+ * wholesale, so every field the previous run persisted that this seal omits
+ * is deleted from disk — the checklist was lost that way (clear-dotting-mouse).
+ */
+export function buildUniversalErrorSealState<T extends { role: string; content: unknown }>(args: {
+  main: T[];
+  customJobRef: string;
+  restoredClarifyRounds?: number;
+  restoredChecklist?: UniversalChecklist;
+}): Record<string, unknown> {
+  return {
+    conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(args.main) },
+    customJobRef: args.customJobRef,
+    ...(args.restoredClarifyRounds !== undefined && { clarifyRoundsUsed: args.restoredClarifyRounds }),
+    ...(args.restoredChecklist && { checklist: args.restoredChecklist }),
+  };
 }

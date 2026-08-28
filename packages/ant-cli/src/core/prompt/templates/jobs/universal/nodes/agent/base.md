@@ -50,7 +50,7 @@ Derived from plan: `{{existingChecklistPlan}}`
 {{existingChecklist}}
 ```
 
-Continue this list — update marks and re-emit it as you work; do not create a new one unless the user starts unrelated multi-deliverable work.
+Continue this list — re-emit it with updated marks after every tool call that completes an item; do not create a new one unless the user starts unrelated multi-deliverable work.
 {{/if}}
 
 {{#if planTurn}}

@@ -150,6 +150,11 @@ export interface UniversalGraphState extends ResolvableState {
   turnChecklist?: UniversalChecklist;
   /** Checklist restored from the sealed session (resume/continuation input). */
   restoredChecklist?: UniversalChecklist;
+  /**
+   * recursionCount at the last `<checklist>` emit THIS run — staleness input
+   * for the tool node's re-emit nudge. Per-run only, never sealed.
+   */
+  _checklistEmitRound?: number;
   /** Explicit `@intent:` mentions for THIS run only (never persisted). */
   explicitIntents?: string[];
   /** Explicit `@ctx:` artifact paths for THIS run only (never persisted). */
@@ -197,6 +202,7 @@ export const UniversalAnnotation = Annotation.Root({
   planDocs: Annotation<string[] | undefined>,
   turnChecklist: Annotation<UniversalChecklist | undefined>,
   restoredChecklist: Annotation<UniversalChecklist | undefined>,
+  _checklistEmitRound: Annotation<number | undefined>,
   explicitIntents: Annotation<string[] | undefined>,
   explicitContext: Annotation<string[] | undefined>,
   planRequested: Annotation<boolean | undefined>,

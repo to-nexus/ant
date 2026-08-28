@@ -30,7 +30,7 @@ If the definition asks for something the runtime forbids, say so plainly and off
 
 - When the work decomposes into 2 or more independent deliverables, emit a `<checklist>` block as text BEFORE your first production tool call — one `- [ ] item` line per deliverable, in execution order. Do NOT create a checklist for single-deliverable or answer-only turns.
 - Work the items strictly in order, one at a time: exactly one line carries `[~]` (in progress); finished lines carry `[x]`.
-- Every emit replaces the whole list — after finishing an item, re-emit ALL lines with updated marks. Never emit a partial diff.
+- Every emit replaces the whole list — after every tool call that completes an item, re-emit ALL lines with updated marks, even in a round that otherwise only calls tools. Never emit a partial diff.
 - When the checklist is derived from a plan document, declare the source: `<checklist plan="relative/path.md">`.
 - The block is never shown in chat — it drives the Checklist board. Your prose still narrates progress normally.
 
@@ -54,7 +54,7 @@ If the definition asks for something the runtime forbids, say so plainly and off
 
 ## Output Channel
 
-- Your streamed text IS the user-facing reply. Write it as a direct answer, not a work log. There is no wrapper tag around the reply and no reply/done tool — just write the answer.
+- Your streamed text IS the user-facing reply. Write it as a direct answer, not a work log. There is no wrapper tag around the reply and no reply/done tool — just write the answer. The `<checklist>` block is the one exception: it is consumed by the board and never rendered in chat, so re-emitting it — even alone, in a tool-only round — is not a work log.
 - Keep the reply in the user's language.
 - File contents follow the first of these that applies, in order: an explicit instruction from the user; the language convention the definition states; the language a file you are revising is already written in; otherwise the language of the user's request. Never flip an existing file's language because this turn's request arrived in another one.
 - Structural tokens stay canonical whatever the prose language is: identifiers, keys, file and directory paths, tool names, and code. Only prose and display strings are written in the chosen language.

@@ -99,3 +99,64 @@ describe('serializeChecklist — round trip', () => {
     expect(reparsed.items).toEqual(original.items);
   });
 });
+
+/**
+ * Liveness across tool rounds (clear-dotting-mouse): the checklist protocol is
+ * sustained only by the model re-emitting the tag, so the runtime must (1) keep
+ * the round's streamed text in history alongside tool_use blocks, (2) nudge
+ * when the list goes stale mid-loop, and (3) never wipe a persisted checklist
+ * on the error-path seal. These lock the loop, not the parser.
+ */
+describe('checklist liveness across tool rounds', () => {
+  const CALLS = [{ id: 'tc1', name: 'read_file', args: { path: 'a.md' } }];
+
+  it('tool-round assistant history keeps the streamed text alongside tool_use', async () => {
+    const { buildRoundAssistantMessage } = await import('../../src/agents/common/tool/messageBuilder');
+    const msg = buildRoundAssistantMessage('<checklist>\n- [x] a\n- [~] b\n</checklist>', CALLS)!;
+    const content = msg.content as Array<{ type: string; text?: string }>;
+    expect(content.some((b) => b.type === 'text' && b.text!.includes('<checklist>'))).toBe(true);
+    expect(content.some((b) => b.type === 'tool_use')).toBe(true);
+  });
+
+  it('text-less tool round stays tool_use-only; empty round returns undefined', async () => {
+    const { buildRoundAssistantMessage } = await import('../../src/agents/common/tool/messageBuilder');
+    const msg = buildRoundAssistantMessage('', CALLS)!;
+    const content = msg.content as Array<{ type: string }>;
+    expect(content.every((b) => b.type === 'tool_use')).toBe(true);
+    expect(buildRoundAssistantMessage('', [])).toBeUndefined();
+  });
+
+  const cl = (...states: Array<'pending' | 'active' | 'done'>) => ({
+    items: states.map((s, i) => ({ id: `item-${i + 1}`, text: `t${i + 1}`, state: s })),
+  });
+
+  it.each([
+    ['no checklist at all', {}, 0],
+    ['all items done', { turnChecklist: cl('done', 'done'), recursionCount: 6, _checklistEmitRound: 0 }, 0],
+    ['fresh (below stale threshold)', { turnChecklist: cl('done', 'active'), recursionCount: 2, _checklistEmitRound: 0 }, 0],
+    ['stale at threshold', { turnChecklist: cl('done', 'active'), recursionCount: 3, _checklistEmitRound: 0 }, 1],
+    ['between periods (no re-fire spam)', { turnChecklist: cl('done', 'active'), recursionCount: 4, _checklistEmitRound: 0 }, 0],
+    ['next period re-fires', { turnChecklist: cl('done', 'active'), recursionCount: 6, _checklistEmitRound: 0 }, 1],
+    ['restored-only checklist counts from round 0', { restoredChecklist: cl('pending', 'pending'), recursionCount: 3 }, 1],
+    ['recent emit resets staleness', { turnChecklist: cl('done', 'active'), recursionCount: 6, _checklistEmitRound: 5 }, 0],
+  ])('nudge hook: %s → %i block(s)', async (_label, state, expectedLen) => {
+    const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+    const blocks = universalToolNodeConfig.hooks!.buildExtraUserContent!(state as any);
+    expect(blocks).toHaveLength(expectedLen);
+    if (expectedLen) expect(blocks[0].text).toContain('<checklist>');
+  });
+
+  it('error-path seal state carries the restored checklist (wholesale state replace must not wipe it)', async () => {
+    const { buildUniversalErrorSealState } = await import('../../src/agents/universal/graph/session/sealConversation');
+    const checklist = cl('done', 'pending');
+    const sealed = buildUniversalErrorSealState({
+      main: [{ role: 'user', content: 'hi' }],
+      customJobRef: 'a/j',
+      restoredClarifyRounds: 1,
+      restoredChecklist: checklist,
+    });
+    expect(sealed.checklist).toEqual(checklist);
+    expect(sealed.clarifyRoundsUsed).toBe(1);
+    expect(buildUniversalErrorSealState({ main: [], customJobRef: 'a/j' })).not.toHaveProperty('checklist');
+  });
+});

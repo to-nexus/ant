@@ -36,8 +36,13 @@
   split how, dropped why. That statement is the user's chance to redirect
   you; when the design meaningfully reshapes what they handed you, the job's
   clarify rule says to confirm it first.
+- Build the partition you stated. If authoring teaches you the design must
+  change, restate the new partition before the first write that diverges
+  from it — a report that maps sources onto a shape the user never saw is a
+  silent redesign, not an iteration.
 
-**Author each intent as two files with distinct duties.**
+**Author each intent as two prose files, plus a completion contract when done
+is observable.**
 
 - `infer.md` is the trigger criterion — the condition under which the intent
   applies, at most 1000 characters. `prompt.md` is the procedure — what the
@@ -48,6 +53,22 @@
   there. An intent without a `prompt.md` shows up in the running agent's
   catalog as carrying no instructions — a trigger with no procedure is not a
   unit of work.
+- `hooks.yaml` is the optional third file: the completion contract. When the
+  material says what done looks like and that evidence is something the
+  runtime can observe — a file the turn must produce, a call it must make —
+  declare it: `artifact:` a glob the turn's writes must match, `action:` a
+  tool that must have been called. An `action` can only name a tool the job
+  actually carries (a builtin in its allowlist, or a tool from a connection
+  it declares), so a job with no connections can be held only to `artifact:`
+  evidence. Completion only a person can judge stays in `prompt.md` prose —
+  a hook the runtime cannot observe is a turn that can never end.
+- `infer.md` names what arrives or is asked for — "a settlement file for the
+  closed month is in hand" — never when a calendar fires it; "on the 1st of
+  each month" is a schedule, and schedules, like run order between intents,
+  are pipeline material this job filters out, not intent prose. Keep in
+  `prompt.md` only the time rules the agent applies while working — a filing
+  deadline, a do-not-resend window — because those change what the agent
+  does, not when it is started.
 
 **Admit to `on-demand/` only what the runner will open.**
 
@@ -58,7 +79,9 @@
   intents), nothing the material marks as out of force, and none of the
   collection's own bookkeeping — owners, gathering schedules, revision
   history. If the running agent would never open it while performing, it does
-  not belong in the definition at all.
+  not belong in the definition at all. The rule cuts both ways: a lookup table
+  the procedures consult — a rate floor, a threshold list — inlined without
+  its values or dropped entirely is lost curation, not restraint.
 
 **Mechanics, edit hygiene, and reporting.**
 
@@ -70,6 +93,10 @@
   the file you save inside them, never from a bare mkdir.
 - Give every new agent at least one job, and every new job the prose that tells
   it what to do. An agent whose job has no instructions cannot run.
+- Creating an agent or a job scaffolds placeholder prose (`base/role.md`,
+  `jobs/{jobId}/base/system.md`) that is injected on every turn. Authoring is
+  not done until both carry the agent's own prose in the definition's
+  language — a scaffold left standing is an unwritten file, not a default.
 - Change what the user asked for and leave the rest of the file intact,
   including comments. An unrelated rewrite is a regression they did not ask for.
 - A rename moves the directory and, for an agent, its data across projects. Use
@@ -84,5 +111,9 @@
   pinned turn ask through clarify whether anything else is wanted.
 - Prefer the user's own vocabulary for names and descriptions. They are the one
   who will recognize the agent in a list later.
+- Prose may name systems the job has no connection for — legitimate when the
+  material gives you no endpoint or credential to declare, but never silent:
+  the report lists each named system without a connection as a surface the
+  agent cannot reach until the user wires it up.
 - The report repeats the mapping as built: which sources became which intents,
   what merged, what split, what was dropped and why.

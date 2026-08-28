@@ -51,6 +51,9 @@ const PLAN_TURN_EXECUTION_ERROR = (name: string): string =>
 
 const universalResultManager = new ToolResultManager(new TokenBudgetManager(), UNIVERSAL_RESULT_LIMITS);
 
+/** Tool rounds without a `<checklist>` re-emit before the nudge fires (and its re-fire period). */
+const CHECKLIST_NUDGE_STALE_ROUNDS = 3;
+
 /**
  * Clarify availability RIGHT NOW (knob × session budget) — shared by the
  * pause-route predicate and the gateCall rejection wording. Mirrors the
@@ -192,6 +195,29 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
       promptBuilder: state.deps?.promptBuilder,
     });
     return ctx;
+  },
+
+  hooks: {
+    // Checklist recency nudge (clear-dotting-mouse): the checklist protocol is
+    // sustained only by the model's own re-emission, and a long tool loop
+    // starves it of recency — the contract lives in a static system band the
+    // model stops attending to. Nudge only while unfinished items exist and
+    // the list has gone stale, and only every Nth round, so quiet compliance
+    // costs zero extra tokens.
+    buildExtraUserContent(state) {
+      const checklist = state.turnChecklist ?? state.restoredChecklist;
+      if (!checklist?.items.some((i) => i.state !== 'done')) return [];
+      const staleRounds = (state.recursionCount ?? 0) - (state._checklistEmitRound ?? 0);
+      if (staleRounds < CHECKLIST_NUDGE_STALE_ROUNDS || staleRounds % CHECKLIST_NUDGE_STALE_ROUNDS !== 0) return [];
+      return [{
+        type: 'text' as const,
+        text:
+          '[checklist] The working checklist has not been re-emitted for several rounds. ' +
+          'If any item is now complete, re-emit the FULL <checklist> block with updated marks ([x]/[~]/[ ]) in your next text — ' +
+          'it is board-only, never shown in chat, and emitting it alone in a tool round is expected. ' +
+          'If no item state changed, continue without emitting.',
+      }];
+    },
   },
 
   registry: getUniversalRegistry(),

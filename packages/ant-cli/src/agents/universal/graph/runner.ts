@@ -14,7 +14,7 @@ import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { buildUniversalGraph } from './graph';
 import { createInitialUniversalState, parseSealedTurnContext, type InheritedTurnContext, type UniversalGraphState } from './state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph/conversations';
-import { sealUniversalConversation } from './session/sealConversation';
+import { buildUniversalErrorSealState } from './session/sealConversation';
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
@@ -263,11 +263,12 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         // NOTE: this save can never contain a dangling clarify tool_use —
         // `main` is the pre-graph history; only respond's seal persists one.
         await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
-          state: {
-            conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(main) },
+          state: buildUniversalErrorSealState({
+            main,
             customJobRef: `${resolved.agentId}/${resolved.jobId}`,
-            ...(restoredClarifyRounds !== undefined && { clarifyRoundsUsed: restoredClarifyRounds }),
-          },
+            restoredClarifyRounds,
+            restoredChecklist,
+          }),
         });
       } catch (e) {
         if ((e as any)?.code === 'SESSION_WRITE_TOO_LARGE') {

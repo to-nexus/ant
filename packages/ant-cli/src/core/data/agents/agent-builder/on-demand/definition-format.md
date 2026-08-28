@@ -125,9 +125,11 @@ tokens.
 ## Intents
 
 `infer.md` is a trigger criterion, at most 1000 characters, written as a
-condition rather than a summary. Its frontmatter accepts exactly one optional
-key, `clarify: <bool>`; `default`, `injections`, `description`, `id`, and
-`hooks` are rejected.
+condition rather than a summary. A calendar is not a condition — "runs
+monthly" describes a schedule, which belongs to pipeline authoring outside
+the agent definition, never to `infer.md`. Its frontmatter accepts exactly
+one optional key, `clarify: <bool>`; `default`, `injections`, `description`,
+`id`, and `hooks` are rejected.
 
 `prompt.md` has no size limit and is inlined only while its intent is active —
 it is where a task's procedure lives; `infer.md` only decides when it applies.
@@ -143,6 +145,11 @@ stop:
 Each entry carries exactly one of `artifact` or `action`. An `action` must name
 a tool the job actually has — a builtin in its allowlist, or a tool from a
 connection it declares — or the job will not load.
+
+A hook is for observable completion. When an intent's "done" is evidence the
+runtime can see — a produced file, a successful call — declare it here rather
+than leaving it as prose alone; when done is a judgment only a reader can
+make, there is nothing to declare and the contract stays in `prompt.md`.
 
 ## Scopes
 

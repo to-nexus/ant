@@ -20,7 +20,7 @@ import type { UniversalGraphState } from '../state';
 import { getJobAbortSignal } from '../../../../composition/jobAbort';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../common/graph/conversations';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../common/graph/llmConfig';
-import { buildAssistantMessage } from '../../../common/tool/messageBuilder';
+import { buildAssistantMessage, buildRoundAssistantMessage } from '../../../common/tool/messageBuilder';
 import {
   accumulateTokenUsage,
   maybeUpdatePhaseTokenUsage,
@@ -355,7 +355,9 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
       state.deps?.kanbanUpdate?.updateUniversalChecklist?.(emittedChecklist);
       console.log(`📋 [Universal:Agent] Checklist updated (${emittedChecklist.items.length} items${emittedChecklist.sourcePlanPath ? `, plan: ${emittedChecklist.sourcePlanPath}` : ''})`);
     }
-    const checklistPatch = emittedChecklist ? { turnChecklist: emittedChecklist } : {};
+    const checklistPatch = emittedChecklist
+      ? { turnChecklist: emittedChecklist, _checklistEmitRound: state.recursionCount ?? 0 }
+      : {};
 
     // ── Join barrier (explore subagent) — same contract as ask.
     const subagentOwnerKey = ownerKeyFor(state._httpJobId);
@@ -451,11 +453,8 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
     const streamingCompleted = streamedAnything && !hasToolCalls;
 
     const newHistory: ConversationMessage[] = [...baseHistory];
-    if (hasToolCalls) {
-      newHistory.push(buildAssistantMessage({ toolCalls }));
-    } else if (responseText) {
-      newHistory.push(buildAssistantMessage({ text: responseText }));
-    }
+    const roundMessage = buildRoundAssistantMessage(responseText, toolCalls);
+    if (roundMessage) newHistory.push(roundMessage);
 
     return {
       conversations: { [CONV_KEYS.SESSION_MAIN]: newHistory },
