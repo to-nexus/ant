@@ -112,6 +112,9 @@
   "inlineAsk": {
     "failed": "Inline ask failed"
   },
+  "jobStart": {
+    "failed": "Failed to start job"
+  },
   "card": {
     "unknownFile": "Unknown file",
     "created": "Created",

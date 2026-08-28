@@ -4,6 +4,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { useTranslation } from 'react-i18next';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { API_BASE } from '@/infrastructure/http/api';
+import { setOnTransportFailure } from '@/infrastructure/http/transportFailure';
 import { ConnectionBanner } from '@/presentation/components/common/ConnectionBanner';
 
 /**
@@ -17,6 +18,13 @@ import { ConnectionBanner } from '@/presentation/components/common/ConnectionBan
  *
  * Slow-path fallback: if SSEManager exhausts its 5 reconnection attempts and
  * sets connectionStatus to 'error', the modal is shown regardless.
+ *
+ * Request path: a fetch that dies before a readable response exists arrives
+ * here too (`setOnTransportFailure`). There the health probe is the verdict,
+ * not just a filter — a healthy `/health` alongside a dead request means the
+ * request itself was refused upstream (an edge/WAF answering without CORS
+ * headers, which the browser can only report as `Failed to fetch`), so it gets
+ * its own actionable modal instead of "the server is down".
  *
  * Must be rendered inside AlertModalProvider.
  */
@@ -46,32 +54,58 @@ export function useServerDownDetector() {
     );
   }, [showWarning, t]);
 
+  const showGatewayBlockedModal = useCallback(() => {
+    showWarning(
+      t('gatewayBlocked.message', 'The server is healthy, but this request was blocked by an intermediary gateway.'),
+      {
+        title: t('gatewayBlocked.title', 'Request Blocked'),
+        confirmText: t('gatewayBlocked.confirm', 'OK'),
+      },
+    );
+  }, [showWarning, t]);
+
+  /**
+   * Banner → health probe → verdict. Shared by both entry points; `onHealthy`
+   * is what separates them (SSE: transient, say nothing. Request: the request
+   * was refused upstream, say so).
+   */
+  const probe = useCallback(async (onHealthy: () => void) => {
+    if (healthCheckInFlightRef.current) return;
+    healthCheckInFlightRef.current = true;
+    setBannerVisible(true);
+    try {
+      if (await checkApiHealth()) {
+        setBannerVisible(false);
+        onHealthy();
+      } else {
+        useStore.getState().setConnectionStatus('error');
+        setBannerVisible(false);
+        showServerDownModal();
+      }
+    } finally {
+      healthCheckInFlightRef.current = false;
+    }
+  }, [showServerDownModal]);
+
   // --- Fast path: SSE error callback -> banner -> health check ---
+  // Idle SSE noise is not worth a banner, so this path still gates on a
+  // running job. The request path below must NOT: a submit that fails has no
+  // job by definition.
   useEffect(() => {
     const handleSSEError = async () => {
       if (!wasRunningRef.current) return;
-      if (healthCheckInFlightRef.current) return;
-      healthCheckInFlightRef.current = true;
-
-      setBannerVisible(true);
-
-      try {
-        const healthy = await checkApiHealth();
-        if (!healthy) {
-          useStore.getState().setConnectionStatus('error');
-          setBannerVisible(false);
-          showServerDownModal();
-        } else {
-          setBannerVisible(false);
-        }
-      } finally {
-        healthCheckInFlightRef.current = false;
-      }
+      await probe(() => {/* healthy: transient reconnect, nothing to say */});
     };
 
     sseManager.setOnErrorCallback(handleSSEError);
     return () => sseManager.setOnErrorCallback(null);
-  }, [showServerDownModal]);
+  }, [probe]);
+
+  // --- Request path: a fetch with no readable response ---
+  useEffect(() => {
+    setOnTransportFailure(() => { void probe(showGatewayBlockedModal); });
+    return () => setOnTransportFailure(null);
+  }, [probe, showGatewayBlockedModal]);
 
   // --- Slow path: connectionStatus transition fallback ---
   useEffect(() => {

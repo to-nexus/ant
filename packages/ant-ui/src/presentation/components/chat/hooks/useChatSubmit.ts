@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { selectPausedNonTaskJob, selectUniversalExecuteContext } from '@/domain/store/selectors';
-import { API_BASE, addChatUserMessage, resolveChoice } from '@/infrastructure/http/api';
+import { API_BASE, NetworkError, addChatUserMessage, resolveChoice } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 import { deriveFromIntent } from '@ant/shared';
 import type { ChatLine, ChatChoicePresentedLine, ChatChoiceResolvedLine, LogJobType } from '@ant/shared';
@@ -19,6 +19,21 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
   const { t } = useTranslation('chat');
   const selectedJobType = useStore((state) => state.selectedJobType);
   const selectedAgent = useStore((state) => state.selectedAgent);
+
+  /**
+   * A failed submit always gives the text back — thousands of characters with
+   * no other copy. (After `onStartError` the turn is already in chat, so the
+   * text appears twice; a duplicate beats a loss, and the job never started.)
+   * A `NetworkError` shows no modal here: `useServerDownDetector` owns that
+   * surface — banner → health probe → server-down vs gateway-blocked — and two
+   * stacked modals help nobody.
+   */
+  const surfaceSubmitFailure = (labelKey: 'inlineAsk.failed' | 'jobStart.failed', error: unknown, typed: string) => {
+    setMessage(typed);
+    if (error instanceof NetworkError) return;
+    const detail = error instanceof Error ? error.message : t('common:error.unknown');
+    showError(`${t(labelKey)}: ${detail}`, { title: t('common:error.title') });
+  };
 
   const handleSubmit = async () => {
     const hasPendingClarifyNow = Object.keys(useStore.getState().pendingClarifyAnswers).length > 0;
@@ -152,10 +167,7 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         console.error('[ChatInput] Failed to start inline ask:', error);
         useStore.getState().setRunning(false);
         useStore.getState().setInlineAskContext(null);
-        showError(
-          `${t('inlineAsk.failed')}: ${error instanceof Error ? error.message : t('common:error.unknown')}`,
-          { title: t('common:error.title') }
-        );
+        surfaceSubmitFailure('inlineAsk.failed', error, userMessage);
       }
       return;
     }
@@ -243,10 +255,8 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
 
       // Rejected before an id existed — no card, no job-error line, so the
       // toast is the only place the reason can land.
-      jobExecution.onStartError((detail) => {
-        showError(`${t('inlineAsk.failed', { defaultValue: 'Job failed to start' })}: ${detail}`, {
-          title: t('common:error.title'),
-        });
+      jobExecution.onStartError((_detail, error) => {
+        surfaceSubmitFailure('jobStart.failed', error, userMessage);
       });
 
       jobExecution.on('exit', async (code, signal) => {
@@ -282,15 +292,11 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     } catch (error) {
       console.error('[ChatInput] Failed to start job:', error);
       useStore.getState().setRunning(false);
-      setMessage(userMessage);
       // Phase 12 chat-SSOT — addChatUserMessage / executeCodeJob client
       // failures never reach the BE chat stream, so a toast keeps the
       // user informed instead of letting the failure go silent. BE-side
       // /execute failures emit `assistant_message` lines via chatService.
-      const detail = error instanceof Error ? error.message : t('common:error.unknown');
-      showError(`${t('inlineAsk.failed', { defaultValue: 'Job failed to start' })}: ${detail}`, {
-        title: t('common:error.title'),
-      });
+      surfaceSubmitFailure('jobStart.failed', error, userMessage);
     }
   };
 

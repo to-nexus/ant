@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { featureNameToSlug } from '@ant/shared';
+import { notifyTransportFailure } from '../transportFailure';
 
 /**
  * Encode a feature name for use as a URL PATH segment. A feature name may
@@ -145,11 +146,20 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
     ...(options?.headers || {}),
   } as HeadersInit;
 
-  return fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+  try {
+    return await fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
+  } catch (error) {
+    // `TypeError` is the only shape fetch uses for "no readable response":
+    // server down, DNS/TLS failure, or an edge (WAF / ALB) answering without
+    // CORS headers. Everything else (AbortError, TimeoutError) is the caller's.
+    if (!(error instanceof TypeError)) throw error;
+    notifyTransportFailure(url);
+    throw new NetworkError(url, error);
+  }
 }
 
 /**
@@ -268,6 +278,32 @@ export class ApiError extends Error {
     this.filename = data?.filename as string | undefined;
   }
 }
+
+/**
+ * The request produced no readable response at all.
+ *
+ * Distinct from `ApiError`, which always describes a response that ARRIVED:
+ * a status the app chose. `status: 0` means the browser could not read one —
+ * the server is down, the network died, or an intermediary (WAF / ALB)
+ * answered without CORS headers, which the browser refuses to expose and
+ * reports only as `TypeError: Failed to fetch`.
+ *
+ * Minted in exactly one place: `authFetch`. Extending `ApiError` keeps every
+ * existing `instanceof ApiError` consumer working; `status: 0` never matches
+ * the 401 cascade.
+ */
+export class NetworkError extends ApiError {
+  readonly url: string;
+
+  constructor(url: string, cause?: unknown) {
+    super('Network unreachable', 0, { code: 'NETWORK_UNREACHABLE' });
+    Object.setPrototypeOf(this, NetworkError.prototype);
+    this.name = 'NetworkError';
+    this.url = url;
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
+}
+
 
 /**
  * When a job/chat start is rejected because the account is not approved, reflect
