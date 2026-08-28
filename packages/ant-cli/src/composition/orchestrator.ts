@@ -7,14 +7,14 @@ import type { IntentId } from "@ant/shared";
 import { LLM_TEMPERATURE } from "../core/ports/llmSampling";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { isVectorDbEnabled } from "../core/config/vectorDbCapability";
-import { createLLMClient, createImageGenerationClient, resolveModelForContext, detectProviderFromModel } from "../periphery/adapters/llm/LLMClientFactory";
+import { createLLMClient, createImageGenerationClient } from "../periphery/adapters/llm/LLMClientFactory";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
 import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
 import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapter";
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
 import { NodeCommandAdapter } from "../periphery/adapters/command/NodeCommandAdapter";
 import { TaskQueueUpdatePort, FileTreeUpdatePort } from "../core/ports";
-import { WorkflowStateUpdatePort, type LLMInfo } from "../core/ports/workflow";
+import { WorkflowStateUpdatePort } from "../core/ports/workflow";
 import { PreviewUpdatePort } from "../core/ports/preview";
 import { getChatAPIClient } from "../core/adapters/ChatAPIClient";
 import { recordUserTurn } from "./recordUserTurn";
@@ -314,19 +314,6 @@ export async function orchestrator(params: {
               workflowUpdate = broadcasters.workflow;
               closeBroadcasters = () => broadcasters.close();
               console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Design]');
-
-              // Seed the initial SSE payload with the job-default model so the
-              // FE's LLM actor node shows a real model before the first
-              // `enterNode` arrives. `startJob` reinitializes `this.state`
-              // (clears activeWorkers, resets state, sets llmInfo, broadcasts)
-              // — safe here because no prior state exists to lose (constructor
-              // already initialized the same shape with `llmInfo: null`).
-              // Called BEFORE any `enterNode` calls which happen inside the
-              // agent graph. FE config-fallback is the primary coverage; this
-              // BE guard is defense-in-depth (spec T5).
-              const initialDesignModel = resolveModelForContext({ jobType: 'design' }, configData);
-              const initialDesignLLMInfo: LLMInfo = { provider: detectProviderFromModel(initialDesignModel), model: initialDesignModel };
-              workflowUpdate?.startJob(jobId || 'unknown', initialDesignLLMInfo);
             } else {
               console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Design]');
             }
@@ -423,19 +410,6 @@ export async function orchestrator(params: {
               previewUpdate = broadcasters.preview;
               closeBroadcasters = () => broadcasters.close();
               console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Code]');
-
-              // Seed the initial SSE payload with the job-default model so the
-              // FE's LLM actor node shows a real model before the first
-              // `enterNode` arrives. `startJob` reinitializes `this.state`
-              // (clears activeWorkers, resets state, sets llmInfo, broadcasts)
-              // — safe here because no prior state exists to lose (constructor
-              // already initialized the same shape with `llmInfo: null`).
-              // Called BEFORE any `enterNode` calls which happen inside the
-              // agent graph. FE config-fallback is the primary coverage; this
-              // BE guard is defense-in-depth (spec T5).
-              const initialCodeModel = resolveModelForContext({ jobType: 'code' }, configData);
-              const initialCodeLLMInfo: LLMInfo = { provider: detectProviderFromModel(initialCodeModel), model: initialCodeModel };
-              workflowUpdate?.startJob(jobId || 'unknown', initialCodeLLMInfo);
             } else {
               console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Code]');
             }
@@ -532,19 +506,6 @@ export async function orchestrator(params: {
             workflowUpdate = broadcasters.workflow;
             closeBroadcasters = () => broadcasters.close();
             console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Planner]');
-
-            // Seed the initial SSE payload with the job-default model so the
-            // FE's LLM actor node shows a real model before the first
-            // `enterNode` arrives. `startJob` reinitializes `this.state`
-            // (clears activeWorkers, resets state, sets llmInfo, broadcasts)
-            // — safe here because no prior state exists to lose (constructor
-            // already initialized the same shape with `llmInfo: null`).
-            // Called BEFORE any `enterNode` calls which happen inside the
-            // agent graph. FE config-fallback is the primary coverage; this
-            // BE guard is defense-in-depth (spec T5).
-            const initialPlanModel = resolveModelForContext({ jobType: 'plan' }, configData);
-            const initialPlanLLMInfo: LLMInfo = { provider: detectProviderFromModel(initialPlanModel), model: initialPlanModel };
-            workflowUpdate?.startJob(jobId || 'unknown', initialPlanLLMInfo);
           } else {
             console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Planner]');
           }
@@ -659,19 +620,6 @@ export async function orchestrator(params: {
             workflowUpdate = broadcasters.workflow;
             closeBroadcasters = () => broadcasters.close();
             console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Universal]');
-
-            // Seed the initial SSE payload with the job-default model so the
-            // FE's LLM actor node shows a real model before the first
-            // `enterNode` arrives. `startJob` reinitializes `this.state`
-            // (clears activeWorkers, resets state, sets llmInfo, broadcasts)
-            // — safe here because no prior state exists to lose (constructor
-            // already initialized the same shape with `llmInfo: null`).
-            // Called BEFORE any `enterNode` calls which happen inside the
-            // agent graph. FE config-fallback is the primary coverage; this
-            // BE guard is defense-in-depth (spec T5).
-            const initialUniversalModel = resolveModelForContext({ jobType: 'universal' }, configData);
-            const initialUniversalLLMInfo: LLMInfo = { provider: detectProviderFromModel(initialUniversalModel), model: initialUniversalModel };
-            workflowUpdate?.startJob(jobId || 'unknown', initialUniversalLLMInfo);
           } else {
             console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Universal]');
           }
@@ -804,19 +752,6 @@ export async function orchestrator(params: {
             workflowUpdate = broadcasters.workflow;
             closeBroadcasters = () => broadcasters.close();
             console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Creator]');
-
-            // Seed the initial SSE payload with the job-default model so the
-            // FE's LLM actor node shows a real model before the first
-            // `enterNode` arrives. `startJob` reinitializes `this.state`
-            // (clears activeWorkers, resets state, sets llmInfo, broadcasts)
-            // — safe here because no prior state exists to lose (constructor
-            // already initialized the same shape with `llmInfo: null`).
-            // Called BEFORE any `enterNode` calls which happen inside the
-            // agent graph. FE config-fallback is the primary coverage; this
-            // BE guard is defense-in-depth (spec T5).
-            const initialVisualModel = resolveModelForContext({ jobType: 'visual' }, configData);
-            const initialVisualLLMInfo: LLMInfo = { provider: detectProviderFromModel(initialVisualModel), model: initialVisualModel };
-            workflowUpdate?.startJob(jobId || 'unknown', initialVisualLLMInfo);
           }
         } catch (error: any) {
           console.log('⚠️  Failed to initialize real-time broadcasters [Creator]:', error?.message);

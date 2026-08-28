@@ -9,8 +9,7 @@ import { Node, Edge, MarkerType } from 'reactflow';
 import dagre from 'dagre';
 import { WorkflowGraphMetadata, WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useStore } from '@/domain/store';
-import { resolveLLMInfoFromConfig } from '@/shared/utils/actor-utils';
-import type { ModelNodeKey } from '@ant/shared';
+import { resolveLLMInfoFromConfig, graphNodeIdToModelNodeKey } from '@/shared/utils/actor-utils';
 
 // Edge 스타일 헬퍼 — Aurora tokens auto-flip via [data-theme].
 const getEdgeStyle = (edgeType: string, isActive: boolean) => {
@@ -45,7 +44,7 @@ export function useGraphLayout(
       return { nodes: [], edges: [] };
     }
 
-    const primaryNodeType = metadata.nodes.find(n => n.interactsWithActors.includes('llm'))?.id as ModelNodeKey | undefined;
+    const primaryNodeType = graphNodeIdToModelNodeKey(metadata.job, metadata.nodes.find(n => n.interactsWithActors.includes('llm'))?.id);
     const llmInfo = realtimeState?.llmInfo ?? resolveLLMInfoFromConfig(config, metadata.job, primaryNodeType) ?? null;
 
     // Workflow is a full-pane view (mutually exclusive with kanban), so the

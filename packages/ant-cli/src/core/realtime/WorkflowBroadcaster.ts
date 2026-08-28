@@ -172,21 +172,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
         enteredAt,
       });
 
-      // Last-write-wins LLM info update — intentional, not a bug.
-      // Several node call sites omit `llmInfo` (respond, tool orchestrator,
-      // sketch, render, deliver pass `undefined`), so when `llmInfo` is
-      // undefined here the previous `state.llmInfo` value is preserved rather
-      // than reset. This keeps the last resolved model visible across nodes
-      // that don't introduce their own LLM client.
-      //
-      // The pre-start window and stale state where `state.llmInfo` is null
-      // (constructor initializes it to null, and `startJob` — which could set
-      // an initial value — is currently not called from anywhere in the
-      // codebase) are covered by the FE config-fallback in `useGraphLayout`,
-      // which resolves the model from `WorkspaceConfig.llmModels[jobType]`
-      // before the first SSE `llmInfo` arrives. The FE fallback is therefore
-      // the primary coverage for the initial SSE payload; this BE guard is a
-      // defense-in-depth that avoids clobbering a known-good value with null.
+      // Last-write-wins: undefined llmInfo preserves previous value.
       if (llmInfo) {
         this.state.llmInfo = llmInfo;
       }

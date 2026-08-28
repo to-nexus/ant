@@ -4,7 +4,7 @@
  * External Actor 정보를 정규화하고 관리하는 유틸리티
  */
 
-import { DEFAULT_MODELS, ModelNodeKey } from '@ant/shared';
+import { DEFAULT_MODELS, ModelNodeKey, OVERRIDABLE_MODEL_SLOTS } from '@ant/shared';
 import type { ProjectConfig } from '@/infrastructure/http/api/config';
 
 export interface ActorInfo {
@@ -15,6 +15,19 @@ export interface ActorInfo {
   details?: string;          // 추가 상세정보 (예: 파일 경로)
   icon: string;
 }
+
+/**
+ * Provider tag → display label map.
+ * Replaces the former 3-way ternary that collapsed glm/deepseek/kimi into 'OpenAI'.
+ */
+const PROVIDER_LABEL_MAP: Record<string, string> = {
+  anthropic: 'Anthropic',
+  google: 'Google',
+  openai: 'OpenAI',
+  glm: 'GLM',
+  deepseek: 'DeepSeek',
+  kimi: 'Kimi',
+};
 
 /**
  * Actor ID → 정규화된 정보 매핑
@@ -89,9 +102,7 @@ export function getActorInfo(actorId: string, llmInfo?: { provider: string; mode
   if (actorId === 'llm' && llmInfo && info) {
     return {
       ...info,
-      provider: llmInfo.provider === 'anthropic' ? 'Anthropic'
-              : llmInfo.provider === 'google' ? 'Google'
-              : 'OpenAI',
+      provider: PROVIDER_LABEL_MAP[llmInfo.provider] ?? 'OpenAI',
       model: llmInfo.model
     };
   }
@@ -177,5 +188,26 @@ export function resolveLLMInfoFromConfig(
   }
 
   return { provider: detectProviderFromModel(modelId), model: modelId };
+}
+
+/**
+ * Map a workflow graph node id to a `ModelNodeKey` for per-node model lookup.
+ *
+ * Graph node ids and `ModelNodeKey` only partially overlap (e.g. `'agent'`,
+ * `'plan'`, `'execute'` match; `'resolve'`, `'enforce'`, `'writeFiles'` do not).
+ * Blind-casting the id as `ModelNodeKey` silently produced `undefined` config
+ * lookups for non-overlapping ids. This helper validates membership against
+ * `OVERRIDABLE_MODEL_SLOTS[jobType]` and falls back to `'default'` on mismatch.
+ */
+export function graphNodeIdToModelNodeKey(
+  jobType: string,
+  graphNodeId: string | undefined,
+): ModelNodeKey {
+  if (!graphNodeId) return 'default';
+  const slots = OVERRIDABLE_MODEL_SLOTS[jobType as keyof typeof OVERRIDABLE_MODEL_SLOTS];
+  if (slots && (slots as readonly string[]).includes(graphNodeId)) {
+    return graphNodeId as ModelNodeKey;
+  }
+  return 'default';
 }
 

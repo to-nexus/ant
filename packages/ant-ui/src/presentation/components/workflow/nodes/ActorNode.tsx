@@ -52,7 +52,9 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
   }, [selectedProject]);
   
   // ✅ Actor 정보 조회 (LLM인 경우 data.llmInfo 사용)
-  // llmInfo는 이미 useGraphLayout에서 realtimeState 또는 config로부터 설정됨
+  // llmInfo는 useGraphLayout에서 설정됨: realtimeState.llmInfo가 첫 enterNode 이벤트
+  // 이후에 도착하므로, 그 전(pre-start)에는 resolveLLMInfoFromConfig를 통한
+  // config-fallback이 primary source 역할을 한다 (BE seed 제거 후).
   const baseActorInfo = data.actorId ? getActorInfo(data.actorId, data.llmInfo || undefined) : null;
   
   // 실제 경로로 details 동적 생성
