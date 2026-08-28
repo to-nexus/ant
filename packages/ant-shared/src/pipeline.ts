@@ -149,6 +149,25 @@ export function validatePipelineAvailability(raw: unknown): string[] {
   return errors;
 }
 
+/**
+ * What a pipeline definition folder EXPORTS — the whitelist the download seam
+ * admits, mirroring the agent definition whitelist.
+ *
+ * `owner.json` is deliberately absent. It carries the AUTHOR's account
+ * coordinates (userId — an email in cloud — and organizationId), which a
+ * downloaded archive would carry off the platform and into whoever the file is
+ * shared with; it is authorship metadata, not definition, and it is re-written
+ * from the caller's own identity whenever a definition is saved.
+ */
+export const PIPELINE_EXPORT_FILE_NAMES: readonly string[] = [
+  PIPELINE_FILE_NAME,
+  PIPELINE_AVAILABILITY_FILE_NAME,
+];
+
+export function isExportablePipelineFile(relPath: string): boolean {
+  return PIPELINE_EXPORT_FILE_NAMES.includes(relPath.replace(/\\/g, '/'));
+}
+
 // ============================================
 // Activation — the scheduling unit, stored in the ACTIVATOR's account
 // ============================================

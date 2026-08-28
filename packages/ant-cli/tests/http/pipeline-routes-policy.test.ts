@@ -21,6 +21,7 @@ import express from 'express';
 import { createPipelinesRoutes } from '../../src/periphery/adapters/http/routes/pipelines.routes';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
 import { MEMBERSHIP_REQUIRED, DIRECTIVE_MAX_CHARS, type OrgMembershipRole } from '@ant/shared';
+import { zipEntryNames } from './helpers/zipEntries';
 
 let wsRoot: string;
 let userDir: string;
@@ -481,6 +482,33 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
       fs.rmSync(path.join(wsRoot, 'localorg', 'alice'), { recursive: true, force: true });
       fs.rmSync(path.join(wsRoot, 'individual'), { recursive: true, force: true });
     }
+  });
+});
+
+describe('folder download (export)', () => {
+  it('ZIP carries pipeline.yaml + availability.json — never owner.json (the author account coordinates)', async () => {
+    await createPipeline();
+    expect(fs.existsSync(path.join(userDir, '.ant/pipelines/digest/owner.json'))).toBe(true);
+
+    const res = await api('/digest/download');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/zip');
+    expect(res.headers.get('content-disposition')).toContain('attachment; filename="digest.zip"');
+
+    const names = zipEntryNames(Buffer.from(await res.arrayBuffer())).sort();
+    expect(names).toEqual(['digest/availability.json', 'digest/pipeline.yaml']);
+  });
+
+  it('an enabled pipeline is still exportable — export is a read, not a definition write', async () => {
+    await createPipeline();
+    await enable();
+    const res = await api('/digest/download');
+    expect(res.status).toBe(200);
+  });
+
+  it('unknown pipeline → 404; traversal id → 400', async () => {
+    expect((await api('/nope/download')).status).toBe(404);
+    expect((await api(`/${encodeURIComponent('../../etc')}/download`)).status).toBe(400);
   });
 });
 

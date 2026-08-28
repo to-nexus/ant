@@ -10,6 +10,7 @@ import {
   deleteAccountAgent,
   deleteAccountAgentJob,
   deleteDefinitionFile,
+  downloadAgentFolder,
   importAgentFolder,
   renameAccountAgentId,
   renameAccountAgentJobId,
@@ -23,6 +24,7 @@ import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
 import { fileListToEntries } from '@/shared/utils/upload-utils';
 import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { entriesUnder, findDefinitionNode, hasEntry, pickedFolderName } from './definitionUpload';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { AgentTree } from './AgentTree';
@@ -107,6 +109,7 @@ function intentDirsUnder(tree: CustomAgentDefinitionFileNode[], jobId: string | 
 // prop is accepted for mount-site compatibility and deliberately unused.
 export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const { t } = useTranslation('agents');
+  const { showError } = useAlertModalContext();
   const agents = useStore((s) => s.accountAgents);
   const accountAgentsError = useStore((s) => s.accountAgentsError);
   const selection = useStore((s) => s.agentSettingsSelection);
@@ -377,6 +380,19 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
         setIsPromoting(false);
       }
     });
+
+  /**
+   * Folder export — a read; offered for every scope, readonly agents included.
+   * A refusal goes to the global alert, not to `wrap`'s detail-pane strip: the
+   * row's ⋯ menu does not select the agent, so that strip may not be mounted.
+   */
+  const handleDownloadAgent = async (agentId: string) => {
+    try {
+      await downloadAgentFolder(agentId);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const [pendingImport, setPendingImport] = useState<{ entries: UploadFileEntry[]; agentId: string } | null>(null);
 
@@ -714,6 +730,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onCreateIntent={handleCreateIntent}
           onCreateFile={handleCreateDefinitionFile}
           onCreateDir={handleCreateDefinitionDir}
+          onDownloadAgent={handleDownloadAgent}
           isTeamActive={isTeamActive}
           loadError={accountAgentsError}
           onRetryLoad={() => void loadAccountAgents()}

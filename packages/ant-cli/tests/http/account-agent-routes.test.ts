@@ -21,6 +21,7 @@ import { createSelfApiScopeGuard } from '../../src/periphery/adapters/http/middl
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
 import { getDefinitionDirPolicy, type OrgMembershipRole } from '@ant/shared';
+import { zipEntryNames } from './helpers/zipEntries';
 
 let wsRoot: string;
 let userDir: string;
@@ -765,6 +766,48 @@ describe('folder import', () => {
     expect(res.status).toBe(409);
     expect((await res.json()).error).toMatch(/built-in/);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/assistant'))).toBe(false);
+  });
+});
+
+describe('folder download (export)', () => {
+  it('ZIP carries the whitelisted definition under a single {agentId}/ root, and nothing else', async () => {
+    await createAgent('exported');
+    const agentDir = path.join(userDir, '.ant/agents/exported');
+    fs.writeFileSync(path.join(agentDir, 'base/system.md'), '# system\n');
+    fs.mkdirSync(path.join(agentDir, 'on-demand'), { recursive: true });
+    fs.writeFileSync(path.join(agentDir, 'on-demand/api.md'), '# api\n');
+    // Three shapes that must NOT ride out with the export: an off-whitelist
+    // file, a dotfile the settings tree never shows, and a legacy catalog.
+    fs.mkdirSync(path.join(agentDir, 'random'), { recursive: true });
+    fs.writeFileSync(path.join(agentDir, 'random/notes.txt'), 'private\n');
+    fs.writeFileSync(path.join(agentDir, '.env'), 'TOKEN=live\n');
+    fs.writeFileSync(path.join(agentDir, 'intents.yaml'), 'version: 1\n');
+
+    const res = await api('/exported/download');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/zip');
+    expect(res.headers.get('content-disposition')).toContain('attachment; filename="exported.zip"');
+
+    const names = zipEntryNames(Buffer.from(await res.arrayBuffer())).sort();
+    expect(names).toEqual([
+      'exported/agent.yaml',
+      'exported/base/role.md',
+      'exported/base/system.md',
+      'exported/on-demand/api.md',
+    ]);
+  });
+
+  it('a readonly (builtin) agent is exportable — it is a read of bytes the file endpoints already serve', async () => {
+    const res = await api('/assistant/download');
+    expect(res.status).toBe(200);
+    const names = zipEntryNames(Buffer.from(await res.arrayBuffer()));
+    expect(names).toContain('assistant/agent.yaml');
+    expect(names.every((n) => n.startsWith('assistant/'))).toBe(true);
+  });
+
+  it('unknown agent → 404; traversal id → 400', async () => {
+    expect((await api('/nope/download')).status).toBe(404);
+    expect((await api(`/${encodeURIComponent('../../etc')}/download`)).status).toBe(400);
   });
 });
 

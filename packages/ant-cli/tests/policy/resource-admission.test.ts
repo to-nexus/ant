@@ -336,6 +336,31 @@ describe('expensive job routes are admission-gated (M-NEW-029)', () => {
     expect(src).toContain('acquireConcurrencySlot');
     expect(src).toContain('ant:slots:history:');
   });
+
+  // Definition folder export walks and compresses a whole tree, so it takes the
+  // same pair. The slot lives in the shared seam — a route that builds its own
+  // archive would be outside every budget, which is why both go through it.
+  for (const [file, route] of [
+    ['routes/accountAgents.routes.ts', "/:agentId/download"],
+    ['routes/pipelines.routes.ts', "/:pipelineId/download"],
+  ] as const) {
+    it(`${route} is rate-limited and archives through the one seam`, () => {
+      const src = read(file);
+      expect(src).toContain(`router.get('${route}', downloadRateLimiter`);
+      expect(src).toContain('streamDefinitionArchive');
+    });
+  }
+
+  it('the definition-archive seam bounds entries, bytes and per-account concurrency', async () => {
+    const mod = await import(
+      '../../src/periphery/adapters/http/routes/helpers/definitionArchive.js'
+    );
+    expect(mod.DEFINITION_ARCHIVE_MAX_ENTRIES).toBeGreaterThan(0);
+    expect(mod.DEFINITION_ARCHIVE_MAX_BYTES).toBeGreaterThan(0);
+    const src = read('routes/helpers/definitionArchive.ts');
+    expect(src).toContain('acquireConcurrencySlot');
+    expect(src).toContain('bindStreamSlotToResponse');
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ import * as path from 'path';
 import {
   toCustomId,
   isValidCustomId,
+  isExportablePipelineFile,
   DEFAULT_PIPELINE_CAPS,
   MEMBERSHIP_REQUIRED,
   UNIVERSAL_FEATURE,
@@ -37,6 +38,8 @@ import {
 import { extractUserContext } from './helpers/userContext';
 import { directiveTooLarge } from './helpers/submitUserTurn';
 import { sendErrorResponse } from './helpers/errorResponse';
+import { streamDefinitionArchive } from './helpers/definitionArchive';
+import { downloadRateLimiter } from '../middleware/rateLimiter';
 import { assertPathSegment } from '../../../../core/config/pathContainment';
 import {
   canEditOrgResource,
@@ -711,6 +714,30 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         return;
       }
       sendErrorResponse(res, 500, error, 'PipelinesGet');
+    }
+  });
+
+  /**
+   * Definition folder export. Viewable in any scope (an org member may read a
+   * shared pipeline), and the archive admits only `isExportablePipelineFile` —
+   * so `owner.json`, which carries the AUTHOR's account coordinates, never
+   * leaves with the download.
+   */
+  router.get('/:pipelineId/download', downloadRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const owner = ownerOf(req);
+      const found = findViewablePipeline(res, owner, req.params.pipelineId);
+      if (!found) return;
+      await streamDefinitionArchive(res, {
+        root: found.scopeRoot.root,
+        dirName: req.params.pipelineId,
+        admits: isExportablePipelineFile,
+        stateStore: deps.stateStore,
+        slotKey: `ant:slots:defzip:${owner.organizationId}:${owner.userId}`,
+        component: 'PipelinesDownload',
+      });
+    } catch (error) {
+      if (!res.headersSent) sendErrorResponse(res, 500, error, 'PipelinesDownload');
     }
   });
 

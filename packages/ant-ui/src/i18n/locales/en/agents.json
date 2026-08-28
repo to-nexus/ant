@@ -23,7 +23,8 @@
       "uploadJobFolder": "Upload job folder…",
       "uploadIntentFolder": "Upload intent folder…",
       "newNamed": "New {{name}}",
-      "newNamedDir": "New {{name}}/"
+      "newNamedDir": "New {{name}}/",
+      "downloadFolder": "Download folder"
     },
     "scope": {
       "user": "My Agents",

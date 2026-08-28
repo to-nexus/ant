@@ -15,6 +15,7 @@ import type {
   DefinitionValidationResult,
 } from '@ant/shared';
 import type { UploadFileEntry } from './files';
+import { downloadAttachment } from './download';
 
 export type { CustomAgentDefinitionFileNode, DefinitionValidationResult };
 
@@ -211,6 +212,15 @@ export function uploadDefinitionFiles(
     entries,
     options?.replaceDir ? { replaceDir: options.replaceDir } : undefined,
   );
+}
+
+/**
+ * Whole-agent folder export (ZIP) — the mirror of {@link importAgentFolder}.
+ * The archive's single top-level folder is the agent id, so the downloaded and
+ * unzipped folder feeds straight back into the folder-upload import.
+ */
+export function downloadAgentFolder(agentId: string): Promise<void> {
+  return downloadAttachment(`${base()}/${encodeURIComponent(agentId)}/download`, `${agentId}.zip`);
 }
 
 /** Whole-agent import from a folder upload (webkitdirectory). */

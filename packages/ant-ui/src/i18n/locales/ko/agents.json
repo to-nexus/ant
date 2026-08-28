@@ -23,7 +23,8 @@
       "uploadJobFolder": "잡 폴더 업로드…",
       "uploadIntentFolder": "인텐트 폴더 업로드…",
       "newNamed": "새 {{name}}",
-      "newNamedDir": "새 {{name}}/"
+      "newNamedDir": "새 {{name}}/",
+      "downloadFolder": "폴더 다운로드"
     },
     "scope": {
       "user": "내 에이전트",

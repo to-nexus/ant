@@ -132,7 +132,15 @@ export class RouteConfigurator {
       stateStore: getInfrastructureFactory().getStateStore(),
     }));
     // Account-scoped agent settings (profile menu) — no project required (D-G).
-    app.use('/api/account/agents', createAccountAgentRoutes({ workspaceResolver: this.deps.workspaceResolver, organizationRepository }));
+    app.use(
+      '/api/account/agents',
+      createAccountAgentRoutes({
+        workspaceResolver: this.deps.workspaceResolver,
+        organizationRepository,
+        // Backs the cluster-wide per-account budget on the folder-export stream.
+        stateStore: getInfrastructureFactory().getStateStore(),
+      }),
+    );
     // MCP credential registration — the encrypted per-user store the universal
     // runtime resolves `mcp.servers[].headers`/`env` key names against (A16).
     app.use(

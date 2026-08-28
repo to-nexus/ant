@@ -7,6 +7,7 @@
  */
 
 import { API_BASE, apiGet, apiPost, apiPut, apiDelete } from './client';
+import { downloadAttachment } from './download';
 import type {
   ActivePipelineInfo,
   PipelineActivation,
@@ -63,6 +64,11 @@ export function createPipeline(def: PipelineDef, id?: string): Promise<{ id: str
 
 export function updatePipeline(pipelineId: string, def: PipelineDef): Promise<{ id: string; entry: PipelineListEntry }> {
   return apiPut(`${base()}/${encodeURIComponent(pipelineId)}`, { def });
+}
+
+/** Definition folder export (ZIP) — `pipeline.yaml` + `availability.json`. */
+export function downloadPipelineFolder(pipelineId: string): Promise<void> {
+  return downloadAttachment(`${base()}/${encodeURIComponent(pipelineId)}/download`, `${pipelineId}.zip`);
 }
 
 export function deletePipeline(pipelineId: string): Promise<void> {

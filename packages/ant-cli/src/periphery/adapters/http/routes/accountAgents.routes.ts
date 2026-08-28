@@ -66,6 +66,9 @@ import {
 import { resolveLiveTeamMembership } from './helpers/teamRole';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
+import { streamDefinitionArchive } from './helpers/definitionArchive';
+import { downloadRateLimiter } from '../middleware/rateLimiter';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { logger } from '../../../../utils/logger';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 
@@ -96,6 +99,8 @@ function parseIntentDirPath(relPath: string): { jobId: string; intentId: string 
 export function createAccountAgentRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   organizationRepository: OrganizationRepositoryPort;
+  /** Backs the cluster-wide per-account budget on the folder-export stream. */
+  stateStore?: StateStorePort;
 }): Router {
   const router = Router();
   const upload = multer({ storage: multer.memoryStorage(), limits: UPLOAD_LIMITS });
@@ -657,6 +662,32 @@ export function createAccountAgentRoutes(deps: {
       res.json({ path: rel, content: fs.readFileSync(full, 'utf-8') });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
+    }
+  });
+
+  /**
+   * Whole-agent folder export — the mirror of `POST /import`. Any scope is
+   * downloadable (readonly org/builtin agents are browseable, and this ships
+   * exactly the bytes their file endpoints already serve); the archive admits
+   * only `isAllowedDefinitionPath`, so the sibling `agent-acl.json` and any
+   * future non-definition file in the tree stay out of it by default, and the
+   * ZIP round-trips back through import with nothing skipped.
+   */
+  router.get('/:agentId/download', downloadRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const found = findViewableAgent(res, scopeRootsFor(req), req.params.agentId);
+      if (!found) return;
+      const userContext = extractUserContext(req);
+      await streamDefinitionArchive(res, {
+        root: found.scopeRoot.root,
+        dirName: req.params.agentId,
+        admits: isAllowedDefinitionPath,
+        stateStore: deps.stateStore,
+        slotKey: `ant:slots:defzip:${userContext.organizationId}:${userContext.userId}`,
+        component: 'AccountAgents',
+      });
+    } catch (error: any) {
+      if (!res.headersSent) sendErrorResponse(res, 500, error, 'AccountAgents');
     }
   });
 

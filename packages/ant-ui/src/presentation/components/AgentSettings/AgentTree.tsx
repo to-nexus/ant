@@ -27,15 +27,15 @@
  * have no chevron, and the ladder would invert. Rows without a chevron reserve
  * its width so the trailing column stays plumb.
  *
- * Readonly scopes (org / builtin) get no menu at all — KebabMenu renders
- * nothing for an empty item list. They are browseable, never editable; the
- * way to a writable agent is creating your own (same-id shadowing is refused
- * by the BE with 409).
+ * Readonly scopes (org / builtin) get no WRITE items — they are browseable,
+ * never editable; the way to a writable agent is creating your own (same-id
+ * shadowing is refused by the BE with 409). Their menu still offers the folder
+ * export, which is a read of bytes the file endpoints already serve.
  */
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FilePlus, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FilePlus, FolderDown, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
 import {
   getDefinitionDirPolicy,
   toCustomId,
@@ -106,6 +106,8 @@ export interface AgentTreeProps {
   onCreateIntent: (agentId: string, jobId: string, intentId: string) => void;
   onCreateFile: (agentId: string, path: string) => Promise<void>;
   onCreateDir: (agentId: string, path: string) => Promise<void>;
+  /** Whole-agent folder export (ZIP) — offered in every scope, readonly included. */
+  onDownloadAgent: (agentId: string) => Promise<void>;
   /** Empty-state copy for the org group depends on whether a team is active. */
   isTeamActive: boolean;
   /** Why the agent list is empty, when it is empty because loading failed. */
@@ -235,6 +237,7 @@ export function AgentTree({
   onCreateIntent,
   onCreateFile,
   onCreateDir,
+  onDownloadAgent,
   isTeamActive,
   loadError,
   onRetryLoad,
@@ -283,16 +286,26 @@ export function AgentTree({
   // be editable for their owner/editors). Promotion lives in the detail
   // pane's PromoteZone, not here — the tree only creates and navigates.
   const agentMenu = (agent: CustomAgentSummary): KebabMenuItem[] => {
-    if (agent.readonly) return [];
-    if (view === 'files') return dirMenu(agent.id, '', definitionTrees[agent.id]?.tree ?? []);
-    return [
-      { icon: Plus, label: t('tree.menu.newJob', 'New job'), onClick: () => setCreating({ kind: 'job', agentId: agent.id }) },
-      {
-        icon: Upload,
-        label: t('tree.menu.uploadJobFolder', 'Upload job folder…'),
-        onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, files), { directory: true }),
-      },
-    ];
+    // Export is a READ, so every agent carries it — readonly scopes included;
+    // it sits below the write items, separated, so it is never a mis-click.
+    const download: KebabMenuItem = {
+      icon: FolderDown,
+      label: t('tree.menu.downloadFolder', 'Download folder'),
+      onClick: () => void onDownloadAgent(agent.id),
+    };
+    if (agent.readonly) return [download];
+    const writes =
+      view === 'files'
+        ? dirMenu(agent.id, '', definitionTrees[agent.id]?.tree ?? [])
+        : [
+            { icon: Plus, label: t('tree.menu.newJob', 'New job'), onClick: () => setCreating({ kind: 'job', agentId: agent.id }) },
+            {
+              icon: Upload,
+              label: t('tree.menu.uploadJobFolder', 'Upload job folder…'),
+              onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, files), { directory: true }),
+            },
+          ];
+    return writes.length > 0 ? [...writes, 'separator', download] : [download];
   };
 
   const jobMenu = (agent: CustomAgentSummary, jobId: string): KebabMenuItem[] =>

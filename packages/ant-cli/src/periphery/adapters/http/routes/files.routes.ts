@@ -24,6 +24,7 @@ import {
 import { acquireLock } from '../../../../core/redis/distributedLock';
 import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
+import { bindStreamSlotToResponse } from './helpers/streamSlot';
 import { resolveFeatureScopedFilePath, resolveUniversalPlaneRoot, measureArchiveInput } from './helpers/featureFiles';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 import {
@@ -92,59 +93,9 @@ const DIRECTORY_DOWNLOAD_MAX_INFLIGHT = 2;
 /** Entries and raw bytes one archive may cover. */
 const DIRECTORY_DOWNLOAD_MAX_ENTRIES = 20_000;
 const DIRECTORY_DOWNLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024;
-/**
- * A live ZIP/raw stream re-arms its slot's 15-min TTL well before it lapses, so a
- * legitimately long download keeps COUNTING against the per-account budget instead
- * of freeing its own slot and letting the account re-admit past the limit
- * (M-NEW-027). Interval ≪ TTL.
- */
-const STREAM_SLOT_HEARTBEAT_MS = 5 * 60 * 1000;
-/**
- * Backstop for a socket that neither delivers nor emits `close` (a wedged proxy):
- * past this the stream is torn down so its slot cannot be pinned indefinitely. Set
- * well above any legitimate large-archive-over-slow-link download.
- */
-const STREAM_SLOT_MAX_LIFETIME_MS = 60 * 60 * 1000;
 /** Per-account concurrent raw file streams, cluster-wide (M-NEW-028). */
 const RAW_STREAM_MAX_INFLIGHT = 4;
 const RAW_STREAM_SLOT_TTL_SECONDS = 15 * 60;
-
-/**
- * Bind a concurrency slot's lifetime to the RESPONSE, not to a `finally` after
- * `archive.finalize()`. `finalize()` resolves when the last chunk is accepted by
- * `res`, not delivered — and on a client disconnect the archiver can be left
- * undrained so `finalize()` never settles, which would pin the slot for the full
- * TTL. Releasing on `finish`/`close`/`error` (idempotent) covers every exit, and a
- * heartbeat keeps the slot counted while the stream is genuinely alive. Returns a
- * disposer for early returns taken before the response ends.
- */
-function bindStreamSlotToResponse(
-  res: Response,
-  slot: { release: () => Promise<void>; refresh: () => Promise<boolean> },
-): void {
-  let released = false;
-  const startedAt = Date.now();
-  const heartbeat = setInterval(() => {
-    if (Date.now() - startedAt > STREAM_SLOT_MAX_LIFETIME_MS) {
-      res.destroy();
-      return;
-    }
-    void slot.refresh().then((alive) => {
-      // The member was pruned (TTL lapsed and a concurrent reserve counted it
-      // out): stop rather than run on past a budget we no longer hold.
-      if (!alive) res.destroy();
-    });
-  }, STREAM_SLOT_HEARTBEAT_MS);
-  const release = () => {
-    if (released) return;
-    released = true;
-    clearInterval(heartbeat);
-    void slot.release();
-  };
-  res.on('finish', release);
-  res.on('close', release);
-  res.on('error', release);
-}
 
 export function createFilesRoutes(deps: {
   projectService: ProjectService;

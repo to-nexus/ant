@@ -17,7 +17,11 @@
       "emptyOrgNoTeam": "Join a team organization to share pipelines."
     },
     "collapse": "Collapse",
-    "expand": "Expand"
+    "expand": "Expand",
+    "menu": {
+      "pipelineActions": "Pipeline actions",
+      "downloadFolder": "Download folder"
+    }
   },
   "views": {
     "wiring": "Wiring",

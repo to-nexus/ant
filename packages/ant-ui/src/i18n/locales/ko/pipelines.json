@@ -17,7 +17,11 @@
       "emptyOrgNoTeam": "팀 조직에 참여하면 파이프라인을 공유할 수 있습니다."
     },
     "collapse": "접기",
-    "expand": "펼치기"
+    "expand": "펼치기",
+    "menu": {
+      "pipelineActions": "파이프라인 작업",
+      "downloadFolder": "폴더 다운로드"
+    }
   },
   "views": {
     "wiring": "배선도",

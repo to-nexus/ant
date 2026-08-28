@@ -6,7 +6,9 @@
  * independently), invalid rows, orphan-activation rows, and the SPACE toggle
  * (Workspace / Codespace) pinned in the footer — icon-only when the rail is
  * narrow. Availability is an icon, not a control: activation is managed ONLY
- * in the Execution view; enable/disable lives in the workspace header.
+ * in the Execution view; enable/disable lives in the workspace header. Each
+ * row carries the AgentTree's ⋯ menu, which offers the definition folder
+ * export — a read, so it is there in every scope.
  */
 
 import { useState } from 'react';
@@ -20,6 +22,7 @@ import {
   CircleCheck,
   CircleSlash,
   Code2,
+  FolderDown,
   Lock,
   Plus,
   Unlink,
@@ -30,7 +33,8 @@ import { useStore } from '@/domain/store';
 import { pipelineDraftIsDirty } from '@/domain/store/slices/pipelineSlice';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { Badge, Button } from '../aurora';
+import { downloadPipelineFolder } from '@/infrastructure/http/api/pipelines';
+import { Badge, Button, KebabMenu } from '../aurora';
 import { selectedRowStyle, selectedRowLabel } from '../aurora/selection';
 import { ApprovalInbox } from './ApprovalInbox';
 import { relativeFromNow } from './CronBuilder';
@@ -64,7 +68,7 @@ export function PipelineRail({
   const newPipelineDraft = useStore((s) => s.newPipelineDraft);
   const deactivatePipelineById = useStore((s) => s.deactivatePipelineById);
   const isTeamActive = useStore(selectIsTeamActive);
-  const { showConfirm } = useAlertModalContext();
+  const { showConfirm, showError } = useAlertModalContext();
 
   // Collapse state is per-scope and unpersisted (AgentTree doctrine).
   const [collapsed, setCollapsed] = useState<Set<PipelineScope>>(new Set());
@@ -78,6 +82,15 @@ export function PipelineRail({
 
   const codespace = space === 'codespace';
   const compact = railWidth < 250;
+
+  /** Folder export — a read, so it needs no dirty guard and no write authority. */
+  const download = async (pipelineId: string) => {
+    try {
+      await downloadPipelineFolder(pipelineId);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const withDirtyGuard = (action: () => void) => {
     if (!pipelineDraftIsDirty(draft, saved)) {
@@ -166,6 +179,7 @@ export function PipelineRail({
                           entry={p}
                           active={selectedId === p.id}
                           onSelect={() => withDirtyGuard(() => void selectPipeline(p.id))}
+                          onDownload={() => void download(p.id)}
                         />
                       ))}
                       {invalidRows.map((entry) => (
@@ -244,10 +258,12 @@ function RailRow({
   entry,
   active,
   onSelect,
+  onDownload,
 }: {
   entry: PipelineListEntry;
   active: boolean;
   onSelect: () => void;
+  onDownload: () => void;
 }) {
   const { t } = useTranslation('pipelines');
   const awaiting = entry.pendingApprovalCount > 0;
@@ -295,6 +311,18 @@ function RailRow({
       {entry.readonly && (
         <Lock size={11} className="shrink-0" style={{ color: 'var(--text-4)' }} aria-label={t('rail.readonly', 'readonly')} />
       )}
+      <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <KebabMenu
+          ariaLabel={t('rail.menu.pipelineActions', 'Pipeline actions')}
+          items={[
+            {
+              icon: FolderDown,
+              label: t('rail.menu.downloadFolder', 'Download folder'),
+              onClick: onDownload,
+            },
+          ]}
+        />
+      </span>
     </div>
   );
 }
