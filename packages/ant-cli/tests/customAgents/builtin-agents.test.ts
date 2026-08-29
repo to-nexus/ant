@@ -15,7 +15,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { MCP_ENV_VAR_NAME_PATTERN, parseSecretRef, validateMcpServers } from '@ant/shared';
+import {
+  MCP_ENV_VAR_NAME_PATTERN,
+  UNIVERSAL_BUILTIN_TOOLS,
+  parseSecretRef,
+  validateMcpServers,
+} from '@ant/shared';
 import {
   discoverAgents,
   loadCustomJob,
@@ -291,6 +296,22 @@ describe('shipped agent-builder definition', () => {
   it('carries its format contract as on-demand documents, not standing prose', () => {
     const docsDir = path.join(SRC_AGENTS_DIR, 'agent-builder', 'on-demand');
     expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'definition-format.md']);
+  });
+
+  // `tools.builtin` is a CLOSED vocabulary the builder cannot infer: the doc
+  // said "a name outside the preset is rejected" without listing the preset,
+  // and an authored job.yaml came back declaring `clarify` (a knob, not a
+  // tool). Vocabulary — not prose — is what this pins, in both directions.
+  it('documents the whole builtin preset and nothing outside it', () => {
+    const doc = fs.readFileSync(
+      path.join(SRC_AGENTS_DIR, 'agent-builder', 'on-demand', 'definition-format.md'),
+      'utf-8',
+    );
+    const documented = doc
+      .split('\n')
+      .filter((line) => line.startsWith('|'))
+      .flatMap((line) => [...line.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]));
+    expect(documented.sort()).toEqual([...UNIVERSAL_BUILTIN_TOOLS].sort());
   });
 });
 

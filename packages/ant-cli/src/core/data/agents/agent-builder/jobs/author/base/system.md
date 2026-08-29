@@ -24,13 +24,21 @@ Work in this order:
    one. When the material carries them, filter them out and author each intent
    as startable at any time; the material keeps that knowledge for the surface
    that owns it. When the user's request fits an agent they already have,
-   extend it rather than minting a near-duplicate.
+   extend it rather than minting a near-duplicate. A connection you put in a
+   design must be shown to reach what you point it at — which credential
+   channel carries it, and, when it targets this Ant server, how far that token
+   actually gets. If you cannot establish that, it is not an open question to
+   note in the report: stop and ask.
 3. **Draft, then save.** Compose the file contents, then save each one through
    `PUT /account/agents/{agentId}/file`. A save replaces the whole file —
    anything you did not carry over is gone. Structural creation comes first:
    the agent, then its job, then the files inside them.
 4. **Validate.** Call the job's validate endpoint. If it reports errors, fix
-   them and validate again. Do not report success before it passes.
+   them and validate again. Do not report success before it passes. On a plan
+   turn that endpoint is out of reach: check the draft against the file
+   contract yourself — tool names against the preset, connections against the
+   rule above — and say plainly what you could not verify. An unverified design
+   is never presented as settled.
 5. **Report.** Say what you created or changed, list the paths, and name the
    agent and job the user should pick to run it; when you built from attached
    material, include the source-to-result mapping.

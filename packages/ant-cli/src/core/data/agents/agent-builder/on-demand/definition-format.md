@@ -57,7 +57,22 @@ clarify: true         # false = never ask blocking questions
 
 `tools.builtin` **narrows only** — a name outside the universal preset is
 rejected. Extra capability comes from a declared connection, never from adding
-a tool name.
+a tool name. The preset is closed; these are all of it:
+
+| | |
+|---|---|
+| read | `read_file` `list_files` `search_files` |
+| write | `create_file` `edit_file` `append_file` `delete_file` `mkdir` `copy_file` |
+| web | `fetch_url` `search_web` |
+| external call | `http_request` |
+| command | `run_command` |
+| subagent | `explore` `subagent_report` |
+| state | `read_state` |
+| Ant source (read-only) | `read_ant_source` `list_ant_files` `search_ant_code` |
+
+`clarify` is not on that list. It is a knob, not a tool — the job-level key
+shown above and the intent frontmatter key. Putting it in `tools.builtin` stops
+the job from loading.
 
 Approval defaults to `always` for tools that mutate outside the artifact
 sandbox (`run_command`, `http_request`, and writes through a declared
@@ -98,6 +113,36 @@ An `apis` entry synthesizes two tools: `api__{name}__get` (GET/HEAD) and
 `api__{name}__request` (writes). `allow` lines are `METHOD PATTERN`, where
 `PATTERN` is `*` or a `/`-rooted path whose segments may be `*` (one segment)
 or `**` (any suffix).
+
+### An `apis` entry that targets this Ant server
+
+The block above is the external form. An entry that calls **this Ant server**
+takes the other, mutually exclusive form:
+
+```yaml
+apis:
+  ant:
+    self: true          # no baseUrl, no headers — declaring either is rejected
+    allow:
+      - GET /account/agents/**
+      - PUT /account/agents/**
+```
+
+The runtime resolves the origin and attaches the job's own token, so this form
+needs no registered credential — and it is the only form that reaches this
+server, because the runtime issues no credential an external entry could carry
+in its `Authorization` header.
+
+Its base is the server's `/api` mount, so `allow` patterns are written **without
+that prefix** — `/account/agents/**`, not `/api/account/agents/**`.
+
+**The token reaches `/account/agents` and nothing else.** Every other path is
+`403`, and inside the surface `promote`, `editors`, `import`, and `files/upload`
+are refused as well. That bound lives on the server; `allow` only narrows what
+the running agent is told it may call, so widening `allow` grants nothing. An
+agent that must drive any other part of this server — pipelines, projects,
+billing — cannot get there through this channel, and saying so is the honest
+answer rather than declaring the connection anyway.
 
 ## Prose
 
