@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Github, Star } from 'lucide-react';
-import { GITHUB_URL } from '@/lib/links';
+import { GITHUB_REPO, GITHUB_URL } from '@/lib/links';
 import { githubStats } from '@/lib/githubStats';
 
 function formatCount(n: number): string {
@@ -21,7 +22,40 @@ const surfaceStyle = {
 } as const;
 
 export function GitHubStarsBadge({ variant = 'compact', className = '' }: GitHubStarsBadgeProps) {
-  const stars = githubStats.stars;
+  // Fallback to the build-time JSON value so the badge renders immediately
+  // before the live fetch resolves (and stays if the fetch fails).
+  const [stars, setStars] = useState<number>(githubStats.stars);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchStars() {
+      try {
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}`, {
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+        if (!res.ok) {
+          console.error(
+            `GitHubStarsBadge: GitHub API returned ${res.status} for ${GITHUB_REPO}; falling back to static value (${githubStats.stars})`,
+          );
+          return;
+        }
+        const data = (await res.json()) as { stargazers_count?: unknown };
+        const live = typeof data.stargazers_count === 'number' ? data.stargazers_count : githubStats.stars;
+        if (!cancelled) setStars(live);
+      } catch (err) {
+        console.error(
+          `GitHubStarsBadge: failed to fetch stars for ${GITHUB_REPO}; falling back to static value (${githubStats.stars})`,
+          err,
+        );
+      }
+    }
+
+    fetchStars();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (variant === 'full') {
     return (

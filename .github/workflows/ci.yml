@@ -68,15 +68,6 @@ jobs:
             echo "::error::Cloud UI content leaked into the OSS build"; exit 1
           fi
           echo "OSS UI build is cloud-free."
-      # Refresh github-stats.json with the live stargazers_count before the
-      # static export bakes it in. ant-site uses output: 'export', so the star
-      # count cannot be fetched at runtime — it must be present at build time.
-      # GITHUB_TOKEN (auto-provided by Actions) lifts the API rate limit from
-      # 60 to 5,000 req/hr. Script failure aborts the build (node non-zero exit).
-      - name: Refresh GitHub stats (ant-site)
-        run: pnpm --filter @ant/site refresh:stats
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # ant-site's only build was ant-cloud's deploy, so a break here surfaced as
       # a red deploy on the downstream repo. It resolves @ant/shared as dist (node
       # resolution) rather than aliasing to source the way vite does — already
