@@ -1,0 +1,7 @@
+# Turn completion contract for pinned/inherited build turns: the turn is not
+# done until at least one definition write actually went through the API. When
+# there is legitimately nothing to write, the exit is clarify (exempt from this
+# gate) — never a re-save of identical content.
+hooks:
+  stop:
+    - action: api__ant__request

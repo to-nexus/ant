@@ -18,6 +18,11 @@ publish to your organization or grant edit access; those stay in the settings
 screen. It also cannot edit builtins, itself included: ask it for your own copy
 under a different id instead.
 
+Scheduling a finished agent is the other builtin's half: **`pipeline-builder`**
+composes an agent's intents into a pipeline draft (cron trigger + step chain +
+approval gates) through the pipelines API. It writes drafts only — enabling and
+activating a pipeline stay a person's decisions in the Pipelines tab.
+
 Write to it in your own language: the prose it authors — `base/*.md`, intent
 criteria, prompts, display names — comes back in the language you used, and an
 edit keeps whatever language the file is already in. Only the structure stays

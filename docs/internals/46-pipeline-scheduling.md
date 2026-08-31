@@ -504,14 +504,19 @@ The canvas is not the only author. A universal job that declares an `apis`
 self entry composes definitions through the same
 `POST|PUT /definitions/pipelines` routes under the self-api pin — reading a
 finished agent's jobs and intents from `/definitions/agents`, writing the DAG,
-and checking the trigger through `preview-fires`. No builtin ships for this;
-the agent is authored by the user through `agent-builder`, and the pin admits
-it because `declaresSelfApi` reads the DEFINITION, not the scope. Everything
-such a job writes lands as a disabled draft and stays immutable once enabled,
-so the availability machine (§1) is what makes machine authoring safe: the job
-drafts, a person publishes and activates. There is no YAML import route and
-none is needed — the API takes `{ id, def }` as JSON, and the agent composes
-`def` directly.
+and checking the trigger through `preview-fires`. The **`pipeline-builder`
+builtin** (`core/data/agents/pipeline-builder/`, doc 44's authoring split — it
+owns exactly the half `agent-builder` filters out: schedules and cross-intent
+run order) is this path's shipped consumer; a user-scope pipeline-authoring
+agent works identically, because the pin admits by `declaresSelfApi`, which
+reads the DEFINITION, not the scope. Its allow list mirrors the pin route for
+route (agents resource GET-only — the lane guard in
+`tests/customAgents/builtin-agents.test.ts` pins both builtins' halves).
+Everything such a job writes lands as a disabled draft and stays immutable
+once enabled, so the availability machine (§1) is what makes machine authoring
+safe: the job drafts, a person publishes and activates. There is no YAML
+import route and none is needed — the API takes `{ id, def }` as JSON, and the
+agent composes `def` directly.
 
 ---
 

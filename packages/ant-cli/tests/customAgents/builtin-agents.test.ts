@@ -29,6 +29,7 @@ import {
 } from '../../src/core/customAgents/CustomAgentLoader';
 import { deriveCustomAgentScopeRoots } from '../../src/core/customAgents/scopeRoots';
 import { validateHooksFileDoc } from '../../src/core/customAgents/intents';
+import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 import { isSelfApiConfig } from '@ant/shared';
 import { McpConnectionManager } from '../../src/core/customAgents/McpConnectionManager';
 import {
@@ -346,6 +347,78 @@ describe('shipped agent-builder definition', () => {
       expect(() =>
         validateHooksFileDoc(yaml.load(example), 'build', 'agent-builder', 'author'),
       ).not.toThrow();
+    }
+  });
+});
+
+describe('shipped pipeline-builder definition', () => {
+  it('pipeline-builder/author exposes the authoring catalog — every intent carries its own prompt', () => {
+    const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
+    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['build', 'review']);
+    for (const intent of resolved.intents) {
+      expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
+      expect(intent.infer).not.toContain('#');
+    }
+  });
+
+  it('the intents are units of work — build contracts a real write, review never blocks', () => {
+    const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
+    const build = resolved.intents.find((i) => i.id === 'build');
+    const review = resolved.intents.find((i) => i.id === 'review');
+    expect(build?.hooks?.stop).toEqual([{ action: 'api__ant__request' }]);
+    expect(review?.clarify).toBe(false);
+    expect(review?.hooks).toBeUndefined();
+  });
+
+  /**
+   * The two builtins split one boundary. The agent-builder row above pins its
+   * half (allow lines never name the pipelines resource); this row pins the
+   * other lane: pipeline-builder WRITES only the pipelines resource and
+   * touches the agents resource READ-only — every step must be proven against
+   * a real job and intent, but authoring agents is not this job's half.
+   */
+  it('writes pipelines, reads agents — one boundary, two lanes', () => {
+    const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
+    expect(Object.keys(resolved.apiServers)).toEqual(['ant']);
+    expect(isSelfApiConfig(resolved.apiServers.ant)).toBe(true);
+    const allow = resolved.apiServers.ant.allow ?? [];
+    expect(allow.some((rule) => rule.includes(SELF_API_PIPELINES_PREFIX))).toBe(true);
+    for (const rule of allow) {
+      const [method, pattern] = rule.split(/\s+/, 2);
+      expect(pattern.startsWith('/definitions'), `"${rule}" leaves the definition family`).toBe(true);
+      if (pattern.startsWith(SELF_API_SURFACE_PREFIX)) {
+        expect(method, `"${rule}" — the agents resource is read-only for this job`).toBe('GET');
+      }
+    }
+  });
+
+  it('authors through the validated API route, never from a shell', () => {
+    const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
+    expect(resolved.builtinTools).not.toContain('run_command');
+    expect(resolved.builtinTools).not.toContain('http_request');
+    expect(resolved.approval.api__ant__request).toBe('never');
+  });
+
+  it('carries its format contract as on-demand documents, not standing prose', () => {
+    const docsDir = path.join(SRC_AGENTS_DIR, 'pipeline-builder', 'on-demand');
+    expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'pipeline-format.md']);
+  });
+
+  // The agent-builder's format doc once taught a hooks.yaml shape its own
+  // loader refused (see the fence gate above); the mirror trap here is a
+  // definition example the save gate rejects. Pin every example in the
+  // authoring doc against the REAL server-side validator — structural rules
+  // plus the cron minimum interval and the gate-anchor rule.
+  it('every pipeline example in the authoring doc passes the real save gate', () => {
+    const doc = fs.readFileSync(
+      path.join(SRC_AGENTS_DIR, 'pipeline-builder', 'on-demand', 'pipeline-format.md'),
+      'utf-8',
+    );
+    const fences = [...doc.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]);
+    const defExamples = fences.filter((f) => /^version:/m.test(f));
+    expect(defExamples.length).toBeGreaterThan(0);
+    for (const example of defExamples) {
+      expect(validatePipelineDefServer(yaml.load(example))).toEqual([]);
     }
   });
 });

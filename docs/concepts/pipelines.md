@@ -55,6 +55,13 @@ steps:
 Three template variables are available in `directive`: `{{trigger.fireDate}}`,
 `{{trigger.fireEpoch}}`, `{{run.id}}`.
 
+You don't have to write this by hand: the Pipelines tab's canvas edits the same
+shape, and the **`pipeline-builder`** builtin agent composes one from a
+description ("run ops-team's report every Monday 9am, gate publishing on my
+approval"), reading the agents' catalogs so every step names a job and intent
+that exist. Whatever authors it, the result is a disabled draft — enabling and
+activating stay yours.
+
 ## Chaining
 
 A step with no `needs` depends on the **previous step in file order**, so the

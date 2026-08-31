@@ -1,0 +1,66 @@
+# The pipeline-builder's single job: author and edit pipeline definitions
+# through this Ant server's own pipelines API.
+id: author
+name: 'Author'
+version: 1
+apis:
+  # `self: true` targets THIS Ant server. The runtime resolves the base URL
+  # from the process environment and attaches the job's capability-pinned
+  # token, so a shipped definition assumes neither an install's origin nor a
+  # registered credential.
+  #
+  # `allow` scopes what this job may compose; it is not the security boundary.
+  # The token itself is pinned server-side: on the pipelines resource it
+  # reaches exactly the authoring shapes below, and every operational route
+  # (enable, disable, activate, deactivate, run-now, promote, editors,
+  # approvals, runs, download) refuses it whatever this list says.
+  ant:
+    self: true
+    allow:
+      # Pipeline definitions — the authoring surface, listed route for route.
+      - GET /definitions/pipelines
+      - POST /definitions/pipelines
+      - GET /definitions/pipelines/*
+      - PUT /definitions/pipelines/*
+      - DELETE /definitions/pipelines/*
+      - GET /definitions/pipelines/*/permissions
+      - POST /definitions/pipelines/preview-fires
+      - GET /definitions/pipelines/activatable-projects
+      # Agent definitions — READ only. Every step names an agent, a job, and
+      # an intent, and reading the catalog is how a step is proven to exist.
+      # What an agent does is the agent builder's half; this job never writes
+      # there.
+      - GET /definitions/agents/**
+tools:
+  # Allowlist — validates directly against the universal preset. Omitting
+  # `builtin` entirely would grant the full preset. This is the preset MINUS
+  # three deliberate exclusions:
+  #   http_request — loopback-only service probe; this job's HTTP is api__ant__*
+  #   run_command  — definitions are authored through the validated API route,
+  #                  never by writing files from a shell
+  #   read_state   — session recall adds nothing to single-sitting authoring turns
+  builtin:
+    - read_file
+    - list_files
+    - search_files
+    - create_file
+    - edit_file
+    - append_file
+    - delete_file
+    - mkdir
+    - copy_file
+    - fetch_url
+    - search_web
+    - explore
+    - subagent_report
+    # Ant platform self-source (read-only) — check a scheduler or validator
+    # rule against the actual code instead of guessing at it.
+    - read_ant_source
+    - list_ant_files
+    - search_ant_code
+  # Per-tool approval override: 'always' | 'never'. Writes through a declared
+  # API default to 'always'; authoring a definition IS this job's purpose, and
+  # its boundary is the token's server-side scope pin plus the save-time
+  # validation — not a prompt on every save.
+  approval:
+    api__ant__request: never
