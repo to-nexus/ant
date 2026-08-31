@@ -901,10 +901,11 @@ unnamed:
   observable-completion contract, and draws the jurisdiction line: calendars
   and cross-intent run order are pipeline material the build job FILTERS —
   authored by the separate pipeline surface (a person in the Pipelines tab,
-  § 46, or the builtin `pipeline-builder` that reads the finished agent plus
-  the same source and composes its intents), never proposed or preserved by
-  the builder, so the two authoring jobs keep single ownership of their
-  halves. In-task time rules — a filing deadline, a do-not-resend
+  § 46, or a pipeline-authoring agent the USER builds through this builder —
+  the self-api pin admits the pipelines resource, so such an agent works in
+  the user's own scope; whether one eventually ships as a builtin is still
+  open), never proposed or preserved by the builder, so the two authoring
+  jobs keep single ownership of their halves. In-task time rules — a filing deadline, a do-not-resend
   window — stay in `prompt.md` because they change what the agent does, not
   when it is started.
 
@@ -953,9 +954,10 @@ The tests assert structure only (intent id set, every builder intent ships a
 per the no-prose-pinning policy. The hook-authoring criterion and the
 schedule/pipeline boundary are prose and are likewise not pinned — the gated
 inverse remains the structural suite above, including the
-`/definitions/agents` allow pin (the builder cannot write a pipeline — the
-self-api pin's pipelines surface is `pipeline-builder`'s, and both builtins'
-allow lines are asserted to resolve through the pin in
+`/definitions/agents` allow pin (the builder cannot write a pipeline: its
+`allow` names only the agents resource, asserted in
+`tests/customAgents/builtin-agents.test.ts`, and that every shipped allow line
+resolves through the guard is asserted in
 `tests/http/account-agent-routes.test.ts`).
 
 ## Streaming & turn identity (A14/A15)

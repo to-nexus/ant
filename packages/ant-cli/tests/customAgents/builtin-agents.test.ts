@@ -269,8 +269,11 @@ describe('shipped agent-builder definition', () => {
    * The declared scope is guidance for the model; the token's server-side pin
    * is the boundary (that the allow lines stay INSIDE the pin is asserted
    * against the guard itself in `tests/http/account-agent-routes.test.ts`).
-   * What this row owns is the LANE: the two builtins split one boundary, so
-   * neither may name the other's write surface.
+   * What this row owns is the LANE: the builder authors AGENT definitions, and
+   * the pin's other resource — pipeline definitions — is not its half.
+   * Calendars and cross-intent run order are what this job FILTERS (doc 44);
+   * an allow line naming the pipelines surface would hand it the very
+   * authority that rule removes.
    */
   it('reaches this Ant server through a self entry — no URL, no credential', () => {
     const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
@@ -278,24 +281,8 @@ describe('shipped agent-builder definition', () => {
     expect(isSelfApiConfig(resolved.apiServers.ant)).toBe(true);
     for (const rule of resolved.apiServers.ant.allow ?? []) {
       expect(rule.startsWith(`${rule.split(' ')[0]} ${SELF_API_SURFACE_PREFIX}`)).toBe(true);
-    }
-  });
-
-  it('the two builtins split one boundary — neither names the other write surface', () => {
-    const builder = loadCustomJob(builtinRoots, 'agent-builder', 'author');
-    const pipeline = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
-
-    // The agent builder filters schedules out; it must not be able to write one.
-    for (const rule of builder.apiServers.ant.allow ?? []) {
       expect(rule).not.toContain(SELF_API_PIPELINES_PREFIX);
     }
-    // The pipeline builder composes a finished agent's intents; it READS agent
-    // definitions and never authors them.
-    for (const rule of pipeline.apiServers.ant.allow ?? []) {
-      const [method, pattern] = rule.split(/\s+/, 2);
-      if (pattern.startsWith(SELF_API_SURFACE_PREFIX)) expect(method).toBe('GET');
-    }
-    expect((pipeline.apiServers.ant.allow ?? []).some((r) => r.includes(SELF_API_PIPELINES_PREFIX))).toBe(true);
   });
 
   it('authors through the validated API route, never from a shell', () => {

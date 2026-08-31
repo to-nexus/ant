@@ -506,11 +506,14 @@ debugging session.
   it (the builtin `agent-builder`), never by writing the files directly — which
   is also why `run_command`'s containment check runs on every plane, not only
   where the `codebase/` prefix rule applies. Pipelines are the same shape one
-  surface over: the builtin `pipeline-builder` composes a finished agent's
-  intents through `POST|PUT /pipelines`, and the two builtins split one boundary
-  — agent-builder authors what an agent DOES and filters calendars out,
-  pipeline-builder owns exactly that filtered half (schedules, cross-intent run
-  order). Neither writes the other's files.
+  resource over — `POST|PUT /definitions/pipelines` under the same pin — but no
+  builtin holds that half. `agent-builder` authors what an agent DOES and
+  FILTERS calendars and cross-intent run order out (doc 44), and its `allow`
+  names only the agents resource; the agent that composes a finished agent's
+  intents into a schedule is **authored by the user through agent-builder**, in
+  their own scope. The pin admits it because `declaresSelfApi` reads the
+  definition, not the scope — a user-scope agent declaring a self entry gets
+  the same token a builtin would.
 - **HTTP groups name a KIND, not an owner.** `/api/definitions/**` is the
   scoped-template family (`user` | `org` | `builtin` roots, closest-wins,
   promotable, project-independent, one shared `orgAclStore.ts`) and holds

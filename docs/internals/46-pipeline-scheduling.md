@@ -485,15 +485,18 @@ standard ChoiceCard variant. UI-authored definitions stay implicit-linear
 degrades to append (v2 opens free-DAG editing on the same wire contract — no
 migration).
 
-The canvas is not the only author. The builtin `pipeline-builder` agent
-(`core/data/agents/pipeline-builder/`) composes definitions through the same
-`POST|PUT /pipelines` routes under the self-api pin — it reads a finished
-agent's jobs and intents from `/definitions/agents`, writes the DAG, and checks the
-trigger through `preview-fires`. Everything it writes lands as a disabled draft
-and stays immutable once enabled, so the availability machine (§1) is what makes
-machine authoring safe: the job drafts, a person publishes and activates. There
-is no YAML import route and none is needed — the API takes `{ id, def }` as
-JSON, and the agent composes `def` directly.
+The canvas is not the only author. A universal job that declares an `apis`
+self entry composes definitions through the same
+`POST|PUT /definitions/pipelines` routes under the self-api pin — reading a
+finished agent's jobs and intents from `/definitions/agents`, writing the DAG,
+and checking the trigger through `preview-fires`. No builtin ships for this;
+the agent is authored by the user through `agent-builder`, and the pin admits
+it because `declaresSelfApi` reads the DEFINITION, not the scope. Everything
+such a job writes lands as a disabled draft and stays immutable once enabled,
+so the availability machine (§1) is what makes machine authoring safe: the job
+drafts, a person publishes and activates. There is no YAML import route and
+none is needed — the API takes `{ id, def }` as JSON, and the agent composes
+`def` directly.
 
 ---
 
@@ -550,12 +553,11 @@ JSON, and the agent composes `def` directly.
 - **A second ACL rule set.** Pipelines and agents share
   `orgAclStore.ts` (`canEditOrgResource` / gate resolver) — a diverging copy
   re-opens the per-caller-authority drift the generalization closed.
-- **Widening the self-api pin past the DEFINITION surface.** The builtin
-  `pipeline-builder` authors pipelines through this API with a
-  `scope: 'self-api'` token, and `createSelfApiScopeGuard` admits exactly the
-  authoring shapes: `GET|POST /pipelines`, `GET|PUT|DELETE /pipelines/:id`,
-  `GET /pipelines/:id/permissions`, `POST /pipelines/preview-fires`,
-  `GET /pipelines/activatable-projects`. Everything else — `enable`,
+- **Widening the self-api pin past the DEFINITION surface.** A pipeline-
+  authoring agent reaches this API with a `scope: 'self-api'` token, and
+  `createSelfApiScopeGuard` admits exactly the authoring shapes, relative to
+  `/definitions/pipelines`: `GET|POST` on the root, `GET|PUT|DELETE` on `:id`,
+  `GET :id/permissions`, `POST preview-fires`, `GET activatable-projects`. Everything else — `enable`,
   `disable`, `activate`, `deactivate`, `run-now`, `promote`, `editors`,
   `approvals/**`, `runs/**`, `download` — is a person's decision and stays
   refused: activating takes a project over (§3) and running one spends the
@@ -566,9 +568,9 @@ JSON, and the agent composes `def` directly.
   `activatable-projects`, `approvals`, `runs`): Express separates them by
   registration order, the guard matches independently.
 - **Relying on the definition's `allow` list to keep a job out of the
-  operational surface.** It is user-editable and one save away from `* *`. The
-  shipped definitions mirror the pin so the model is never told to call a route
-  that answers 403, but the bound is the guard.
+  operational surface.** It is user-editable and one save away from `* *` —
+  and a pipeline-authoring agent is user-authored, so its `allow` is whatever
+  its owner saved. The bound is the guard, never the list.
 
 ### ✅ Correct
 
