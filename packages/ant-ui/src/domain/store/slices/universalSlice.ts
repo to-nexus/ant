@@ -47,7 +47,11 @@ export interface UniversalState {
   /**
    * Subject of the actions panel's `intent-detail` step. Store-held because
    * the step itself is store-held — a remount mid-detail must not strand
-   * `actionsStep='intent-detail'` with no subject. Cleared on job switch.
+   * `actionsStep='intent-detail'` with no subject.
+   *
+   * Written ONLY by `selectCustomIntent` / `deselectCustomIntent` and the two
+   * selection resets (`selectCustomJob`, `clearUniversalSelection`). A second
+   * writer is what let the panel show an intent the composer badge did not.
    */
   universalDetailIntentId: string | null;
 }
@@ -59,6 +63,27 @@ export interface UniversalActions {
   setCustomAgents: (agents: CustomAgentSummary[]) => void;
   /** Select a custom job (agent + job pair). */
   selectCustomJob: (agentId: string, jobId: string) => void;
+  /**
+   * Pick an intent in the actions panel — the universal twin of canonical
+   * `selectIntent` (uiSlice). ONE atomic writer for the two facts a pick
+   * produces: the detail page's subject AND the intent pinned to the next
+   * turn. Splitting those is how the panel could show an intent the composer
+   * badge did not.
+   *
+   * Navigation (`setActionsStep('intent-detail')`) stays a caller decision,
+   * exactly as canonical separates selection from step routing. No
+   * `applyJobIdentity` twin: universal identity is the constant
+   * ('universal', 'universal'), owned by `setProjectType`.
+   */
+  selectCustomIntent: (intentId: string) => void;
+  /**
+   * Un-pick an intent — the twin of canonical
+   * `ActionMetadataBadges.handleRemoveIntent` (drop the pin AND step back a
+   * level). Clears the detail subject ONLY when it is this intent, so removing
+   * a composer-typed `@intent:` chip can never eject the reader off an
+   * unrelated detail page.
+   */
+  deselectCustomIntent: (intentId: string) => void;
   /** Fetch the agent list and repair/auto-select the (agent, job) pair. */
   loadCustomAgents: (projectId: string) => Promise<void>;
   clearUniversalSelection: () => void;
@@ -72,10 +97,31 @@ export interface UniversalActions {
   /** `@plan` per-turn plan-mode flag. */
   setUniversalPlanMention: (on: boolean) => void;
   resetUniversalTurnMeta: () => void;
-  setUniversalDetailIntentId: (intentId: string | null) => void;
 }
 
 export type UniversalSlice = UniversalState & UniversalActions;
+
+type TurnMeta = UniversalState['universalTurnMeta'];
+
+/**
+ * The single-slot arming rule for `universalTurnMeta.intents`: a run binds at
+ * most ONE intent, so picking REPLACES instead of accumulating. Two actions arm
+ * (`addUniversalIntentMention` for typed `@intent:` mentions, `selectCustomIntent`
+ * for the actions panel) — the rule itself lives here once.
+ *
+ * Returns the SAME object when already armed; `universalTurnMeta` subscribers
+ * rely on that reference stability.
+ */
+const armIntent = (meta: TurnMeta, intentId: string): TurnMeta =>
+  meta.intents.length === 1 && meta.intents[0] === intentId
+    ? meta
+    : { ...meta, intents: [intentId] };
+
+/** Inverse of `armIntent`; same reference-stability contract. */
+const disarmIntent = (meta: TurnMeta, intentId: string): TurnMeta =>
+  meta.intents.includes(intentId)
+    ? { ...meta, intents: meta.intents.filter((i: string) => i !== intentId) }
+    : meta;
 
 export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (set, get) => ({
   projectType: 'canonical',
@@ -138,6 +184,28 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     });
   },
 
+  selectCustomIntent: (intentId) => {
+    const { universalDetailIntentId, universalTurnMeta } = get();
+    const nextMeta = armIntent(universalTurnMeta, intentId);
+    // NOT a bare subject-equality early return: after a send wipes the turn
+    // meta, re-picking the intent already on screen MUST re-arm it.
+    if (universalDetailIntentId === intentId && nextMeta === universalTurnMeta) return;
+    set({ universalDetailIntentId: intentId, universalTurnMeta: nextMeta });
+  },
+
+  deselectCustomIntent: (intentId) => {
+    const { universalDetailIntentId, universalTurnMeta } = get();
+    const nextMeta = disarmIntent(universalTurnMeta, intentId);
+    const isSubject = universalDetailIntentId === intentId;
+    if (nextMeta === universalTurnMeta && !isSubject) return;
+    set({
+      universalTurnMeta: nextMeta,
+      // Clearing the subject is what steps the panel back: the detail view's
+      // "subject vanished" effect owns that transition, here as everywhere.
+      ...(isSubject ? { universalDetailIntentId: null } : {}),
+    });
+  },
+
   loadCustomAgents: async (projectId) => {
     try {
       const { agents } = await fetchCustomAgents(projectId);
@@ -172,16 +240,14 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
 
   addUniversalIntentMention: (intentId) => {
     const meta = get().universalTurnMeta;
-    // Single-intent binding: the intent is the atomic unit of a run, so the
-    // slot replaces instead of accumulating (last pick wins).
-    if (meta.intents.length === 1 && meta.intents[0] === intentId) return;
-    set({ universalTurnMeta: { ...meta, intents: [intentId] } });
+    const next = armIntent(meta, intentId);
+    if (next !== meta) set({ universalTurnMeta: next });
   },
 
   removeUniversalIntentMention: (intentId) => {
     const meta = get().universalTurnMeta;
-    if (!meta.intents.includes(intentId)) return;
-    set({ universalTurnMeta: { ...meta, intents: meta.intents.filter((i: string) => i !== intentId) } });
+    const next = disarmIntent(meta, intentId);
+    if (next !== meta) set({ universalTurnMeta: next });
   },
 
   addUniversalContextMention: (path) => {
@@ -207,5 +273,4 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     set({ universalTurnMeta: { intents: [], context: [], plan: false } });
   },
 
-  setUniversalDetailIntentId: (intentId) => set({ universalDetailIntentId: intentId }),
 });

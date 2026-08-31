@@ -207,6 +207,10 @@ function UniversalIntentVariant({ intentId }: UniversalIntentFooterProps) {
 
   const handleChatStart = () => {
     if (!selectedProject) return;
+    // Idempotent RE-arm, not the introduction of the pin: selecting the intent
+    // already armed it. This is the only route back after a Disarm or a send
+    // while staying on this page (the sibling tab nav cannot re-fire for the
+    // tab already selected).
     addIntent(intentId);
     requestAnimationFrame(() => {
       const input = document.querySelector('textarea[data-chat-input]') as HTMLTextAreaElement | null;
@@ -307,10 +311,13 @@ function UniversalIntentVariant({ intentId }: UniversalIntentFooterProps) {
 
       {armed && !isRunning && (
         <span className="text-xs ml-auto inline-flex items-center gap-2" style={{ color: 'var(--text-3)' }}>
-          {t('universal.armedHint', { defaultValue: 'Armed — this intent rides the next chat turn.' })}
+          {t('universal.armedHint', { defaultValue: 'Pinned — this intent rides your next chat turn.' })}
           <button
             type="button"
             className="underline underline-offset-2 hover:text-[color:var(--text-2)]"
+            // Disarm ≠ the composer badge's X. Disarm means "still reading
+            // this, just do not pin it" and stays on the page; the badge X
+            // un-picks the intent and steps the panel back. Do not unify them.
             onClick={() => removeIntent(intentId)}
           >
             {t('universal.disarm', { defaultValue: 'Disarm' })}

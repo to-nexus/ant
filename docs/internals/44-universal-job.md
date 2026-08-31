@@ -30,8 +30,9 @@ compat, but **a run binds at most ONE intent** — the intent is the atomic
 unit of work (per-intent stop hooks are the run's completion contract, and
 the future scheduler's node address is `(job, intent)`). Enforced at three
 boundaries: the accept gate (`validateUniversalTurnMeta` → 400
-`multiple-intents` on >1 distinct id), the FE arming slot
-(`addUniversalIntentMention` replaces instead of accumulating), and the
+`multiple-intents` on >1 distinct id), the FE arming slot (`armIntent` in
+`universalSlice.ts` — the ONE expression of "replace, never accumulate",
+shared by `addUniversalIntentMention` and `selectCustomIntent`), and the
 seal sanitizer (`parseSealedTurnContext` truncates pre-cutover multi-intent
 seals — inheritance rides the state-restore plane, which the HTTP gate
 never sees).
@@ -1146,11 +1147,31 @@ surface.
 | `intents/{i}/hooks.yaml` | IntentHooksCard (`c3g-intent-hooks`) |
 | (non-file) | OrgAccess / Promote / Danger — outside the mapping |
 
-The actions tab mirrors the canonical UX: an intent chip NAVIGATES to the
-`intent-detail` step (no toggle-on-chip; the chip's ring mirrors the armed
-`universalTurnMeta.intents`), and the detail page carries the canonical bottom
-menu (`ActionFooter` `universal-intent` variant): **Chat** arms the intent as
-an `@intent:` mention and focuses the composer (prepare, never send); **Build**
+The actions tab mirrors the canonical UX. An intent chip — and the detail
+page's sibling tab nav, which IS the selection exactly as `ActionConfigView`'s
+is — SELECTS the intent through the single atomic writer `selectCustomIntent`:
+it arms `universalTurnMeta.intents` **and** sets the detail subject
+(`universalDetailIntentId`) in one `set()`, after which the caller routes the
+step. That is the canonical shape — `ActionsPanel.handleIntentSelect` calls
+`uiSlice.selectIntent` and then decides the step — and copying only its
+NAVIGATION half is what once left the composer badge empty until the footer's
+Chat button was pressed. The chip's ring, the composer chip and the open detail
+page therefore cannot disagree.
+
+The reverse direction is the twin of canonical
+`ActionMetadataBadges.handleRemoveIntent`: the composer chip's X
+(`deselectCustomIntent`) drops the pin and, WHEN the chip names the open
+subject, clears it so the detail view's vanished-subject effect steps the panel
+back to `pick-intent`. The subject-equality guard is load-bearing — a
+composer-typed `@intent:` arms without changing the subject, so an unguarded
+clear would eject the reader off an unrelated page. The footer's **Disarm** is
+the deliberately different affordance: mention-only, stays on the page.
+
+The detail page carries the canonical bottom menu (`ActionFooter`
+`universal-intent` variant): **Chat** RE-arms the intent as an `@intent:`
+mention (idempotent — selection already armed it; this is the only route back
+after a Disarm or a send while staying on the page) and focuses the composer
+(prepare, never send); **Build**
 posts a localized run request as the user turn (`universalBuildDirective`,
 `actions:universal.buildDirective` — never the intent's `infer` criterion, which
 is prompt text already rendered into the Intent Catalog) and dispatches a

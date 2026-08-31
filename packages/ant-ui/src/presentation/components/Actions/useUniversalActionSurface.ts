@@ -10,10 +10,14 @@
  * canonical chip can never leak into either.
  *
  * Picking a job lands on state the chat surface already owns
- * (`selectCustomJob` — the toolbar's agent/job chips). Intent chips NAVIGATE
- * to the intent-detail page (canonical parity); arming as an `@intent:`
- * mention happens there, via the footer's Chat/Build actions, and the chip's
- * `selected` ring mirrors `universalTurnMeta.intents`.
+ * (`selectCustomJob` — the toolbar's agent/job chips). Picking an INTENT is one
+ * atomic store write (`selectCustomIntent`): it arms the intent for the next
+ * turn AND makes it the detail page's subject, so the chip's `selected` ring,
+ * the composer's `UniversalTurnMetaBadges` chip and the open detail page can
+ * never disagree. Canonical parity — `ActionsPanel.handleIntentSelect` calls
+ * `selectIntent` and then routes the step; arming is NOT the footer's job (its
+ * Chat button only RESTORES the pin after a disarm or a send, and focuses the
+ * composer).
  */
 
 import { useTranslation } from 'react-i18next';
@@ -34,6 +38,8 @@ export interface UniversalActionSurface {
   /** The selected job’s full catalog (hooks/clarify/hasPrompt) — the detail view’s data. */
   intents: CustomIntentDef[];
   selectJob: (jobId: string) => void;
+  /** Pick an intent: arms it for the next turn AND makes it the detail subject. */
+  selectIntent: (intentId: string) => void;
 }
 
 export function useUniversalActionSurface(): UniversalActionSurface {
@@ -42,6 +48,7 @@ export function useUniversalActionSurface(): UniversalActionSurface {
   const selectedCustomAgentId = useStore((s) => s.selectedCustomAgentId);
   const selectedCustomJobId = useStore((s) => s.selectedCustomJobId);
   const selectCustomJob = useStore((s) => s.selectCustomJob);
+  const selectCustomIntent = useStore((s) => s.selectCustomIntent);
   const armedIntents = useStore((s) => s.universalTurnMeta.intents);
 
   const agent = customAgents.find((a) => a.id === selectedCustomAgentId);
@@ -76,6 +83,11 @@ export function useUniversalActionSurface(): UniversalActionSurface {
     intents,
     selectJob: (jobId: string) => {
       if (agent) selectCustomJob(agent.id, jobId);
+    },
+    selectIntent: (intentId: string) => {
+      // Catalog-reload race: never arm an id that has left the catalog (the
+      // mirror image of the detail view's own vanished-subject guard).
+      if (intents.some((i) => i.id === intentId)) selectCustomIntent(intentId);
     },
   };
 }

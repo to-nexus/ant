@@ -2,8 +2,10 @@
  * Universal per-intent detail view — the `intent-detail` step of the
  * universal actions panel, mirroring the canonical `ActionConfigView` layout:
  * a sticky sibling-tab nav on top, a `Section` stack, and the same bottom
- * menu (`ActionFooter`, universal-intent variant: Chat arms the intent and
- * focuses the composer, Build dispatches a run with it pinned).
+ * menu (`ActionFooter`, universal-intent variant: Chat RE-arms the intent and
+ * focuses the composer, Build dispatches a run with it pinned). Landing here
+ * already armed the intent — the tab nav IS the selection, exactly as
+ * `ActionConfigView`'s is.
  *
  * The body is read-only by design — definitions are edited in Agent Settings —
  * but it shows ALL THREE files that define the intent, one section each:
@@ -174,7 +176,6 @@ export function UniversalIntentDetailView({ surface }: { surface: UniversalActio
   const { t } = useTranslation('actions');
   const setActionsStep = useStore((s) => s.setActionsStep);
   const detailIntentId = useStore((s) => s.universalDetailIntentId);
-  const setDetailIntentId = useStore((s) => s.setUniversalDetailIntentId);
   const openMainPanelTab = useStore((s) => s.openMainPanelTab);
   const requestAgentSettingsFile = useStore((s) => s.requestAgentSettingsFile);
   // Sibling-tab navigation slides toward the tapped tab, like ActionConfigView.
@@ -229,7 +230,7 @@ export function UniversalIntentDetailView({ surface }: { surface: UniversalActio
         <ScrollableTabNav
           items={tabItems}
           selectedId={intent.id}
-          onSelect={(id) => setDetailIntentId(id)}
+          onSelect={(id) => surface.selectIntent(id)}
           onBack={() => setActionsStep('pick-intent')}
           rightAccessory={
             <div className="flex items-center gap-1.5 shrink-0">

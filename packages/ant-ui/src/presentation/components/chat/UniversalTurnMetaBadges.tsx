@@ -14,7 +14,11 @@ import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerT
 export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { className?: string }) {
   const projectType = useStore(s => s.projectType);
   const meta = useStore(s => s.universalTurnMeta);
-  const removeIntent = useStore(s => s.removeUniversalIntentMention);
+  // Canonical parity (ActionMetadataBadges.handleRemoveIntent): the X un-PICKS
+  // the intent — drops the pin and steps the panel back to `pick-intent`. The
+  // footer's Disarm is the other, deliberately different affordance: pin only,
+  // stay on the page.
+  const deselectIntent = useStore(s => s.deselectCustomIntent);
   const setContextMentions = useStore(s => s.setUniversalContextMentions);
   const setPlan = useStore(s => s.setUniversalPlanMention);
   const fileTree = useArtifactPickerTree();
@@ -68,7 +72,7 @@ export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { clas
           Target,
           id,
           'bg-[color:var(--status-todo-bg)] border-[color:var(--border-1)] text-[color:var(--status-todo-fg)]',
-          () => removeIntent(id),
+          () => deselectIntent(id),
         ),
       )}
       {contextEntries.map(entry => {

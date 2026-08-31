@@ -161,6 +161,7 @@ describe('universalTurnMeta — explicit @intent:/@ctx:/@plan mention arming', (
     s.getState().setUniversalPlanMention(true);
     s.getState().selectCustomJob('researcher', 'quick');
     expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: [], plan: false });
+    expect(s.getState().universalDetailIntentId).toBeNull();
   });
 
   it('resetUniversalTurnMeta clears after send; no-op keeps reference stability', () => {
@@ -193,5 +194,90 @@ describe('universalTurnMeta — explicit @intent:/@ctx:/@plan mention arming', (
     s.getState().addUniversalIntentMention('research');
     s.getState().selectCustomJob('researcher', 'brief'); // no-op selection
     expect(s.getState().universalTurnMeta.intents).toEqual(['research']);
+  });
+});
+
+/**
+ * `selectCustomIntent` is the universal twin of canonical `uiSlice.selectIntent`:
+ * ONE atomic write for the two facts a pick produces — the actions panel's
+ * detail subject AND the intent pinned to the next turn. Before it existed the
+ * two were written separately, so the panel could show an intent the composer
+ * badge did not.
+ */
+describe('selectCustomIntent / deselectCustomIntent — the actions-panel selection funnel', () => {
+  it('one write, two facts: the detail subject AND the next-turn pin', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    expect(s.getState().universalDetailIntentId).toBe('research');
+    expect(s.getState().universalTurnMeta.intents).toEqual(['research']);
+  });
+
+  it('single slot: picking replaces on both facts, never accumulates', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    s.getState().selectCustomIntent('cite');
+    expect(s.getState().universalDetailIntentId).toBe('cite');
+    expect(s.getState().universalTurnMeta.intents).toEqual(['cite']);
+  });
+
+  it('re-picking the on-screen intent after a send RE-arms it', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    s.getState().resetUniversalTurnMeta(); // the send
+    expect(s.getState().universalTurnMeta.intents).toEqual([]);
+    expect(s.getState().universalDetailIntentId).toBe('research'); // page stays open
+    s.getState().selectCustomIntent('research');
+    expect(s.getState().universalTurnMeta.intents).toEqual(['research']);
+  });
+
+  it('re-picking an already-armed subject is a whole no-op (reference stable)', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    const ref = s.getState().universalTurnMeta;
+    s.getState().selectCustomIntent('research');
+    expect(s.getState().universalTurnMeta).toBe(ref);
+  });
+
+  it('leaves the other turn-meta axes untouched', () => {
+    const s = makeStore();
+    s.getState().addUniversalContextMention('notes/a.md');
+    s.getState().setUniversalPlanMention(true);
+    s.getState().selectCustomIntent('research');
+    expect(s.getState().universalTurnMeta.context).toEqual(['notes/a.md']);
+    expect(s.getState().universalTurnMeta.plan).toBe(true);
+  });
+
+  it('deselect of the SUBJECT drops the pin and clears the subject (panel steps back)', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    s.getState().deselectCustomIntent('research');
+    expect(s.getState().universalTurnMeta.intents).toEqual([]);
+    expect(s.getState().universalDetailIntentId).toBeNull();
+  });
+
+  it('deselect of a NON-subject pin never ejects the reader off the open page', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    s.getState().addUniversalIntentMention('cite'); // typed `@intent:` in the composer
+    s.getState().deselectCustomIntent('cite');
+    expect(s.getState().universalTurnMeta.intents).toEqual([]);
+    expect(s.getState().universalDetailIntentId).toBe('research');
+  });
+
+  it('deselect of an unrelated id is a whole no-op', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    const ref = s.getState().universalTurnMeta;
+    s.getState().deselectCustomIntent('unrelated');
+    expect(s.getState().universalTurnMeta).toBe(ref);
+    expect(s.getState().universalDetailIntentId).toBe('research');
+  });
+
+  it('the footer Disarm stays on the page: removeUniversalIntentMention never writes the subject', () => {
+    const s = makeStore();
+    s.getState().selectCustomIntent('research');
+    s.getState().removeUniversalIntentMention('research');
+    expect(s.getState().universalTurnMeta.intents).toEqual([]);
+    expect(s.getState().universalDetailIntentId).toBe('research');
   });
 });

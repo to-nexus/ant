@@ -28,7 +28,6 @@ export function UniversalActionsPanel() {
   const surface = useUniversalActionSurface();
   const step = useStore((s) => s.actionsStep);
   const setActionsStep = useStore((s) => s.setActionsStep);
-  const setDetailIntentId = useStore((s) => s.setUniversalDetailIntentId);
 
   const handleJobSelect = (jobId: string) => {
     surface.selectJob(jobId);
@@ -102,13 +101,15 @@ export function UniversalActionsPanel() {
           <IntentChipGrid
             items={surface.intentChipItems}
             onSelect={(intentId) => {
-              // Canonical parity: picking an intent opens its detail page
-              // (arming happens there, via the footer's Chat/Build actions).
-              setDetailIntentId(intentId);
+              // Canonical parity (ActionsPanel.handleIntentSelect): ONE atomic
+              // selection write — arms the intent AND sets the detail subject —
+              // then a separate step decision.
+              surface.selectIntent(intentId);
               setActionsStep('intent-detail');
             }}
             subtitle={t('universal.pickIntentHint', {
-              defaultValue: 'Open an intent to review its contract and start via chat or build.',
+              defaultValue:
+                'Pick an intent to pin it to your next chat turn — its contract opens for review.',
             })}
           />
         )}
