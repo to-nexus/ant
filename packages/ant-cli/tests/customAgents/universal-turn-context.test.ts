@@ -414,6 +414,86 @@ describe('validateUniversalTurnMeta — accept gate', () => {
       expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
     });
   });
+
+  // ── glob pin expansion (pipeline dispatch only) ────────────────────────────
+  describe('glob pins — expandContextGlobs', () => {
+    const OPTS = { expandContextGlobs: true };
+
+    it('without the flag a glob fails like a missing concrete pin (interactive @ctx stays concrete)', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['reports/*.md']);
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
+
+    it('expands a glob into concrete paths, newest-mtime-first, with an audit count', async () => {
+      fs.writeFileSync(nodePath.join(container, 'artifacts', 'reports', 'w2.md'), 'x');
+      fs.utimesSync(nodePath.join(container, 'artifacts', 'reports', 'w1.md'), new Date('2026-01-01'), new Date('2026-01-01'));
+      fs.utimesSync(nodePath.join(container, 'artifacts', 'reports', 'w2.md'), new Date('2026-02-01'), new Date('2026-02-01'));
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['reports/*.md'], undefined, undefined, [], OPTS);
+      expect(result).toEqual({
+        ok: true,
+        meta: { intents: [], context: ['reports/w2.md', 'reports/w1.md'] },
+        contextExpanded: { 'reports/*.md': 2 },
+      });
+    });
+
+    it('zero matches → 400 invalid-context-path (fails like a missing concrete pin)', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['ghost/*.md'], undefined, undefined, [], OPTS);
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+      expect((result as { error: string }).error).toMatch(/glob/);
+    });
+
+    it('a glob may only address the artifacts tree — sessions/** refused', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['sessions/**'], undefined, undefined, [], OPTS);
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
+
+    it('a structurally invalid glob (.. segment) → 400 invalid-context-path', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['../*.md'], undefined, undefined, [], OPTS);
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
+
+    it('per-pin expansion keeps the newest 20 matches (degrade, never unbounded)', async () => {
+      for (let i = 0; i < 25; i += 1) {
+        const p = nodePath.join(container, 'artifacts', 'reports', `bulk-${String(i).padStart(2, '0')}.txt`);
+        fs.writeFileSync(p, 'x');
+        fs.utimesSync(p, new Date(2026, 0, 1 + i), new Date(2026, 0, 1 + i));
+      }
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['reports/*.txt'], undefined, undefined, [], OPTS);
+      expect(result).toMatchObject({ ok: true, contextExpanded: { 'reports/*.txt': 20 } });
+      const context = (result as { meta: { context: string[] } }).meta.context;
+      expect(context).toHaveLength(20);
+      expect(context[0]).toBe('reports/bulk-24.txt');
+    });
+
+    it('a total expansion past the cap is refused, never silently truncated across pins', async () => {
+      for (const dir of ['a', 'b', 'c']) {
+        fs.mkdirSync(nodePath.join(container, 'artifacts', dir), { recursive: true });
+        for (let i = 0; i < 20; i += 1) {
+          fs.writeFileSync(nodePath.join(container, 'artifacts', dir, `f${i}.txt`), 'x');
+        }
+      }
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['a/*.txt', 'b/*.txt', 'c/*.txt'], undefined, undefined, [], OPTS);
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+      expect((result as { error: string }).error).toMatch(/narrow the globs/);
+    });
+
+    it('concrete pins ride through the expansion pre-pass untouched (mixed pin list)', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['plan/notes.md', 'reports/*.md'], undefined, undefined, [], OPTS);
+      expect(result).toEqual({
+        ok: true,
+        meta: { intents: [], context: ['plan/notes.md', 'reports/w1.md'] },
+        contextExpanded: { 'reports/*.md': 1 },
+      });
+    });
+  });
 });
 
 describe('planCompleteCardWrites — deterministic plan-complete CTA gate', () => {

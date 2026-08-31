@@ -9,11 +9,12 @@
  * `CustomIntentDef.infer` is prompt text — never used as UI copy.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Trash2, Plus } from 'lucide-react';
+import { X, Trash2, Plus, FolderOpen } from 'lucide-react';
 import {
   GENERAL_INTENT,
+  PIPELINE_TEMPLATE_VARS,
   isApprovalStep,
   parseCustomJobRef,
   type ApprovalStepDef,
@@ -22,10 +23,15 @@ import {
   type StepEdgeCondition,
 } from '@ant/shared';
 import { useStore } from '@/domain/store';
+import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 import { AuroraSelect, AuroraInput, FieldLabel } from '../ConfigEditor/aurora';
 import { Textarea, Button } from '../aurora';
+import { HintBadge } from '../common/HintBadge';
+import { Tooltip } from '../common/Tooltip';
+import { FileTreePicker } from '../common/FileTreePicker';
 import { CronBuilder } from './CronBuilder';
 import { TRIGGER_NODE_ID, removeStep, updateSchedule, updateStep } from './draft';
+import { upstreamOutputSuggestions } from './upstreamOutputs';
 
 export interface StepInspectorProps {
   def: PipelineDef;
@@ -164,6 +170,24 @@ function TriggerPanel({ def, onChange, onCronValidity }: { def: PipelineDef; onC
   );
 }
 
+/** Per-var human labels for the template-var chips (SSOT list stays in @ant/shared). */
+const TEMPLATE_VAR_META: Record<string, { labelKey: string; labelDefault: string }> = {
+  'trigger.fireDate': { labelKey: 'step.templateVar.fireDate', labelDefault: 'Fire time (ISO)' },
+  'trigger.fireEpoch': { labelKey: 'step.templateVar.fireEpoch', labelDefault: 'Fire time (epoch ms)' },
+  'run.id': { labelKey: 'step.templateVar.runId', labelDefault: 'Run id' },
+};
+
+const varChipStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontFamily: 'monospace',
+  padding: '2px 7px',
+  borderRadius: 999,
+  background: 'var(--bg-surface-2)',
+  border: '1px solid var(--border-1)',
+  color: 'var(--text-3)',
+  cursor: 'pointer',
+};
+
 function JobStepPanel({
   def,
   step,
@@ -175,7 +199,15 @@ function JobStepPanel({
   step: JobStepDef;
   stepIndex: number;
   onChange: (d: PipelineDef) => void;
-  customAgents: Array<{ id: string; name: string; jobs: Array<{ id: string; name: string; intents?: Array<{ id: string }> }> }>;
+  customAgents: Array<{
+    id: string;
+    name: string;
+    jobs: Array<{
+      id: string;
+      name: string;
+      intents?: Array<{ id: string; hooks?: { stop: Array<{ artifact: string } | { action: string }> } }>;
+    }>;
+  }>;
 }) {
   const { t } = useTranslation('pipelines');
   const ref = parseCustomJobRef(step.customJobRef);
@@ -184,6 +216,36 @@ function JobStepPanel({
   const intentsBroken = !!job && job.intents === undefined;
 
   const patch = (p: Partial<JobStepDef>) => onChange(updateStep(def, step.id, p));
+
+  const directive = step.directive ?? '';
+  const directiveRef = useRef<HTMLTextAreaElement>(null);
+  const insertTemplateVar = (token: string) => {
+    const el = directiveRef.current;
+    const start = el?.selectionStart ?? directive.length;
+    const end = el?.selectionEnd ?? directive.length;
+    patch({ directive: `${directive.slice(0, start)}${token}${directive.slice(end)}` });
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        const caret = start + token.length;
+        el.setSelectionRange(caret, caret);
+      });
+    }
+  };
+
+  // Browse is a convenience tree of the CURRENTLY SELECTED universal project —
+  // never an authority claim (pins resolve against the ACTIVATION project at
+  // dispatch). Free text stays the primary input.
+  const selectedProject = useStore((s) => s.selectedProject);
+  const projectType = useStore((s) => s.projectType);
+  const pickerTree = useArtifactPickerTree();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const canBrowse = !!selectedProject && projectType === 'universal' && pickerTree.length > 0;
+
+  const suggestions = useMemo(
+    () => upstreamOutputSuggestions(def, step.id, customAgents),
+    [def, step.id, customAgents],
+  );
 
   return (
     <>
@@ -225,51 +287,104 @@ function JobStepPanel({
             disabled={!job}
             options={[
               { value: '', label: t('step.noIntent', 'None (job decides)') },
-              ...((job?.intents ?? []).filter((i) => i.id !== GENERAL_INTENT).map((i) => ({ value: i.id, label: `@${i.id}` }))),
+              ...((job?.intents ?? []).filter((i) => i.id !== GENERAL_INTENT).map((i) => ({ value: i.id, label: i.id }))),
             ]}
           />
         )}
       </div>
       <div>
-        <FieldLabel required>{t('step.directive', 'Directive')}</FieldLabel>
+        <FieldLabel optional>{t('step.directive', 'Directive')}</FieldLabel>
         <Textarea
-          value={step.directive}
-          onChange={(e) => patch({ directive: e.target.value })}
+          ref={directiveRef}
+          value={directive}
+          onChange={(e) => patch({ directive: e.target.value || undefined })}
           rows={5}
-          placeholder={t('step.directivePlaceholder', 'What should this run do?')}
+          placeholder={t('step.directivePlaceholder', 'What should this run do? Leave empty to run the default directive.')}
         />
-        <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
-          {['{{trigger.fireDate}}', '{{run.id}}'].map((v) => (
-            <button
-              key={v}
-              onClick={() => patch({ directive: `${step.directive}${step.directive.endsWith(' ') || step.directive === '' ? '' : ' '}${v}` })}
-              style={{
-                fontSize: 10,
-                fontFamily: 'monospace',
-                padding: '2px 7px',
-                borderRadius: 999,
-                background: 'var(--bg-surface-2)',
-                border: '1px solid var(--border-1)',
-                color: 'var(--text-3)',
-                cursor: 'pointer',
-              }}
-            >
-              {v}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)' }}>
+            {t('step.templateVars', 'Template variables')}
+          </span>
+          <HintBadge
+            isCompact
+            label={t('step.templateVars', 'Template variables')}
+            tooltip={t('step.templateVarsHint', 'Substituted with the actual values when the schedule fires — insert at the cursor.')}
+          />
+          {PIPELINE_TEMPLATE_VARS.map((v) => {
+            const meta = TEMPLATE_VAR_META[v];
+            const chip = (
+              <button onClick={() => insertTemplateVar(`{{${v}}}`)} style={varChipStyle}>
+                {`{{${v}}}`}
+              </button>
+            );
+            return meta ? (
+              <Tooltip key={v} content={t(meta.labelKey, meta.labelDefault)} placement="top" trigger="hover">
+                {chip}
+              </Tooltip>
+            ) : (
+              <span key={v}>{chip}</span>
+            );
+          })}
         </div>
       </div>
       <div>
         <FieldLabel optional action={
-          <button
-            onClick={() => patch({ context: [...(step.context ?? []), ''] })}
-            style={{ background: 'none', border: 'none', color: 'var(--violet-500)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}
-          >
-            <Plus size={11} /> {t('step.addContext', 'Add')}
-          </button>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            {canBrowse && (
+              <button
+                onClick={() => setPickerOpen(true)}
+                style={{ background: 'none', border: 'none', color: 'var(--violet-500)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}
+              >
+                <FolderOpen size={11} /> {t('step.browse', 'Browse')}
+              </button>
+            )}
+            <button
+              onClick={() => patch({ context: [...(step.context ?? []), ''] })}
+              style={{ background: 'none', border: 'none', color: 'var(--violet-500)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}
+            >
+              <Plus size={11} /> {t('step.addContext', 'Add')}
+            </button>
+          </span>
         }>
-          {t('step.context', 'Context pins (@ctx)')}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            {t('step.context', 'Context pins (@ctx)')}
+            <HintBadge
+              isCompact
+              label={t('step.context', 'Context pins (@ctx)')}
+              tooltip={t('step.contextHint', 'Pins are resolved when this step fires — you can pre-pin a path an earlier step will create; needs-ordering means it is existence-checked only after that step finished.')}
+            />
+          </span>
         </FieldLabel>
+        {suggestions.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)' }}>
+                {t('step.upstreamOutputs', 'Upstream step outputs')}
+              </span>
+              <HintBadge
+                isCompact
+                label={t('step.upstreamOutputs', 'Upstream step outputs')}
+                tooltip={t('step.upstreamOutputsHint', "Each glob is that step intent's stop-hook output contract — needs-ordering and stop-hook enforcement guarantee it exists before this step runs; it expands to the actual files at fire time.")}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {suggestions.map((sug) => {
+                const pinned = (step.context ?? []).includes(sug.glob);
+                return (
+                  <button
+                    key={`${sug.sourceStepId}:${sug.glob}`}
+                    disabled={pinned}
+                    onClick={() => patch({ context: [...(step.context ?? []), sug.glob] })}
+                    style={{ ...varChipStyle, opacity: pinned ? 0.45 : 1, cursor: pinned ? 'default' : 'pointer' }}
+                  >
+                    {sug.glob}
+                    <span style={{ opacity: 0.65, marginLeft: 4, fontFamily: 'inherit' }}>· {sug.sourceStepId}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {(step.context ?? []).map((path, i) => (
             <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -277,7 +392,7 @@ function JobStepPanel({
                 <AuroraInput
                   mono
                   value={path}
-                  placeholder="plan/spec.md"
+                  placeholder={t('step.contextPlaceholder', 'plan/spec.md')}
                   onChange={(v) => patch({ context: (step.context ?? []).map((c, j) => (j === i ? v : c)) })}
                 />
               </div>
@@ -291,6 +406,20 @@ function JobStepPanel({
             </div>
           ))}
         </div>
+        {pickerOpen && (
+          <FileTreePicker
+            isOpen={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            title={t('step.browseTitle', 'Attach context — {{project}}', { project: selectedProject })}
+            eyebrow="CONTEXT"
+            fileTree={pickerTree}
+            initialSelected={(step.context ?? []).filter((c) => c.trim().length > 0)}
+            onConfirm={(paths) => {
+              patch({ context: paths });
+              setPickerOpen(false);
+            }}
+          />
+        )}
       </div>
       {stepIndex > 0 && <EdgeConditionField step={step} def={def} onChange={onChange} />}
     </>

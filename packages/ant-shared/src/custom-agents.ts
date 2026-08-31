@@ -136,6 +136,36 @@ export interface IntentHooksValidationOptions {
 }
 
 /**
+ * Structural rules for one artifact glob (H2/H3/H5 — bounded length, posix
+ * relative shape, charset, whole-segment `**`). The vocabulary is shared by
+ * `hooks.stop` artifact declarations and pipeline context-pin globs; `label`
+ * prefixes the error messages so each surface keeps its own framing.
+ * Returns null when valid.
+ */
+export function validateArtifactGlob(v: string, label = 'hooks.stop artifact'): string | null {
+  if (v.length > ARTIFACT_GLOB_MAX) {
+    return `${label} glob exceeds ${ARTIFACT_GLOB_MAX} chars`;
+  }
+  if (v.includes('\\')) {
+    return `${label} "${v}" must use posix separators (no backslashes)`;
+  }
+  if (v.startsWith('/')) {
+    return `${label} "${v}" must be relative to the artifact root (no leading /)`;
+  }
+  const segments = v.split('/');
+  if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+    return `${label} "${v}" has an empty, "." or ".." path segment`;
+  }
+  if (!ARTIFACT_GLOB_CHARSET.test(v)) {
+    return `${label} "${v}" has characters outside [A-Za-z0-9._-/*]`;
+  }
+  if (segments.some((s) => s.includes('**') && s !== '**')) {
+    return `${label} "${v}": "**" must stand as a whole path segment`;
+  }
+  return null;
+}
+
+/**
  * Validate + normalize one `hooks.stop` entry (the per-entry slice of H1–H6).
  * Returns the trimmed, key-canonical entry or an error message (no thrown
  * errors — the caller owns failure framing).
@@ -162,31 +192,10 @@ export function validateStopHookEntry(
   const v = value.trim();
 
   if (kind === 'artifact') {
-    // H2 — bounded length.
-    if (v.length > ARTIFACT_GLOB_MAX) {
-      return { error: `hooks.stop artifact glob exceeds ${ARTIFACT_GLOB_MAX} chars` };
-    }
-    // H3 — posix relative path shape: no backslashes, no leading '/',
-    // no empty/'.'/'..' segments (globs address the artifact root only).
-    if (v.includes('\\')) {
-      return { error: `hooks.stop artifact "${v}" must use posix separators (no backslashes)` };
-    }
-    if (v.startsWith('/')) {
-      return { error: `hooks.stop artifact "${v}" must be relative to the artifact root (no leading /)` };
-    }
-    const segments = v.split('/');
-    if (segments.some((s) => s === '' || s === '.' || s === '..')) {
-      return { error: `hooks.stop artifact "${v}" has an empty, "." or ".." path segment` };
-    }
-    // H5 — charset, and '**' only as a whole segment.
-    if (!ARTIFACT_GLOB_CHARSET.test(v)) {
-      return { error: `hooks.stop artifact "${v}" has characters outside [A-Za-z0-9._-/*]` };
-    }
-    if (segments.some((s) => s.includes('**') && s !== '**')) {
-      return { error: `hooks.stop artifact "${v}": "**" must stand as a whole path segment` };
-    }
+    const globErr = validateArtifactGlob(v);
+    if (globErr) return { error: globErr };
     // H4 — sessions/ is not writable by tools, so the hook could never hold.
-    if (segments[0] === 'sessions') {
+    if (v.split('/')[0] === 'sessions') {
       return {
         error: `hooks.stop artifact "${v}" targets sessions/ — a reserved, non-writable area (the hook could never be met)`,
       };

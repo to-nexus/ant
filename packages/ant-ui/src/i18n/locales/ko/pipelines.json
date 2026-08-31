@@ -154,8 +154,21 @@
     "noIntent": "없음 (잡이 결정)",
     "intentsUnavailable": "인텐트 카탈로그 파스 실패 — 에이전트 설정에서 정의를 고쳐주세요.",
     "directive": "지시문",
-    "directivePlaceholder": "이 run이 무엇을 해야 하나요?",
+    "directivePlaceholder": "이 run이 무엇을 해야 하나요? 비워두면 기본 지시문으로 실행됩니다.",
+    "templateVars": "템플릿 변수",
+    "templateVarsHint": "발화 시점에 실제 값으로 치환되어 지시문에 들어갑니다 — 커서 위치에 삽입됩니다.",
+    "templateVar": {
+      "fireDate": "발화 시각 (ISO)",
+      "fireEpoch": "발화 시각 (epoch ms)",
+      "runId": "실행 ID"
+    },
     "context": "컨텍스트 핀 (@ctx)",
+    "contextHint": "핀은 이 스텝이 발화되는 시점에 해석됩니다 — 선행 스텝이 생성할 파일 경로를 미리 지정할 수 있고, needs 순서상 선행 스텝 완료 후에 존재 검사를 통과하면 첨부됩니다.",
+    "contextPlaceholder": "plan/spec.md",
+    "browse": "찾아보기",
+    "browseTitle": "컨텍스트 첨부 — {{project}}",
+    "upstreamOutputs": "선행 스텝 산출물",
+    "upstreamOutputsHint": "이 글롭은 해당 스텝 인텐트의 stop-hook 산출물 계약입니다 — needs 순서와 stop-hook 강제로 이 스텝 실행 전 존재가 보장되며, 발화 시점에 실제 파일 경로로 확장됩니다.",
     "addContext": "추가",
     "removeContext": "핀 제거",
     "on": "이전 스텝이 …일 때 실행",
@@ -210,5 +223,13 @@
     "inMinutes": "{{n}}분 후",
     "inHours": "{{n}}시간 후",
     "inDays": "{{n}}일 후"
+  },
+  "cron": {
+    "everyNMinutes": "{{n}}분마다",
+    "everyNHours": "{{n}}시간마다 (:{{mm}})",
+    "hourly": "매시 {{mm}}분",
+    "daily": "매일 {{time}}",
+    "weekly": "매주 {{days}} {{time}}",
+    "monthly": "매월 {{day}}일 {{time}}"
   }
 }

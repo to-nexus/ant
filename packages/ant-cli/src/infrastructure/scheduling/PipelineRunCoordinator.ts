@@ -26,6 +26,7 @@
 
 import * as fs from 'fs';
 import {
+  defaultStepDirective,
   isApprovalStep,
   parseCustomJobRef,
   parsePipelineDuration,
@@ -371,6 +372,9 @@ export class PipelineRunCoordinator {
       undefined,
       resolved.builtinTools,
       resolved.scopeRoots,
+      // Glob pins (upstream stop-hook artifact contracts) expand here only —
+      // interactive @ctx stays concrete-path-only.
+      { expandContextGlobs: true },
     );
     if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
 
@@ -391,7 +395,10 @@ export class PipelineRunCoordinator {
     // Chat parity with the interactive execute path: the step's directive is
     // a durable, live-broadcast user_turn (pipeline-attributed), and the run's
     // FIRST step also carries a run-started notice on the same turn.
-    const directive = directiveOverride ?? this.renderDirective(step.directive, run);
+    // An empty/absent step directive dispatches the shared default — the
+    // definition (base docs + intent) is the work statement in that case.
+    const template = step.directive?.trim() ? step.directive : defaultStepDirective(step.intent);
+    const directive = directiveOverride ?? this.renderDirective(template, run);
     // Last common point before BOTH durable sinks (chat.jsonl append + universal
     // enqueue). The ingress caps are where the author/answerer sees the error;
     // this is where the axis is actually closed, because template expansion,
@@ -484,7 +491,7 @@ export class PipelineRunCoordinator {
       runId: run.runId,
       stepId: step.id,
       jobId,
-      detail: { turnId },
+      detail: { turnId, ...(meta.contextExpanded && { contextExpanded: meta.contextExpanded }) },
     });
   }
 

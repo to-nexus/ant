@@ -104,6 +104,40 @@ export async function resolveUniversalExecuteContext(
   return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots };
 }
 
+// Glob-pin expansion budgets (Authorization-budget doctrine: a dispatch must
+// not mint unbounded walk work or prompt payload). Per-pin keeps the newest
+// matches — a glob names a SET, so trimming it is degrade, not a silent drop
+// of explicit input; the total is a hard refusal because past it the prompt
+// band itself would be unbounded.
+const GLOB_PIN_MAX_MATCHES = 20;
+const GLOB_PIN_TOTAL_CONTEXT_MAX = 50;
+const GLOB_WALK_MAX_DEPTH = 32;
+const GLOB_WALK_MAX_ENTRIES = 5_000;
+
+/** Bounded artifact-root walk → artifact-relative posix file paths. */
+function walkArtifactFiles(rootAbs: string): string[] {
+  const out: string[] = [];
+  let entries = 0;
+  const visit = (dirAbs: string, relPrefix: string, depth: number): void => {
+    if (depth > GLOB_WALK_MAX_DEPTH || entries >= GLOB_WALK_MAX_ENTRIES) return;
+    let dirents: fs.Dirent[];
+    try {
+      dirents = fs.readdirSync(dirAbs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const d of dirents) {
+      if (entries >= GLOB_WALK_MAX_ENTRIES) return;
+      entries += 1;
+      const rel = relPrefix ? `${relPrefix}/${d.name}` : d.name;
+      if (d.isDirectory()) visit(path.join(dirAbs, d.name), rel, depth + 1);
+      else if (d.isFile()) out.push(rel);
+    }
+  };
+  visit(rootAbs, '', 0);
+  return out;
+}
+
 /**
  * Validate the explicit turn meta (`@intent:` / `@ctx:` / `@plan` mentions)
  * against the job's catalog and the AGENT PLANE (artifacts ∪ `pipeline-runs`
@@ -111,6 +145,11 @@ export async function resolveUniversalExecuteContext(
  * input is user intent — an unknown id is a 400 (`unknown-intent`), never a
  * silent drop (that contract belongs to the inference channel). `@plan` is
  * job-independent: a boolean per-turn flag, adopted only when strictly true.
+ *
+ * `expandContextGlobs` (pipeline dispatch only — interactive `@ctx` stays
+ * concrete-path-only) expands glob pins (`hooks.stop` artifact vocabulary)
+ * into concrete artifact paths, newest-mtime-first, before the per-path
+ * checks. Zero matches fail like a missing concrete pin.
  */
 export async function validateUniversalTurnMeta(
   containerPath: string,
@@ -120,15 +159,65 @@ export async function validateUniversalTurnMeta(
   rawPlan?: unknown,
   builtinTools?: readonly string[],
   scopeRoots: CustomAgentScopeRoot[] = [],
+  opts: { expandContextGlobs?: boolean } = {},
 ): Promise<
-  | { ok: true; meta: { intents: string[]; context: string[]; plan?: boolean } | null }
+  | { ok: true; meta: { intents: string[]; context: string[]; plan?: boolean } | null; contextExpanded?: Record<string, number> }
   | { ok: false; status: number; error: string; code: string }
 > {
   const { GENERAL_INTENT } = await import('@ant/shared');
   const intents = Array.isArray(rawIntents) ? rawIntents.filter((i): i is string => typeof i === 'string') : [];
-  const context = Array.isArray(rawContext) ? rawContext.filter((c): c is string => typeof c === 'string') : [];
+  let context = Array.isArray(rawContext) ? rawContext.filter((c): c is string => typeof c === 'string') : [];
   const planRequested = rawPlan === true;
   if (intents.length === 0 && context.length === 0 && !planRequested) return { ok: true, meta: null };
+
+  let contextExpanded: Record<string, number> | undefined;
+  if (opts.expandContextGlobs && context.some((c) => c.includes('*'))) {
+    const { validateArtifactGlob, UNIVERSAL_PIPELINE_RUNS_DIRNAME } = await import('@ant/shared');
+    const { matchArtifactGlob } = await import('../customAgents/stopHooks');
+    const { UNIVERSAL_ARTIFACTS_DIRNAME } = await import('../customAgents/universalContainer');
+    // The walk root is the artifacts dir itself — `sessions/` and the
+    // `pipeline-runs` graft live under other physical roots, so a glob can
+    // only ever address the artifacts tree.
+    const artifactsRoot = path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME);
+    const files = walkArtifactFiles(artifactsRoot);
+    const expanded: string[] = [];
+    contextExpanded = {};
+    for (const rel of context) {
+      if (!rel.includes('*')) {
+        expanded.push(rel);
+        continue;
+      }
+      const glob = rel.trim();
+      const globErr =
+        validateArtifactGlob(glob, 'context') ??
+        (glob.split('/')[0] === 'sessions' || glob.split('/')[0] === UNIVERSAL_PIPELINE_RUNS_DIRNAME
+          ? `context glob "${glob}" may only address the artifacts tree`
+          : null);
+      if (globErr) {
+        return { ok: false, status: 400, error: `Invalid context glob: "${rel}" (${globErr})`, code: 'invalid-context-path' };
+      }
+      const matches = files
+        .filter((f) => matchArtifactGlob(glob, f))
+        .map((f) => ({ f, mtime: fs.statSync(path.join(artifactsRoot, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, GLOB_PIN_MAX_MATCHES)
+        .map((m) => m.f);
+      if (matches.length === 0) {
+        return { ok: false, status: 400, error: `Context file not found for glob: "${rel}"`, code: 'invalid-context-path' };
+      }
+      contextExpanded[glob] = matches.length;
+      expanded.push(...matches);
+    }
+    context = [...new Set(expanded)];
+    if (context.length > GLOB_PIN_TOTAL_CONTEXT_MAX) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Context expands to ${context.length} files (max ${GLOB_PIN_TOTAL_CONTEXT_MAX}) — narrow the globs`,
+        code: 'invalid-context-path',
+      };
+    }
+  }
 
   // A run binds at most ONE intent — the intent is the atomic unit of work
   // (completion contract, schedule node). Checked on the deduped set so a
@@ -202,6 +291,7 @@ export async function validateUniversalTurnMeta(
       context: [...new Set(context)],
       ...(planRequested && { plan: true }),
     },
+    ...(contextExpanded && { contextExpanded }),
   };
 }
 

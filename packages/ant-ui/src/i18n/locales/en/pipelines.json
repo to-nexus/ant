@@ -154,8 +154,21 @@
     "noIntent": "None (job decides)",
     "intentsUnavailable": "Intent catalog failed to parse — fix the definition in Agent Settings.",
     "directive": "Directive",
-    "directivePlaceholder": "What should this run do?",
+    "directivePlaceholder": "What should this run do? Leave empty to run the default directive.",
+    "templateVars": "Template variables",
+    "templateVarsHint": "Substituted with the actual values when the schedule fires — insert at the cursor.",
+    "templateVar": {
+      "fireDate": "Fire time (ISO)",
+      "fireEpoch": "Fire time (epoch ms)",
+      "runId": "Run id"
+    },
     "context": "Context pins (@ctx)",
+    "contextHint": "Pins are resolved when this step fires — you can pre-pin a path an earlier step will create; needs-ordering means it is existence-checked only after that step finished.",
+    "contextPlaceholder": "plan/spec.md",
+    "browse": "Browse",
+    "browseTitle": "Attach context — {{project}}",
+    "upstreamOutputs": "Upstream step outputs",
+    "upstreamOutputsHint": "Each glob is that step intent's stop-hook output contract — needs-ordering and stop-hook enforcement guarantee it exists before this step runs; it expands to the actual files at fire time.",
     "addContext": "Add",
     "removeContext": "Remove pin",
     "on": "Run when the previous step…",
@@ -210,5 +223,13 @@
     "inMinutes": "in {{n}}m",
     "inHours": "in {{n}}h",
     "inDays": "in {{n}}d"
+  },
+  "cron": {
+    "everyNMinutes": "Every {{n}} minutes",
+    "everyNHours": "Every {{n}} hours at :{{mm}}",
+    "hourly": "Every hour at :{{mm}}",
+    "daily": "Every day at {{time}}",
+    "weekly": "Every {{days}} at {{time}}",
+    "monthly": "On day {{day}} of every month at {{time}}"
   }
 }

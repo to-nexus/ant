@@ -26,6 +26,7 @@ import { OrgAccessCard } from '../shared/org/OrgAccessCard';
 import { PromoteZone } from '../shared/org/PromoteZone';
 import { updatePipelineEditors } from '@/infrastructure/http/api/pipelines';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
+import { describeCron } from './cronDescribe';
 import { StepInspector } from './StepInspector';
 import { PipelineExecutionView } from './PipelineExecutionView';
 import { TRIGGER_NODE_ID, insertStepAfter, makeGateStep, makeJobStep } from './draft';
@@ -38,7 +39,7 @@ const HeaderDivider = () => (
 );
 
 export function PipelineWorkspace() {
-  const { t } = useTranslation('pipelines');
+  const { t, i18n } = useTranslation('pipelines');
   const draft = useStore((s) => s.pipelineDraft);
   const saved = useStore((s) => s.pipelineSavedDef);
   const draftIsNew = useStore((s) => s.pipelineDraftIsNew);
@@ -104,7 +105,7 @@ export function PipelineWorkspace() {
     setPipelineDraft(next);
   };
 
-  const cronSummary = `${draft.on.schedule.cron}${draft.on.schedule.tz ? ` · ${draft.on.schedule.tz}` : ''}`;
+  const cronSummary = describeCron(draft.on.schedule.cron, draft.on.schedule.tz, t, i18n.language);
 
   const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate') => {
     if (!editable) return;

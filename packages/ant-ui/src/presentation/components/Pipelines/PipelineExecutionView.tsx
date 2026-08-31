@@ -20,6 +20,7 @@ import { useStore } from '@/domain/store';
 import { Badge, Button } from '../aurora';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
+import { describeCron } from './cronDescribe';
 import { ActivationRunHistory } from './ActivationRunHistory';
 
 export interface PipelineExecutionViewProps {
@@ -30,7 +31,7 @@ export interface PipelineExecutionViewProps {
 }
 
 export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: PipelineExecutionViewProps) {
-  const { t } = useTranslation('pipelines');
+  const { t, i18n } = useTranslation('pipelines');
   const activatableProjects = useStore((s) => s.pipelineActivatableProjects);
   const activationError = useStore((s) => s.pipelineActivationError);
   const selectedProject = useStore((s) => s.selectedProject);
@@ -52,7 +53,7 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
 
   const activations = entry?.activations ?? [];
   const enabled = entry?.enabled ?? false;
-  const cronSummary = `${def.on.schedule.cron}${def.on.schedule.tz ? ` · ${def.on.schedule.tz}` : ''}`;
+  const cronSummary = describeCron(def.on.schedule.cron, def.on.schedule.tz, t, i18n.language);
 
   const projectNameOf = useMemo(() => {
     const names = new Map(activatableProjects.map((p) => [p.id, p.name]));

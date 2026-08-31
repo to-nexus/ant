@@ -24,7 +24,7 @@
  * store throws, the HTTP gate answers 400, the editor form disables saving.
  */
 
-import { parseCustomJobRef, isValidCustomId, GENERAL_INTENT } from './custom-agents';
+import { parseCustomJobRef, isValidCustomId, validateArtifactGlob, GENERAL_INTENT } from './custom-agents';
 import { DIRECTIVE_MAX_CHARS } from './session-log';
 import type { CustomAgentOrgPermissions } from './custom-agents';
 
@@ -74,9 +74,18 @@ export interface JobStepDef {
   customJobRef: string;
   /** 0..1 intent pinned at registration time — never runtime-classified. */
   intent?: string;
-  /** Work statement for the run. Template vars: see PIPELINE_TEMPLATE_VARS. */
-  directive: string;
-  /** `@ctx` pins — container-relative artifact paths, existence-checked at dispatch. */
+  /**
+   * Work statement for the run. Template vars: see PIPELINE_TEMPLATE_VARS.
+   * Optional — omitted/empty means the dispatcher synthesizes
+   * `defaultStepDirective(intent)` at fire time.
+   */
+  directive?: string;
+  /**
+   * `@ctx` pins — container-relative artifact paths or artifact globs
+   * (`hooks.stop` glob vocabulary). Globs address the artifacts root only and
+   * are expanded into concrete paths at dispatch; concrete paths are
+   * existence-checked at dispatch.
+   */
   context?: string[];
   /** Upstream step ids. Omitted = the previous step in file order. */
   needs?: string[];
@@ -246,6 +255,21 @@ export interface ActivePipelineInfo {
  */
 export const PIPELINE_TEMPLATE_VARS = ['trigger.fireDate', 'trigger.fireEpoch', 'run.id'] as const;
 export type PipelineTemplateVar = (typeof PIPELINE_TEMPLATE_VARS)[number];
+
+/**
+ * Work statement synthesized when a job step declares no directive. English
+ * by doctrine (universal directives are English-form; the FE only hints that
+ * the default applies). Kept consciously aligned with the actions-tab BUILD
+ * template (`ant-ui Actions/buildDirective.ts` — the same "no further input,
+ * the definition is the specification" contract), but the two surfaces
+ * deliberately do not share code: that one is a localized UI string, this one
+ * is the dispatch-time fallback with a single owner here.
+ */
+export function defaultStepDirective(intentId?: string): string {
+  return intentId && intentId !== GENERAL_INTENT
+    ? `Please run the "${intentId}" intent. There is no further input beyond this request — treat the intent's own definition as the complete specification and carry it out end to end.`
+    : "This is a scheduled run with no further input. Consult this job's own definition — its base docs and intent catalog — select the applicable work, and carry it out end to end.";
+}
 
 /** Parse `{n}m|h|d` into milliseconds. Returns null on malformed input. */
 export function parsePipelineDuration(raw: string | undefined | null): number | null {
@@ -704,15 +728,18 @@ export function validatePipelineDef(
       if (typeof rawStep.customJobRef !== 'string' || parseCustomJobRef(rawStep.customJobRef) === null) {
         errors.push(`step "${stepId}": customJobRef must be "{agentId}/{jobId}" (got: ${String(rawStep.customJobRef)})`);
       }
-      if (typeof rawStep.directive !== 'string' || rawStep.directive.trim().length === 0) {
-        errors.push(`step "${stepId}": directive must be a non-empty string`);
-      } else if (rawStep.directive.length > DIRECTIVE_MAX_CHARS) {
-        // Same ceiling the direct HTTP job-start ingresses apply. A stored
-        // directive is dispatched on every firing, so refusing it at authoring
-        // time is the only place the author sees why (M-NEW-029).
-        errors.push(`step "${stepId}": directive must be at most ${DIRECTIVE_MAX_CHARS} characters`);
-      } else {
-        errors.push(...templateVarErrors(rawStep.directive, stepId));
+      // Optional — absent/blank dispatches defaultStepDirective(intent).
+      if (rawStep.directive !== undefined && typeof rawStep.directive !== 'string') {
+        errors.push(`step "${stepId}": directive must be a string (omit it to run the default directive)`);
+      } else if (typeof rawStep.directive === 'string' && rawStep.directive.trim().length > 0) {
+        if (rawStep.directive.length > DIRECTIVE_MAX_CHARS) {
+          // Same ceiling the direct HTTP job-start ingresses apply. A stored
+          // directive is dispatched on every firing, so refusing it at authoring
+          // time is the only place the author sees why (M-NEW-029).
+          errors.push(`step "${stepId}": directive must be at most ${DIRECTIVE_MAX_CHARS} characters`);
+        } else {
+          errors.push(...templateVarErrors(rawStep.directive, stepId));
+        }
       }
       if (rawStep.intent !== undefined) {
         if (typeof rawStep.intent !== 'string' || (!isValidCustomId(rawStep.intent) && rawStep.intent !== GENERAL_INTENT)) {
@@ -722,6 +749,19 @@ export function validatePipelineDef(
       if (rawStep.context !== undefined) {
         if (!Array.isArray(rawStep.context) || rawStep.context.some((c) => typeof c !== 'string' || c.trim().length === 0)) {
           errors.push(`step "${stepId}": context must be an array of non-empty paths`);
+        } else {
+          // Glob pins share the hooks.stop artifact vocabulary; concrete
+          // paths stay loose here and are judged at dispatch, as before.
+          for (const pin of rawStep.context as string[]) {
+            const v = pin.trim();
+            if (!v.includes('*')) continue;
+            const globErr = validateArtifactGlob(v, `step "${stepId}": context`);
+            if (globErr) {
+              errors.push(globErr);
+            } else if (v.split('/')[0] === 'sessions') {
+              errors.push(`step "${stepId}": context glob "${v}" targets sessions/ — a reserved area that cannot be attached`);
+            }
+          }
         }
       }
     }

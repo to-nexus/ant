@@ -82,7 +82,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNo
       const gate = isApprovalStep(step);
       const invalid = gate
         ? step.prompt.trim().length === 0
-        : step.customJobRef.trim().length === 0 || step.directive.trim().length === 0;
+        : step.customJobRef.trim().length === 0;
       // Agent name / job name each on their own line — display names resolved
       // from the account catalog, raw ids as the graceful fallback.
       let title: string;

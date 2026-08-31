@@ -41,6 +41,22 @@ describe('single dispatch owner', () => {
     expect(coordinator).toMatch(/checkStartCredits/);
   });
 
+  it('an empty step directive dispatches the shared default (single owner in @ant/shared)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    // The synthesized template is what renderDirective and the chat user_turn see.
+    expect(coordinator).toMatch(/defaultStepDirective\(step\.intent\)/);
+  });
+
+  it('glob pin expansion is armed by the coordinator only — interactive @ctx stays concrete-path-only', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/expandContextGlobs:\s*true/);
+    const gate = read('core/scheduling/UniversalDispatchGate.ts');
+    expect(gate).toMatch(/expandContextGlobs/);
+    // The HTTP route never passes the flag (accept-gate call sites unchanged).
+    const routes = read('periphery/adapters/http/routes/job.routes.ts');
+    expect(routes).not.toMatch(/expandContextGlobs/);
+  });
+
   it('the coordinator has chat/tracker parity with the HTTP path (user turn before enqueue, stateTracker forwarded)', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
     expect(coordinator).toMatch(/appendUserTurn/);

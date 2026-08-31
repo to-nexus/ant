@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
 function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -84,6 +84,17 @@ describe('validatePipelineDef — structural rules', () => {
         { id: 'c', customJobRef: 'x/c', directive: 'c', needs: ['a'], on: 'failure' },
       ],
     })],
+    // Directive is optional — an empty step dispatches defaultStepDirective.
+    ['step with no directive key', baseDef({
+      steps: [{ id: 'collect', customJobRef: 'research/collect' }],
+    })],
+    ['step with an empty directive', baseDef({
+      steps: [{ id: 'collect', customJobRef: 'research/collect', directive: '' }],
+    })],
+    // Glob pins share the hooks.stop artifact vocabulary.
+    ['context glob pin', baseDef({
+      steps: [{ id: 'collect', customJobRef: 'research/collect', directive: 'x', context: ['reports/**', 'plan/spec.md'] }],
+    })],
   ];
 
   it.each(valid)('accepts: %s', (_label, def) => {
@@ -126,12 +137,41 @@ describe('validatePipelineDef — structural rules', () => {
       { id: 'g', type: 'approval', prompt: 'p', timeout: { after: 'tomorrow', onTimeout: 'reject' } },
     ] }), /duration like/],
     ['zero steps', baseDef({ steps: [] }), /non-empty array/],
+    ['non-string directive', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 42 }] }), /directive must be a string/],
+    ['context glob with .. segment', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', context: ['../*.md'] }] }), /empty, "\." or "\.\." path segment/],
+    ['context glob with backslash', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', context: ['reports\\*.md'] }] }), /posix separators/],
+    ['context glob targeting sessions/', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', context: ['sessions/**'] }] }), /targets sessions\//],
+    ['context glob over the length cap', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', context: [`${'d/'.repeat(120)}*`] }] }), /glob exceeds/],
   ];
 
   it.each(invalid)('rejects: %s', (_label, def, pattern) => {
     const errors = validatePipelineDef(def);
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.join('\n')).toMatch(pattern);
+  });
+});
+
+describe('defaultStepDirective — the empty-directive dispatch fallback', () => {
+  it('names the pinned intent', () => {
+    const text = defaultStepDirective('gather');
+    expect(text).toContain('"gather"');
+    expect(text.length).toBeGreaterThan(0);
+    expect(text.length).toBeLessThanOrEqual(DIRECTIVE_MAX_CHARS);
+  });
+
+  it('falls back to the definition-as-specification form without an intent', () => {
+    const text = defaultStepDirective(undefined);
+    expect(text.trim().length).toBeGreaterThan(0);
+    expect(text).not.toContain('undefined');
+  });
+
+  it('treats the reserved general intent as absent', () => {
+    expect(defaultStepDirective('general')).toBe(defaultStepDirective(undefined));
+  });
+
+  it('carries no template vars (renderDirective must be a no-op on it)', () => {
+    expect(defaultStepDirective('gather')).not.toMatch(/\{\{/);
+    expect(defaultStepDirective(undefined)).not.toMatch(/\{\{/);
   });
 });
 

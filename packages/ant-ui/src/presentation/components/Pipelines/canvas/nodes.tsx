@@ -210,7 +210,7 @@ function NodeHeader({ icon, title, subtitle, chip, invalid }: { icon: React.Reac
               color: 'var(--violet-500)',
             }}
           >
-            @{chip}
+            {chip}
           </span>
         )}
       </div>

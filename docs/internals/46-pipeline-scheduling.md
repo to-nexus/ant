@@ -99,6 +99,21 @@ ignored knob works. Directive templating is a whitelist substitution
 (`{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`, `{{run.id}}`), never a
 template engine.
 
+A step's `directive` is **optional**: an empty/absent one dispatches
+`defaultStepDirective(intent)` (shared, English — single owner in
+`@ant/shared/pipeline.ts`, synthesized by the coordinator before
+`renderDirective`; the FE only hints that the default applies). A step's
+`context` pins are container-relative paths **or artifact globs** in the
+`hooks.stop` artifact vocabulary (`validateArtifactGlob`) — a glob addresses
+the artifacts tree only and is expanded into concrete paths (newest-first,
+bounded) inside `validateUniversalTurnMeta` under the coordinator's
+`expandContextGlobs` flag. One owner; the interactive `@ctx` ingress never
+passes the flag, so chat pins stay concrete-path-only. Zero matches fail the
+step with the same `invalid-context-path` shape as a missing concrete pin.
+This is the static chaining channel — an upstream step's stop-hook globs ARE
+its output contract, so the FE suggests them as pins (`upstreamOutputs.ts`);
+it is orthogonal to (and does not consume) the reserved `{{steps.*}}` axis.
+
 Cron parsing is server-only (`core/pipelines/cron.ts`, `cron-parser@4` — the
 same major BullMQ uses internally, so the preview and the firing cannot
 drift). `@ant/shared` stays dependency-free by package doctrine, which is why
@@ -519,7 +534,11 @@ none is needed — the API takes `{ id, def }` as JSON, and the agent composes
 - **Silently ignoring a definition key.** Reserved knobs get an explicit
   "not supported yet" validation error.
 - **Cron parsing in the FE or in `@ant/shared`.** Server-side only
-  (`core/pipelines/cron.ts`); the FE round-trips `preview-fires`.
+  (`core/pipelines/cron.ts`); the FE round-trips `preview-fires`. A
+  presentational describer (`ant-ui Pipelines/cronDescribe.ts`) that
+  pattern-matches the expression TEXT for display is fine — the ban is on
+  fire-time computation, and anything the describer does not recognize falls
+  back to the raw expression.
 - **Storing tokens for scheduled identity.** Owner coordinates only.
 - **Folding the pipeline exclusion gate into `decideProjectJobGate`.** It is
   an orthogonal axis (project ownership, not project×jobType) — a separate

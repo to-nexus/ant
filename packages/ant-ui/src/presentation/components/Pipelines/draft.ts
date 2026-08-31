@@ -34,7 +34,8 @@ export function uniqueStepId(def: PipelineDef, base: string): string {
 }
 
 export function makeJobStep(def: PipelineDef): JobStepDef {
-  return { id: uniqueStepId(def, 'step'), customJobRef: '', directive: '' };
+  // No directive by default — an empty step dispatches the shared default.
+  return { id: uniqueStepId(def, 'step'), customJobRef: '' };
 }
 
 export function makeGateStep(def: PipelineDef): ApprovalStepDef {
