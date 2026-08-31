@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import * as path from 'node:path';
 import { UPLOAD_LIMITS } from '../../src/core/config/uploadLimits.js';
 
@@ -55,6 +55,14 @@ vi.mock('../../src/periphery/adapters/http/middleware/jwtAuth', async (importOri
 
 vi.mock('../../src/periphery/adapters/http/middleware/requireOnboardedJwt', () => ({
   createRequireOnboardedJwt: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
+vi.mock('../../src/periphery/adapters/http/middleware/requireApprovedAccount', () => ({
+  createRequireApprovedAccount: () => {
+    order.push('approval-guard');
+    return (_req: unknown, _res: unknown, next: () => void) => next();
+  },
+  ADMIN_SURFACE_PREFIX: '/admin',
 }));
 
 describe('unauthenticated requests cannot spend the full body budget (M-010)', () => {
@@ -118,7 +126,7 @@ describe('unauthenticated requests cannot spend the full body budget (M-010)', (
     };
 
     // Authenticated surface: the 100kb parser must not touch it.
-    expect(probe({ path: '/api/account/agents/a1/file', method: 'PUT' })).not.toContain('json:100kb');
+    expect(probe({ path: '/api/definitions/agents/a1/file', method: 'PUT' })).not.toContain('json:100kb');
     // Method-aware: a public GET path does not admit a POST body (M-010 core).
     expect(probe({ path: '/api/health', method: 'POST' })).not.toContain('json:100kb');
     // Public request: small parser serves it.
@@ -471,5 +479,95 @@ describe('actionMetadata bounds the SERIALIZED OBJECT, not only known fields', (
         actionMetadata: { target: full, refs: full, context: full },
       }).success,
     ).toBe(true);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// An unapproved identity reaches no router
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Account approval is an identity verdict, so it bounds the whole authenticated
+ * surface rather than the compute-start handlers that used to carry it. What is
+ * pinned here is the SET, not a route list: the second case reads the codebase
+ * and requires the guard wherever a JWT is verified, so adding a fifth server
+ * without it fails the build rather than quietly widening the hole.
+ */
+describe('an unapproved account reaches no router', () => {
+  beforeEach(() => {
+    order.length = 0;
+    invoked.length = 0;
+  });
+
+  it('mounts the approval guard after authentication and before the full-size parser', async () => {
+    const { ServerConfigurator } = await import(
+      '../../src/periphery/adapters/http/express/config/ServerConfigurator.js'
+    );
+    const app: any = { use: vi.fn(), set: vi.fn(), get: vi.fn() };
+    new ServerConfigurator(
+      { mode: 'cloud' } as any,
+      {
+        authService: {} as any,
+        jwtService: { verify: () => ({}) } as any,
+        previewService: undefined,
+        ideOrchestrator: undefined,
+      } as any,
+    ).configure(app);
+
+    const auth = order.indexOf('jwt-auth');
+    const full = order.indexOf('json:50mb');
+    // Two mounts: the `/ide/` proxy lane (which is served before
+    // `setupAuthentication` and so never reaches the `/api` mount) and `/api`.
+    expect(order.filter((s) => s === 'approval-guard')).toHaveLength(2);
+    expect(order.indexOf('approval-guard')).toBeLessThan(auth);
+    expect(order.lastIndexOf('approval-guard')).toBeGreaterThan(auth);
+    expect(order.lastIndexOf('approval-guard')).toBeLessThan(full);
+  });
+
+  it('every server that verifies a JWT also mounts the guard (the SET, not a remembered list)', () => {
+    const srcRoot = path.resolve(__dirname, '../../src');
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts')) files.push(full);
+      }
+    };
+    walk(srcRoot);
+
+    // Match the MOUNT, not a mention: `.use(` in front of the factory. Comment
+    // stripping is not an option here — a backtick path like `/bridge/*` inside
+    // a doc comment opens a false block comment and swallows the real code.
+    const MOUNTS_AUTH = /\.use\(\s*(?:'[^']*',\s*)?createJwtAuthMiddleware\s*\(/;
+    const MOUNTS_GUARD = /\.use\(\s*(?:'[^']*',\s*)?createRequireApprovedAccount\s*\(/;
+
+    const verifiers = files.filter((f) => MOUNTS_AUTH.test(readFileSync(f, 'utf8')));
+
+    // ant-api, ant-realtime, ant-preview — if this drops to 2, a server lost
+    // its authentication; if it grows, the new one must carry the guard too.
+    expect(verifiers.length).toBeGreaterThanOrEqual(3);
+
+    const missing = verifiers.filter((f) => !MOUNTS_GUARD.test(readFileSync(f, 'utf8')));
+    expect(missing.map((f) => path.relative(srcRoot, f))).toEqual([]);
+  });
+
+  it('no route handler re-judges approval — the surface guard is the only HTTP owner', () => {
+    const routesDir = path.resolve(__dirname, '../../src/periphery/adapters/http/routes');
+    const offenders: string[] = [];
+    for (const entry of readdirSync(routesDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.routes.ts')) continue;
+      const src = readFileSync(path.join(routesDir, entry.name), 'utf8');
+      if (/\bcheckApproval\s*\(|\bgetUserApproval\s*\(/.test(src)) offenders.push(entry.name);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('the WebSocket upgrade judges approval too — it bypasses Express entirely', () => {
+    const src = readFileSync(
+      path.resolve(__dirname, '../../src/infrastructure/realtime/BridgeWebSocketHandler.ts'),
+      'utf8',
+    );
+    expect(src).toMatch(/checkApproval\s*\(/);
   });
 });

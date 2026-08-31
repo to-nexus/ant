@@ -1,6 +1,6 @@
 /**
  * OrgBanners (Phase 1, §3–§4) — the org join surface strip rendered right
- * below ApprovalBanner. Self-gating: cloud mode ∧ authenticated. Static OSS
+ * below the nav bar. Self-gating: cloud mode ∧ authenticated. Static OSS
  * component (no slot).
  *
  * Priority: invite banner > domain-join banner (the domain banner hides

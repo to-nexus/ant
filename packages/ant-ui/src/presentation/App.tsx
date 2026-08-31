@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { AppNavBar } from '@/presentation/components/AppNavBar';
-import { ApprovalBanner } from '@/presentation/components/common/ApprovalBanner';
+import { AccountApprovalGate } from '@/presentation/components/auth/AccountApprovalGate';
 import { OrgBanners } from '@/presentation/components/org/OrgBanners';
 import { fetchFeatureSession } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
@@ -46,7 +46,7 @@ import {
 import { capturePairingStateFromUrl } from '@/application/auth/desktopPairing';
 import { fetchAuthMeDetailed, API_BASE } from '@/infrastructure/http/api';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
-import { selectIsAuthBlocked, selectIsAuthenticated, selectServerMode } from '@/domain/store/selectors';
+import { selectIsAuthBlocked, selectIsAuthenticated, selectServerMode, selectShowApprovalGate } from '@/domain/store/selectors';
 import {
   getAuthBroadcaster,
   markSessionExpired,
@@ -321,6 +321,7 @@ function AppShell() {
   // always false in local and silently swallows the QuickStart entry.
   const isAuthenticated = useStore(selectIsAuthenticated);
   const authStatusValue = useStore((state) => state.authStatus);
+  const showApprovalGate = useStore((state) => selectShowApprovalGate(state));
   const needsOnboarding = useStore((state) => state.needsOnboarding);
   const projects = useStore((state) => state.projects);
   const projectsLoaded = useStore(selectProjectsLoaded);
@@ -555,6 +556,24 @@ function AppShell() {
     );
   }
 
+  // Account approval — replaces the whole shell, so an unapproved account never
+  // reaches QuickStart, the wizard, or any other entry surface. It must come
+  // BEFORE the `!projectsLoaded` half of the boot gate below: `/api/projects`
+  // now 403s for such an account (and `selectIsAuthBlocked` parks the fetch
+  // outright), so `projectsLoaded` never flips and that branch would spin
+  // forever. The pre-verify window is the selector's own business — it reads
+  // false while `authStatus === 'verifying'`, so this falls through to the
+  // spinner below rather than flashing the gate.
+  if (showApprovalGate) {
+    return (
+      <ToastProvider>
+        <AlertModalProvider>
+          <AccountApprovalGate />
+        </AlertModalProvider>
+      </ToastProvider>
+    );
+  }
+
   // ✅ Boot gate: hide the normal UI while either
   //   (a) cloud-mode JWT verification is still in flight (`authStatus === 'verifying'`), or
   //   (b) authenticated user is set but projects haven't loaded yet.
@@ -624,7 +643,6 @@ function AppShell() {
       >
         {/* ✅ GNB uses hooks directly - no props needed */}
         <AppNavBar />
-        <ApprovalBanner />
         <OrgBanners />
 
         {/* Main Layout — both views are always mounted; `display` toggles

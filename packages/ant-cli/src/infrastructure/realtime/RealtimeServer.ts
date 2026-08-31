@@ -20,6 +20,7 @@ import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/c
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
 import { createSelfApiScopeGuard } from '../../periphery/adapters/http/middleware/selfApiScopeGuard';
+import { createRequireApprovedAccount } from '../../periphery/adapters/http/middleware/requireApprovedAccount';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { createSSERoutes } from '../../periphery/adapters/http/routes';
 import { 
@@ -101,7 +102,7 @@ export class RealtimeServer {
           logger.warn(`🔌 [BridgeDiag] upgrade event: path=${upgradeUrl} upgrade=${hasUpgradeHeader} auth=${hasAuthHeader} shouldHandle=${shouldHandle}`, { component: 'RealtimeServer' });
 
           if (shouldHandle) {
-            this.bridgeHandler!.handleUpgrade(req, socket, head);
+            void this.bridgeHandler!.handleUpgrade(req, socket, head);
           } else {
             logger.warn(`🔌 [BridgeDiag] upgrade rejected — destroying socket: path=${upgradeUrl}`, { component: 'RealtimeServer' });
             socket.destroy();
@@ -166,6 +167,11 @@ export class RealtimeServer {
       // wholesale. Mounting the same guard rather than a bespoke refusal keeps
       // the rule in one place.
       this.app.use(createSelfApiScopeGuard());
+
+      // Account approval bounds every server that authenticates a session, not
+      // only the one that owns the job routes — otherwise a pending account
+      // still streams every SSE channel and reaches `/bridge/*`.
+      this.app.use(createRequireApprovedAccount());
 
       // Same-origin gate for cookie-authenticated state changes (H-NEW-001).
       this.app.use(createSameOriginGuard({

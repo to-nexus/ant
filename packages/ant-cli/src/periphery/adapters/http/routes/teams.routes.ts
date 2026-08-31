@@ -55,7 +55,6 @@ import {
   DOMAIN_NOT_FOUND,
   DOMAIN_NOT_VERIFIED,
   CONSUMER_DOMAIN_NOT_CLAIMABLE,
-  ACCOUNT_PENDING_APPROVAL,
   type OrgMembershipRole,
   type OrgInviteRole,
   type OrgMemberView,
@@ -180,20 +179,17 @@ export function createTeamsRoutes(deps: TeamsRoutesDeps): Router {
   // ========================================
 
   /**
-   * POST /api/organizations — create a team. Open to every APPROVED account
-   * (decision 5: open creation + post-hoc superadmin control). The caller
-   * becomes the owner. Activation stays a separate explicit
-   * `POST /auth/switch-org` — creation never silently switches context.
+   * POST /api/organizations — create a team. Open to every account that
+   * reaches this route (decision 5: open creation + post-hoc superadmin
+   * control); approval is bounded surface-wide by `requireApprovedAccount`, so
+   * an unapproved caller never arrives. The caller becomes the owner.
+   * Activation stays a separate explicit `POST /auth/switch-org` — creation
+   * never silently switches context.
    */
   router.post('/organizations', async (req: Request, res: Response) => {
     try {
       const caller = requireUser(req, res);
       if (!caller) return;
-
-      const approval = await repo.getUserApproval(caller.userId);
-      if (approval !== 'approved') {
-        return res.status(403).json({ error: 'Account is not approved.', code: ACCOUNT_PENDING_APPROVAL });
-      }
 
       const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
       if (!name) {

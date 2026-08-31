@@ -66,6 +66,7 @@ vi.stubGlobal('sessionStorage', memStorage());
 vi.stubGlobal('localStorage', memStorage());
 
 const APP_NAVBAR = path.resolve(__dirname, '..', '..', 'src', 'presentation', 'components', 'AppNavBar.tsx');
+const USE_SIGN_OUT = path.resolve(__dirname, '..', '..', 'src', 'application', 'hooks', 'ui', 'useSignOut.ts');
 
 function buildStore() {
   return create<any>((set, get, store) => ({
@@ -242,16 +243,30 @@ describe('clearUser cascade', () => {
 // ── No inline duplication at the call sites ──────────────────────────────────
 
 describe('AppNavBar delegates to the SSOTs', () => {
-  it('handleSignOut does not duplicate the cleanup inline', () => {
+  // The teardown itself moved into `useSignOut` when `AccountApprovalGate`
+  // gained a sign-out button (that screen mounts no nav bar). What must hold is
+  // unchanged: `clearUser()` is the whole cleanup, and no call site re-derives
+  // its cascade inline.
+  const NO_INLINE_CASCADE = [
+    /setProjects\(\[\]\)/,
+    /setSelectedProject\(undefined\)/,
+    /setSelectedFeature\(undefined\)/,
+    /\breset\(\)/,
+  ];
+
+  it('the sign-out procedure calls clearUser and nothing else', () => {
+    const src = readFileSync(USE_SIGN_OUT, 'utf-8');
+    expect(src).toMatch(/clearUser\(\)/);
+    for (const pattern of NO_INLINE_CASCADE) expect(src).not.toMatch(pattern);
+  });
+
+  it('handleSignOut delegates and duplicates no cleanup inline', () => {
     const src = readFileSync(APP_NAVBAR, 'utf-8');
     const match = src.match(/const\s+handleSignOut\s*=\s*async\s*\([\s\S]*?\)\s*=>\s*\{([\s\S]*?)\n\s\s\};/);
     expect(match, 'handleSignOut function should exist').toBeTruthy();
     const body = match![1];
-    expect(body).toMatch(/clearUser\(\)/);
-    expect(body).not.toMatch(/setProjects\(\[\]\)/);
-    expect(body).not.toMatch(/setSelectedProject\(undefined\)/);
-    expect(body).not.toMatch(/setSelectedFeature\(undefined\)/);
-    expect(body).not.toMatch(/\breset\(\)/);
+    expect(body).toMatch(/signOut\(\)/);
+    for (const pattern of NO_INLINE_CASCADE) expect(body).not.toMatch(pattern);
   });
 
   it('handleSwitchOrg goes through switchActiveOrg, not an inline reload', () => {

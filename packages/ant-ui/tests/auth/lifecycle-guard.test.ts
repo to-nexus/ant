@@ -69,6 +69,87 @@ describe('I1 — selectIsAuthBlocked SSOT', () => {
   });
 });
 
+/**
+ * I1b — the approval axis of the same SSOT, as a truth table over the real
+ * functions rather than source text. Every authenticated route now answers 403
+ * to an unapproved account, so `selectIsAuthBlocked` must park the protected
+ * fetches, and `selectShowApprovalGate` must decide the screen that replaces
+ * the shell — without either firing in the pre-verify window.
+ */
+describe('I1b — approval participates in the auth-blocked SSOT', () => {
+  const state = (over: Record<string, unknown> = {}) =>
+    ({
+      serverMode: { status: 'ready', data: 'cloud' },
+      userEmail: 'u@example.com',
+      authStatus: 'authenticated',
+      approvalStatus: undefined,
+      ...over,
+    }) as any;
+
+  it.each([
+    ['pending', true],
+    ['denied', true],
+    ['approved', false],
+    [undefined, false],
+  ])('approvalStatus=%s → blocked=%s', async (approvalStatus, blocked) => {
+    const { selectIsAuthBlocked } = await import('../../src/domain/store/selectors/auth');
+    expect(selectIsAuthBlocked(state({ approvalStatus }))).toBe(blocked);
+  });
+
+  it('local mode is never blocked, whatever the status says', async () => {
+    const { selectIsAuthBlocked } = await import('../../src/domain/store/selectors/auth');
+    const local = state({
+      serverMode: { status: 'ready', data: 'local' },
+      approvalStatus: 'pending',
+    });
+    expect(selectIsAuthBlocked(local)).toBe(false);
+  });
+
+  it.each([
+    ['pending', true],
+    ['denied', true],
+    ['approved', false],
+    [undefined, false],
+  ])('gate for approvalStatus=%s → %s', async (approvalStatus, shown) => {
+    const { selectShowApprovalGate } = await import('../../src/domain/store/selectors/auth');
+    expect(selectShowApprovalGate(state({ approvalStatus }))).toBe(shown);
+  });
+
+  it('the gate cannot flash before /auth/me lands, or when signed out, or in local mode', async () => {
+    const { selectShowApprovalGate } = await import('../../src/domain/store/selectors/auth');
+    expect(selectShowApprovalGate(state({ approvalStatus: 'pending', authStatus: 'verifying' }))).toBe(false);
+    expect(selectShowApprovalGate(state({ approvalStatus: 'pending', userEmail: null }))).toBe(false);
+    expect(
+      selectShowApprovalGate(
+        state({ approvalStatus: 'pending', serverMode: { status: 'ready', data: 'local' } }),
+      ),
+    ).toBe(false);
+  });
+
+  /**
+   * Ordering is load-bearing: with the fetch parked, `projectsLoaded` never
+   * flips, so a gate placed after the `!projectsLoaded` boot branch would spin
+   * forever, and one placed after QuickStart would show QuickStart to a pending
+   * account.
+   */
+  it('App.tsx renders the gate before the projects boot gate and before QuickStart', () => {
+    const src = readFileSync(path.join(SRC_ROOT, 'presentation', 'App.tsx'), 'utf-8');
+    const gate = src.indexOf('<AccountApprovalGate />');
+    // Anchor on the branches themselves — the bare identifiers also appear in
+    // the surrounding comments, which would make the comparison meaningless.
+    const boot = src.indexOf("if (authStatusValue === 'verifying' || (!!userEmail && !projectsLoaded))");
+    const quickStart = src.indexOf('if (shouldShowQuickStart || deferredShowQuickStart)');
+    expect(gate).toBeGreaterThan(-1);
+    expect(boot).toBeGreaterThan(-1);
+    expect(quickStart).toBeGreaterThan(-1);
+    expect(boot).toBeGreaterThan(gate);
+    expect(quickStart).toBeGreaterThan(gate);
+    // The banner it replaces is gone — it could only render inside a shell an
+    // unapproved account can no longer reach.
+    expect(src).not.toMatch(/ApprovalBanner/);
+  });
+});
+
 describe('I2 — lifecycle / sync surfaces consume the SSOT selector', () => {
   const consumers = [
     'domain/project-world/lifecycle.ts',

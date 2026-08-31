@@ -11,7 +11,7 @@ import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants'
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { assertJobAccess as assertJobAccessShared } from './helpers/jobAccess';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { checkApproval, approvalErrorCode, checkTeamMembership } from './helpers/approvalGate';
+import { checkTeamMembership } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob, readSessionTextBounded } from '../../../../core/utils/sessionPaths';
 import { writeSessionBounded, sessionWriteGuardOf } from '../../../../core/session/stateBudget';
 import { deriveResumableState } from '../../../../core/session/resumable';
@@ -501,25 +501,6 @@ export function createJobRoutes(deps: {
       // Universal is chat-driven only — no meta/directives plane in the container.
       const inputFile = (overrideDirective || universalCtx) ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
 
-      // Approval gate (stronger than credits): an unapproved account cannot
-      // start work. Re-checked every start, so admin revocation takes effect
-      // immediately. No-op on OSS/local (Noop repo → approved).
-      const notApprovedStart = await checkApproval(userContext);
-      if (notApprovedStart) {
-        const code = approvalErrorCode(notApprovedStart.status);
-        await emitConflictAssistantMessage(
-          projectId,
-          featureName,
-          effectiveTurnId,
-          `approval-${effectiveTurnId ?? Date.now()}`,
-          userContext,
-          code === 'ACCOUNT_DENIED'
-            ? '계정이 비활성화되었습니다. 관리자에게 문의해 주세요.'
-            : '관리자 승인 대기 중입니다. 승인 후 작업을 시작할 수 있습니다.',
-        );
-        return res.status(403).json({ error: 'Account is not approved.', code });
-      }
-
       // Stale-JWT blockade (Phase 1): re-check the live team membership row
       // before spawning work — a removed member's JWT stays valid for days.
       if (!(await checkTeamMembership(userContext))) {
@@ -643,11 +624,6 @@ export function createJobRoutes(deps: {
         return res.status(learnRejected.status).json({ error: learnRejected.error, code: learnRejected.code });
       }
 
-      // Approval gate — an unapproved account cannot start a learn job.
-      const notApprovedLearn = await checkApproval(userContext);
-      if (notApprovedLearn) {
-        return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedLearn.status) });
-      }
       if (!(await checkTeamMembership(userContext))) {
         return res
           .status(403)
@@ -1011,11 +987,6 @@ export function createJobRoutes(deps: {
         return res.status(deniedResume.code).json(deniedResume.body);
       }
 
-      // Approval gate — an unapproved account cannot resume a job either.
-      const notApprovedResume = await checkApproval(userContext);
-      if (notApprovedResume) {
-        return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedResume.status) });
-      }
       if (!(await checkTeamMembership(userContext))) {
         return res
           .status(403)
@@ -1301,11 +1272,6 @@ export function createJobRoutes(deps: {
         return res.status(deniedContinue.code).json(deniedContinue.body);
       }
 
-      // Approval gate — continue = resume-with-new-directive; same block.
-      const notApprovedContinue = await checkApproval(userContext);
-      if (notApprovedContinue) {
-        return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedContinue.status) });
-      }
       if (!(await checkTeamMembership(userContext))) {
         return res
           .status(403)

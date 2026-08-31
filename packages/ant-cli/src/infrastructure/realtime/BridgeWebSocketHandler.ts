@@ -26,6 +26,7 @@ import { BridgeSessionManager } from './BridgeSessionManager';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import { logger } from '../../utils/logger';
+import { checkApproval } from '../../periphery/adapters/http/routes/helpers/approvalGate';
 
 const COMPONENT = 'BridgeWS';
 
@@ -112,7 +113,7 @@ export class BridgeWebSocketHandler {
    * - Authenticated (Bearer JWT) → status 'connected', full MCP relay
    * - Unauthenticated (no/bad JWT) → status 'detected', probe-only
    */
-  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+  async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
     if (url.pathname !== BRIDGE_WS_PATH) {
       return;
@@ -136,6 +137,28 @@ export class BridgeWebSocketHandler {
       socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
       socket.destroy();
       return;
+    }
+
+    // This upgrade bypasses Express, so `requireApprovedAccount` never sees it.
+    // A desktop bearer outlives a status change by up to 90 days, which is
+    // exactly the window in which an unapproved account would otherwise keep a
+    // full MCP relay. Only authenticated peers are judged — an anonymous probe
+    // carries no identity and stays `detected`. After the cap block, so an
+    // unapproved peer cannot spend a Redis read per connection attempt.
+    if (!detected && authResult.userId) {
+      const notApproved = await checkApproval({
+        userId: authResult.userId,
+        organizationId: authResult.orgId ?? '',
+      });
+      if (notApproved) {
+        logger.warn(
+          `Bridge upgrade refused (approval): user=${authResult.userId} status=${notApproved.status}`,
+          { component: COMPONENT },
+        );
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
     }
 
     const client: BridgeClient = {

@@ -7,11 +7,10 @@ import { CreateTeamModal } from './auth/CreateTeamModal';
 import { LocalLlmBadge } from './pricing/LocalLlmBadge';
 import { Slot } from '@/presentation/extensions/slots';
 import { useStore } from '@/domain/store';
-import { OAUTH_BASE, API_BASE } from '@/infrastructure/http/api';
+import { OAUTH_BASE } from '@/infrastructure/http/api';
 import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
 import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
-import { runUnifiedLogout } from '@ant/auth-client';
-import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
+import { useSignOut } from '@/application/hooks/ui/useSignOut';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
 import { selectedSegmentStyle } from './aurora/selection';
@@ -43,7 +42,7 @@ export function AppNavBar({}: AppNavBarProps) {
   const orgDisplayLabel = useStore((state) => selectOrgDisplayLabel(state));
   const memberships = useStore((state) => state.memberships);
   const userPicture = useStore((state) => state.userPicture);
-  const clearUser = useStore((state) => state.clearUser);
+  const signOut = useSignOut();
   const serverMode = useStore((state) => selectServerMode(state));
   const userOrgKind = useStore((state) => state.userOrgKind);
   const pendingInvites = useStore((state) => state.pendingInvites);
@@ -93,25 +92,12 @@ export function AppNavBar({}: AppNavBarProps) {
     window.location.href = `${OAUTH_BASE()}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
 
-  // Handle sign out — runs the unified 5-step logout procedure (signoutAPI
-  // → clearUser cascade → broadcast → hard nav). `clearUser` cascades
-  // reset + projects clear + storage cleanup as a single SSOT
-  // (see authSlice.clearUser jsdoc). Hard-nav target: `VITE_ANT_SITE_URL`
-  // when configured, else `/` (logged-out welcome screen).
+  // Handle sign out — the unified 5-step logout procedure lives in
+  // `useSignOut` so the approval gate (which mounts no nav bar) runs the
+  // same sequence.
   const handleSignOut = async () => {
     setShowUserMenu(false);
-    const siteUrl = (import.meta.env.VITE_ANT_SITE_URL as string | undefined) ?? '/';
-    await runUnifiedLogout({
-      apiBase: API_BASE(),
-      destination: siteUrl,
-      broadcaster: getAuthBroadcaster(),
-      clearLocalState: () => clearUser(),
-      showSignoutFailureToast: () => {
-        console.warn(
-          '[Auth] Signed out locally; the server session may persist until the cookie expires.',
-        );
-      },
-    });
+    await signOut();
   };
 
   // Switch active org. The active org changes the workspace root, so a full

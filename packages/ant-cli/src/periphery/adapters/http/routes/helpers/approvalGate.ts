@@ -4,15 +4,26 @@ import { getInfrastructureFactory } from '../../../../../infrastructure/adapters
 import { logger } from '../../../../../utils/logger';
 
 /**
- * Pre-flight approval gate for STARTING / RESUMING a job or chat turn. Returns
- * `{ status }` when the account is not `approved` (caller maps to a 403), else
- * null (allow). Approval is an IDENTITY concern, not billing — it always
- * consults the organization repository port: local mode's Noop repo answers
- * `'approved'` (single code path, no capability short-circuit), and every
- * cloud-mode deployment (self-hosted or managed) gets the real Redis-backed
- * judgment. Non-fatal on read error — an infra blip must not lock everyone
- * out (Redis is the whole system's dependency anyway; if it's down, jobs
- * can't run regardless), mirroring the credit pre-flight's fail-open posture.
+ * The single read of the approval verdict: consult the organization-repository
+ * port, fail open on infra error. Returns `{ status }` when the account is not
+ * `approved` (caller maps that to a 403 / a failure reason), else null (allow).
+ *
+ * Three callers, one per plane that can admit an identity:
+ *  - `createRequireApprovedAccount` — the whole HTTP surface, on every server
+ *    that authenticates a cookie or bearer;
+ *  - `BridgeWebSocketHandler.handleUpgrade` — the WS upgrade bypasses Express;
+ *  - `PipelineRunCoordinator` — a cron tick is not a request at all.
+ *
+ * No route handler is a caller. Re-asking inside one would make a second owner
+ * of a verdict the surface guard has already answered.
+ *
+ * Approval is an IDENTITY concern, not billing — this always consults the
+ * organization repository port: local mode's Noop repo answers `'approved'`
+ * (single code path, no capability short-circuit), and every cloud-mode
+ * deployment (self-hosted or managed) gets the real Redis-backed judgment.
+ * Non-fatal on read error — an infra blip must not lock everyone out (Redis is
+ * the whole system's dependency anyway; if it's down, jobs can't run
+ * regardless), mirroring the credit pre-flight's fail-open posture.
  */
 export async function checkApproval(
   userContext: { userId: string; organizationId: string },

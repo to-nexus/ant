@@ -55,7 +55,10 @@ export function selectIsAuthenticated(state: StoreState): boolean {
  *   - BE mode unknown (system config not yet loaded) — conservative,
  *   - cloud mode + no `userEmail` (signed out / cleared), OR
  *   - cloud mode + `authStatus === 'verifying'` (mount-time `fetchAuthMe`
- *     is still in flight, so a stale `userEmail` is not yet validated).
+ *     is still in flight, so a stale `userEmail` is not yet validated), OR
+ *   - cloud mode + the account is not approved. Every authenticated route now
+ *     answers 403 to an unapproved account (`requireApprovedAccount`), so
+ *     without this the approval screen would sit in front of a 403 storm.
  *
  * Returns `false` (allow) otherwise. Local mode is never blocked here.
  *
@@ -73,18 +76,35 @@ export function selectIsAuthBlocked(state: StoreState): boolean {
   // Unknown mode → conservative cloud-block. The window is short (one
   // `/system/config` round-trip) and re-renders flip to `false` for local.
   if (!state.userEmail) return true;
-  return state.authStatus === 'verifying';
+  if (state.authStatus === 'verifying') return true;
+  return !selectIsApproved(state);
 }
 
 /**
  * Cloud account approval gate. `false` ONLY when the server explicitly reports
  * a non-approved status (`pending` / `denied`). Local mode, legacy servers, and
  * the pre-verify window all read `undefined` → approved (fail-open, matching the
- * BE gate's posture; the BE always re-checks at job/chat start).
+ * BE guard's posture; the BE re-checks every authenticated request).
  */
 export function selectIsApproved(state: StoreState): boolean {
   const s = state.approvalStatus;
   return s !== 'pending' && s !== 'denied';
+}
+
+/**
+ * Should the app shell be replaced by the account-approval screen?
+ *
+ * A state-driven branch rather than a URL route, so it covers every entry into
+ * the product with one predicate — the OAuth redirect, a deep link, QuickStart,
+ * the project wizard. `authStatus === 'verifying'` is excluded so the screen
+ * cannot flash during the mount-time `/auth/me`, and `approvalStatus`
+ * `undefined` already reads as approved.
+ */
+export function selectShowApprovalGate(state: StoreState): boolean {
+  if (selectServerMode(state) !== 'cloud') return false;
+  if (!state.userEmail) return false;
+  if (state.authStatus === 'verifying') return false;
+  return !selectIsApproved(state);
 }
 
 /** Role in the active org (3-role ladder), from memberships. */

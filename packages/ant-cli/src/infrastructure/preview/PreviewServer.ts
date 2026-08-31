@@ -43,6 +43,7 @@ import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/c
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, healthRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
+import { createRequireApprovedAccount } from '../../periphery/adapters/http/middleware/requireApprovedAccount';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import {
   extractForwardingContext,
@@ -1101,6 +1102,10 @@ export class PreviewServer {
       // The content listener is a different origin, so a document served there
       // cannot drive this API with the viewer's session (H-NEW-001).
       this.app.use(createSameOriginGuard());
+      // Every control-plane route here is `/projects/*` — starting previews,
+      // writing a feature's `.env`, deploying, claiming a custom domain. None of
+      // it is available to an unapproved account.
+      this.app.use(createRequireApprovedAccount());
       logger.info('JWT authentication enabled for Preview Server', { component: 'PreviewServer' });
     }
 

@@ -15,6 +15,7 @@ import {
 } from '../../middleware/ideNavTicket';
 import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
 import { createSelfApiScopeGuard } from '../../middleware/selfApiScopeGuard';
+import { createRequireApprovedAccount, ADMIN_SURFACE_PREFIX } from '../../middleware/requireApprovedAccount';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
 import { parseIDEKey } from '../../../../../infrastructure/state/redisKeyUtils';
@@ -261,6 +262,12 @@ export class ServerConfigurator {
         next();
       })().catch(next);
     });
+
+    // The `/ide/*` proxy authenticates itself above and is served by
+    // `setupProxyMiddleware` BEFORE `setupAuthentication` runs, so the `/api`
+    // mount below never sees it. Without this second mount, an account denied
+    // after its pod was started keeps a live file editor and terminal.
+    app.use('/ide/', createRequireApprovedAccount());
   }
 
   /**
@@ -336,6 +343,12 @@ export class ServerConfigurator {
     // surface. Mounts here — after verification, before every router — so no
     // route can be reached by a pinned token without passing it.
     app.use('/api', createSelfApiScopeGuard());
+
+    // Account approval is an identity verdict, so it bounds the whole surface
+    // rather than the handful of compute-start handlers that used to carry it.
+    // Public paths never reach here (no `req.user`), so the pending screen and
+    // sign-out stay reachable.
+    app.use('/api', createRequireApprovedAccount({ exemptPrefixes: [ADMIN_SURFACE_PREFIX] }));
   }
 
   /**

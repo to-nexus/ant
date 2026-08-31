@@ -27,7 +27,15 @@ vi.mock('../../src/infrastructure/deploy/customDomain/verification', async (impo
   };
 });
 
+// The approval verdict is no longer a per-route check — it is the surface
+// guard, mounted after authentication. Point the factory it reads through at
+// this suite's repo so the harness composes the way the real server does.
+vi.mock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
+  getInfrastructureFactory: () => ({ getOrganizationRepository: () => repo }),
+}));
+
 import { RedisOrganizationRepository } from '../../src/infrastructure/auth/RedisOrganizationRepository';
+import { createRequireApprovedAccount } from '../../src/periphery/adapters/http/middleware/requireApprovedAccount';
 import { createTeamsRoutes } from '../../src/periphery/adapters/http/routes/teams.routes';
 
 // ---------- In-memory Redis (get/set/del/smembers/sadd/srem/multi/scan) ----------
@@ -136,6 +144,7 @@ async function startApp(): Promise<void> {
     if (currentUser) (req as any).user = { ...currentUser, organizationId: 'individual' };
     next();
   });
+  app.use('/api', createRequireApprovedAccount());
   app.use('/api', createTeamsRoutes({ organizationRepository: repo }));
   server = http.createServer(app);
   await new Promise<void>((resolve) => server!.listen(0, resolve));
@@ -218,6 +227,8 @@ describe('POST /api/organizations', () => {
     expect(personal.json.code).toBe('ORG_ID_RESERVED');
   });
 
+  // Approval is refused by the surface guard mounted above the router, not by
+  // the handler — the assertion is unchanged because the OUTCOME is unchanged.
   it('403 for a non-approved account', async () => {
     await repo.upsertUser({ id: OUTSIDER.id, email: OUTSIDER.email, currentOrganizationId: 'individual' });
     await repo.setUserApproval(OUTSIDER.id, 'pending', 'op@ant.dev');

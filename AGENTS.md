@@ -477,20 +477,51 @@ debugging session.
   agent may declare (same reason MCP is forbidden there: a shipped definition
   assumes no install URL and no registered credential).
 - **A definition's `allow` list is not a security boundary** — the definition is
-  user-editable. For a self entry the boundary is `createSelfApiScopeGuard`,
-  mounted after authentication on `/api` (ant-api) and on the realtime server:
-  a `scope: 'self-api'` token reaches `/api/account/agents` and nothing else,
-  and is refused on `promote` / `editors` (authority spread) and `import` /
-  `files/upload` (they skip `gateDefinitionSave`). The realtime server has no
-  account-agents surface, so the same guard refuses the claim there wholesale —
-  a job-minted token must not open its owner's SSE stream or `/bridge/*`.
-  Absence of the claim is an ordinary session, never a pin. Minting stays in
-  the process holding the JWT private key (C-001).
-- **Definition writes have one funnel**: `PUT /account/agents/:agentId/file` →
+  user-editable, so the pin is never scoped per definition. For a self entry the
+  boundary is `createSelfApiScopeGuard`, mounted after authentication on `/api`
+  (ant-api) and on the realtime server. A `scope: 'self-api'` token reaches
+  **`/definitions` and nothing else** — the scoped-template family — whose two
+  resources carry deliberately OPPOSITE polarity:
+  - `/definitions/agents` — **allow-except**: the whole resource is authoring,
+    minus `promote` / `editors` (authority spread) and `import` /
+    `files/upload` (they skip `gateDefinitionSave`).
+  - `/definitions/pipelines` — **deny-except**: most of that resource is
+    OPERATIONAL, so only the authoring shapes are listed (`GET|POST` on the
+    root, `GET|PUT|DELETE` on `:id`, `GET :id/permissions`,
+    `POST preview-fires`, `GET activatable-projects`) and everything else —
+    present or added later — is refused. `enable` / `disable` / `activate` /
+    `deactivate` / `run-now` / `promote` / `editors` / `approvals` / `runs` are
+    a person's decisions; a job drafts, a person publishes. Never invert this
+    polarity: an allow-except list here would admit every route added after it.
+  A `:id` rule must exclude its resource's reserved literals (`preview-fires`,
+  `activatable-projects`, `approvals`, `runs`) — Express disambiguates them by
+  registration order, the guard matches independently, so
+  `GET /definitions/pipelines/approvals` would otherwise ride the `:id` shape.
+  The realtime server has no `/definitions` surface, so the same guard refuses
+  the claim there wholesale — a job-minted token must not open its owner's SSE
+  stream or `/bridge/*`. Absence of the claim is an ordinary session, never a
+  pin. Minting stays in the process holding the JWT private key (C-001).
+- **Definition writes have one funnel**: `PUT /definitions/agents/:agentId/file` →
   `gateDefinitionSave` → `loadCustomJob`. A job authors definitions by calling
   it (the builtin `agent-builder`), never by writing the files directly — which
   is also why `run_command`'s containment check runs on every plane, not only
-  where the `codebase/` prefix rule applies.
+  where the `codebase/` prefix rule applies. Pipelines are the same shape one
+  surface over: the builtin `pipeline-builder` composes a finished agent's
+  intents through `POST|PUT /pipelines`, and the two builtins split one boundary
+  — agent-builder authors what an agent DOES and filters calendars out,
+  pipeline-builder owns exactly that filtered half (schedules, cross-intent run
+  order). Neither writes the other's files.
+- **HTTP groups name a KIND, not an owner.** `/api/definitions/**` is the
+  scoped-template family (`user` | `org` | `builtin` roots, closest-wins,
+  promotable, project-independent, one shared `orgAclStore.ts`) and holds
+  `agents` + `pipelines`; `/api/credentials/**` holds `{org, user}`-keyed secret
+  stores. A resource joins the family it belongs to — **"the bare name was free"
+  is not a reason to mount at the root**, and that ad-hoc rule is exactly how a
+  template ended up spelled `/api/account/agents` in one place and
+  `/api/pipelines` in another. `/api/agents` is the PUBLIC canonical job-agent
+  catalog and is a different concept from a custom agent definition. The full
+  table, including what is still bare, is in
+  [docs/reference/api.md](docs/reference/api.md#grouping-rule--by-kind-not-by-owner).
 - `decideProjectJobGate` (`core/customAgents/universalContainer.ts`) is the one
   bidirectional truth table; enforcement is HTTP 400 at job-accept.
 - `${secret:KEY}` (`MCP_SECRET_REF_PATTERN`) is the only credential marker;
@@ -607,6 +638,65 @@ Guards: `tests/policy/contained-io-adoption.test.ts`,
 `tests/policy/resource-admission.test.ts`, `tests/http/resource-admission.test.ts`,
 `tests/security/session-namespace-bounds.test.ts`. Rationale:
 [`docs/internals/security-posture.md`](docs/internals/security-posture.md) Axis 7.
+
+---
+
+## An Authenticated Route Is Not an Approved One
+
+**Account approval is an identity verdict, so it bounds the whole authenticated
+surface — never a list of routes.** `UserRecord.approvalStatus` used to be six
+hand-placed pre-flight calls at compute-start handlers (job start/learn/resume/
+continue, chat, team create). That blocked starting agent work and nothing else:
+a `pending` account still created and deleted projects, uploaded files, booted
+preview/deploy children, attached a GitHub PAT, wrote agent definitions, drove a
+live IDE pod, opened every SSE stream, and minted a 90-day desktop token. The
+list WAS the bug — it grows by whatever the next author remembers.
+
+### ❌ Forbidden
+
+- Re-judging approval inside a route handler. The surface guard has already
+  answered; a second owner drifts (the `teams.routes.ts` copy had already
+  diverged to a different fail-open posture than the other five).
+- Re-listing the public paths as approval exemptions. The guard keys on
+  `req.user`, which `createJwtAuthMiddleware` sets only for non-public requests,
+  so the exemption is DERIVED from `PUBLIC_PATHS`. A second copy drifts.
+- Putting an approval claim in the JWT. The cookie lives days and the desktop
+  token 90; an admin approving would not take effect until re-login, which is
+  precisely the operator workflow.
+- A process-local TTL cache of the verdict. It re-introduces a second answer
+  source for a decision whose whole point is immediacy — a `denied` account
+  keeps working for the TTL.
+- Mounting on ONE plane. Express is not the only way in: the `/ide/*` proxy is
+  served before `setupAuthentication` and never calls `next()`, and the bridge
+  WebSocket upgrade bypasses Express entirely.
+
+### ✅ Correct
+
+- `createRequireApprovedAccount()` mounted whole-surface on every server that
+  authenticates a cookie or bearer, plus the `/ide/` proxy lane; `checkApproval`
+  stays the single read of the port and the single fail-open posture.
+- Fail-OPEN on a repository error. Redis is the whole system's dependency, so a
+  blip that flipped this closed would convert an outage into a total lockout of
+  every approved user, reported under a misleading pending code.
+- `/admin` exempt: it carries a strictly stronger env-authoritative gate
+  (`isSuperAdminEmail`), and `setUserApproval` can stamp a super admin `denied`
+  while `syncSuperAdmins` only re-approves at boot — gating it bricks the
+  operator out of the screen that undoes the mistake.
+- FE: one state-driven branch (`selectShowApprovalGate`) replaces the app shell,
+  and `selectIsAuthBlocked` parks every protected fetch, so the screen does not
+  sit in front of a 403 storm.
+
+```bash
+# One rule, mounted on each plane that admits an identity — never re-judged per route.
+rg -n "createRequireApprovedAccount\(\)" packages/ant-cli/src  # Expected: 5 (definition + api + ide + realtime + preview)
+# The port read has ONE owner; its callers are the three planes, not handlers.
+rg -n "checkApproval\(|getUserApproval\(" packages/ant-cli/src/periphery/adapters/http/routes/*.routes.ts  # Expected: 0
+```
+
+Guards: `tests/policy/resource-admission.test.ts` (mount order + the SET, read
+from the codebase so a fifth server cannot skip it),
+`tests/billing/approval-capability-seam.test.ts` (the guard's decision table),
+`tests/auth/lifecycle-guard.test.ts` (FE truth table + branch ordering).
 
 ---
 
