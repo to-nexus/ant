@@ -3,7 +3,8 @@ import type { AdminOrgDetail } from '@ant/shared';
 import { adminApi } from './api/admin';
 
 /**
- * Superadmin org detail — members / invites / domains cards, manual domain
+ * Superadmin org detail — members / invites / domains / join requests /
+ * removal-row cards, manual domain
  * verify·reject (decision 6 path c), and the force-delete cascade.
  */
 export function OrgDetail({
@@ -133,6 +134,7 @@ export function OrgDetail({
                 <th>도메인</th>
                 <th>상태</th>
                 <th>검증 경로</th>
+                <th>로그인 시</th>
                 <th />
               </tr>
             </thead>
@@ -142,6 +144,13 @@ export function OrgDetail({
                   <td>{d.domain}</td>
                   <td><span className={`badge ${d.status === 'verified' ? 'approved' : d.status === 'pending' ? 'pending' : 'denied'}`}>{d.status}</span></td>
                   <td className="muted">{d.verifiedBy ?? '—'}</td>
+                  <td className="muted">
+                    {d.status !== 'verified'
+                      ? '—'
+                      : d.autoJoin
+                        ? `자동 가입 (${d.autoJoinRole})`
+                        : '제안만'}
+                  </td>
                   <td>
                     <div className="row">
                       {d.status !== 'verified' && (
@@ -156,6 +165,72 @@ export function OrgDetail({
                       )}
                     </div>
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card" style={{ background: 'var(--surface-2)' }}>
+        <strong>참여 요청 ({detail.joinRequests.filter((r) => r.status === 'pending').length} 대기)</strong>
+        <div className="muted" style={{ fontSize: 12 }}>
+          검색 노출: {detail.discoverable ? '허용' : '차단'} — 요청 승인은 조직 admin 권한입니다.
+        </div>
+        {detail.joinRequests.length === 0 ? (
+          <div className="muted">참여 요청 없음</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>이메일</th>
+                <th>상태</th>
+                <th>요청</th>
+                <th>처리자</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.joinRequests.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.email}</td>
+                  <td>
+                    <span className={`badge ${r.status === 'approved' ? 'approved' : r.status === 'pending' ? 'pending' : 'denied'}`}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td className="muted">{new Date(r.createdAt).toLocaleDateString()}</td>
+                  <td className="muted">{r.decidedBy ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card" style={{ background: 'var(--surface-2)' }}>
+        <strong>도메인 자동 가입 제외 ({detail.removedMembers.length})</strong>
+        <div className="muted" style={{ fontSize: 12 }}>
+          탈퇴·제거 기록. 해당 계정은 다음 로그인에 도메인으로 재가입되지 않습니다.
+        </div>
+        {detail.removedMembers.length === 0 ? (
+          <div className="muted">기록 없음</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>이메일</th>
+                <th>사유</th>
+                <th>일시</th>
+                <th>처리자</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.removedMembers.map((r) => (
+                <tr key={r.userId}>
+                  <td>{r.email}</td>
+                  <td className="muted">{r.reason === 'removed' ? '관리자 제거' : '본인 탈퇴'}</td>
+                  <td className="muted">{new Date(r.removedAt).toLocaleDateString()}</td>
+                  <td className="muted">{r.removedBy}</td>
                 </tr>
               ))}
             </tbody>

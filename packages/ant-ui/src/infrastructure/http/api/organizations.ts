@@ -1,35 +1,12 @@
 /**
- * Organizations API client — backs the OrganizationOnboardingScreen
- * autocomplete (`GET /api/organizations?q=...`) and the onboarding
- * submission (`POST /api/auth/onboarding/organization`).
+ * Organizations API client — team lifecycle, join discovery, and join
+ * requests. Wire contract: `@ant/shared/orgTeam.ts` ↔ BE `teams.routes.ts`
+ * and `organizations.routes.ts`.
  *
- * `API_BASE` aliases `/api`. The shape mirrors the BE contract — see
- * `packages/ant-cli/src/periphery/adapters/http/routes/organizations.routes.ts`
- * and `auth.routes.ts`'s onboarding handler.
+ * `API_BASE` aliases `/api`.
  */
 
-import { API_BASE, apiGet, apiPost } from './client';
-
-export interface OrganizationSummary {
-  id: string;
-  name: string;
-}
-
-export interface OnboardingResponse {
-  user: {
-    userId: string;
-    email: string;
-    organization: string;
-    name?: string;
-    picture?: string;
-  };
-  needsOnboarding: boolean;
-}
-
-// ── Team lifecycle (Phase 1) ────────────────────────────────────────────────
-// Wire contract: `@ant/shared/orgTeam.ts` ↔ BE `teams.routes.ts`.
-
-import { apiPut, apiDelete } from './client';
+import { API_BASE, apiGet, apiPost, apiPut, apiDelete } from './client';
 import type {
   OrgSummaryView,
   OrgMemberView,
@@ -37,7 +14,14 @@ import type {
   OrgDomainClaimView,
   OrgMembershipRole,
   OrgInviteRole,
+  OrgJoinRequestView,
+  OrgRemovedMemberView,
 } from '@ant/shared';
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+}
 
 export interface AcceptInviteResponse {
   alreadyMember: boolean;
@@ -144,9 +128,8 @@ export async function joinByDomain(organizationId: string): Promise<AcceptInvite
 }
 
 /**
- * Substring + case-insensitive org search. The BE clamps `limit` at
- * 100 and rejects empty queries with an empty array — we still pass a
- * sensible default of 20 so the dropdown stays compact.
+ * Substring + case-insensitive org search over DISCOVERABLE orgs only. The
+ * BE clamps `limit` at 25 and returns [] below 2 characters.
  */
 export async function searchOrganizations(
   query: string,
@@ -159,18 +142,83 @@ export async function searchOrganizations(
   return res.organizations ?? [];
 }
 
-/**
- * Submit the onboarding choice. `organizationName` may be empty / omitted
- * — the BE then auto-resolves (consumer email → `personal-${userId}`,
- * business email → domain). On success the BE re-mints the JWT cookie
- * with the real `org` claim; callers should re-fetch `/auth/me` after.
- */
-export async function submitOnboardingOrganization(
-  organizationName?: string,
-): Promise<OnboardingResponse> {
-  const body =
-    organizationName && organizationName.trim()
-      ? { organizationName: organizationName.trim() }
-      : {};
-  return apiPost<OnboardingResponse>(`${API_BASE()}/auth/onboarding/organization`, body);
+export async function setOrgDiscoverable(
+  orgId: string,
+  discoverable: boolean,
+): Promise<{ organization: OrgSummaryView }> {
+  return apiPut(`${API_BASE()}/organizations/${encodeURIComponent(orgId)}/discoverable`, {
+    discoverable,
+  });
+}
+
+export async function updateOrgDomain(
+  orgId: string,
+  domain: string,
+  patch: { autoJoin?: boolean; autoJoinRole?: OrgInviteRole },
+): Promise<{ domain: OrgDomainClaimView }> {
+  return apiPut(
+    `${API_BASE()}/organizations/${encodeURIComponent(orgId)}/domains/${encodeURIComponent(domain)}`,
+    patch,
+  );
+}
+
+// ── Join requests ───────────────────────────────────────────────────────────
+
+export async function createJoinRequest(
+  orgId: string,
+  message?: string,
+): Promise<{ joinRequest: OrgJoinRequestView }> {
+  return apiPost(`${API_BASE()}/organizations/${encodeURIComponent(orgId)}/join-requests`, {
+    ...(message ? { message } : {}),
+  });
+}
+
+export async function fetchJoinRequests(
+  orgId: string,
+): Promise<{ joinRequests: OrgJoinRequestView[] }> {
+  return apiGet(`${API_BASE()}/organizations/${encodeURIComponent(orgId)}/join-requests`);
+}
+
+export async function approveJoinRequest(
+  orgId: string,
+  requestId: string,
+  role?: OrgInviteRole,
+): Promise<{ joinRequest: OrgJoinRequestView | null; role: OrgInviteRole }> {
+  return apiPost(
+    `${API_BASE()}/organizations/${encodeURIComponent(orgId)}/join-requests/${encodeURIComponent(requestId)}/approve`,
+    { ...(role ? { role } : {}) },
+  );
+}
+
+export async function rejectJoinRequest(
+  orgId: string,
+  requestId: string,
+): Promise<{ joinRequest: OrgJoinRequestView | null }> {
+  return apiPost(
+    `${API_BASE()}/organizations/${encodeURIComponent(orgId)}/join-requests/${encodeURIComponent(requestId)}/reject`,
+    {},
+  );
+}
+
+export async function cancelJoinRequest(
+  requestId: string,
+): Promise<{ joinRequest: OrgJoinRequestView | null }> {
+  return apiPost(
+    `${API_BASE()}/organizations/join-requests/${encodeURIComponent(requestId)}/cancel`,
+    {},
+  );
+}
+
+// ── Removal rows (domain-shortcut blocklist) ────────────────────────────────
+
+export async function fetchRemovedMembers(
+  orgId: string,
+): Promise<{ removedMembers: OrgRemovedMemberView[] }> {
+  return apiGet(`${API_BASE()}/organizations/${encodeURIComponent(orgId)}/removed-members`);
+}
+
+export async function clearRemovedMember(orgId: string, userId: string): Promise<void> {
+  await apiDelete(
+    `${API_BASE()}/organizations/${encodeURIComponent(orgId)}/removed-members/${encodeURIComponent(userId)}`,
+  );
 }

@@ -1,23 +1,30 @@
 /**
- * OrgBanners (Phase 1, §3–§4) — the org join surface strip rendered right
- * below the nav bar. Self-gating: cloud mode ∧ authenticated. Static OSS
- * component (no slot).
+ * OrgBanners — the org join surface strip rendered right below the nav bar.
+ * Self-gating: cloud mode ∧ authenticated. Static OSS component (no slot).
  *
- * Priority: invite banner > domain-join banner (the domain banner hides
- * while an invite banner is visible). At most one banner + "+n more" chip.
+ * Priority: invite > auto-join notice > domain-join offer. Only one shows at
+ * a time (+ a "+n more" chip for invites). The three are mutually exclusive
+ * in practice: an org either auto-joins a domain (notice) or offers it
+ * (banner), never both.
+ *
  * A `?invite={token}` deep link is consumed here: the invite is accepted
  * immediately (the click WAS the consent), then a switch prompt follows.
+ *
+ * The auto-join notice is a NOTICE, not an offer — the membership already
+ * exists (a login granted it from a verified domain claim). Dismissing it
+ * hides the strip; it never leaves the team.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, Mail } from 'lucide-react';
+import { Building2, Globe, Mail } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import {
   selectServerMode,
   selectIsAuthenticated,
   selectVisiblePendingInvites,
   selectVisibleDomainJoinableOrgs,
+  selectVisibleAutoJoinedOrg,
 } from '@/domain/store/selectors';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
@@ -33,7 +40,7 @@ const INVITE_TOKEN_SS_KEY = 'ant-ui:org:invite-token';
 async function refreshJoinSurface(): Promise<void> {
   const result = await fetchAuthMeDetailed();
   if (result.kind === 'user') {
-    useStore.getState().setJoinSurface(result.pendingInvites, result.domainJoinableOrgs);
+    useStore.getState().setJoinSurface(result);
   }
 }
 
@@ -47,9 +54,11 @@ export function OrgBanners() {
   const userEmail = useStore((s) => s.userEmail);
   const invites = useStore(selectVisiblePendingInvites);
   const domainOrgs = useStore(selectVisibleDomainJoinableOrgs);
+  const autoJoinedOrg = useStore(selectVisibleAutoJoinedOrg);
   const inviteTokenFromUrl = useStore((s) => s.inviteTokenFromUrl);
   const dismissInvite = useStore((s) => s.dismissInvite);
   const dismissDomainBanner = useStore((s) => s.dismissDomainBanner);
+  const dismissAutoJoinBanner = useStore((s) => s.dismissAutoJoinBanner);
   const setInviteTokenFromUrl = useStore((s) => s.setInviteTokenFromUrl);
 
   const [busy, setBusy] = useState(false);
@@ -112,9 +121,10 @@ export function OrgBanners() {
 
   const invite = invites[0];
   const moreInvites = invites.length - 1;
-  const domainOrg = !invite ? domainOrgs[0] : undefined;
+  const autoJoined = !invite ? autoJoinedOrg : null;
+  const domainOrg = !invite && !autoJoined ? domainOrgs[0] : undefined;
 
-  if (!invite && !domainOrg) return null;
+  if (!invite && !autoJoined && !domainOrg) return null;
 
   const stripStyle: React.CSSProperties = {
     minHeight: 40,
@@ -128,6 +138,8 @@ export function OrgBanners() {
         style={{
           height: 3,
           background: invite ? 'var(--gradient-violet-pink)' : 'var(--gradient-cool)',
+          // Both non-invite banners are domain-sourced, so they share the
+          // cool hairline — the icon is what distinguishes them.
         }}
       />
       <div className="flex items-center gap-2 px-4 py-1.5 text-xs" style={{ color: 'var(--text-2)' }}>
@@ -153,6 +165,39 @@ export function OrgBanners() {
               {t('auth.acceptInvite', 'Accept')}
             </Button>
             <Button variant="ghost" size="xs" onClick={() => dismissInvite(invite.id)}>
+              {t('auth.dismiss', 'Dismiss')}
+            </Button>
+          </>
+        ) : autoJoined ? (
+          <>
+            <Building2 className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--cyan-400, #22d3ee)' }} />
+            <span className="min-w-0 truncate">
+              {t('auth.autoJoinBannerBody', 'You were added to')}{' '}
+              <strong>{autoJoined.organizationName}</strong>{' '}
+              {t('auth.autoJoinBannerVia', 'via')} <strong>@{autoJoined.domain}</strong>
+            </span>
+            <div className="flex-1" />
+            <Button
+              variant="primary"
+              size="xs"
+              loading={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await switchActiveOrg(autoJoined.organizationId);
+                } catch (err) {
+                  showError(orgErrorMessage(err, t));
+                  setBusy(false);
+                }
+              }}
+            >
+              {t('auth.switchNow', 'Switch')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => dismissAutoJoinBanner(autoJoined.organizationId)}
+            >
               {t('auth.dismiss', 'Dismiss')}
             </Button>
           </>

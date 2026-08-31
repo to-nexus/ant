@@ -141,6 +141,27 @@ export function selectVisibleDomainJoinableOrgs(state: StoreState) {
 }
 
 /**
+ * The "a login added you to this team" notice, unless dismissed or already
+ * the active org (in which case there is nothing to switch to).
+ */
+export function selectVisibleAutoJoinedOrg(state: StoreState) {
+  const org = state.autoJoinedOrg;
+  if (!org) return null;
+  if (org.organizationId === state.userOrganization) return null;
+  if (state.dismissedAutoJoinOrgIds.includes(org.organizationId)) return null;
+  return org;
+}
+
+/** The caller's own pending join requests, by org id — drives the join modal. */
+export function selectMyPendingJoinRequestByOrg(state: StoreState) {
+  const byOrg = new Map<string, StoreState['myJoinRequests'][number]>();
+  for (const r of state.myJoinRequests) {
+    if (r.status === 'pending') byOrg.set(r.organizationId, r);
+  }
+  return byOrg;
+}
+
+/**
  * Single visibility seam: may USD cost be shown to this caller?
  *
  * Current phase: fully transparent — token → real USD → credit shown to

@@ -53,10 +53,6 @@ vi.mock('../../src/periphery/adapters/http/middleware/jwtAuth', async (importOri
   };
 });
 
-vi.mock('../../src/periphery/adapters/http/middleware/requireOnboardedJwt', () => ({
-  createRequireOnboardedJwt: () => (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
-
 vi.mock('../../src/periphery/adapters/http/middleware/requireApprovedAccount', () => ({
   createRequireApprovedAccount: () => {
     order.push('approval-guard');

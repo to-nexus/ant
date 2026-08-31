@@ -12,7 +12,7 @@
  * opened. Connecting from a different tab simply has no nonce and lands on the
  * approval prompt — a degradation, not a failure.
  *
- * Mirrors the read-then-strip shape of `onboardingRouter.ts`: the URL flag is a
+ * Read-then-strip shape: the URL flag is a
  * one-time delivery channel, not state, so it is removed after capture.
  */
 

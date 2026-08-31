@@ -111,14 +111,10 @@ export const previewRateLimiter: RequestHandler = makeProxy('preview', () => pre
 /**
  * Organization search rate limit (30 req/min per user).
  *
- * Powers the OrganizationOnboardingScreen autocomplete — the FE
- * debounces at 300ms but a misbehaving client could still flood the
- * endpoint. The repo's search scans every org id in the index, so
- * cheap rate-limiting at the edge is cheaper than letting the SCAN
- * pile up.
- *
- * Note: `_pending` JWTs (onboarding-in-progress) DO carry a valid
- * `req.user.id`, so `perUserKeyGenerator` works for them too.
+ * Powers the JoinTeamModal autocomplete — the FE debounces at 300ms but a
+ * misbehaving client could still flood the endpoint. The repo's search scans
+ * every org id in the index, so cheap rate-limiting at the edge is cheaper
+ * than letting the scan pile up.
  */
 export const organizationsRateLimiter: RequestHandler = makeProxy('organizations', () => organizationsInner);
 

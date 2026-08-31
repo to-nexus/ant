@@ -24,6 +24,8 @@ import type {
   UserRecord,
   Invitation,
   OrgDomainClaim,
+  OrgJoinRequest,
+  OrgMemberRemoval,
 } from '../../core/auth/types';
 import { deriveKindFromOrgId, INDIVIDUAL_ORG_ID } from '@ant/shared';
 import type {
@@ -31,6 +33,8 @@ import type {
   AdminConfig,
   DefaultApprovalMode,
   AdminUserListQuery,
+  OrgInviteRole,
+  OrgMemberRemovalReason,
 } from '@ant/shared';
 import { isSuperAdminEmail } from '../../core/auth/superAdmin';
 
@@ -80,6 +84,21 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
   }
   private orgDomainsKey(orgId: string): string {
     return `${REDIS_KEYS.AUTH.ORG_DOMAINS}${orgId}`;
+  }
+  private joinRequestKey(requestId: string): string {
+    return `${REDIS_KEYS.AUTH.JOIN_REQUEST}${requestId}`;
+  }
+  private orgJoinRequestsKey(orgId: string): string {
+    return `${REDIS_KEYS.AUTH.ORG_JOIN_REQUESTS}${orgId}`;
+  }
+  private userJoinRequestsKey(userId: string): string {
+    return `${REDIS_KEYS.AUTH.USER_JOIN_REQUESTS}${userId}`;
+  }
+  private joinRequestPendingKey(orgId: string, userId: string): string {
+    return `${REDIS_KEYS.AUTH.JOIN_REQUEST_PENDING}${orgId}:${userId}`;
+  }
+  private orgRemovedKey(orgId: string): string {
+    return `${REDIS_KEYS.AUTH.ORG_REMOVED}${orgId}`;
   }
 
   // -------- Organizations --------
@@ -146,6 +165,12 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
       if (!org) continue;
       // The shared individual org is never a joinable team — exclude it.
       if (org.kind === 'individual') continue;
+      // A soft-deleted org is a 404 on every team route; it must not be
+      // advertised as joinable either.
+      if (org.deletedAt) continue;
+      // Search visibility is opt-in — an org that never opted in is not
+      // enumerable by non-members.
+      if (org.discoverable !== true) continue;
       const hit = id.toLowerCase().includes(q) || org.name.toLowerCase().includes(q);
       if (hit) matches.push({ id: org.id, name: org.name, kind: org.kind });
       if (matches.length >= cappedLimit) break;
@@ -185,13 +210,26 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     return org;
   }
 
+  async setOrganizationDiscoverable(
+    orgId: string,
+    discoverable: boolean,
+  ): Promise<Organization | null> {
+    const org = await this.getOrganization(orgId);
+    if (!org || org.deletedAt) return null;
+    org.discoverable = discoverable;
+    await this.redis.set(this.orgKey(orgId), JSON.stringify(org));
+    return org;
+  }
+
   async softDeleteOrganization(orgId: string, deletedBy: string): Promise<void> {
     const org = await this.getOrganization(orgId);
     if (!org || org.deletedAt) return;
 
     const members = await this.listOrgMemberships(orgId);
     for (const m of members) {
-      await this.removeMembership(m.userId, orgId);
+      // No removal row: the org itself is gone, so blocking its (now
+      // non-existent) domain shortcut would be noise.
+      await this.removeMembership(m.userId, orgId, { record: null });
     }
 
     const invites = await this.listOrgInvites(orgId);
@@ -203,6 +241,18 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
         await this.updateInvite(invite);
       }
     }
+
+    // Cancel pending join requests — same reason as revoking invites: they
+    // would otherwise sit forever holding their one-live-request guard.
+    const joinRequests = await this.listJoinRequestsByOrg(orgId);
+    for (const request of joinRequests) {
+      if (request.status === 'pending') {
+        await this.setJoinRequestStatus(request.id, 'canceled', deletedBy);
+      }
+    }
+
+    // The blocklist only exists to gate this org's domain shortcut.
+    await this.redis.del(this.orgRemovedKey(orgId));
 
     // Release domain claims so the domain becomes claimable again.
     const domains = await this.listOrgDomains(orgId);
@@ -288,7 +338,11 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     return memberships;
   }
 
-  async removeMembership(userId: string, orgId: string): Promise<void> {
+  async removeMembership(
+    userId: string,
+    orgId: string,
+    opts: { record: { removedBy: string; reason: OrgMemberRemovalReason } | null },
+  ): Promise<void> {
     const pipeline = this.redis.multi();
     pipeline.del(this.membershipKey(orgId, userId));
     pipeline.srem(this.orgMembersKey(orgId), userId);
@@ -301,6 +355,19 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     if (user && user.currentOrganizationId === orgId) {
       user.currentOrganizationId = INDIVIDUAL_ORG_ID;
       await this.redis.set(this.userKey(userId), JSON.stringify(user));
+    }
+
+    // The blocklist row is an addendum to the detach, so it is written LAST —
+    // a failure here must not cost the caller the detach or the org revert.
+    if (opts.record) {
+      await this.recordMemberRemoval({
+        organizationId: orgId,
+        userId,
+        email: user?.email ?? userId,
+        reason: opts.record.reason,
+        removedAt: nowIso(),
+        removedBy: opts.record.removedBy,
+      });
     }
   }
 
@@ -423,6 +490,18 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     await this.redis.set(this.domainKey(claim.domain), JSON.stringify(claim));
   }
 
+  async patchDomainJoinPolicy(
+    domain: string,
+    patch: { autoJoin?: boolean; autoJoinRole?: OrgInviteRole },
+  ): Promise<OrgDomainClaim | null> {
+    const claim = await this.getDomainClaim(domain);
+    if (!claim) return null;
+    if (patch.autoJoin !== undefined) claim.autoJoin = patch.autoJoin;
+    if (patch.autoJoinRole !== undefined) claim.autoJoinRole = patch.autoJoinRole;
+    await this.redis.set(this.domainKey(claim.domain), JSON.stringify(claim));
+    return claim;
+  }
+
   async deleteDomainClaim(domain: string): Promise<void> {
     const claim = await this.getDomainClaim(domain);
     const pipeline = this.redis.multi();
@@ -431,6 +510,114 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
       pipeline.srem(this.orgDomainsKey(claim.organizationId), domain);
     }
     await pipeline.exec();
+  }
+
+  // -------- Join requests --------
+
+  private parseJoinRequest(raw: string | null): OrgJoinRequest | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as OrgJoinRequest;
+    } catch {
+      return null;
+    }
+  }
+
+  async createJoinRequest(request: OrgJoinRequest): Promise<OrgJoinRequest | null> {
+    // SETNX the one-live-request guard first — it, not the record, is what
+    // makes "one pending request per (org, user)" race-safe.
+    const claimed = await this.redis.set(
+      this.joinRequestPendingKey(request.organizationId, request.userId),
+      request.id,
+      'NX',
+    );
+    if (claimed === null) return null;
+
+    const pipeline = this.redis.multi();
+    pipeline.set(this.joinRequestKey(request.id), JSON.stringify(request));
+    pipeline.sadd(this.orgJoinRequestsKey(request.organizationId), request.id);
+    pipeline.sadd(this.userJoinRequestsKey(request.userId), request.id);
+    await pipeline.exec();
+    return request;
+  }
+
+  async getJoinRequest(requestId: string): Promise<OrgJoinRequest | null> {
+    return this.parseJoinRequest(await this.redis.get(this.joinRequestKey(requestId)));
+  }
+
+  private async listJoinRequests(indexKey: string): Promise<OrgJoinRequest[]> {
+    const ids = await this.redis.smembers(indexKey);
+    if (ids.length === 0) return [];
+    const rows = (await Promise.all(ids.map((id) => this.getJoinRequest(id)))).filter(
+      (r): r is OrgJoinRequest => r !== null,
+    );
+    rows.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    return rows;
+  }
+
+  async listJoinRequestsByOrg(orgId: string): Promise<OrgJoinRequest[]> {
+    return this.listJoinRequests(this.orgJoinRequestsKey(orgId));
+  }
+
+  async listJoinRequestsByUser(userId: string): Promise<OrgJoinRequest[]> {
+    return this.listJoinRequests(this.userJoinRequestsKey(userId));
+  }
+
+  async setJoinRequestStatus(
+    requestId: string,
+    status: Exclude<OrgJoinRequest['status'], 'pending'>,
+    decidedBy: string,
+  ): Promise<OrgJoinRequest | null> {
+    const request = await this.getJoinRequest(requestId);
+    if (!request) return null;
+    request.status = status;
+    request.decidedAt = nowIso();
+    request.decidedBy = decidedBy;
+
+    const pipeline = this.redis.multi();
+    pipeline.set(this.joinRequestKey(requestId), JSON.stringify(request));
+    // Release the guard so the requester may ask again later.
+    pipeline.del(this.joinRequestPendingKey(request.organizationId, request.userId));
+    await pipeline.exec();
+    return request;
+  }
+
+  // -------- Member removals (domain-shortcut blocklist) --------
+
+  async recordMemberRemoval(removal: OrgMemberRemoval): Promise<void> {
+    await this.redis.hset(
+      this.orgRemovedKey(removal.organizationId),
+      removal.userId,
+      JSON.stringify(removal),
+    );
+  }
+
+  async getMemberRemoval(orgId: string, userId: string): Promise<OrgMemberRemoval | null> {
+    const raw = await this.redis.hget(this.orgRemovedKey(orgId), userId);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as OrgMemberRemoval;
+    } catch {
+      return null;
+    }
+  }
+
+  async listRemovedMembers(orgId: string): Promise<OrgMemberRemoval[]> {
+    const rows = await this.redis.hgetall(this.orgRemovedKey(orgId));
+    const removals: OrgMemberRemoval[] = [];
+    for (const raw of Object.values(rows ?? {})) {
+      try {
+        removals.push(JSON.parse(raw) as OrgMemberRemoval);
+      } catch {
+        // Corrupt row — skip rather than fail the admin list.
+      }
+    }
+    removals.sort((a, b) => (b.removedAt ?? '').localeCompare(a.removedAt ?? ''));
+    return removals;
+  }
+
+  async clearMemberRemoval(orgId: string, userId: string): Promise<void> {
+    await this.redis.hdel(this.orgRemovedKey(orgId), userId);
   }
 
   // -------- Users --------
@@ -457,6 +644,7 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     name?: string;
     picture?: string;
     currentOrganizationId: string | null;
+    lastDomainAutoJoin?: UserRecord['lastDomainAutoJoin'];
   }): Promise<UserRecord> {
     const existing = await this.getUser(input.id);
     const isSuper = isSuperAdminEmail(input.email);
@@ -493,6 +681,7 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
       // so even the operator's mock checkout 403'd. `??` (not `||`) so an explicit
       // admin-set 0 is respected and never silently re-granted.
       testAccountLevel: existing?.testAccountLevel ?? (isSuper ? 1 : 0),
+      lastDomainAutoJoin: input.lastDomainAutoJoin ?? existing?.lastDomainAutoJoin,
     };
 
     const pipeline = this.redis.multi();

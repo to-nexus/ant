@@ -16,6 +16,9 @@ export type {
   OrgMembership,
   PendingInvite,
   DomainJoinableOrg,
+  MyJoinRequest,
+  JoinRequestStatus,
+  AutoJoinedOrg,
 } from './types';
 export { AUTH_BROADCAST_CHANNEL } from './types';
 

@@ -20,6 +20,8 @@ import type {
   UserRecord,
   Invitation,
   OrgDomainClaim,
+  OrgJoinRequest,
+  OrgMemberRemoval,
 } from '../auth/types';
 import type {
   OrganizationKind,
@@ -27,6 +29,8 @@ import type {
   AdminConfig,
   DefaultApprovalMode,
   AdminUserListQuery,
+  OrgInviteRole,
+  OrgMemberRemovalReason,
 } from '@ant/shared';
 
 export interface OrganizationSummary {
@@ -58,10 +62,20 @@ export interface OrganizationRepositoryPort {
   /**
    * Substring + case-insensitive search across BOTH the org id and the
    * display name. Returns `{ id, name, kind }` projections only — no
-   * `ownerId` / `createdAt` leakage to the FE. The shared `individual`
-   * org is NEVER returned (it is not a joinable team).
+   * `ownerId` / `createdAt` leakage to the FE. Three orgs are NEVER
+   * returned: the shared `individual` org (not a joinable team), a
+   * soft-deleted org, and one that has not opted into discovery.
    */
   searchOrganizations(query: string, limit: number): Promise<OrganizationSummary[]>;
+
+  /**
+   * Opt an org into / out of organization search. Search visibility is the
+   * only thing this controls — it grants no access. Null when absent.
+   */
+  setOrganizationDiscoverable(
+    orgId: string,
+    discoverable: boolean,
+  ): Promise<Organization | null>;
 
   /**
    * Strict team creation (Phase 1) — SETNX semantics. Returns `null` when an
@@ -121,8 +135,19 @@ export interface OrganizationRepositoryPort {
    * Detach a membership (leave / admin removal). When the removed user's
    * `currentOrganizationId` pointed at this org, it reverts to the shared
    * individual org. Idempotent — absent membership is a no-op.
+   *
+   * `opts.record` is REQUIRED, not optional, so every caller is forced by the
+   * compiler to decide whether this detach leaves a removal row behind (which
+   * suppresses the domain shortcut). The `softDeleteOrganization` cascade
+   * passes `null` — the org is gone, so a row would be noise.
    */
-  removeMembership(userId: string, orgId: string): Promise<void>;
+  removeMembership(
+    userId: string,
+    orgId: string,
+    opts: {
+      record: { removedBy: string; reason: OrgMemberRemovalReason } | null;
+    },
+  ): Promise<void>;
 
   /** Change a member's role. Null when the membership does not exist. */
   setMembershipRole(
@@ -171,8 +196,62 @@ export interface OrganizationRepositoryPort {
   /** Full-record update (verify / reject transitions). */
   updateDomainClaim(claim: OrgDomainClaim): Promise<void>;
 
+  /**
+   * Patch the join policy of an existing claim. Null when the domain is not
+   * claimed. Separate from `updateDomainClaim` so a policy edit cannot
+   * clobber the verification state it read moments earlier.
+   */
+  patchDomainJoinPolicy(
+    domain: string,
+    patch: { autoJoin?: boolean; autoJoinRole?: OrgInviteRole },
+  ): Promise<OrgDomainClaim | null>;
+
   /** Release a claim (owner delete / superadmin reject cleanup). Idempotent. */
   deleteDomainClaim(domain: string): Promise<void>;
+
+  // -------- Join requests --------
+
+  /**
+   * Persist a new join request, claiming the one-live-request guard for
+   * `(organizationId, userId)`. Returns `null` when a pending request already
+   * exists (HTTP 409 `JOIN_REQUEST_ALREADY_PENDING`).
+   */
+  createJoinRequest(request: OrgJoinRequest): Promise<OrgJoinRequest | null>;
+
+  getJoinRequest(requestId: string): Promise<OrgJoinRequest | null>;
+
+  /** Every request addressed to an org (all statuses; expiry judged lazily). */
+  listJoinRequestsByOrg(orgId: string): Promise<OrgJoinRequest[]>;
+
+  /** Every request raised by a user (for `/auth/me` myJoinRequests). */
+  listJoinRequestsByUser(userId: string): Promise<OrgJoinRequest[]>;
+
+  /**
+   * Move a request out of `pending` (approve / reject / cancel) and release
+   * the one-live-request guard. Null when the request is absent.
+   */
+  setJoinRequestStatus(
+    requestId: string,
+    status: Exclude<OrgJoinRequest['status'], 'pending'>,
+    decidedBy: string,
+  ): Promise<OrgJoinRequest | null>;
+
+  // -------- Member removals (domain-shortcut blocklist) --------
+
+  /** Record that a member left or was removed. Overwrites an earlier row. */
+  recordMemberRemoval(removal: OrgMemberRemoval): Promise<void>;
+
+  /** Point lookup used by the login path and the join surface. */
+  getMemberRemoval(orgId: string, userId: string): Promise<OrgMemberRemoval | null>;
+
+  /** Every removal row of one org (admin management list). */
+  listRemovedMembers(orgId: string): Promise<OrgMemberRemoval[]>;
+
+  /**
+   * Clear a removal row — an explicit re-admission (invite accepted, join
+   * request approved, admin "allow again"). Idempotent.
+   */
+  clearMemberRemoval(orgId: string, userId: string): Promise<void>;
 
   // -------- Users --------
 
@@ -193,6 +272,8 @@ export interface OrganizationRepositoryPort {
     name?: string;
     picture?: string;
     currentOrganizationId: string | null;
+    /** Stamp of the last login-time domain auto-join (backfill notice). */
+    lastDomainAutoJoin?: UserRecord['lastDomainAutoJoin'];
   }): Promise<UserRecord>;
 
   // -------- Backfill --------

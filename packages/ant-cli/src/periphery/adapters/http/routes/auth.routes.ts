@@ -12,9 +12,8 @@ import { resolveFrontendOrigin } from '../middleware/corsConfig';
 import { extractStartOrigin } from '../middleware/originHelper';
 import { logger } from '../../../../utils/logger';
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
-import { resolveOrganizationId } from '../../../../core/auth/resolveOrganizationId';
-import { InvalidOrganizationNameError } from '../../../../core/auth/slugify';
 import { isSuperAdminEmail } from '../../../../core/auth/superAdmin';
+import { resolveDomainJoin } from '../../../../core/auth/domainJoin';
 import {
   INDIVIDUAL_ORG_ID,
   deriveKindFromOrgId,
@@ -22,17 +21,18 @@ import {
   type OrgMembershipRole,
   type PendingInviteView,
   type DomainJoinableOrgView,
+  type MyJoinRequestView,
+  type AutoJoinedOrgView,
 } from '@ant/shared';
 
 const OIDC_STATE_TTL_SECONDS = 5 * 60; // 5 minutes
 const OIDC_STATE_KEY_PREFIX = 'ant:oidc:state:';
 
 /**
- * Pre-onboarding JWT sentinel. The OAuth callback issues a JWT with this
- * value as the `org` claim for users who have never completed onboarding;
- * `/auth/onboarding/organization` swaps it for a real org id and re-mints
- * the JWT. `requireOnboardedJwt` middleware (see middleware/) refuses
- * protected requests carrying this sentinel.
+ * Retired pre-onboarding sentinel. Nothing mints it any more — the org is
+ * decided at login — but records written by the deleted onboarding flow may
+ * still carry it as `currentOrganizationId`, so the read path must keep
+ * refusing to honor it as an active org.
  */
 const PENDING_ORG_SENTINEL = '_pending';
 
@@ -67,7 +67,7 @@ export function isAuthDebugLoggingEnabled(): boolean {
  * - Google OIDC authentication flow (JWT cookie issuance)
  * - Session info endpoint (/api/auth/me)
  * - Sign out (cookie clear)
- * - Organization onboarding (Phase 3) — `_pending` JWT → real org JWT
+ * - Active-org switch (re-mints the JWT with a new `org` claim)
  */
 export function createAuthRoutes(deps: {
   authService: AuthService;
@@ -96,9 +96,8 @@ export function createAuthRoutes(deps: {
   /**
    * Resolve workspace path. The legacy `to.nexus`-only guard is gone —
    * any well-formed email is accepted. Organization id classification
-   * lives in `resolveOrganizationId` (consumer → `personal-${sub}`,
-   * business → domain). Onboarding may later overwrite the org via
-   * `POST /auth/onboarding/organization`.
+   * lives in `resolveOrganizationId`, which resolves every cloud signup to
+   * the shared `individual` org.
    */
   async function validateAndGetWorkspace(
     email: string,
@@ -211,16 +210,27 @@ export function createAuthRoutes(deps: {
   }
 
   /**
-   * Org join surface for `/auth/me` (Phase 1): actionable pending invites
-   * addressed to this email, plus verified-domain one-click join candidates.
-   * Both exclude orgs the user already belongs to and soft-deleted orgs.
-   * Invite expiry is judged lazily here — stored status stays `'pending'`.
+   * Org join surface for `/auth/me`: actionable pending invites addressed to
+   * this email, verified-domain join candidates, the caller's own pending
+   * join requests, and a one-off notice when a login backfilled them into a
+   * team. Everything excludes orgs the user already belongs to and
+   * soft-deleted orgs. Invite / request expiry is judged lazily here —
+   * stored status stays `'pending'`.
+   *
+   * This is a READ. It never mints a membership — the login path does that
+   * (see `docs/internals/40-org-model.md` §"Reads must not mint").
    */
   async function buildJoinSurface(
     repo: OrganizationRepositoryPort,
     userId: string,
     email: string,
-  ): Promise<{ pendingInvites: PendingInviteView[]; domainJoinableOrgs: DomainJoinableOrgView[] }> {
+    activeOrgId: string,
+  ): Promise<{
+    pendingInvites: PendingInviteView[];
+    domainJoinableOrgs: DomainJoinableOrgView[];
+    myJoinRequests: MyJoinRequestView[];
+    autoJoinedOrg: AutoJoinedOrgView | null;
+  }> {
     const now = Date.now();
     const pendingInvites: PendingInviteView[] = [];
     const invites = await repo.listInvitesByEmail(email);
@@ -241,25 +251,59 @@ export function createAuthRoutes(deps: {
       });
     }
 
+    // The banner is the OFFER — shown whenever the shortcut is available and
+    // has not already been taken. Two states produce it: auto-join is off, or
+    // auto-join is on but the caller's session predates the claim (a cookie
+    // lives days, so waiting for their next login would be a worse answer
+    // than letting them join now). Once a login has granted the membership,
+    // `resolveDomainJoin` refuses with `already-member` and this is empty.
     const domainJoinableOrgs: DomainJoinableOrgView[] = [];
-    const domain = email.split('@')[1]?.toLowerCase() ?? '';
-    if (domain) {
-      const claim = await repo.getDomainClaim(domain);
-      if (claim && claim.status === 'verified') {
-        const org = await repo.getOrganization(claim.organizationId);
-        const alreadyMember = await repo.getMembership(userId, claim.organizationId);
-        if (org && !org.deletedAt && !alreadyMember) {
-          domainJoinableOrgs.push({
-            organizationId: org.id,
-            organizationName: org.name,
-            domain,
-            autoJoinRole: claim.autoJoinRole,
-          });
-        }
+    const shortcut = await resolveDomainJoin(repo, userId, email);
+    if (shortcut.ok) {
+      domainJoinableOrgs.push({
+        organizationId: shortcut.org.id,
+        organizationName: shortcut.org.name,
+        domain: shortcut.domain,
+        autoJoinRole: shortcut.claim.autoJoinRole,
+      });
+    }
+
+    const myJoinRequests: MyJoinRequestView[] = [];
+    for (const request of await repo.listJoinRequestsByUser(userId)) {
+      if (request.status !== 'pending') continue;
+      if (Date.parse(request.expiresAt) <= now) continue;
+      if (await repo.getMembership(userId, request.organizationId)) continue;
+      const org = await repo.getOrganization(request.organizationId);
+      if (!org || org.deletedAt) continue;
+      myJoinRequests.push({
+        id: request.id,
+        organizationId: request.organizationId,
+        organizationName: org.name,
+        status: request.status,
+        createdAt: request.createdAt,
+        expiresAt: request.expiresAt,
+      });
+    }
+
+    // Backfill notice: only for an EXISTING account whose active org was left
+    // alone. A brand-new account lands in the team as its active org, so
+    // telling it "you were added" would be noise.
+    let autoJoinedOrg: AutoJoinedOrgView | null = null;
+    const user = await repo.getUser(userId);
+    const stamp = user?.lastDomainAutoJoin;
+    if (stamp && stamp.organizationId !== activeOrgId) {
+      const org = await repo.getOrganization(stamp.organizationId);
+      const stillMember = await repo.getMembership(userId, stamp.organizationId);
+      if (org && !org.deletedAt && stillMember) {
+        autoJoinedOrg = {
+          organizationId: org.id,
+          organizationName: org.name,
+          domain: stamp.domain,
+        };
       }
     }
 
-    return { pendingInvites, domainJoinableOrgs };
+    return { pendingInvites, domainJoinableOrgs, myJoinRequests, autoJoinedOrg };
   }
 
   // ========================================
@@ -298,16 +342,15 @@ export function createAuthRoutes(deps: {
    * Google OAuth2 callback
    * GET /api/auth/google/callback
    *
-   * New behavior (Phase 3):
-   *  - If `organizationRepository` is wired AND the user has not been
-   *    seen before, issue a `_pending` JWT and redirect with
-   *    `?onboarding=true`. The FE's OrganizationOnboardingScreen reads
-   *    this and routes the user through `/auth/onboarding/organization`.
-   *  - Existing users skip onboarding — their persisted
-   *    `currentOrganizationId` is honored.
-   *  - If `organizationRepository` is absent (legacy path), fall back to
-   *    the pre-Phase-3 behavior: derive the org from the email and
-   *    issue a regular JWT immediately.
+   * Behavior:
+   *  - Every account joins the shared `individual` org; a verified
+   *    email-domain claim whose auto-join is on additionally grants that
+   *    team, evaluated on EVERY login (which is what backfills accounts
+   *    whose domain was claimed after they signed up).
+   *  - Returning users keep their persisted `currentOrganizationId` when it
+   *    is still a real membership.
+   *  - If `organizationRepository` is absent (legacy path), derive the org
+   *    from the email and issue a regular JWT immediately.
    */
   router.get('/auth/google/callback', authRateLimiter, async (req: Request, res: Response) => {
     if (!oidcService) {
@@ -357,12 +400,13 @@ export function createAuthRoutes(deps: {
 
       // Org model: identity is the full lowercased email (org-independent,
       // collision-free in the shared `individual` org and stable across an
-      // active-org switch). Every cloud signup joins `individual`; the
-      // active org defaults to it (team join is deferred). No onboarding
-      // round-trip — the org is decided at signup.
+      // active-org switch). Every cloud signup joins `individual`; a verified
+      // email-domain claim may additionally grant a team here (see below).
+      // No onboarding round-trip — the org is decided at login.
       if (organizationRepository) {
         const userId = oidcUser.email.toLowerCase();
         const existing = await organizationRepository.getUser(userId);
+        const isNewAccount = existing === null;
 
         // Honor a previously-chosen active org only if it is a real
         // membership; otherwise fall back to the shared individual org.
@@ -377,7 +421,6 @@ export function createAuthRoutes(deps: {
           );
           if (mem) activeOrgId = existing.currentOrganizationId;
         }
-        const activeKind = deriveKindFromOrgId(activeOrgId);
 
         // Every user is a member of the shared individual org.
         await organizationRepository.getOrCreateOrganization({
@@ -391,12 +434,58 @@ export function createAuthRoutes(deps: {
           organizationId: INDIVIDUAL_ORG_ID,
           role: 'member',
         });
+
+        // Domain auto-join, evaluated on EVERY login, not only at signup —
+        // that is what backfills accounts whose org claimed their domain
+        // later. `attachMembership` is idempotent, so a repeat login is a
+        // no-op. A brand-new account also activates the team; an existing
+        // one keeps whatever org it was working in and gets a `/auth/me`
+        // notice instead (a silent active-org swap would move the project
+        // list out from under in-flight work).
+        let lastDomainAutoJoin = existing?.lastDomainAutoJoin;
+        try {
+          const shortcut = await resolveDomainJoin(
+            organizationRepository,
+            userId,
+            oidcUser.email,
+          );
+          if (shortcut.ok && shortcut.claim.autoJoin !== false) {
+            await organizationRepository.attachMembership({
+              userId,
+              organizationId: shortcut.org.id,
+              role: shortcut.claim.autoJoinRole,
+            });
+            logger.info(
+              `[Auth] ${userId} auto-joined ${shortcut.org.id} via domain ${shortcut.domain}`,
+              { component: 'Auth' },
+            );
+            if (isNewAccount) {
+              activeOrgId = shortcut.org.id;
+            } else {
+              lastDomainAutoJoin = {
+                organizationId: shortcut.org.id,
+                domain: shortcut.domain,
+                at: new Date().toISOString(),
+              };
+            }
+          }
+        } catch (err) {
+          // A domain lookup must never cost the user their login.
+          logger.warn(
+            `[Auth] domain auto-join check failed for ${userId}`,
+            { component: 'Auth' },
+            err,
+          );
+        }
+
+        const activeKind = deriveKindFromOrgId(activeOrgId);
         await organizationRepository.upsertUser({
           id: userId,
           email: oidcUser.email,
           name: oidcUser.name,
           picture: oidcUser.picture,
           currentOrganizationId: activeOrgId,
+          lastDomainAutoJoin,
         });
 
         const workspacePath = workspaceResolver.getWorkspacePath({
@@ -464,8 +553,9 @@ export function createAuthRoutes(deps: {
    * Unified contract across local / cloud:
    *   {
    *     user: { email, organization, userId, name?, picture? } | null,
-   *     needsOnboarding: boolean,
-   *     suggestedOrganizationName: string | null,
+   *     activeOrg, memberships[],
+   *     pendingInvites[], domainJoinableOrgs[], myJoinRequests[],
+   *     autoJoinedOrg | null,
    *   }
    *
    * - Local mode: identity reflects `extractUserContext(req)` so the
@@ -473,9 +563,8 @@ export function createAuthRoutes(deps: {
    *   When the workspace has exactly one org × one user directory the
    *   organization/userId reflect that inference; otherwise the
    *   response falls back to the legacy `local:local` defaults.
-   * - Cloud mode: reads JWT. `needsOnboarding` is true when the JWT
-   *   carries the `_pending` sentinel; `suggestedOrganizationName` is
-   *   filled from `suggestOrganizationName(email)` in that case (Phase 3).
+   * - Cloud mode: reads JWT, then layers the account envelope (active org +
+   *   memberships) and the join surface on top.
    */
   router.get('/auth/me', async (req: Request, res: Response) => {
     res.set('Cache-Control', 'private, no-store');
@@ -500,8 +589,8 @@ export function createAuthRoutes(deps: {
         ],
         pendingInvites: [],
         domainJoinableOrgs: [],
-        needsOnboarding: false,
-        suggestedOrganizationName: null,
+        myJoinRequests: [],
+        autoJoinedOrg: null,
       });
     }
 
@@ -525,8 +614,8 @@ export function createAuthRoutes(deps: {
         memberships: [],
         pendingInvites: [],
         domainJoinableOrgs: [],
-        needsOnboarding: false,
-        suggestedOrganizationName: null,
+        myJoinRequests: [],
+        autoJoinedOrg: null,
       });
     }
 
@@ -553,8 +642,18 @@ export function createAuthRoutes(deps: {
       const isAdmin = isSuperAdminEmail(payload.email);
 
       const joinSurface = organizationRepository
-        ? await buildJoinSurface(organizationRepository, payload.sub, payload.email)
-        : { pendingInvites: [], domainJoinableOrgs: [] };
+        ? await buildJoinSurface(
+            organizationRepository,
+            payload.sub,
+            payload.email,
+            envelope.activeOrg.id,
+          )
+        : {
+            pendingInvites: [],
+            domainJoinableOrgs: [],
+            myJoinRequests: [],
+            autoJoinedOrg: null,
+          };
 
       res.json({
         user: {
@@ -572,8 +671,8 @@ export function createAuthRoutes(deps: {
         memberships: envelope.memberships,
         pendingInvites: joinSurface.pendingInvites,
         domainJoinableOrgs: joinSurface.domainJoinableOrgs,
-        needsOnboarding: false,
-        suggestedOrganizationName: null,
+        myJoinRequests: joinSurface.myJoinRequests,
+        autoJoinedOrg: joinSurface.autoJoinedOrg,
       });
     } catch {
       return res.json({
@@ -582,150 +681,10 @@ export function createAuthRoutes(deps: {
         memberships: [],
         pendingInvites: [],
         domainJoinableOrgs: [],
-        needsOnboarding: false,
-        suggestedOrganizationName: null,
+        myJoinRequests: [],
+        autoJoinedOrg: null,
       });
     }
-  });
-
-  // ========================================
-  // Onboarding (Phase 3)
-  // ========================================
-
-  /**
-   * POST /api/auth/onboarding/organization
-   *
-   * Accepts `_pending` JWT (the route is whitelisted in
-   * `requireOnboardedJwt`). Body: `{ organizationName?: string }`.
-   * Empty / missing input → BE auto-resolves via
-   * `resolveOrganizationId(email, undefined, userId)`.
-   *
-   * On success: upserts organization + membership, mints a fresh JWT
-   * with the real `org` claim, and returns the new identity payload.
-   */
-  router.post('/auth/onboarding/organization', async (req: Request, res: Response) => {
-    if (!jwtService) {
-      return res.status(503).json({ error: 'JWT not configured' });
-    }
-    if (!organizationRepository) {
-      return res.status(503).json({ error: 'Organization repository not configured' });
-    }
-
-    // Read the in-flight `_pending` JWT — middleware whitelist lets
-    // it through, so we re-verify it inline here.
-    const token = (req as any).cookies?.[JwtService.cookieName];
-    if (!token) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    let payload: ReturnType<typeof jwtService.verify>;
-    try {
-      payload = jwtService.verify(token);
-    } catch {
-      return res.status(401).json({ error: 'Invalid or expired session' });
-    }
-
-    if (payload.org !== PENDING_ORG_SENTINEL) {
-      // Already onboarded — treat as no-op so accidental double-submit
-      // doesn't reissue a fresh org. Return the existing identity.
-      return res.json({
-        user: {
-          userId: payload.sub,
-          email: payload.email,
-          organization: payload.org,
-          name: payload.name,
-          picture: payload.picture,
-        },
-        needsOnboarding: false,
-      });
-    }
-
-    // JWT.sub is the email-local-part (workspace topology compat). The
-    // OrganizationRepository is keyed by the stable OAuth sub, so we
-    // first resolve the repo record by email — the OAuth callback's
-    // `_pending` upsert wrote both index entries (userId + email lookup),
-    // so this lookup MUST find a row. If it doesn't, the user's
-    // `_pending` JWT outlived the repo record (DB wipe, etc.) — treat
-    // as a session fault and force re-OAuth.
-    const userRecord = await organizationRepository.getUserByEmail(payload.email);
-    if (!userRecord) {
-      logger.warn(
-        `[Auth] Onboarding without repo record: ${payload.email} (likely stale _pending JWT)`,
-        { component: 'Auth' },
-      );
-      return res.status(401).json({
-        error: 'session_state_lost',
-        message: 'Session record missing — please sign in again.',
-      });
-    }
-    const stableId = userRecord.id;
-
-    const userInput = typeof req.body?.organizationName === 'string' ? req.body.organizationName : undefined;
-
-    let organizationId: string;
-    try {
-      organizationId = resolveOrganizationId(payload.email, userInput, stableId);
-    } catch (err) {
-      if (err instanceof InvalidOrganizationNameError) {
-        return res.status(400).json({ error: 'invalid_organization_name', message: err.message });
-      }
-      throw err;
-    }
-
-    const displayName = (userInput && userInput.trim()) || organizationId;
-
-    const organization = await organizationRepository.getOrCreateOrganization({
-      id: organizationId,
-      name: displayName,
-      ownerId: null,
-    });
-
-    await organizationRepository.attachMembership({
-      userId: stableId,
-      organizationId: organization.id,
-      role: 'member',
-    });
-
-    await organizationRepository.upsertUser({
-      id: stableId,
-      email: payload.email,
-      name: payload.name,
-      picture: payload.picture,
-      currentOrganizationId: organization.id,
-    });
-
-    // Workspace path uses `payload.sub` (= username) — the JWT.sub
-    // semantics carry over across the org change so existing
-    // `extractUserContext` consumers see a stable userId.
-    const workspacePath = workspaceResolver.getWorkspacePath({
-      userId: payload.sub,
-      organizationId: organization.id,
-    });
-    try {
-      await fs.promises.access(workspacePath);
-    } catch {
-      await fs.promises.mkdir(workspacePath, { recursive: true });
-    }
-
-    issueJwtCookie(req, res, {
-      sub: payload.sub,
-      email: payload.email,
-      org: organization.id,
-      kind: organization.kind ?? deriveKindFromOrgId(organization.id),
-      name: payload.name,
-      picture: payload.picture,
-    });
-
-    res.json({
-      user: {
-        userId: payload.sub,
-        email: payload.email,
-        organization: organization.id,
-        name: payload.name,
-        picture: payload.picture,
-      },
-      needsOnboarding: false,
-    });
   });
 
   /**

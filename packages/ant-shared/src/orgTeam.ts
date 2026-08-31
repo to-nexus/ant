@@ -28,8 +28,29 @@ export type OrgDomainClaimStatus = 'pending' | 'verified' | 'rejected';
 /** How a domain claim got verified. */
 export type OrgDomainVerifiedBy = 'email' | 'dns' | string; // superadmin email for manual verify
 
+/** Stored join-request lifecycle. `expired` is derived lazily from `expiresAt`. */
+export type OrgJoinRequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'canceled'
+  | 'expired';
+
+/** Why a member is no longer in the org — an admin removal or their own exit. */
+export type OrgMemberRemovalReason = 'removed' | 'left';
+
 /** Invite validity window (days) — expiry is judged lazily on read. */
 export const ORG_INVITE_TTL_DAYS = 14;
+
+/** Join-request validity window (days) — expiry is judged lazily on read. */
+export const JOIN_REQUEST_TTL_DAYS = 30;
+
+/**
+ * Cap on a join request's free-text message. The route budgets the
+ * SERIALIZED value, not the raw length — a join request is persisted and
+ * listed back to admins.
+ */
+export const JOIN_REQUEST_MESSAGE_MAX = 500;
 
 // ── View projections ────────────────────────────────────────────────────────
 
@@ -62,6 +83,8 @@ export interface OrgDomainClaimView {
   domain: string;
   organizationId: string;
   status: OrgDomainClaimStatus;
+  /** Grant membership at login to every account on this domain. */
+  autoJoin: boolean;
   autoJoinRole: OrgInviteRole;
   claimedBy: string;
   createdAt: string;
@@ -92,11 +115,61 @@ export interface DomainJoinableOrgView {
   autoJoinRole: OrgInviteRole;
 }
 
+/**
+ * Backfill notice carried on `/auth/me` (`autoJoinedOrg`) — the login just
+ * granted this membership from a verified domain claim. Suppressed when it
+ * is already the active org (a brand-new account lands there directly).
+ */
+export interface AutoJoinedOrgView {
+  organizationId: string;
+  organizationName: string;
+  domain: string;
+}
+
+/** Admin-side join-request row. */
+export interface OrgJoinRequestView {
+  id: string;
+  organizationId: string;
+  userId: string;
+  email: string;
+  message?: string;
+  status: OrgJoinRequestStatus;
+  createdAt: string;
+  expiresAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
+}
+
+/** Requester-side projection carried on `/auth/me` (`myJoinRequests`). */
+export interface MyJoinRequestView {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  status: OrgJoinRequestStatus;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/**
+ * A member who left or was removed. The row suppresses the domain
+ * shortcut (auto-join and the one-click banner) until an admin clears it,
+ * so a removal is not undone by the member's next login.
+ */
+export interface OrgRemovedMemberView {
+  userId: string;
+  email: string;
+  reason: OrgMemberRemovalReason;
+  removedAt: string;
+  removedBy: string;
+}
+
 export interface OrgSummaryView {
   id: string;
   name: string;
   kind: OrganizationKind;
   createdAt: string;
+  /** Listed in organization search, so non-members can request to join. */
+  discoverable: boolean;
 }
 
 // ── Superadmin (admin dashboard) projections ────────────────────────────────
@@ -108,6 +181,9 @@ export interface AdminOrgSummary {
   ownerId: string | null;
   memberCount: number;
   domainCount: number;
+  joinRequestCount: number;
+  removedMemberCount: number;
+  discoverable: boolean;
   createdAt: string;
   deletedAt?: string;
 }
@@ -116,6 +192,8 @@ export interface AdminOrgDetail extends AdminOrgSummary {
   members: OrgMemberView[];
   invites: OrgInviteView[];
   domains: OrgDomainClaimView[];
+  joinRequests: OrgJoinRequestView[];
+  removedMembers: OrgRemovedMemberView[];
 }
 
 // ── Request bodies ──────────────────────────────────────────────────────────
@@ -156,9 +234,30 @@ export interface ClaimOrgDomainRequest {
   domain: string;
 }
 
+/** Body of `PUT /api/organizations/:orgId/domains/:domain`. */
+export interface UpdateOrgDomainRequest {
+  autoJoin?: boolean;
+  autoJoinRole?: OrgInviteRole;
+}
+
+/** Body of `PUT /api/organizations/:orgId/discoverable`. */
+export interface SetOrgDiscoverableRequest {
+  discoverable: boolean;
+}
+
 /** Body of `POST /api/organizations/join-by-domain`. */
 export interface JoinByDomainRequest {
   organizationId: string;
+}
+
+/** Body of `POST /api/organizations/:orgId/join-requests`. */
+export interface CreateJoinRequestRequest {
+  message?: string;
+}
+
+/** Body of `POST /api/organizations/:orgId/join-requests/:id/approve`. */
+export interface DecideJoinRequestRequest {
+  role?: OrgInviteRole;
 }
 
 // ── Stable error codes (surfaced to clients as `{ code }`) ──────────────────
@@ -186,3 +285,9 @@ export const DOMAIN_INVALID = 'DOMAIN_INVALID';
 export const DOMAIN_NOT_FOUND = 'DOMAIN_NOT_FOUND';
 export const DOMAIN_NOT_VERIFIED = 'DOMAIN_NOT_VERIFIED';
 export const CONSUMER_DOMAIN_NOT_CLAIMABLE = 'CONSUMER_DOMAIN_NOT_CLAIMABLE';
+export const JOIN_REQUEST_NOT_FOUND = 'JOIN_REQUEST_NOT_FOUND';
+export const JOIN_REQUEST_ALREADY_PENDING = 'JOIN_REQUEST_ALREADY_PENDING';
+export const JOIN_REQUEST_NOT_PENDING = 'JOIN_REQUEST_NOT_PENDING';
+export const JOIN_REQUEST_EXPIRED = 'JOIN_REQUEST_EXPIRED';
+export const AUTO_JOIN_BLOCKED = 'AUTO_JOIN_BLOCKED';
+export const MESSAGE_TOO_LONG = 'MESSAGE_TOO_LONG';

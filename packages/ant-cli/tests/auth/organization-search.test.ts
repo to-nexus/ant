@@ -48,7 +48,11 @@ class FakeOrgRepo implements OrganizationRepositoryPort {
   async getOrCreateOrganization(): Promise<never> {
     throw new Error('not used');
   }
+  /** Last (query, limit) the route passed — makes clamping observable. */
+  lastCall: { query: string; limit: number } | null = null;
+
   async searchOrganizations(query: string, limit: number): Promise<OrganizationSummary[]> {
+    this.lastCall = { query, limit };
     const q = query.toLowerCase();
     const results: OrganizationSummary[] = [];
     for (const org of this.orgs.values()) {
@@ -172,6 +176,41 @@ class FakeOrgRepo implements OrganizationRepositoryPort {
   async deleteDomainClaim(): Promise<never> {
     throw new Error('not used');
   }
+
+  // Discoverability / join requests / removal rows — same convention.
+  async setOrganizationDiscoverable(): Promise<never> {
+    throw new Error('not used');
+  }
+  async patchDomainJoinPolicy(): Promise<never> {
+    throw new Error('not used');
+  }
+  async createJoinRequest(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getJoinRequest(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listJoinRequestsByOrg(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listJoinRequestsByUser(): Promise<never> {
+    throw new Error('not used');
+  }
+  async setJoinRequestStatus(): Promise<never> {
+    throw new Error('not used');
+  }
+  async recordMemberRemoval(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getMemberRemoval(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listRemovedMembers(): Promise<never> {
+    throw new Error('not used');
+  }
+  async clearMemberRemoval(): Promise<never> {
+    throw new Error('not used');
+  }
 }
 
 interface TestApp {
@@ -237,13 +276,10 @@ describe('GET /api/organizations — search', () => {
     expect(body.organizations).toEqual([{ id: 'zeta', name: 'Zeta Corp' }]);
   });
 
-  it('clamps limit to MAX_LIMIT (100)', async () => {
-    const res = await fetch(`${app.url}/api/organizations?q=a&limit=9999`);
+  it('clamps an oversized limit before it reaches the repo', async () => {
+    const res = await fetch(`${app.url}/api/organizations?q=ac&limit=9999`);
     expect(res.status).toBe(200);
-    // No assertion on exact length — just that the request didn't blow
-    // up. The clamping is documented behavior (see route constant).
-    const body = await res.json();
-    expect(Array.isArray(body.organizations)).toBe(true);
+    expect(repo.lastCall?.limit).toBe(25);
   });
 
   it('returns [] for empty / whitespace query (cheap rejection)', async () => {
@@ -251,6 +287,13 @@ describe('GET /api/organizations — search', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.organizations).toEqual([]);
+  });
+
+  it('never reaches the repo for a single-character query', async () => {
+    const res = await fetch(`${app.url}/api/organizations?q=a`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).organizations).toEqual([]);
+    expect(repo.lastCall).toBeNull();
   });
 
   it('omits ownerId / createdAt from the response (sensitive-field guard)', async () => {
@@ -262,8 +305,9 @@ describe('GET /api/organizations — search', () => {
   });
 
   it('respects the limit param', async () => {
-    const res = await fetch(`${app.url}/api/organizations?q=a&limit=1`);
+    const res = await fetch(`${app.url}/api/organizations?q=ac&limit=1`);
     const body = await res.json();
-    expect(body.organizations.length).toBeLessThanOrEqual(1);
+    expect(repo.lastCall?.limit).toBe(1);
+    expect(body.organizations.length).toBe(1);
   });
 });

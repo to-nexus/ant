@@ -1,5 +1,5 @@
 /**
- * OrgSettingsPanel — team organization settings (Phase 1, §1 of the org plan).
+ * OrgSettingsPanel — team organization settings.
  *
  * Static OSS panel (NOT a slot): rendered by MainContentArea for the
  * `orgSettings` tab. Reachable only when the active org kind is `team`
@@ -8,7 +8,8 @@
  * per-field optimistic saves, destructive actions behind showConfirm.
  *
  * Role model: member sees General (read) / Members (read) / Danger (leave);
- * Invitations + Domains are admin+ only and hidden (not disabled) below that.
+ * Invitations, Join requests and Domains are admin+ only and hidden (not
+ * disabled) below that.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -33,9 +34,10 @@ import { Button } from '../aurora/Button';
 import { Badge } from '../aurora/Badge';
 import { Avatar } from '../aurora/Avatar';
 import { KebabMenu } from '../aurora/KebabMenu';
-import { Copy, Check, Mail, ArrowRightLeft, UserMinus, Trash2 } from 'lucide-react';
+import { Copy, Check, Mail, ArrowRightLeft, UserMinus, Trash2, X, Undo2 } from 'lucide-react';
 import type { OrgInviteRole, OrgMemberView } from '@ant/shared';
 import {
+  fetchOrg,
   renameOrg,
   deleteOrg,
   leaveOrg,
@@ -47,12 +49,24 @@ import {
   claimOrgDomain,
   verifyOrgDomain,
   deleteOrgDomain,
+  updateOrgDomain,
+  setOrgDiscoverable,
+  approveJoinRequest,
+  rejectJoinRequest,
+  clearRemovedMember,
 } from '@/infrastructure/http/api/organizations';
 import { RoleBadge } from './RoleBadge';
 import { InviteLinkChip } from './InviteLinkChip';
 import { orgErrorMessage } from './orgErrors';
 
-const SECTION_IDS = ['c3o-general', 'c3o-members', 'c3o-invitations', 'c3o-domains', 'c3o-danger'] as const;
+const SECTION_IDS = [
+  'c3o-general',
+  'c3o-members',
+  'c3o-requests',
+  'c3o-invitations',
+  'c3o-domains',
+  'c3o-danger',
+] as const;
 
 export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation('config');
@@ -72,9 +86,14 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
   const orgMembersStatus = useStore((s) => s.orgMembersStatus);
   const orgInvites = useStore((s) => s.orgInvites);
   const orgDomains = useStore((s) => s.orgDomains);
+  const orgJoinRequests = useStore((s) => s.orgJoinRequests);
+  const orgJoinRequestsStatus = useStore((s) => s.orgJoinRequestsStatus);
+  const orgRemovedMembers = useStore((s) => s.orgRemovedMembers);
   const loadOrgMembers = useStore((s) => s.loadOrgMembers);
   const loadOrgInvites = useStore((s) => s.loadOrgInvites);
   const loadOrgDomains = useStore((s) => s.loadOrgDomains);
+  const loadOrgJoinRequests = useStore((s) => s.loadOrgJoinRequests);
+  const loadOrgRemovedMembers = useStore((s) => s.loadOrgRemovedMembers);
   const resetOrgResources = useStore((s) => s.resetOrgResources);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -89,6 +108,8 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
     if (isAdmin) {
       void loadOrgInvites(orgId);
       void loadOrgDomains(orgId);
+      void loadOrgJoinRequests(orgId);
+      void loadOrgRemovedMembers(orgId);
     }
     return () => resetOrgResources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,7 +132,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
           result.user.approvalStatus,
           result.user.testAccountLevel,
         );
-      useStore.getState().setJoinSurface(result.pendingInvites, result.domainJoinableOrgs);
+      useStore.getState().setJoinSurface(result);
     }
   }, []);
 
@@ -251,12 +272,101 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
     }
   };
 
+  // ── Discoverability ────────────────────────────────────────────────────
+
+  // `discoverable` is not on the membership view, so the panel reads it from
+  // the org record on mount and keeps its own optimistic copy afterwards.
+  const [discoverable, setDiscoverable] = useState<boolean | null>(null);
+  const [savingDiscoverable, setSavingDiscoverable] = useState(false);
+
+  useEffect(() => {
+    if (!orgId) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const { organization } = await fetchOrg(orgId);
+        if (alive) setDiscoverable(organization.discoverable);
+      } catch {
+        if (alive) setDiscoverable(null);
+      }
+    })();
+    return () => { alive = false; };
+  }, [orgId]);
+
+  const toggleDiscoverable = async (next: boolean) => {
+    if (!orgId || savingDiscoverable) return;
+    setSavingDiscoverable(true);
+    const previous = discoverable;
+    setDiscoverable(next);
+    try {
+      await setOrgDiscoverable(orgId, next);
+    } catch (err) {
+      setDiscoverable(previous);
+      showError(orgErrorMessage(err, t));
+    } finally {
+      setSavingDiscoverable(false);
+    }
+  };
+
+  // ── Join requests ──────────────────────────────────────────────────────
+
+  const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
+  const [requestRoles, setRequestRoles] = useState<Record<string, OrgInviteRole>>({});
+
+  const decideRequest = async (
+    requestId: string,
+    decision: 'approve' | 'reject',
+  ) => {
+    if (!orgId || decidingRequestId) return;
+    setDecidingRequestId(requestId);
+    try {
+      if (decision === 'approve') {
+        await approveJoinRequest(orgId, requestId, requestRoles[requestId]);
+        await refreshMembers();
+        await loadOrgRemovedMembers(orgId);
+      } else {
+        await rejectJoinRequest(orgId, requestId);
+      }
+      await loadOrgJoinRequests(orgId);
+    } catch (err) {
+      showError(orgErrorMessage(err, t));
+      await loadOrgJoinRequests(orgId);
+    } finally {
+      setDecidingRequestId(null);
+    }
+  };
+
+  // ── Removal rows (the domain-shortcut blocklist) ───────────────────────
+
+  const allowAgain = (userIdToClear: string, email: string) => {
+    if (!orgId) return;
+    showConfirm(
+      t(
+        'org.removed.confirmAllow',
+        'Let {{email}} join again through the email domain?',
+        { email },
+      ),
+      {
+        title: t('org.removed.allowTitle', 'Allow domain join'),
+        onConfirm: async () => {
+          try {
+            await clearRemovedMember(orgId, userIdToClear);
+            await loadOrgRemovedMembers(orgId);
+          } catch (err) {
+            showError(orgErrorMessage(err, t));
+          }
+        },
+      },
+    );
+  };
+
   // ── Domains ────────────────────────────────────────────────────────────
 
   const [domainDraft, setDomainDraft] = useState('');
   const [claiming, setClaiming] = useState(false);
   const [domainError, setDomainError] = useState<string | null>(null);
   const [verifyingDomain, setVerifyingDomain] = useState<string | null>(null);
+  const [savingDomainPolicy, setSavingDomainPolicy] = useState<string | null>(null);
   const emailHost = useMemo(() => userEmail?.split('@')[1]?.toLowerCase() ?? '', [userEmail]);
   const hostAlreadyClaimed = orgDomains.some((d) => d.domain === emailHost);
 
@@ -293,6 +403,23 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
       showError(orgErrorMessage(err, t));
     } finally {
       setVerifyingDomain(null);
+    }
+  };
+
+  const saveDomainPolicy = async (
+    domain: string,
+    patch: { autoJoin?: boolean; autoJoinRole?: OrgInviteRole },
+  ) => {
+    if (!orgId || savingDomainPolicy) return;
+    setSavingDomainPolicy(domain);
+    try {
+      await updateOrgDomain(orgId, domain, patch);
+      await loadOrgDomains(orgId);
+    } catch (err) {
+      showError(orgErrorMessage(err, t));
+      await loadOrgDomains(orgId);
+    } finally {
+      setSavingDomainPolicy(null);
     }
   };
 
@@ -355,6 +482,8 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
 
   // ── Render ─────────────────────────────────────────────────────────────
 
+  const pendingJoinRequests = orgJoinRequests.filter((r) => r.status === 'pending');
+
   const tocNode = (
     <TocNav
       items={[
@@ -362,6 +491,12 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
         { id: 'c3o-members', label: t('org.tocMembers', 'Members'), icon: 'Users' },
         ...(isAdmin
           ? [
+              {
+                id: 'c3o-requests',
+                label: t('org.requests.toc', 'Join requests'),
+                icon: 'UserPlus' as const,
+                ...(pendingJoinRequests.length > 0 ? { count: pendingJoinRequests.length } : {}),
+              },
               { id: 'c3o-invitations', label: t('org.tocInvitations', 'Invitations'), icon: 'Mail' as const },
               { id: 'c3o-domains', label: t('org.tocDomains', 'Domains'), icon: 'Globe' as const },
             ]
@@ -455,6 +590,33 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
                   <StatusPill state="configured" label={t('org.general.immutable', 'Immutable')} />
                 </div>
               </div>
+              {isAdmin && (
+                <div style={{ borderTop: '1px solid var(--border-1)', paddingTop: 12 }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs" style={{ color: 'var(--text-2)' }}>
+                        {t('org.general.discoverableLabel', 'Discoverable in organization search')}
+                      </div>
+                      <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-4)' }}>
+                        {t(
+                          'org.general.discoverableHint',
+                          'Exposes this name and id to signed-in accounts so they can send a join request. It grants nothing on its own — an admin still approves every request.',
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ width: 110 }}>
+                      <AuroraSelect
+                        value={discoverable === true ? 'on' : 'off'}
+                        onChange={(v) => void toggleDiscoverable(v === 'on')}
+                        options={[
+                          { value: 'off', label: t('org.general.discoverableOff', 'Hidden') },
+                          { value: 'on', label: t('org.general.discoverableOn', 'Discoverable') },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </SectionCard>
 
@@ -538,7 +700,172 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
                 })}
               </div>
             )}
+
+            {/* Removal rows — an admin's removal (or a member's own exit) must
+                survive the next login, so it also blocks the domain shortcut
+                until cleared here. */}
+            {isAdmin && orgRemovedMembers.length > 0 && (
+              <div
+                className="mt-4 p-3"
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  border: '1px solid var(--border-1)',
+                  borderRadius: 'var(--r-md)',
+                }}
+              >
+                <div className="text-xs mb-1" style={{ color: 'var(--text-2)' }}>
+                  {t('org.removed.title', 'Excluded from domain auto-join')}
+                  {' '}
+                  <span style={{ color: 'var(--text-4)' }}>({orgRemovedMembers.length})</span>
+                </div>
+                <div className="text-[11px] mb-2" style={{ color: 'var(--text-4)' }}>
+                  {t(
+                    'org.removed.description',
+                    'These accounts left or were removed. The email-domain shortcut stays closed for them; an invite or an approved join request re-opens it.',
+                  )}
+                </div>
+                {orgRemovedMembers.map((r) => (
+                  <div
+                    key={r.userId}
+                    className="flex items-center gap-2 py-1.5"
+                    style={{ borderTop: '1px solid var(--border-1)' }}
+                  >
+                    <span
+                      className="min-w-0 flex-1 truncate"
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-2)' }}
+                    >
+                      {r.email}
+                    </span>
+                    <Badge tone={r.reason === 'removed' ? 'warning' : 'neutral'} size="sm">
+                      {r.reason === 'removed'
+                        ? t('org.removed.reasonRemoved', 'Removed')
+                        : t('org.removed.reasonLeft', 'Left')}
+                    </Badge>
+                    <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
+                      {new Date(r.removedAt).toLocaleDateString()}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => allowAgain(r.userId, r.email)}
+                    >
+                      <Undo2 className="w-3.5 h-3.5" />
+                      {t('org.removed.allowAgain', 'Allow again')}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </SectionCard>
+
+          {/* Join requests (admin+) */}
+          {isAdmin && (
+            <SectionCard
+              id="c3o-requests"
+              icon="UserPlus"
+              title={t('org.requests.title', 'Join requests')}
+              description={t(
+                'org.requests.description',
+                'Accounts that found this team in search and asked to join. Approving grants membership; discovery alone grants nothing.',
+              )}
+              accent="pink-orange"
+            >
+              {orgJoinRequestsStatus === 'loading' && orgJoinRequests.length === 0 ? (
+                <div className="space-y-2">
+                  {[0, 1].map((i) => (
+                    <div key={i} className="rounded" style={{ height: 48, background: 'var(--bg-surface-2)', opacity: 0.5 }} />
+                  ))}
+                </div>
+              ) : pendingJoinRequests.length === 0 ? (
+                <div className="text-xs" style={{ color: 'var(--text-4)' }}>
+                  {discoverable === true
+                    ? t('org.requests.empty', 'No pending requests.')
+                    : t(
+                        'org.requests.emptyHidden',
+                        'No pending requests — this team is not discoverable in search, so it can only be joined by invitation or email domain.',
+                      )}
+                </div>
+              ) : (
+                <div>
+                  {pendingJoinRequests.map((r) => {
+                    const busy = decidingRequestId === r.id;
+                    return (
+                      <div
+                        key={r.id}
+                        className="py-2"
+                        style={{ borderBottom: '1px solid var(--border-1)' }}
+                      >
+                        <div className="flex items-center gap-3" style={{ minHeight: 48 }}>
+                          <Avatar name={r.email} size={32} gradient="cool" />
+                          <div className="min-w-0 flex-1">
+                            <div
+                              className="truncate"
+                              style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-1)' }}
+                            >
+                              {r.email}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-4)' }}>
+                              {t('org.requests.requestedOn', 'Requested {{date}}', {
+                                date: new Date(r.createdAt).toLocaleDateString(),
+                              })}
+                            </div>
+                          </div>
+                          {isOwner && (
+                            <div style={{ width: 120 }}>
+                              <AuroraSelect
+                                value={requestRoles[r.id] ?? 'member'}
+                                onChange={(v) =>
+                                  setRequestRoles((prev) => ({ ...prev, [r.id]: v as OrgInviteRole }))
+                                }
+                                options={[
+                                  { value: 'member', label: t('org.role.member', 'Member') },
+                                  { value: 'admin', label: t('org.role.admin', 'Admin') },
+                                ]}
+                              />
+                            </div>
+                          )}
+                          <Button
+                            variant="primary"
+                            size="xs"
+                            loading={busy}
+                            onClick={() => void decideRequest(r.id, 'approve')}
+                          >
+                            {t('org.requests.approve', 'Approve')}
+                          </Button>
+                          <KebabMenu
+                            items={[
+                              {
+                                icon: X,
+                                label: t('org.requests.reject', 'Reject request'),
+                                variant: 'danger' as const,
+                                confirm: true,
+                                confirmLabel: t('org.requests.rejectConfirm', 'Confirm reject'),
+                                onClick: () => void decideRequest(r.id, 'reject'),
+                              },
+                            ]}
+                            ariaLabel={t('org.requests.actions', 'Join request actions')}
+                          />
+                        </div>
+                        {r.message && (
+                          <div
+                            className="mt-1 ml-11 px-2 py-1.5 text-xs"
+                            style={{
+                              background: 'var(--bg-surface-2)',
+                              color: 'var(--text-2)',
+                              borderRadius: 'var(--r-md)',
+                              whiteSpace: 'pre-wrap',
+                            }}
+                          >
+                            {r.message}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </SectionCard>
+          )}
 
           {/* Invitations (admin+) */}
           {isAdmin && (
@@ -637,7 +964,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
               id="c3o-domains"
               icon="Globe"
               title={t('org.domains.title', 'Email domains')}
-              description={t('org.domains.description', 'People who sign in with a verified domain can join this team in one click.')}
+              description={t('org.domains.description', 'A verified domain puts every sign-in on it into this team. Turn auto-join off to offer the join instead of granting it.')}
               accent="cool"
             >
               <div className="space-y-4">
@@ -718,15 +1045,61 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
                       </div>
                     )}
                     {d.status === 'verified' && (
-                      <div className="text-xs" style={{ color: 'var(--text-4)' }}>
-                        {d.verifiedBy === 'email'
-                          ? t('org.domains.verifiedViaEmail', 'Verified via email match')
-                          : d.verifiedBy === 'dns'
-                            ? t('org.domains.verifiedViaDns', 'Verified via DNS')
-                            : t('org.domains.verifiedByOperator', 'Verified by operator')}
-                        {' · '}
-                        {t('org.domains.joinHint', 'Sign-ins @{{domain}} can join with one click.', { domain: d.domain })}
-                      </div>
+                      <>
+                        <div className="text-xs" style={{ color: 'var(--text-4)' }}>
+                          {d.verifiedBy === 'email'
+                            ? t('org.domains.verifiedViaEmail', 'Verified via email match')
+                            : d.verifiedBy === 'dns'
+                              ? t('org.domains.verifiedViaDns', 'Verified via DNS')
+                              : t('org.domains.verifiedByOperator', 'Verified by operator')}
+                          {' · '}
+                          {d.autoJoin
+                            ? t('org.domains.joinHintAuto', 'Sign-ins @{{domain}} are added to this team automatically.', { domain: d.domain })
+                            : t('org.domains.joinHintOffer', 'Sign-ins @{{domain}} are offered a one-click join.', { domain: d.domain })}
+                        </div>
+                        <div
+                          className="flex items-end gap-2 flex-wrap"
+                          style={{ borderTop: '1px solid var(--border-1)', paddingTop: 8 }}
+                        >
+                          <div style={{ width: 150 }}>
+                            <div className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                              {t('org.domains.autoJoinLabel', 'On sign-in')}
+                            </div>
+                            <AuroraSelect
+                              value={d.autoJoin ? 'auto' : 'offer'}
+                              onChange={(v) => void saveDomainPolicy(d.domain, { autoJoin: v === 'auto' })}
+                              options={[
+                                { value: 'auto', label: t('org.domains.autoJoinOn', 'Add to team') },
+                                { value: 'offer', label: t('org.domains.autoJoinOff', 'Offer only') },
+                              ]}
+                            />
+                          </div>
+                          <div style={{ width: 130 }}>
+                            <div className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>
+                              {t('org.domains.autoJoinRoleLabel', 'Role granted')}
+                            </div>
+                            <AuroraSelect
+                              value={d.autoJoinRole}
+                              onChange={(v) => void saveDomainPolicy(d.domain, { autoJoinRole: v as OrgInviteRole })}
+                              options={[
+                                { value: 'member', label: t('org.role.member', 'Member') },
+                                ...(isOwner ? [{ value: 'admin', label: t('org.role.admin', 'Admin') }] : []),
+                              ]}
+                            />
+                          </div>
+                          {savingDomainPolicy === d.domain && (
+                            <span className="text-[11px] pb-2" style={{ color: 'var(--text-4)' }}>
+                              {t('org.domains.savingPolicy', 'Saving…')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>
+                          {t(
+                            'org.domains.autoJoinHint',
+                            'Auto-join is re-checked at every sign-in, so accounts that existed before this claim are picked up on their next login. Members you remove stay out until you allow them again.',
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 ))}

@@ -39,7 +39,13 @@ import {
   deriveKindFromOrgId,
 } from '@ant/shared';
 import { isSuperAdminEmail } from '../../../../core/auth/superAdmin';
-import { toInviteView, toDomainClaimView, buildMemberViews } from './teams.routes';
+import {
+  toInviteView,
+  toDomainClaimView,
+  toJoinRequestView,
+  toRemovedMemberView,
+  buildMemberViews,
+} from './teams.routes';
 import type { Organization } from '../../../../core/auth/types';
 import { logger } from '../../../../utils/logger';
 
@@ -310,9 +316,11 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   // ======== Organizations (superadmin oversight — Phase 1) ========
 
   async function toOrgSummary(org: Organization): Promise<AdminOrgSummary> {
-    const [members, domains] = await Promise.all([
+    const [members, domains, joinRequests, removedMembers] = await Promise.all([
       organizationRepository.listOrgMemberships(org.id),
       organizationRepository.listOrgDomains(org.id),
+      organizationRepository.listJoinRequestsByOrg(org.id),
+      organizationRepository.listRemovedMembers(org.id),
     ]);
     return {
       id: org.id,
@@ -321,6 +329,10 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       ownerId: org.ownerId,
       memberCount: members.length,
       domainCount: domains.length,
+      // Pending only — a decided request is history, not a queue item.
+      joinRequestCount: joinRequests.filter((r) => r.status === 'pending').length,
+      removedMemberCount: removedMembers.length,
+      discoverable: org.discoverable === true,
       createdAt: org.createdAt,
       ...(org.deletedAt ? { deletedAt: org.deletedAt } : {}),
     };
@@ -344,17 +356,22 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         res.status(404).json({ error: 'organization not found', code: ORG_NOT_FOUND });
         return;
       }
-      const [summary, memberships, invites, domains] = await Promise.all([
-        toOrgSummary(org),
-        organizationRepository.listOrgMemberships(org.id),
-        organizationRepository.listOrgInvites(org.id),
-        organizationRepository.listOrgDomains(org.id),
-      ]);
+      const [summary, memberships, invites, domains, joinRequests, removedMembers] =
+        await Promise.all([
+          toOrgSummary(org),
+          organizationRepository.listOrgMemberships(org.id),
+          organizationRepository.listOrgInvites(org.id),
+          organizationRepository.listOrgDomains(org.id),
+          organizationRepository.listJoinRequestsByOrg(org.id),
+          organizationRepository.listRemovedMembers(org.id),
+        ]);
       const detail: AdminOrgDetail = {
         ...summary,
         members: await buildMemberViews(organizationRepository, memberships),
         invites: invites.map(toInviteView),
         domains: domains.map(toDomainClaimView),
+        joinRequests: joinRequests.map(toJoinRequestView),
+        removedMembers: removedMembers.map(toRemovedMemberView),
       };
       res.json(detail);
     } catch (err) {

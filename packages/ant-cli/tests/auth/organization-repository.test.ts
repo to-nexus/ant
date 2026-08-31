@@ -18,7 +18,7 @@ import { REDIS_KEYS } from '../../src/core/constants/redis';
 // ---------- Minimal in-memory Redis (ioredis-compatible) ----------
 
 interface FakeOp {
-  kind: 'set' | 'set-nx' | 'sadd';
+  kind: 'set' | 'set-nx' | 'sadd' | 'srem' | 'del';
   args: any[];
 }
 
@@ -41,6 +41,16 @@ class FakePipeline {
     return this;
   }
 
+  srem(key: string, member: string): this {
+    this.ops.push({ kind: 'srem', args: [key, member] });
+    return this;
+  }
+
+  del(key: string): this {
+    this.ops.push({ kind: 'del', args: [key] });
+    return this;
+  }
+
   async exec(): Promise<Array<[Error | null, unknown]>> {
     const results: Array<[Error | null, unknown]> = [];
     for (const op of this.ops) {
@@ -60,6 +70,10 @@ class FakePipeline {
           set.add(op.args[1]);
           this.store.sets.set(op.args[0], set);
           results.push([null, 1]);
+        } else if (op.kind === 'srem') {
+          results.push([null, this.store.sets.get(op.args[0])?.delete(op.args[1]) ? 1 : 0]);
+        } else if (op.kind === 'del') {
+          results.push([null, this.store.kv.delete(op.args[0]) ? 1 : 0]);
         }
       } catch (err) {
         results.push([err as Error, null]);
@@ -72,6 +86,7 @@ class FakePipeline {
 class FakeRedis {
   kv = new Map<string, string>();
   sets = new Map<string, Set<string>>();
+  hashes = new Map<string, Map<string, string>>();
 
   async get(key: string): Promise<string | null> {
     return this.kv.get(key) ?? null;
@@ -83,8 +98,44 @@ class FakeRedis {
     return 'OK';
   }
 
+  async del(key: string): Promise<number> {
+    const hadHash = this.hashes.delete(key);
+    return this.kv.delete(key) || hadHash ? 1 : 0;
+  }
+
   async smembers(key: string): Promise<string[]> {
     return Array.from(this.sets.get(key) ?? []);
+  }
+
+  async sadd(key: string, ...members: string[]): Promise<number> {
+    const set = this.sets.get(key) ?? new Set<string>();
+    members.forEach((m) => set.add(m));
+    this.sets.set(key, set);
+    return members.length;
+  }
+
+  async srem(key: string, member: string): Promise<number> {
+    return this.sets.get(key)?.delete(member) ? 1 : 0;
+  }
+
+  async hset(key: string, field: string, value: string): Promise<number> {
+    const h = this.hashes.get(key) ?? new Map<string, string>();
+    const isNew = !h.has(field);
+    h.set(field, value);
+    this.hashes.set(key, h);
+    return isNew ? 1 : 0;
+  }
+
+  async hget(key: string, field: string): Promise<string | null> {
+    return this.hashes.get(key)?.get(field) ?? null;
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    return Object.fromEntries(this.hashes.get(key) ?? new Map<string, string>());
+  }
+
+  async hdel(key: string, field: string): Promise<number> {
+    return this.hashes.get(key)?.delete(field) ? 1 : 0;
   }
 
   multi(): FakePipeline {
@@ -130,10 +181,16 @@ describe('RedisOrganizationRepository', () => {
       expect(result).toBeNull();
     });
 
+    /** Search visibility is opt-in, so every searchable fixture opts in. */
+    async function seedDiscoverable(id: string, name: string): Promise<void> {
+      await repo.getOrCreateOrganization({ id, name });
+      await repo.setOrganizationDiscoverable(id, true);
+    }
+
     it('searchOrganizations matches id and name (case-insensitive)', async () => {
-      await repo.getOrCreateOrganization({ id: 'acme', name: 'Acme Inc' });
-      await repo.getOrCreateOrganization({ id: 'acme-team', name: 'Acme Team' });
-      await repo.getOrCreateOrganization({ id: 'zeta', name: 'Zeta Corp' });
+      await seedDiscoverable('acme', 'Acme Inc');
+      await seedDiscoverable('acme-team', 'Acme Team');
+      await seedDiscoverable('zeta', 'Zeta Corp');
 
       const byId = await repo.searchOrganizations('ACME', 10);
       expect(byId.map((o) => o.id).sort()).toEqual(['acme', 'acme-team']);
@@ -144,15 +201,35 @@ describe('RedisOrganizationRepository', () => {
 
     it('searchOrganizations excludes the shared individual org', async () => {
       await repo.getOrCreateOrganization({ id: 'individual', name: 'Individual', kind: 'individual' });
-      await repo.getOrCreateOrganization({ id: 'indie-co', name: 'Individual Co' });
+      await repo.setOrganizationDiscoverable('individual', true);
+      await seedDiscoverable('indie-co', 'Individual Co');
       const results = await repo.searchOrganizations('indi', 10);
-      // `individual` (kind=individual) is filtered; only the team org remains.
+      // `individual` (kind=individual) is filtered even when flagged
+      // discoverable; only the team org remains.
       expect(results.map((o) => o.id)).toEqual(['indie-co']);
+    });
+
+    it('searchOrganizations omits orgs that did not opt into discovery', async () => {
+      await seedDiscoverable('acme-open', 'Acme Open');
+      await repo.getOrCreateOrganization({ id: 'acme-private', name: 'Acme Private' });
+      const results = await repo.searchOrganizations('acme', 10);
+      expect(results.map((o) => o.id)).toEqual(['acme-open']);
+    });
+
+    it('searchOrganizations omits a soft-deleted org even while discoverable', async () => {
+      await repo.createOrganization({ id: 'acme', name: 'Acme', kind: 'team', ownerId: 'kim@acme.com' });
+      await repo.setOrganizationDiscoverable('acme', true);
+      await repo.softDeleteOrganization('acme', 'kim@acme.com');
+      expect(await repo.searchOrganizations('acme', 10)).toEqual([]);
+    });
+
+    it('setOrganizationDiscoverable returns null for an absent org', async () => {
+      expect(await repo.setOrganizationDiscoverable('nope', true)).toBeNull();
     });
 
     it('searchOrganizations respects limit cap', async () => {
       for (let i = 0; i < 50; i++) {
-        await repo.getOrCreateOrganization({ id: `acme-${i}`, name: `Acme ${i}` });
+        await seedDiscoverable(`acme-${i}`, `Acme ${i}`);
       }
       const results = await repo.searchOrganizations('acme', 5);
       expect(results.length).toBe(5);

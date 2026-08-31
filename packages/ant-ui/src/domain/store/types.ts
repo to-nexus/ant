@@ -6,6 +6,8 @@ import type {
   OrgMembership as OrgMembershipView,
   PendingInvite as PendingInviteView,
   DomainJoinableOrg as DomainJoinableOrgView,
+  MyJoinRequest as MyJoinRequestView,
+  AutoJoinedOrg as AutoJoinedOrgView,
 } from '@ant/auth-client/types';
 import type { BufferKey, StreamingBuffer } from '@/domain/store/selectors/chat';
 import type { ViewMode } from '@/domain/file/viewMode';
@@ -383,20 +385,22 @@ export interface AuthState {
   userId: string | undefined;
   /** Active org kind — gates kind-specific UI (individual vs team). */
   userOrgKind: OrganizationKind | undefined;
-  /**
-   * All orgs the current identity belongs to (account switcher). Length 1
-   * (`individual`) today; the switcher renders as a static label until team
-   * join ships.
-   */
+  /** All orgs the current identity belongs to (account switcher). */
   memberships: OrgMembershipView[];
   /**
-   * Actionable pending invites for this email (`/auth/me`, Phase 1). Feeds
-   * the PendingInviteBanner + the switcher dot. Not persisted — replayed on
-   * every `/auth/me`.
+   * Actionable pending invites for this email (`/auth/me`). Feeds the invite
+   * banner + the switcher dot. Not persisted — replayed on every `/auth/me`.
    */
   pendingInvites: PendingInviteView[];
-  /** Verified-domain one-click join candidates (`/auth/me`, Phase 1). */
+  /**
+   * Verified-domain one-click join candidates (`/auth/me`). Present only when
+   * the org turned auto-join OFF — otherwise the login already joined them.
+   */
   domainJoinableOrgs: DomainJoinableOrgView[];
+  /** The caller's own pending join requests (`/auth/me`). */
+  myJoinRequests: MyJoinRequestView[];
+  /** Set when a login backfilled this account into a team (`/auth/me`). */
+  autoJoinedOrg: AutoJoinedOrgView | null;
   /**
    * Cloud-mode JWT verification status. Mirrors the `systemConfigStatus`
    * pattern (idle/loading/ready/error) but with semantics that match the
@@ -413,19 +417,6 @@ export interface AuthState {
    * session and verification-window cases out of lifecycle fan-out.
    */
   authStatus: AuthStatus;
-  /**
-   * Phase 3 onboarding state — mirror of the BE `_pending` JWT
-   * sentinel. `true` means the user is signed in but has not yet
-   * completed `POST /auth/onboarding/organization`, so the App should
-   * render `OrganizationOnboardingScreen` instead of the normal UI.
-   */
-  needsOnboarding: boolean;
-  /**
-   * Server-supplied default for the onboarding input. `null` for
-   * consumer emails (no sensible default — user must type a name) and
-   * for the post-onboarding state.
-   */
-  suggestedOrganizationName: string | null;
   /**
    * Cloud account approval state from `/auth/me`. `undefined` (legacy / local /
    * pre-verify) is treated as approved by `selectIsApproved`. Not persisted to

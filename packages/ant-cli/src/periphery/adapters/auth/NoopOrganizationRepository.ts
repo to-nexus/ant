@@ -4,6 +4,8 @@ import type {
   UserRecord,
   Invitation,
   OrgDomainClaim,
+  OrgJoinRequest,
+  OrgMemberRemoval,
 } from '../../../core/auth/types';
 import type {
   OrganizationRepositoryPort,
@@ -37,6 +39,10 @@ export class NoopOrganizationRepository implements OrganizationRepositoryPort {
 
   async searchOrganizations(): Promise<OrganizationSummary[]> {
     return [];
+  }
+
+  async setOrganizationDiscoverable(): Promise<Organization | null> {
+    return null;
   }
 
   // -------- Teams (local = no org concept; reads empty, writes refuse) --------
@@ -113,7 +119,47 @@ export class NoopOrganizationRepository implements OrganizationRepositoryPort {
     // intentional no-op
   }
 
+  async patchDomainJoinPolicy(): Promise<OrgDomainClaim | null> {
+    return null;
+  }
+
   async deleteDomainClaim(): Promise<void> {
+    // intentional no-op
+  }
+
+  async createJoinRequest(): Promise<OrgJoinRequest | null> {
+    return null;
+  }
+
+  async getJoinRequest(): Promise<OrgJoinRequest | null> {
+    return null;
+  }
+
+  async listJoinRequestsByOrg(): Promise<OrgJoinRequest[]> {
+    return [];
+  }
+
+  async listJoinRequestsByUser(): Promise<OrgJoinRequest[]> {
+    return [];
+  }
+
+  async setJoinRequestStatus(): Promise<OrgJoinRequest | null> {
+    return null;
+  }
+
+  async recordMemberRemoval(): Promise<void> {
+    // intentional no-op
+  }
+
+  async getMemberRemoval(): Promise<OrgMemberRemoval | null> {
+    return null;
+  }
+
+  async listRemovedMembers(): Promise<OrgMemberRemoval[]> {
+    return [];
+  }
+
+  async clearMemberRemoval(): Promise<void> {
     // intentional no-op
   }
 

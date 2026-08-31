@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail, Waypoints } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail, Waypoints, Search } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
 import { CreateTeamModal } from './auth/CreateTeamModal';
+import { JoinTeamModal } from './auth/JoinTeamModal';
 import { LocalLlmBadge } from './pricing/LocalLlmBadge';
 import { Slot } from '@/presentation/extensions/slots';
 import { useStore } from '@/domain/store';
@@ -56,6 +57,7 @@ export function AppNavBar({}: AppNavBarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
+  const [showJoinTeam, setShowJoinTeam] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
 
@@ -513,8 +515,8 @@ export function AppNavBar({}: AppNavBarProps) {
                       >
                         {/* Account switcher — GitHub/Vercel/Slack pattern: the
                             membership list (your individual account + any teams)
-                            followed by a "Create team" entry. Team join/admin is
-                            deferred; "Create team" opens a placeholder modal. */}
+                            followed by the two ways to gain one: create a team,
+                            or find an existing one and request to join. */}
                         <div className="px-4 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-4)' }}>
                           {t('auth.switchAccount', 'Switch account')}
                         </div>
@@ -581,6 +583,19 @@ export function AppNavBar({}: AppNavBarProps) {
                         >
                           <Plus className="w-4 h-4" />
                           {t('auth.createTeam', 'Create team')}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowJoinTeam(true);
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                          style={{ color: 'var(--text-2)' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <Search className="w-4 h-4" />
+                          {t('auth.joinTeam', 'Join a team')}
                         </button>
                         <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }}></div>
                         {userOrgKind === 'team' && (
@@ -676,6 +691,7 @@ export function AppNavBar({}: AppNavBarProps) {
           bottom edge. Does not affect navbar height or body layout. */}
       <AmbientActivityBar />
       <CreateTeamModal isOpen={showCreateTeam} onClose={() => setShowCreateTeam(false)} />
+      <JoinTeamModal isOpen={showJoinTeam} onClose={() => setShowJoinTeam(false)} />
     </header>
   );
 }

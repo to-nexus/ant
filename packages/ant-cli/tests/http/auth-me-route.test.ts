@@ -2,12 +2,13 @@
  * `/api/auth/me` contract — phase 2 unified shape.
  *
  * Always answers 200 with the same envelope:
- *   { user: User | null, needsOnboarding: boolean, suggestedOrganizationName: string | null }
+ *   { user: User | null, activeOrg, memberships[], pendingInvites[],
+ *     domainJoinableOrgs[], myJoinRequests[], autoJoinedOrg | null }
  *
  * - Local mode (`ANT_SERVER_MODE !== 'cloud'`): returns a fixed Local
  *   identity so the FE LocalUserBadge has a consistent payload.
- * - Cloud mode: reads the JWT cookie. `needsOnboarding=true` only when
- *   the payload's org is the `_pending` sentinel (Phase 3 will write it).
+ * - Cloud mode: reads the JWT cookie, then layers the account envelope and
+ *   the join surface on top.
  * - 503 is reserved for cloud-mode-with-no-JWT-service (genuine config
  *   fault) — never for "not signed in" (which is `{ user: null, ... }`).
  *
@@ -103,8 +104,8 @@ describe('GET /api/auth/me — cloud mode', () => {
     memberships: [],
     pendingInvites: [],
     domainJoinableOrgs: [],
-    needsOnboarding: false,
-    suggestedOrganizationName: null,
+    myJoinRequests: [],
+    autoJoinedOrg: null,
   };
 
   it('returns the null envelope when no cookie', async () => {
@@ -167,10 +168,11 @@ describe('GET /api/auth/me — cloud mode', () => {
     expect(body.memberships).toEqual([
       { organizationId: 'individual', kind: 'individual', name: 'individual', role: 'member' },
     ]);
-    expect(body.needsOnboarding).toBe(false);
+    expect(body.myJoinRequests).toEqual([]);
+    expect(body.autoJoinedOrg).toBeNull();
   });
 
-  it('carries pendingInvites + domainJoinableOrgs when the repo is wired (Phase 1)', async () => {
+  it('carries the join surface when the repo is wired', async () => {
     const future = new Date(Date.now() + 86_400_000).toISOString();
     currentOrgRepo = {
       listMembershipsByUser: async () => [
@@ -215,10 +217,34 @@ describe('GET /api/auth/me — cloud mode', () => {
               claimedBy: 'kim@acme.com',
               verificationToken: 't',
               status: 'verified',
+              // auto-join OFF, so the banner is the offer that remains.
+              autoJoin: false,
               autoJoinRole: 'member',
               createdAt: future,
             }
           : null,
+      getMemberRemoval: async () => null,
+      listJoinRequestsByUser: async () => [
+        {
+          id: 'req-1',
+          organizationId: 'acme',
+          userId: 'bob@acme.com',
+          email: 'bob@acme.com',
+          status: 'pending',
+          createdAt: future,
+          expiresAt: future,
+        },
+        // expired ⇒ filtered lazily, same as invites
+        {
+          id: 'req-2',
+          organizationId: 'acme',
+          userId: 'bob@acme.com',
+          email: 'bob@acme.com',
+          status: 'pending',
+          createdAt: future,
+          expiresAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      ],
     };
     const jwtService = makeJwtService();
     const token = jwtService.sign({
@@ -238,6 +264,11 @@ describe('GET /api/auth/me — cloud mode', () => {
     expect(body.domainJoinableOrgs).toEqual([
       { organizationId: 'acme', organizationName: 'Acme Inc', domain: 'acme.com', autoJoinRole: 'member' },
     ]);
+    expect(body.myJoinRequests).toEqual([
+      expect.objectContaining({ id: 'req-1', organizationId: 'acme', organizationName: 'Acme Inc', status: 'pending' }),
+    ]);
+    // `getUser` returns null here ⇒ no auto-join stamp ⇒ no backfill notice.
+    expect(body.autoJoinedOrg).toBeNull();
   });
 
   it('kind falls back to deriveKindFromOrgId when the token lacks a kind claim (BC)', async () => {
@@ -321,8 +352,8 @@ describe('GET /api/auth/me — local mode', () => {
       memberships: [{ organizationId: 'local', kind: 'local', name: 'local', role: 'member' }],
       pendingInvites: [],
       domainJoinableOrgs: [],
-      needsOnboarding: false,
-      suggestedOrganizationName: null,
+      myJoinRequests: [],
+      autoJoinedOrg: null,
     });
   });
 
@@ -350,7 +381,7 @@ describe('GET /api/auth/me — local mode', () => {
       isAdmin: false,
       testAccountLevel: 0,
     });
-    expect(body.needsOnboarding).toBe(false);
+    expect(body).not.toHaveProperty('needsOnboarding');
   });
 
   it('returns the same Local envelope when ANT_SERVER_MODE=local explicitly', async () => {
@@ -360,7 +391,7 @@ describe('GET /api/auth/me — local mode', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.user).toMatchObject({ organization: 'local', userId: 'local' });
-    expect(body.needsOnboarding).toBe(false);
+    expect(body).not.toHaveProperty('needsOnboarding');
   });
 
   it('ignores any cookie in local mode (no JWT verification path)', async () => {

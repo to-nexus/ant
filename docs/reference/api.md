@@ -28,6 +28,7 @@ In cloud mode, every endpoint outside `/health` requires a valid token.
 | Cloud IDE          | `/api/cloud-ide`    | Launch / proxy IDE pods (cloud only)       |
 | Preview            | `/api/preview`      | Lifecycle ops on preview servers           |
 | Git                | `/api/git`          | Per-feature git operations                 |
+| Organizations      | `/api/organizations` | Team lifecycle, membership, invites, domains, join requests |
 | Figma              | `/api/figma`        | Figma MCP bridge endpoints (cloud)         |
 | Agent definitions  | `/api/definitions/agents` | Custom agent/job definitions (scoped template) |
 | Pipeline definitions | `/api/definitions/pipelines` | Scheduled custom-job chains (scoped template) |
@@ -127,6 +128,49 @@ control plane goes through `ant-api`.
 | POST | `/api/preview/start`              | Launch a dev server.                  |
 | GET  | `/api/preview/status`             | Returns the active server map.        |
 | POST | `/api/preview/stop`               | Stop a feature's dev server.          |
+
+## Organizations (teams)
+
+Cloud-mode only (JWT required, so local never reaches them). Authorization is
+always the LIVE membership row, never the JWT `org` claim. A soft-deleted,
+non-team or non-member org is one indistinguishable **404**. Full model:
+[docs/internals/40-org-model.md](../internals/40-org-model.md).
+
+| Verb | Path | Min role | Purpose |
+|---|---|---|---|
+| GET | `/api/organizations?q=&limit=` | any account | Search **discoverable** orgs (id + name projection only; ≥2 chars, limit ≤ 25) |
+| POST | `/api/organizations` | any account | Create a team; caller becomes owner. Never auto-switches |
+| GET | `/api/organizations/:orgId` | member | Org summary + caller role |
+| PUT | `/api/organizations/:orgId/name` | admin | Rename (id is permanent) |
+| PUT | `/api/organizations/:orgId/discoverable` | admin | Opt into / out of search. Grants nothing on its own |
+| DELETE | `/api/organizations/:orgId` | owner, sole member | Soft-delete cascade |
+| GET | `/api/organizations/:orgId/members` | member | Member list |
+| DELETE | `/api/organizations/:orgId/members/:userId` | admin (owner for an admin) | Remove — writes a removal row |
+| PUT | `/api/organizations/:orgId/members/:userId/role` | owner | admin ↔ member |
+| POST | `/api/organizations/:orgId/transfer-ownership` | owner | Hand over ownership |
+| POST | `/api/organizations/:orgId/leave` | member/admin | Leave — writes a removal row (`reason: 'left'`) |
+| POST/GET | `/api/organizations/:orgId/invites` | admin (owner to invite an admin) | Create / list invite links |
+| POST | `/api/organizations/:orgId/invites/:inviteId/revoke` | admin | Revoke (idempotent) |
+| POST | `/api/organizations/invites/accept` | any account | Accept by token; clears the removal row |
+| POST/GET | `/api/organizations/:orgId/domains` | admin | Claim / list email domains |
+| POST | `/api/organizations/:orgId/domains/:domain/verify` | admin | Explicit DNS TXT check (`verified:false` is a 200) |
+| PUT | `/api/organizations/:orgId/domains/:domain` | admin (owner for `autoJoinRole: 'admin'`) | Join policy — `autoJoin`, `autoJoinRole` |
+| DELETE | `/api/organizations/:orgId/domains/:domain` | owner | Release the claim |
+| POST | `/api/organizations/join-by-domain` | any account | Explicit one-click domain join |
+| POST | `/api/organizations/:orgId/join-requests` | any account | Ask to join a discoverable team (optional message, ≤ 500 B) |
+| GET | `/api/organizations/:orgId/join-requests` | admin | Pending + decided requests |
+| POST | `/api/organizations/:orgId/join-requests/:id/approve` | admin (owner to grant `admin`) | Grant membership; clears the removal row |
+| POST | `/api/organizations/:orgId/join-requests/:id/reject` | admin | Refuse |
+| POST | `/api/organizations/join-requests/:id/cancel` | the requester | Withdraw |
+| GET | `/api/organizations/:orgId/removed-members` | admin | The domain-shortcut blocklist |
+| DELETE | `/api/organizations/:orgId/removed-members/:userId` | admin | "Allow again" — re-opens the shortcut, does not re-add |
+
+**Three ways in, and no others**: an admin-issued invite, a verified email
+domain, an admin-approved join request. Search finds a team; it never joins one.
+
+`GET /api/auth/me` carries the join surface — `pendingInvites`,
+`domainJoinableOrgs`, `myJoinRequests`, `autoJoinedOrg`. It is a pure read: the
+membership a verified domain grants is written by the OAuth callback, not here.
 
 ## Custom agents (universal runtime)
 

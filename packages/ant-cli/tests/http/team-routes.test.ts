@@ -1,6 +1,7 @@
 /**
- * Team organization routes (Phase 1) — role-gate truth table, invite
- * acceptance edges, owner-leave, domain claims, join-by-domain.
+ * Team organization routes — role-gate truth table, invite acceptance edges,
+ * owner-leave, domain claims + join policy, join-by-domain, discoverability,
+ * join requests, and the removal-row blocklist.
  *
  * Same pattern as auth-me-route.test.ts — no supertest; a real Express app
  * on port 0 driven by fetch. Authentication is simulated by a middleware
@@ -37,8 +38,10 @@ vi.mock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
 import { RedisOrganizationRepository } from '../../src/infrastructure/auth/RedisOrganizationRepository';
 import { createRequireApprovedAccount } from '../../src/periphery/adapters/http/middleware/requireApprovedAccount';
 import { createTeamsRoutes } from '../../src/periphery/adapters/http/routes/teams.routes';
+import { JOIN_REQUEST_MESSAGE_MAX } from '@ant/shared';
+import { REDIS_KEYS } from '../../src/infrastructure/state/redisConstants';
 
-// ---------- In-memory Redis (get/set/del/smembers/sadd/srem/multi/scan) ----------
+// ---------- In-memory Redis (kv / sets / hashes / multi / scan) ----------
 
 type Op = { kind: 'set' | 'set-nx' | 'sadd' | 'srem' | 'del'; args: any[] };
 
@@ -93,6 +96,7 @@ class FakePipeline {
 class FakeRedis {
   kv = new Map<string, string>();
   sets = new Map<string, Set<string>>();
+  hashes = new Map<string, Map<string, string>>();
   async get(key: string): Promise<string | null> {
     return this.kv.get(key) ?? null;
   }
@@ -102,7 +106,8 @@ class FakeRedis {
     return 'OK';
   }
   async del(key: string): Promise<number> {
-    return this.kv.delete(key) ? 1 : 0;
+    const hadHash = this.hashes.delete(key);
+    return this.kv.delete(key) || hadHash ? 1 : 0;
   }
   async smembers(key: string): Promise<string[]> {
     return Array.from(this.sets.get(key) ?? []);
@@ -115,6 +120,22 @@ class FakeRedis {
   }
   async srem(key: string, member: string): Promise<number> {
     return this.sets.get(key)?.delete(member) ? 1 : 0;
+  }
+  async hset(key: string, field: string, value: string): Promise<number> {
+    const h = this.hashes.get(key) ?? new Map<string, string>();
+    const isNew = !h.has(field);
+    h.set(field, value);
+    this.hashes.set(key, h);
+    return isNew ? 1 : 0;
+  }
+  async hget(key: string, field: string): Promise<string | null> {
+    return this.hashes.get(key)?.get(field) ?? null;
+  }
+  async hgetall(key: string): Promise<Record<string, string>> {
+    return Object.fromEntries(this.hashes.get(key) ?? new Map<string, string>());
+  }
+  async hdel(key: string, field: string): Promise<number> {
+    return this.hashes.get(key)?.delete(field) ? 1 : 0;
   }
   async scan(_cursor: string, ..._args: unknown[]): Promise<[string, string[]]> {
     return ['0', []];
@@ -542,5 +563,262 @@ describe('soft-delete cascade', () => {
     // deleted org is a 404 for every team route
     const { status } = await as(OWNER, 'GET', '/organizations/acme');
     expect(status).toBe(404);
+  });
+});
+
+// ---------- Discoverability + join requests ----------
+
+describe('join requests', () => {
+  beforeEach(seedTeam);
+
+  const makeDiscoverable = () =>
+    as(OWNER, 'PUT', '/organizations/acme/discoverable', { discoverable: true });
+
+  it('discoverable defaults OFF and is admin+ to change', async () => {
+    expect((await repo.getOrganization('acme'))?.discoverable).toBeUndefined();
+    const byMember = await as(MEMBER, 'PUT', '/organizations/acme/discoverable', { discoverable: true });
+    expect(byMember.status).toBe(403);
+    const byAdmin = await as(ADMIN, 'PUT', '/organizations/acme/discoverable', { discoverable: true });
+    expect(byAdmin.status).toBe(200);
+    expect(byAdmin.json.organization.discoverable).toBe(true);
+  });
+
+  it('404s a request to a team that is not discoverable (existence is not leaked)', async () => {
+    const { status, json } = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    expect(status).toBe(404);
+    expect(json.code).toBe('ORG_NOT_FOUND');
+  });
+
+  it('creates a request, then 409s a duplicate while it is pending', async () => {
+    await makeDiscoverable();
+    const first = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', { message: 'hi' });
+    expect(first.status).toBe(201);
+    expect(first.json.joinRequest).toMatchObject({
+      organizationId: 'acme',
+      email: OUTSIDER.email,
+      message: 'hi',
+      status: 'pending',
+    });
+    const second = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    expect(second.status).toBe(409);
+    expect(second.json.code).toBe('JOIN_REQUEST_ALREADY_PENDING');
+  });
+
+  it('409 ALREADY_MEMBER when the requester is already in', async () => {
+    await makeDiscoverable();
+    const { status, json } = await as(MEMBER, 'POST', '/organizations/acme/join-requests', {});
+    expect(status).toBe(409);
+    expect(json.code).toBe('ALREADY_MEMBER');
+  });
+
+  it('400 MESSAGE_TOO_LONG on an over-budget message', async () => {
+    await makeDiscoverable();
+    const { status, json } = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {
+      message: 'x'.repeat(JOIN_REQUEST_MESSAGE_MAX + 1),
+    });
+    expect(status).toBe(400);
+    expect(json.code).toBe('MESSAGE_TOO_LONG');
+  });
+
+  it('list is admin+; approve attaches the membership as member', async () => {
+    await makeDiscoverable();
+    const created = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    const requestId = created.json.joinRequest.id;
+
+    const byMember = await as(MEMBER, 'GET', '/organizations/acme/join-requests');
+    expect(byMember.status).toBe(403);
+    const byAdmin = await as(ADMIN, 'GET', '/organizations/acme/join-requests');
+    expect(byAdmin.status).toBe(200);
+    expect(byAdmin.json.joinRequests).toHaveLength(1);
+
+    const approved = await as(ADMIN, 'POST', `/organizations/acme/join-requests/${requestId}/approve`, {});
+    expect(approved.status).toBe(200);
+    expect(approved.json.role).toBe('member');
+    expect((await repo.getMembership(OUTSIDER.id, 'acme'))?.role).toBe('member');
+    expect((await repo.getJoinRequest(requestId))?.status).toBe('approved');
+  });
+
+  it('only the owner may approve AS admin', async () => {
+    await makeDiscoverable();
+    const created = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    const requestId = created.json.joinRequest.id;
+    const byAdmin = await as(ADMIN, 'POST', `/organizations/acme/join-requests/${requestId}/approve`, {
+      role: 'admin',
+    });
+    expect(byAdmin.status).toBe(403);
+    expect(byAdmin.json.code).toBe('ROLE_FORBIDDEN');
+    const byOwner = await as(OWNER, 'POST', `/organizations/acme/join-requests/${requestId}/approve`, {
+      role: 'admin',
+    });
+    expect(byOwner.status).toBe(200);
+    expect((await repo.getMembership(OUTSIDER.id, 'acme'))?.role).toBe('admin');
+  });
+
+  it('reject leaves no membership, and the requester may ask again', async () => {
+    await makeDiscoverable();
+    const created = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    const requestId = created.json.joinRequest.id;
+    const rejected = await as(ADMIN, 'POST', `/organizations/acme/join-requests/${requestId}/reject`, {});
+    expect(rejected.status).toBe(200);
+    expect(await repo.getMembership(OUTSIDER.id, 'acme')).toBeNull();
+    // the one-live-request guard was released
+    const again = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    expect(again.status).toBe(201);
+  });
+
+  it('409 JOIN_REQUEST_NOT_PENDING on a second decision', async () => {
+    await makeDiscoverable();
+    const created = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    const requestId = created.json.joinRequest.id;
+    await as(ADMIN, 'POST', `/organizations/acme/join-requests/${requestId}/reject`, {});
+    const twice = await as(ADMIN, 'POST', `/organizations/acme/join-requests/${requestId}/reject`, {});
+    expect(twice.status).toBe(409);
+    expect(twice.json.code).toBe('JOIN_REQUEST_NOT_PENDING');
+  });
+
+  it('410 JOIN_REQUEST_EXPIRED once past expiresAt (judged lazily)', async () => {
+    await makeDiscoverable();
+    const created = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    const requestId = created.json.joinRequest.id;
+    // Backdate the stored record — there is no API for it, and the point of
+    // the test is that expiry is judged on READ, not written on disk.
+    const stored = (await repo.getJoinRequest(requestId))!;
+    stored.expiresAt = new Date(Date.now() - 1000).toISOString();
+    await (repo as any).redis.set(
+      `${REDIS_KEYS.AUTH.JOIN_REQUEST}${requestId}`,
+      JSON.stringify(stored),
+    );
+    // stored status stays 'pending' on disk; only the view derives 'expired'
+    expect((await repo.getJoinRequest(requestId))?.status).toBe('pending');
+    const decided = await as(ADMIN, 'POST', `/organizations/acme/join-requests/${requestId}/approve`, {});
+    expect(decided.status).toBe(410);
+    expect(decided.json.code).toBe('JOIN_REQUEST_EXPIRED');
+  });
+
+  it('cancel is the requester only; someone else gets an indistinguishable 404', async () => {
+    await makeDiscoverable();
+    const created = await as(OUTSIDER, 'POST', '/organizations/acme/join-requests', {});
+    const requestId = created.json.joinRequest.id;
+    const byAdmin = await as(ADMIN, 'POST', `/organizations/join-requests/${requestId}/cancel`, {});
+    expect(byAdmin.status).toBe(404);
+    expect(byAdmin.json.code).toBe('JOIN_REQUEST_NOT_FOUND');
+    const byRequester = await as(OUTSIDER, 'POST', `/organizations/join-requests/${requestId}/cancel`, {});
+    expect(byRequester.status).toBe(200);
+    expect((await repo.getJoinRequest(requestId))?.status).toBe('canceled');
+  });
+});
+
+// ---------- Removal rows (the domain-shortcut blocklist) ----------
+
+describe('removal rows', () => {
+  beforeEach(seedTeam);
+
+  it('an admin removal records the row; a leave records it as `left`', async () => {
+    await as(ADMIN, 'DELETE', `/organizations/acme/members/${MEMBER.id}`);
+    const removed = await repo.getMemberRemoval('acme', MEMBER.id);
+    expect(removed).toMatchObject({ userId: MEMBER.id, email: MEMBER.email, reason: 'removed', removedBy: ADMIN.id });
+
+    const left = await as(ADMIN, 'POST', '/organizations/acme/leave');
+    expect(left.status).toBe(200);
+    expect(await repo.getMemberRemoval('acme', ADMIN.id)).toMatchObject({ reason: 'left', removedBy: ADMIN.id });
+  });
+
+  it('blocks join-by-domain until an admin allows it again', async () => {
+    await as(OWNER, 'POST', '/organizations/acme/domains', { domain: 'acme.com' });
+    await as(ADMIN, 'DELETE', `/organizations/acme/members/${MEMBER.id}`);
+
+    const blocked = await as(MEMBER, 'POST', '/organizations/join-by-domain', { organizationId: 'acme' });
+    expect(blocked.status).toBe(403);
+    expect(blocked.json.code).toBe('AUTO_JOIN_BLOCKED');
+
+    const listed = await as(ADMIN, 'GET', '/organizations/acme/removed-members');
+    expect(listed.json.removedMembers.map((r: any) => r.userId)).toEqual([MEMBER.id]);
+
+    const cleared = await as(ADMIN, 'DELETE', `/organizations/acme/removed-members/${MEMBER.id}`);
+    expect(cleared.status).toBe(200);
+    const rejoined = await as(MEMBER, 'POST', '/organizations/join-by-domain', { organizationId: 'acme' });
+    expect(rejoined.status).toBe(200);
+    expect(await repo.getMemberRemoval('acme', MEMBER.id)).toBeNull();
+  });
+
+  it('accepting an invite clears the row (an explicit re-invite outranks it)', async () => {
+    await as(ADMIN, 'DELETE', `/organizations/acme/members/${MEMBER.id}`);
+    expect(await repo.getMemberRemoval('acme', MEMBER.id)).not.toBeNull();
+    const invite = await as(ADMIN, 'POST', '/organizations/acme/invites', {
+      email: MEMBER.email,
+      role: 'member',
+    });
+    const accepted = await as(MEMBER, 'POST', '/organizations/invites/accept', {
+      token: invite.json.invite.token,
+    });
+    expect(accepted.status).toBe(200);
+    expect(await repo.getMemberRemoval('acme', MEMBER.id)).toBeNull();
+  });
+
+  it('approving a join request clears the row', async () => {
+    await as(OWNER, 'PUT', '/organizations/acme/discoverable', { discoverable: true });
+    await as(ADMIN, 'DELETE', `/organizations/acme/members/${MEMBER.id}`);
+    const created = await as(MEMBER, 'POST', '/organizations/acme/join-requests', {});
+    expect(created.status).toBe(201);
+    await as(ADMIN, 'POST', `/organizations/acme/join-requests/${created.json.joinRequest.id}/approve`, {});
+    expect(await repo.getMemberRemoval('acme', MEMBER.id)).toBeNull();
+  });
+
+  it('the soft-delete cascade writes NO rows and drops the existing ones', async () => {
+    await as(ADMIN, 'DELETE', `/organizations/acme/members/${MEMBER.id}`);
+    await repo.softDeleteOrganization('acme', 'op@ant.dev');
+    expect(await repo.listRemovedMembers('acme')).toEqual([]);
+    expect(await repo.getMemberRemoval('acme', OWNER.id)).toBeNull();
+    expect(await repo.getMemberRemoval('acme', ADMIN.id)).toBeNull();
+  });
+});
+
+// ---------- Domain join policy ----------
+
+describe('domain join policy', () => {
+  beforeEach(seedTeam);
+
+  it('autoJoin defaults ON in the view (claims predate the toggle)', async () => {
+    const { json } = await as(OWNER, 'POST', '/organizations/acme/domains', { domain: 'acme.com' });
+    expect(json.domain).toMatchObject({ autoJoin: true, autoJoinRole: 'member' });
+  });
+
+  it('admin may turn autoJoin off; only the owner may auto-grant admin', async () => {
+    await as(OWNER, 'POST', '/organizations/acme/domains', { domain: 'acme.com' });
+
+    const off = await as(ADMIN, 'PUT', '/organizations/acme/domains/acme.com', { autoJoin: false });
+    expect(off.status).toBe(200);
+    expect(off.json.domain.autoJoin).toBe(false);
+    expect((await repo.getDomainClaim('acme.com'))?.autoJoin).toBe(false);
+
+    const roleByAdmin = await as(ADMIN, 'PUT', '/organizations/acme/domains/acme.com', {
+      autoJoinRole: 'admin',
+    });
+    expect(roleByAdmin.status).toBe(403);
+    const roleByOwner = await as(OWNER, 'PUT', '/organizations/acme/domains/acme.com', {
+      autoJoinRole: 'admin',
+    });
+    expect(roleByOwner.status).toBe(200);
+    expect((await repo.getDomainClaim('acme.com'))?.autoJoinRole).toBe('admin');
+  });
+
+  it('autoJoin off still allows the explicit one-click join', async () => {
+    await as(OWNER, 'POST', '/organizations/acme/domains', { domain: 'other.io' });
+    // owner's host is acme.com, so other.io needs DNS — verify it that way
+    verifyDomainOwnershipMock.mockResolvedValue(true);
+    await as(OWNER, 'POST', '/organizations/acme/domains/other.io/verify', {});
+    await as(OWNER, 'PUT', '/organizations/acme/domains/other.io', { autoJoin: false });
+
+    const joined = await as(OUTSIDER, 'POST', '/organizations/join-by-domain', { organizationId: 'acme' });
+    expect(joined.status).toBe(200);
+    expect(await repo.getMembership(OUTSIDER.id, 'acme')).not.toBeNull();
+  });
+
+  it('404s a policy patch for a domain another org owns', async () => {
+    const { status, json } = await as(OWNER, 'PUT', '/organizations/acme/domains/nope.com', {
+      autoJoin: false,
+    });
+    expect(status).toBe(404);
+    expect(json.code).toBe('DOMAIN_NOT_FOUND');
   });
 });

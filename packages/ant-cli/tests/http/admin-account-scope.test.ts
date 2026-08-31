@@ -259,7 +259,7 @@ describe('GET /admin/users — scope axis', () => {
   it('surfaces an account whose membership is gone as orphaned', async () => {
     await seedUser();
     ledger.seed('team-a', USER.id, 7);
-    await repo.removeMembership(USER.id, 'team-a');
+    await repo.removeMembership(USER.id, 'team-a', { record: null });
     await startApp(ledger);
 
     const rows = (await api('GET', '/admin/users')).json.rows;

@@ -4,7 +4,7 @@
  * Approval (`UserRecord.approvalStatus`) is an IDENTITY-axis verdict: it answers
  * "may this person use the product at all", not "may this person afford this
  * call". So it belongs on the whole authenticated surface, mounted once after
- * verification — the same shape as `requireOnboardedJwt` and `selfApiScopeGuard`.
+ * verification — the same shape as `selfApiScopeGuard`.
  *
  * It used to be six hand-placed pre-flight calls at compute-start handlers (job
  * start/learn/resume/continue, chat, team create). That blocked starting agent

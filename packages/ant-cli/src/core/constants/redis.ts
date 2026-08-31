@@ -330,6 +330,25 @@ export const REDIS_KEYS = {
     DOMAIN: `${REDIS_DOMAINS.AUTH}:domain:`,
     /** Domains claimed by an org (SET) - ant:auth:org:domains:{orgId} */
     ORG_DOMAINS: `${REDIS_DOMAINS.AUTH}:org:domains:`,
+    /** Join-request record - ant:auth:joinreq:{id} (JSON) */
+    JOIN_REQUEST: `${REDIS_DOMAINS.AUTH}:joinreq:`,
+    /** Join-request ids addressed to an org (SET) - ant:auth:org:joinreqs:{orgId} */
+    ORG_JOIN_REQUESTS: `${REDIS_DOMAINS.AUTH}:org:joinreqs:`,
+    /** Join-request ids raised by a user (SET) - ant:auth:user:joinreqs:{userId} */
+    USER_JOIN_REQUESTS: `${REDIS_DOMAINS.AUTH}:user:joinreqs:`,
+    /**
+     * One-live-request guard - ant:auth:org:joinreq-pending:{orgId}:{userId}
+     * (string → requestId, SETNX). Mirrors the invite's one-pending-per-pair
+     * rule; released when the request leaves `pending`. Deliberately NOT
+     * under the `joinreq:` record prefix so a SCAN over records is unambiguous.
+     */
+    JOIN_REQUEST_PENDING: `${REDIS_DOMAINS.AUTH}:org:joinreq-pending:`,
+    /**
+     * Members who left or were removed - ant:auth:org:removed:{orgId}
+     * (HASH userId → JSON). A HASH so the login path's point lookup (HGET)
+     * and the admin list (HGETALL) share one key.
+     */
+    ORG_REMOVED: `${REDIS_DOMAINS.AUTH}:org:removed:`,
   },
 
   /** Cloud-mode admin (ant:admin:*) */

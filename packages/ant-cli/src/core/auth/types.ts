@@ -18,6 +18,8 @@ import type {
   OrgInviteStatus,
   OrgDomainClaimStatus,
   OrgDomainVerifiedBy,
+  OrgJoinRequestStatus,
+  OrgMemberRemovalReason,
 } from '@ant/shared';
 
 export interface Organization {
@@ -35,6 +37,11 @@ export interface Organization {
   ownerId: string | null;
   /** ISO-8601 timestamp. */
   createdAt: string;
+  /**
+   * Listed in organization search so non-members can find it and request to
+   * join. `undefined` ⇒ NOT discoverable — search visibility is opt-in.
+   */
+  discoverable?: boolean;
   /** Soft-delete marker (superadmin force-delete / sole-owner delete). */
   deletedAt?: string;
 }
@@ -77,6 +84,17 @@ export interface UserRecord {
   isSuperAdmin?: boolean;
   /** 0/undefined = normal; ≥1 = test-payment enabled (2/3 reserved). */
   testAccountLevel?: number;
+  /**
+   * Last domain auto-join granted at login. Exists only so `/auth/me` can
+   * tell an EXISTING account it was backfilled into a team (a brand-new
+   * account lands in the team as its active org and needs no notice). Never
+   * an authority for membership — the membership row is.
+   */
+  lastDomainAutoJoin?: {
+    organizationId: string;
+    domain: string;
+    at: string;
+  };
 }
 
 /**
@@ -115,9 +133,54 @@ export interface OrgDomainClaim {
   /** DNS TXT challenge token (`_ant-challenge.{domain}`). */
   verificationToken: string;
   status: OrgDomainClaimStatus;
-  /** Role granted on one-click domain join. */
+  /**
+   * Grant membership at login to every account on this domain. `undefined`
+   * ⇒ ON: claims written before the toggle existed keep auto-joining, so no
+   * migration is needed. Read it as `autoJoin !== false`.
+   */
+  autoJoin?: boolean;
+  /** Role granted on domain join (auto at login, or the one-click banner). */
   autoJoinRole: OrgInviteRole;
   createdAt: string;
   verifiedAt?: string;
   verifiedBy?: OrgDomainVerifiedBy;
+}
+
+/**
+ * Request to join a discoverable org — storage shape (Redis
+ * `ant:auth:joinreq:{id}`), PG-ready. Expiry is judged lazily on read
+ * (`expiresAt` vs now); the stored `status` never becomes `'expired'`.
+ */
+export interface OrgJoinRequest {
+  id: string;
+  organizationId: string;
+  /** Requester userId (= email in cloud). */
+  userId: string;
+  /** Requester email, lowercased. */
+  email: string;
+  /** Optional free-text note to the org admins, capped at authoring time. */
+  message?: string;
+  status: Exclude<OrgJoinRequestStatus, 'expired'>;
+  createdAt: string;
+  expiresAt: string;
+  decidedAt?: string;
+  /** Admin userId that approved / rejected it. */
+  decidedBy?: string;
+}
+
+/**
+ * A member who left or was removed — storage shape (Redis hash
+ * `ant:auth:org:removed:{orgId}`, field = userId). Suppresses the domain
+ * shortcut so a removal survives the member's next login. Cleared by an
+ * explicit re-admission: invite accepted, join request approved, or an admin
+ * clearing the row.
+ */
+export interface OrgMemberRemoval {
+  organizationId: string;
+  userId: string;
+  email: string;
+  reason: OrgMemberRemovalReason;
+  removedAt: string;
+  /** Admin userId for `removed`; the member's own userId for `left`. */
+  removedBy: string;
 }

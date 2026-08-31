@@ -419,7 +419,11 @@
       "idLabel": "Organization id",
       "copyId": "Copy id",
       "immutable": "Immutable",
-      "renamed": "Organization name updated."
+      "renamed": "Organization name updated.",
+      "discoverableLabel": "Discoverable in organization search",
+      "discoverableHint": "Exposes this name and id to signed-in accounts so they can send a join request. It grants nothing on its own — an admin still approves every request.",
+      "discoverableOn": "Discoverable",
+      "discoverableOff": "Hidden"
     },
     "members": {
       "title": "Members",
@@ -470,7 +474,15 @@
       "verifiedByOperator": "Verified by operator",
       "joinHint": "Sign-ins @{{domain}} can join with one click.",
       "deleteAction": "Delete claim",
-      "actions": "Domain actions"
+      "actions": "Domain actions",
+      "autoJoinLabel": "On sign-in",
+      "autoJoinOn": "Add to team",
+      "autoJoinOff": "Offer only",
+      "autoJoinRoleLabel": "Role granted",
+      "autoJoinHint": "Auto-join is re-checked at every sign-in, so accounts that existed before this claim are picked up on their next login. Members you remove stay out until you allow them again.",
+      "joinHintAuto": "Sign-ins @{{domain}} are added to this team automatically.",
+      "joinHintOffer": "Sign-ins @{{domain}} are offered a one-click join.",
+      "savingPolicy": "Saving…"
     },
     "danger": {
       "title": "Danger zone",
@@ -510,6 +522,27 @@
       "domainNotVerified": "Your email domain does not grant access to this organization.",
       "consumerDomain": "Consumer email domains cannot be claimed.",
       "generic": "Something went wrong. Please try again."
+    },
+    "requests": {
+      "toc": "Join requests",
+      "title": "Join requests",
+      "description": "Accounts that found this team in search and asked to join. Approving grants membership; discovery alone grants nothing.",
+      "empty": "No pending requests.",
+      "emptyHidden": "No pending requests — this team is not discoverable in search, so it can only be joined by invitation or email domain.",
+      "requestedOn": "Requested {{date}}",
+      "approve": "Approve",
+      "reject": "Reject request",
+      "rejectConfirm": "Confirm reject",
+      "actions": "Join request actions"
+    },
+    "removed": {
+      "title": "Excluded from domain auto-join",
+      "description": "These accounts left or were removed. The email-domain shortcut stays closed for them; an invite or an approved join request re-opens it.",
+      "reasonRemoved": "Removed",
+      "reasonLeft": "Left",
+      "allowAgain": "Allow again",
+      "allowTitle": "Allow domain join",
+      "confirmAllow": "Let {{email}} join again through the email domain?"
     }
   }
 }

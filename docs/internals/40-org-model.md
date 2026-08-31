@@ -192,9 +192,90 @@ domain): three verification paths — (a) claimant's login email host exactly
 matches the domain (consumer domains blocked) ⇒ instant `verified`
 (`verifiedBy:'email'`); (b) DNS TXT `_ant-challenge.{domain}` (reuses the deploy
 custom-domain `verification.ts`), explicit verify only, no polling; (c)
-superadmin manual verify/reject via `/admin/organizations/...`. Verified claims
-power one-click join (`join-by-domain` re-validates server-side; grants
-`autoJoinRole`, default member).
+superadmin manual verify/reject via `/admin/organizations/...`.
+
+**A verified claim GRANTS membership at login** (`autoJoin`, default ON —
+`undefined` reads as ON so claims written before the toggle need no migration).
+The check sits in the OAuth callback, after the `individual` attach:
+
+- It runs on **every** login, not only the first. That is the whole backfill
+  mechanism — an account that existed before its domain was claimed is picked up
+  on its next login, and `attachMembership`'s NX semantics make the repeat a
+  no-op. There is no batch job and no admin action.
+- It CANNOT live in `/auth/me`: that is a read, and this section's
+  ["Reads must not mint"](#reads-must-not-mint) rule forbids side effects there.
+  `/auth/me` only reports (`domainJoinableOrgs`, `autoJoinedOrg`).
+- A **new** account also lands in the team as its active org; an **existing** one
+  keeps whatever org it was working in and gets a one-off `/auth/me`
+  `autoJoinedOrg` notice (from `UserRecord.lastDomainAutoJoin`) offering the
+  switch. Silently swapping the active org would move the project list out from
+  under in-flight work.
+- Failure is swallowed and logged: a domain lookup must never cost a login.
+
+With `autoJoin: false` the domain is *offered* instead, via
+`domainJoinableOrgs`. That list is non-empty in two states, not one: auto-join
+off, and auto-join on for a session that predates the claim — a cookie lives
+days, so making that user wait for their next login would be strictly worse than
+letting them take the shortcut now. After a login has granted the membership the
+resolver answers `already-member` and the list is empty.
+`POST /organizations/join-by-domain` stays available in every case: it is the
+explicit gesture, so it needs no toggle.
+
+The one owner of "which org does this email host grant?" is
+`resolveDomainJoin(repo, userId, email)` in `core/auth/domainJoin.ts`. It answers
+with a REASON (`no-host` / `no-claim` / `unverified` / `org-unavailable` /
+`already-member` / `blocked`), not a boolean, because its three callers need
+different things from the same verdict — the login grants, the join surface
+offers, and the route maps each refusal to its own status. Before this existed,
+`email.split('@')[1]` was re-derived at three sites, which is precisely why the
+fourth caller (login) was never added and domain membership was offered but never
+granted.
+
+**Accepted trade-off**: the email fast-path means the first `@acme.com` account
+to claim `acme.com` is instantly verified, so with auto-join on it absorbs every
+future `@acme.com` signup. Consumer domains are refused, the org can turn the
+toggle off, and superadmin can reject a claim — and `AdminOrgDetail` carries the
+`autoJoin` flag so an operator can see which claims are absorbing signups.
+
+**Removal rows** (`ant:auth:org:removed:{orgId}`, HASH `userId → {reason,
+removedAt, removedBy}`): leaving or being removed records a row, and the row
+suppresses the domain shortcut — both auto-join and the one-click banner (403
+`AUTO_JOIN_BLOCKED`). Without it, an admin's removal is undone by the very
+shortcut that put the member there, at their next login. Only an explicit
+re-admission clears it: an accepted invite, an approved join request, or an admin
+clicking "allow again" (`DELETE .../removed-members/:userId`, which re-opens the
+shortcut without re-adding anyone). The cascade in `softDeleteOrganization`
+writes **no** rows and drops the hash — the org is gone, so gating its
+(non-existent) shortcut would be noise.
+
+`removeMembership(userId, orgId, { record })` takes that decision as a
+**required** options param, so a new caller is forced by the compiler to choose
+rather than silently skipping the row — the type-space form of the seam rule in
+[AGENTS.md](../../AGENTS.md#authorization-answers-whose-never-how-much).
+
+**Discovery + join requests** — the third way in, and the only one a
+non-member can start:
+
+- `Organization.discoverable` (opt-in, default off) is what
+  `GET /api/organizations?q=` filters on, alongside kind and `deletedAt`.
+  Being findable grants nothing.
+- `POST /organizations/:orgId/join-requests` 404s for a non-discoverable org —
+  a private team's existence is no more leaked by the request endpoint than by
+  search. One live request per `(org, user)`, enforced by a SETNX guard key
+  (`ant:auth:org:joinreq-pending:{orgId}:{userId}`) released on every status
+  transition, and a 30-day TTL judged LAZILY on read like invites.
+- An admin approves (owner to grant `admin`) or rejects; the requester may
+  cancel their own. `/auth/me` carries `myJoinRequests` so the requester sees
+  the state without an org-scoped route they have no access to.
+
+**Free-join is deliberately NOT what this is.** The retired onboarding screen let
+a user pick an org from an autocomplete and become a member on the spot, which
+bypassed the invite and domain gates entirely; it and its `_pending` JWT
+machinery (`requireOnboardedJwt`, `POST /auth/onboarding/organization`,
+`needsOnboarding`) are deleted. `PENDING_ORG_SENTINEL` survives only as a
+read-side guard for records the old flow wrote. This supersedes the earlier
+"public search / join-request excluded" scoping decision recorded in
+`.claude/plans/noble-puzzling-cook.md:219`.
 
 **Stale-JWT blockade**: a removed member's JWT stays valid up to 7 days —
 `checkTeamMembership` (`routes/helpers/approvalGate.ts`) re-checks the live row
@@ -262,20 +343,32 @@ into the new identity. Pre-launch alternative: wipe the legacy cloud trees +
 ## Regression guards
 
 - `tests/auth/signup-policy.test.ts` — every signup → individual; email userId;
-  collision fix; `assertColonFreeUserId`.
+  collision fix; `assertColonFreeUserId`; the login auto-join truth table (new
+  account activates the team / existing one is stamped instead, idempotence,
+  `autoJoin:false`, unverified, removal row, soft-deleted org, non-matching host,
+  repo failure never costing the login); tombstones for the deleted onboarding
+  seam.
 - `tests/auth/organization-repository.test.ts` — `listMembershipsByUser`,
-  `searchOrganizations` excludes individual.
+  `searchOrganizations` excludes individual / non-discoverable / soft-deleted.
 - `tests/http/admin-account-scope.test.ts` — one admin row per (user × scope);
   row set unchanged by an org switch; `getBalance` never called from the admin
   path (the anti-minting guard); orphaned accounts surfaced; Noop lists every
   membership; account-less user still listed; pre-cutover balance withheld;
   `_pending` never a scope.
 - `tests/http/auth-me-route.test.ts` — envelope (`activeOrg`/`memberships`/`kind`
-  + Phase 1 `pendingInvites`/`domainJoinableOrgs` with lazy-expiry filtering).
+  + `pendingInvites`/`domainJoinableOrgs`/`myJoinRequests`/`autoJoinedOrg`, with
+  lazy-expiry filtering).
 - `tests/http/team-routes.test.ts` — role-gate truth table, invite acceptance
   edges (mismatch/expired/revoked/already-member), owner-leave 403,
-  domain fast-path/TXT/global-uniqueness, join-by-domain re-validation,
-  soft-delete cascade.
+  domain fast-path/TXT/global-uniqueness + join policy, join-by-domain
+  re-validation, discoverability gate, join-request lifecycle (duplicate,
+  already-member, message budget, role gates, lazy expiry, cancel-by-requester),
+  removal rows (written on remove AND leave, blocking, cleared three ways, none
+  from the cascade), soft-delete cascade.
+- `tests/auth/organization-search.test.ts` — query floor, limit clamp reaching
+  the repo, sensitive-field projection.
+- ant-ui `tests/store/orgSlice.test.ts` — the five org resources, three
+  independent dismissal sets, auto-join notice visibility, own-request index.
 - `tests/http/org-individual-policy.test.ts` — lookup (404-as-null) + visibility config.
 - `tests/policy/kind-dispatch-not-mode.test.ts` — no `isLocalServerMode` business gate.
 - `tests/deploy/deployVisibilityGate.test.ts` — 404-not-403 private gate.

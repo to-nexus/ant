@@ -5,6 +5,9 @@ import type {
   OrgMembership,
   PendingInvite,
   DomainJoinableOrg,
+  MyJoinRequest,
+  JoinRequestStatus,
+  AutoJoinedOrg,
 } from './types';
 
 const ORG_KINDS: ReadonlySet<string> = new Set(['local', 'individual', 'team']);
@@ -76,6 +79,44 @@ function parseDomainJoinableOrgs(v: unknown): DomainJoinableOrg[] {
   return out;
 }
 
+function parseMyJoinRequests(v: unknown): MyJoinRequest[] {
+  if (!Array.isArray(v)) return [];
+  const out: MyJoinRequest[] = [];
+  for (const m of v) {
+    if (typeof m !== 'object' || m === null) continue;
+    const r = m as Record<string, unknown>;
+    if (typeof r.id !== 'string' || typeof r.organizationId !== 'string') continue;
+    out.push({
+      id: r.id,
+      organizationId: r.organizationId,
+      organizationName:
+        typeof r.organizationName === 'string' ? r.organizationName : r.organizationId,
+      status: asJoinRequestStatus(r.status),
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : '',
+      expiresAt: typeof r.expiresAt === 'string' ? r.expiresAt : '',
+    });
+  }
+  return out;
+}
+
+function asJoinRequestStatus(v: unknown): JoinRequestStatus {
+  return v === 'approved' || v === 'rejected' || v === 'canceled' || v === 'expired'
+    ? v
+    : 'pending';
+}
+
+function parseAutoJoinedOrg(v: unknown): AutoJoinedOrg | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const r = v as Record<string, unknown>;
+  if (typeof r.organizationId !== 'string' || typeof r.domain !== 'string') return null;
+  return {
+    organizationId: r.organizationId,
+    organizationName:
+      typeof r.organizationName === 'string' ? r.organizationName : r.organizationId,
+    domain: r.domain,
+  };
+}
+
 export interface FetchAuthOptions {
   /** Absolute API base, e.g. `https://ant-server.crosstoken.io/api` or `/api`. */
   apiBase: string;
@@ -127,22 +168,16 @@ export async function fetchAuthMeDetailed(
     return { kind: 'shape', raw: data };
   }
 
-  // Phase 3 envelope fields — tolerate missing/legacy responses by
-  // defaulting to "settled session, no suggestion" so older servers
-  // keep working.
+  // Envelope fields — every one is tolerated as missing so an older server
+  // keeps working (empty join surface, no active-org context).
   const envelope = data as {
-    needsOnboarding?: unknown;
-    suggestedOrganizationName?: unknown;
     activeOrg?: unknown;
     memberships?: unknown;
     pendingInvites?: unknown;
     domainJoinableOrgs?: unknown;
+    myJoinRequests?: unknown;
+    autoJoinedOrg?: unknown;
   };
-  const needsOnboarding = envelope.needsOnboarding === true;
-  const suggestedOrganizationName =
-    typeof envelope.suggestedOrganizationName === 'string'
-      ? envelope.suggestedOrganizationName
-      : null;
 
   const orgKind = asOrgKind((u as { kind?: unknown }).kind);
   const memberships = parseMemberships(envelope.memberships);
@@ -178,8 +213,8 @@ export async function fetchAuthMeDetailed(
     memberships,
     pendingInvites: parsePendingInvites(envelope.pendingInvites),
     domainJoinableOrgs: parseDomainJoinableOrgs(envelope.domainJoinableOrgs),
-    needsOnboarding,
-    suggestedOrganizationName,
+    myJoinRequests: parseMyJoinRequests(envelope.myJoinRequests),
+    autoJoinedOrg: parseAutoJoinedOrg(envelope.autoJoinedOrg),
   };
 }
 

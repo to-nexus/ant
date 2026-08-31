@@ -1,15 +1,17 @@
 /**
- * Organizations API
+ * Organizations API — join discovery
  *
  * `GET /api/organizations?q=<query>&limit=<n>` — substring + case-
- * insensitive search across organization id + display name. Powers the
- * onboarding screen's autocomplete so users can join an existing org
- * by name. Returns `{ id, name }` projections only — `owner_id` /
- * `createdAt` / member counts are intentionally NOT exposed to avoid
- * leaking org metadata to non-members.
+ * insensitive search across organization id + display name. Backs the
+ * "Join a team" modal: it is how a signed-in account finds a team it can
+ * send a join request to. Returns `{ id, name }` projections only —
+ * `ownerId` / `createdAt` / member counts are intentionally NOT exposed to
+ * avoid leaking org metadata to non-members.
  *
- * Whitelisted in `requireOnboardedJwt` because the onboarding screen
- * (which holds a `_pending` JWT) needs to call it.
+ * Enumeration is opt-in on the org's side: the repository returns only orgs
+ * whose `discoverable` flag is set (and never the shared `individual` org or
+ * a soft-deleted one). Finding an org grants nothing — membership still
+ * requires an admin to approve the request.
  */
 
 import { Router, Request, Response } from 'express';
@@ -18,8 +20,13 @@ import { organizationsRateLimiter } from '../middleware/rateLimiter';
 import { logger } from '../../../../utils/logger';
 
 const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
-const MIN_QUERY_LENGTH = 1;
+const MAX_LIMIT = 25;
+/**
+ * Two characters, not one: a single letter is closer to "list the orgs
+ * starting with a" than to a search, and the response is a display-only
+ * list, so the floor is the cheapest bound on enumeration.
+ */
+const MIN_QUERY_LENGTH = 2;
 
 export interface OrganizationsRoutesDeps {
   organizationRepository: OrganizationRepositoryPort;

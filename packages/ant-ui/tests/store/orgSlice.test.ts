@@ -1,7 +1,9 @@
 /**
- * orgSlice — org resource loaders (members / invites / domains), banner
- * dismissal persistence, and the join-surface visibility selectors
- * (dismissed invites hide from the banner but stay counted for the dot).
+ * orgSlice — org resource loaders (members / invites / domains / join
+ * requests / removal rows), banner dismissal persistence, and the
+ * join-surface visibility selectors (dismissed invites hide from the banner
+ * but stay counted for the dot; the auto-join notice hides once it IS the
+ * active org).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -29,17 +31,23 @@ const apiMock = {
   fetchOrgMembers: vi.fn(),
   fetchOrgInvites: vi.fn(),
   fetchOrgDomains: vi.fn(),
+  fetchJoinRequests: vi.fn(),
+  fetchRemovedMembers: vi.fn(),
 };
 vi.mock('@/infrastructure/http/api/organizations', () => ({
   fetchOrgMembers: (...a: unknown[]) => apiMock.fetchOrgMembers(...a),
   fetchOrgInvites: (...a: unknown[]) => apiMock.fetchOrgInvites(...a),
   fetchOrgDomains: (...a: unknown[]) => apiMock.fetchOrgDomains(...a),
+  fetchJoinRequests: (...a: unknown[]) => apiMock.fetchJoinRequests(...a),
+  fetchRemovedMembers: (...a: unknown[]) => apiMock.fetchRemovedMembers(...a),
 }));
 
 import { createOrgSlice, type OrgSlice } from '../../src/domain/store/slices/orgSlice';
 import {
   selectVisiblePendingInvites,
   selectVisibleDomainJoinableOrgs,
+  selectVisibleAutoJoinedOrg,
+  selectMyPendingJoinRequestByOrg,
 } from '../../src/domain/store/selectors/auth';
 
 function makeStore(seed?: Partial<OrgSlice>) {
@@ -74,13 +82,42 @@ describe('org resource loaders', () => {
     expect(store.getState().orgInvites).toEqual([]);
   });
 
-  it('resetOrgResources drops rows and statuses back to idle', async () => {
+  it('loadOrgJoinRequests: loading → ready with rows', async () => {
+    apiMock.fetchJoinRequests.mockResolvedValue({
+      joinRequests: [{ id: 'req-1', organizationId: 'acme', status: 'pending' }],
+    });
+    const store = makeStore();
+    await store.getState().loadOrgJoinRequests('acme');
+    expect(apiMock.fetchJoinRequests).toHaveBeenCalledWith('acme');
+    expect(store.getState().orgJoinRequestsStatus).toBe('ready');
+    expect(store.getState().orgJoinRequests).toHaveLength(1);
+  });
+
+  it('loadOrgRemovedMembers: loading → ready with rows', async () => {
+    apiMock.fetchRemovedMembers.mockResolvedValue({
+      removedMembers: [{ userId: 'lee@acme.com', email: 'lee@acme.com', reason: 'removed' }],
+    });
+    const store = makeStore();
+    await store.getState().loadOrgRemovedMembers('acme');
+    expect(store.getState().orgRemovedMembersStatus).toBe('ready');
+    expect(store.getState().orgRemovedMembers).toHaveLength(1);
+  });
+
+  it('resetOrgResources drops EVERY resource back to idle', async () => {
     apiMock.fetchOrgDomains.mockResolvedValue({ domains: [{ domain: 'x.io' }] });
+    apiMock.fetchJoinRequests.mockResolvedValue({ joinRequests: [{ id: 'r' }] });
+    apiMock.fetchRemovedMembers.mockResolvedValue({ removedMembers: [{ userId: 'u' }] });
     const store = makeStore();
     await store.getState().loadOrgDomains('acme');
+    await store.getState().loadOrgJoinRequests('acme');
+    await store.getState().loadOrgRemovedMembers('acme');
     store.getState().resetOrgResources();
     expect(store.getState().orgDomains).toEqual([]);
     expect(store.getState().orgDomainsStatus).toBe('idle');
+    expect(store.getState().orgJoinRequests).toEqual([]);
+    expect(store.getState().orgJoinRequestsStatus).toBe('idle');
+    expect(store.getState().orgRemovedMembers).toEqual([]);
+    expect(store.getState().orgRemovedMembersStatus).toBe('idle');
   });
 });
 
@@ -98,6 +135,18 @@ describe('banner dismissal', () => {
     const store = makeStore();
     store.getState().dismissDomainBanner('acme');
     expect(store.getState().dismissedDomainOrgIds).toContain('acme');
+  });
+
+  it('dismissAutoJoinBanner is keyed by orgId and persists separately', () => {
+    const store = makeStore();
+    store.getState().dismissAutoJoinBanner('acme');
+    expect(store.getState().dismissedAutoJoinOrgIds).toContain('acme');
+    expect(
+      JSON.parse(localStorage.getItem('ant-ui:org:dismissed-autojoin-banners') ?? '[]'),
+    ).toContain('acme');
+    // the three dismissal sets are independent
+    expect(store.getState().dismissedDomainOrgIds).toEqual([]);
+    expect(store.getState().dismissedInviteIds).toEqual([]);
   });
 });
 
@@ -134,5 +183,44 @@ describe('join-surface visibility selectors', () => {
       dismissedDomainOrgIds: ['acme'],
     } as any;
     expect(selectVisibleDomainJoinableOrgs(state).map((d: any) => d.organizationId)).toEqual(['beta']);
+  });
+});
+
+describe('auto-join notice visibility', () => {
+  const autoJoined = { organizationId: 'acme', organizationName: 'Acme', domain: 'acme.com' };
+
+  it('shows while the team is not the active org', () => {
+    const state = { autoJoinedOrg: autoJoined, userOrganization: 'individual', dismissedAutoJoinOrgIds: [] } as any;
+    expect(selectVisibleAutoJoinedOrg(state)).toEqual(autoJoined);
+  });
+
+  it('hides once it IS the active org (nothing left to switch to)', () => {
+    const state = { autoJoinedOrg: autoJoined, userOrganization: 'acme', dismissedAutoJoinOrgIds: [] } as any;
+    expect(selectVisibleAutoJoinedOrg(state)).toBeNull();
+  });
+
+  it('hides when dismissed', () => {
+    const state = { autoJoinedOrg: autoJoined, userOrganization: 'individual', dismissedAutoJoinOrgIds: ['acme'] } as any;
+    expect(selectVisibleAutoJoinedOrg(state)).toBeNull();
+  });
+
+  it('is null when the login granted nothing', () => {
+    const state = { autoJoinedOrg: null, userOrganization: 'individual', dismissedAutoJoinOrgIds: [] } as any;
+    expect(selectVisibleAutoJoinedOrg(state)).toBeNull();
+  });
+});
+
+describe('own join requests', () => {
+  it('indexes only PENDING requests by org id', () => {
+    const state = {
+      myJoinRequests: [
+        { id: 'r1', organizationId: 'acme', status: 'pending' },
+        { id: 'r2', organizationId: 'beta', status: 'rejected' },
+        { id: 'r3', organizationId: 'gamma', status: 'pending' },
+      ],
+    } as any;
+    const byOrg = selectMyPendingJoinRequestByOrg(state);
+    expect([...byOrg.keys()].sort()).toEqual(['acme', 'gamma']);
+    expect(byOrg.get('acme')?.id).toBe('r1');
   });
 });

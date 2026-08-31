@@ -38,11 +38,6 @@ import { IdeFrame } from '@/presentation/components/FileEditorPanel/IdeFrame';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
-import { OrganizationOnboardingScreen } from '@/presentation/components/auth/OrganizationOnboardingScreen';
-import {
-  clearOnboardingQueryFlag,
-  shouldShowOnboarding,
-} from '@/application/auth/onboardingRouter';
 import { capturePairingStateFromUrl } from '@/application/auth/desktopPairing';
 import { fetchAuthMeDetailed, API_BASE } from '@/infrastructure/http/api';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
@@ -189,20 +184,13 @@ function AppShell() {
             result.user.approvalStatus,
             result.user.testAccountLevel,
           );
-          useStore.getState().setOnboardingState(
-            result.needsOnboarding,
-            result.suggestedOrganizationName,
-          );
-          useStore.getState().setJoinSurface(result.pendingInvites, result.domainJoinableOrgs);
-          if (!result.needsOnboarding) {
-            useStore.getState().fetchProjects();
-          }
+          useStore.getState().setJoinSurface(result);
+          useStore.getState().fetchProjects();
           console.log('[Auth] Successfully signed in with Google:', result.user.email);
         } else {
           logAuthFailure('post-oauth', result);
           useStore.getState().setAuthStatus('idle');
         }
-        clearOnboardingQueryFlag();
         navigate('/', { replace: true });
       })();
     } else if (errorParam) {
@@ -234,10 +222,6 @@ function AppShell() {
       const result = await fetchAuthMeDetailed();
       if (result.kind === 'user') {
         const hadEmail = !!useStore.getState().userEmail;
-        useStore.getState().setOnboardingState(
-          result.needsOnboarding,
-          result.suggestedOrganizationName,
-        );
         // Always re-`setUser` so `userName` / `userPicture` (not persisted in
         // localStorage) are refreshed on every mount. The store seeds
         // `userEmail` from localStorage but `name` / `picture` arrive only
@@ -254,11 +238,9 @@ function AppShell() {
           result.user.approvalStatus,
           result.user.testAccountLevel,
         );
-        useStore.getState().setJoinSurface(result.pendingInvites, result.domainJoinableOrgs);
+        useStore.getState().setJoinSurface(result);
         if (!hadEmail) {
-          if (!result.needsOnboarding) {
-            useStore.getState().fetchProjects();
-          }
+          useStore.getState().fetchProjects();
           console.log('[Auth] Restored session from cookie:', result.user.email);
         }
       } else if (result.kind === 'no-session') {
@@ -272,7 +254,6 @@ function AppShell() {
         logAuthFailure('mount', result);
         useStore.getState().setAuthStatus('idle');
       }
-      clearOnboardingQueryFlag();
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verifyServerMode]);
@@ -313,7 +294,7 @@ function AppShell() {
   const setSession = useStore((state) => state.setSession);
   const mainView = useStore((state) => state.mainView);
   
-  // ✅ Onboarding state
+  // ✅ QuickStart entry state
   const userEmail = useStore((state) => state.userEmail);
   const serverMode = useStore((state) => selectServerMode(state));
   // Local mode acts as the local tenant (no userEmail), so gate onboarding on
@@ -322,7 +303,6 @@ function AppShell() {
   const isAuthenticated = useStore(selectIsAuthenticated);
   const authStatusValue = useStore((state) => state.authStatus);
   const showApprovalGate = useStore((state) => selectShowApprovalGate(state));
-  const needsOnboarding = useStore((state) => state.needsOnboarding);
   const projects = useStore((state) => state.projects);
   const projectsLoaded = useStore(selectProjectsLoaded);
   
@@ -537,20 +517,6 @@ function AppShell() {
           >
             <AppNavBar />
           </div>
-        </AlertModalProvider>
-      </ToastProvider>
-    );
-  }
-
-  // Phase 3 — cloud-mode signed-in user with a `_pending` JWT must
-  // complete organization onboarding before the normal UI mounts. This
-  // also covers the `?onboarding=true` post-OAuth redirect because the
-  // mount-time `/auth/me` fetch has set `needsOnboarding` already.
-  if (shouldShowOnboarding({ serverMode, userEmail, needsOnboarding })) {
-    return (
-      <ToastProvider>
-        <AlertModalProvider>
-          <OrganizationOnboardingScreen />
         </AlertModalProvider>
       </ToastProvider>
     );

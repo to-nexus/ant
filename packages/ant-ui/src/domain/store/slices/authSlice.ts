@@ -11,7 +11,17 @@ import type {
   AuthApprovalStatus,
   PendingInvite,
   DomainJoinableOrg,
+  MyJoinRequest,
+  AutoJoinedOrg,
 } from '@ant/auth-client/types';
+
+/** The `/auth/me` fields that make up the org join surface. */
+export interface JoinSurfacePatch {
+  pendingInvites: PendingInvite[];
+  domainJoinableOrgs: DomainJoinableOrg[];
+  myJoinRequests: MyJoinRequest[];
+  autoJoinedOrg: AutoJoinedOrg | null;
+}
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
@@ -44,16 +54,16 @@ export interface AuthActions {
   clearUser: () => void;
   setAuthStatus: (status: AuthStatus) => void;
   /**
-   * Phase 3 — set onboarding flags from the `/auth/me` envelope.
-   * Cleared automatically by `clearUser`.
+   * Org join surface from the `/auth/me` envelope: pending invites, verified
+   * -domain join candidates, the caller's own pending join requests, and the
+   * notice that a login backfilled them into a team. Called alongside
+   * `setUser`; cleared by `clearUser`.
+   *
+   * The parameter is a SUBSET of the `/auth/me` success branch, so every call
+   * site passes that result straight through rather than re-listing the four
+   * fields (and drifting when a fifth arrives).
    */
-  setOnboardingState: (needsOnboarding: boolean, suggestedOrganizationName: string | null) => void;
-  /**
-   * Phase 1 — org join surface from the `/auth/me` envelope (pending invites
-   * + verified-domain join candidates). Called alongside `setUser`; cleared
-   * by `clearUser`.
-   */
-  setJoinSurface: (pendingInvites: PendingInvite[], domainJoinableOrgs: DomainJoinableOrg[]) => void;
+  setJoinSurface: (surface: JoinSurfacePatch) => void;
 }
 
 export type AuthSlice = AuthState & AuthActions;
@@ -81,9 +91,9 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   memberships: [],
   pendingInvites: [],
   domainJoinableOrgs: [],
+  myJoinRequests: [],
+  autoJoinedOrg: null,
   authStatus: initialAuthStatus,
-  needsOnboarding: false,
-  suggestedOrganizationName: null,
   approvalStatus: undefined,
   testAccountLevel: 0,
   selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'planner',
@@ -241,11 +251,13 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
 
   setAuthStatus: (status) => set({ authStatus: status }),
 
-  setOnboardingState: (needsOnboarding, suggestedOrganizationName) =>
-    set({ needsOnboarding, suggestedOrganizationName }),
-
-  setJoinSurface: (pendingInvites, domainJoinableOrgs) =>
-    set({ pendingInvites, domainJoinableOrgs }),
+  setJoinSurface: (surface) =>
+    set({
+      pendingInvites: surface.pendingInvites,
+      domainJoinableOrgs: surface.domainJoinableOrgs,
+      myJoinRequests: surface.myJoinRequests,
+      autoJoinedOrg: surface.autoJoinedOrg,
+    }),
 
   /**
    * Single SSOT for user disappearance — used by both the explicit
@@ -267,11 +279,11 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       memberships: [],
       pendingInvites: [],
       domainJoinableOrgs: [],
+      myJoinRequests: [],
+      autoJoinedOrg: null,
       approvalStatus: undefined,
       testAccountLevel: 0,
       authStatus: 'expired',
-      needsOnboarding: false,
-      suggestedOrganizationName: null,
     });
     removeFromStorage(STORAGE_KEYS.USER_EMAIL);
     removeFromStorage(STORAGE_KEYS.USER_ORGANIZATION);

@@ -35,12 +35,45 @@ export interface PendingInvite {
   expiresAt: string;
 }
 
-/** Verified-domain one-click join candidate riding on `/auth/me` (Phase 1). */
+/**
+ * Verified-domain join candidate riding on `/auth/me`. Present only when the
+ * org left auto-join OFF for that domain — when it is on, the login already
+ * granted the membership and there is nothing to offer.
+ */
 export interface DomainJoinableOrg {
   organizationId: string;
   organizationName: string;
   domain: string;
   autoJoinRole: 'admin' | 'member';
+}
+
+/** Status of a join request. Lockstep with `@ant/shared` `OrgJoinRequestStatus`. */
+export type JoinRequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'canceled'
+  | 'expired';
+
+/** The caller's own pending join request riding on `/auth/me`. */
+export interface MyJoinRequest {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  status: JoinRequestStatus;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/**
+ * "A login just put you in this team" notice riding on `/auth/me`. Only set
+ * for an account that already existed when its domain was claimed — a brand
+ * new account lands in the team as its active org and needs no notice.
+ */
+export interface AutoJoinedOrg {
+  organizationId: string;
+  organizationName: string;
+  domain: string;
 }
 
 /**
@@ -70,16 +103,16 @@ export interface AuthUser {
  * deployment misconfiguration so the caller can surface a precise hint.
  * `kind: 'user'` is the only success state.
  *
- *   kind=user           → signed-in user payload (carries onboarding flags too)
+ *   kind=user           → signed-in user payload (carries the join surface too)
  *   kind=no-session     → cookie absent or invalid (200 + {user: null})
  *   kind=misconfigured  → backend returned 503 (JWT key material unset)
  *   kind=http-error     → any other non-2xx
  *   kind=network        → fetch threw (CORS, offline, abort)
  *   kind=shape          → 200 but body shape unrecognised
  *
- * `needsOnboarding` / `suggestedOrganizationName` ride on the success
- * branch — they describe the user (the `_pending` sentinel state) and
- * are meaningless when there's no session.
+ * The join surface (invites, domain candidates, own join requests, auto-join
+ * notice) rides on the success branch — it describes the user, so it is
+ * meaningless when there's no session.
  */
 export type AuthMeResult =
   | {
@@ -91,10 +124,12 @@ export type AuthMeResult =
       memberships: OrgMembership[];
       /** Pending invites addressed to this email (Phase 1; [] from older servers). */
       pendingInvites: PendingInvite[];
-      /** Verified-domain join candidates (Phase 1; [] from older servers). */
+      /** Verified-domain join candidates ([] from older servers). */
       domainJoinableOrgs: DomainJoinableOrg[];
-      needsOnboarding: boolean;
-      suggestedOrganizationName: string | null;
+      /** The caller's own pending join requests ([] from older servers). */
+      myJoinRequests: MyJoinRequest[];
+      /** Set when a login backfilled this account into a team. */
+      autoJoinedOrg: AutoJoinedOrg | null;
     }
   | { kind: 'no-session' }
   | { kind: 'misconfigured' }

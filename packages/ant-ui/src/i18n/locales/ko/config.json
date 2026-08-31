@@ -419,7 +419,11 @@
       "idLabel": "조직 id",
       "copyId": "id 복사",
       "immutable": "변경 불가",
-      "renamed": "조직 이름이 변경되었습니다."
+      "renamed": "조직 이름이 변경되었습니다.",
+      "discoverableLabel": "조직 검색 노출",
+      "discoverableHint": "로그인한 계정이 참여 요청을 보낼 수 있도록 이 조직의 이름과 ID를 검색에 노출합니다. 노출 자체로는 어떤 권한도 주지 않으며, 모든 요청은 관리자가 승인합니다.",
+      "discoverableOn": "노출",
+      "discoverableOff": "숨김"
     },
     "members": {
       "title": "멤버",
@@ -470,7 +474,15 @@
       "verifiedByOperator": "운영자가 검증함",
       "joinHint": "@{{domain}} 로그인 사용자는 원클릭으로 가입할 수 있습니다.",
       "deleteAction": "등록 삭제",
-      "actions": "도메인 액션"
+      "actions": "도메인 액션",
+      "autoJoinLabel": "로그인 시",
+      "autoJoinOn": "팀에 추가",
+      "autoJoinOff": "제안만",
+      "autoJoinRoleLabel": "부여 역할",
+      "autoJoinHint": "자동 참여는 매 로그인마다 다시 확인되므로, 이 도메인 등록 이전에 만들어진 계정도 다음 로그인에 반영됩니다. 제거한 멤버는 다시 허용할 때까지 제외됩니다.",
+      "joinHintAuto": "@{{domain}} 로 로그인하면 이 팀에 자동으로 추가됩니다.",
+      "joinHintOffer": "@{{domain}} 로그인에게 원클릭 참여를 제안합니다.",
+      "savingPolicy": "저장 중…"
     },
     "danger": {
       "title": "위험 구역",
@@ -510,6 +522,27 @@
       "domainNotVerified": "이메일 도메인으로는 이 조직에 가입할 수 없습니다.",
       "consumerDomain": "개인용 이메일 도메인은 등록할 수 없습니다.",
       "generic": "문제가 발생했습니다. 다시 시도해 주세요."
+    },
+    "requests": {
+      "toc": "참여 요청",
+      "title": "참여 요청",
+      "description": "검색으로 이 팀을 찾아 참여를 요청한 계정입니다. 승인하면 멤버가 되며, 검색 노출만으로는 아무 권한도 부여되지 않습니다.",
+      "empty": "대기 중인 요청이 없습니다.",
+      "emptyHidden": "대기 중인 요청이 없습니다 — 이 팀은 검색에 노출되지 않으므로 초대 또는 이메일 도메인으로만 참여할 수 있습니다.",
+      "requestedOn": "{{date}} 요청",
+      "approve": "승인",
+      "reject": "요청 거절",
+      "rejectConfirm": "거절 확인",
+      "actions": "참여 요청 작업"
+    },
+    "removed": {
+      "title": "도메인 자동 참여 제외",
+      "description": "탈퇴했거나 제거된 계정입니다. 이메일 도메인 경로가 계속 차단되며, 초대 또는 승인된 참여 요청으로만 다시 열립니다.",
+      "reasonRemoved": "제거됨",
+      "reasonLeft": "탈퇴",
+      "allowAgain": "다시 허용",
+      "allowTitle": "도메인 참여 허용",
+      "confirmAllow": "{{email}} 이 이메일 도메인으로 다시 참여할 수 있게 할까요?"
     }
   }
 }

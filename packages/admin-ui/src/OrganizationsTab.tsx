@@ -50,6 +50,8 @@ export function OrganizationsTab() {
                 <th>Kind</th>
                 <th>멤버</th>
                 <th>도메인</th>
+                <th>요청</th>
+                <th>검색</th>
                 <th>생성</th>
                 <th />
               </tr>
@@ -62,6 +64,8 @@ export function OrganizationsTab() {
                   <td>{o.kind}</td>
                   <td>{o.memberCount}</td>
                   <td>{o.domainCount}</td>
+                  <td>{o.joinRequestCount || '—'}</td>
+                  <td className="muted">{o.discoverable ? '노출' : '숨김'}</td>
                   <td className="muted">{new Date(o.createdAt).toLocaleDateString()}</td>
                   <td>{o.deletedAt ? <span className="badge denied">deleted</span> : null}</td>
                 </tr>

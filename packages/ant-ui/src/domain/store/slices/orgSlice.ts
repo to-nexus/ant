@@ -1,6 +1,6 @@
 /**
- * Org slice (Phase 1) — team org settings resources (members / invites /
- * domains) + the invite/domain-join banner UI state.
+ * Org slice — team org settings resources (members / invites / domains /
+ * join requests / removal rows) + the join-banner UI state.
  *
  * OSS-regular slice (NOT an optional/cloud slice): the org system is OSS
  * core, gated by data (`kind === 'team'`), never by overlay presence.
@@ -10,17 +10,26 @@
  */
 
 import { StateCreator } from 'zustand';
-import type { OrgMemberView, OrgInviteView, OrgDomainClaimView } from '@ant/shared';
+import type {
+  OrgMemberView,
+  OrgInviteView,
+  OrgDomainClaimView,
+  OrgJoinRequestView,
+  OrgRemovedMemberView,
+} from '@ant/shared';
 import {
   fetchOrgMembers,
   fetchOrgInvites,
   fetchOrgDomains,
+  fetchJoinRequests,
+  fetchRemovedMembers,
 } from '@/infrastructure/http/api/organizations';
 
 type OrgResourceStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 const DISMISSED_INVITES_KEY = 'ant-ui:org:dismissed-invites';
 const DISMISSED_DOMAIN_KEY = 'ant-ui:org:dismissed-domain-banners';
+const DISMISSED_AUTOJOIN_KEY = 'ant-ui:org:dismissed-autojoin-banners';
 
 function loadDismissed(key: string): string[] {
   try {
@@ -47,24 +56,33 @@ export interface OrgState {
   orgInvitesStatus: OrgResourceStatus;
   orgDomains: OrgDomainClaimView[];
   orgDomainsStatus: OrgResourceStatus;
+  orgJoinRequests: OrgJoinRequestView[];
+  orgJoinRequestsStatus: OrgResourceStatus;
+  orgRemovedMembers: OrgRemovedMemberView[];
+  orgRemovedMembersStatus: OrgResourceStatus;
   /** `?invite={token}` deep link, stashed until the banner consumes it. */
   inviteTokenFromUrl: string | null;
   /** Invite ids dismissed from the banner (rediscoverable via switcher dot). */
   dismissedInviteIds: string[];
   /** Domain-banner dismissals, keyed by orgId. */
   dismissedDomainOrgIds: string[];
+  /** Auto-join (backfill) banner dismissals, keyed by orgId. */
+  dismissedAutoJoinOrgIds: string[];
 }
 
 export interface OrgActions {
   loadOrgMembers: (orgId: string) => Promise<void>;
   loadOrgInvites: (orgId: string) => Promise<void>;
   loadOrgDomains: (orgId: string) => Promise<void>;
+  loadOrgJoinRequests: (orgId: string) => Promise<void>;
+  loadOrgRemovedMembers: (orgId: string) => Promise<void>;
   /** Drop loaded org resources (active-org switch / panel close). */
   resetOrgResources: () => void;
   setInviteTokenFromUrl: (token: string | null) => void;
   dismissInvite: (inviteId: string) => void;
   undismissAllInvites: () => void;
   dismissDomainBanner: (orgId: string) => void;
+  dismissAutoJoinBanner: (orgId: string) => void;
 }
 
 export type OrgSlice = OrgState & OrgActions;
@@ -76,9 +94,14 @@ export const createOrgSlice: StateCreator<any, [], [], OrgSlice> = (set, get) =>
   orgInvitesStatus: 'idle',
   orgDomains: [],
   orgDomainsStatus: 'idle',
+  orgJoinRequests: [],
+  orgJoinRequestsStatus: 'idle',
+  orgRemovedMembers: [],
+  orgRemovedMembersStatus: 'idle',
   inviteTokenFromUrl: null,
   dismissedInviteIds: loadDismissed(DISMISSED_INVITES_KEY),
   dismissedDomainOrgIds: loadDismissed(DISMISSED_DOMAIN_KEY),
+  dismissedAutoJoinOrgIds: loadDismissed(DISMISSED_AUTOJOIN_KEY),
 
   loadOrgMembers: async (orgId) => {
     set({ orgMembersStatus: 'loading' });
@@ -113,6 +136,28 @@ export const createOrgSlice: StateCreator<any, [], [], OrgSlice> = (set, get) =>
     }
   },
 
+  loadOrgJoinRequests: async (orgId) => {
+    set({ orgJoinRequestsStatus: 'loading' });
+    try {
+      const { joinRequests } = await fetchJoinRequests(orgId);
+      set({ orgJoinRequests: joinRequests, orgJoinRequestsStatus: 'ready' });
+    } catch (err) {
+      console.warn('[Org] loadOrgJoinRequests failed:', err);
+      set({ orgJoinRequestsStatus: 'error' });
+    }
+  },
+
+  loadOrgRemovedMembers: async (orgId) => {
+    set({ orgRemovedMembersStatus: 'loading' });
+    try {
+      const { removedMembers } = await fetchRemovedMembers(orgId);
+      set({ orgRemovedMembers: removedMembers, orgRemovedMembersStatus: 'ready' });
+    } catch (err) {
+      console.warn('[Org] loadOrgRemovedMembers failed:', err);
+      set({ orgRemovedMembersStatus: 'error' });
+    }
+  },
+
   resetOrgResources: () =>
     set({
       orgMembers: [],
@@ -121,6 +166,10 @@ export const createOrgSlice: StateCreator<any, [], [], OrgSlice> = (set, get) =>
       orgInvitesStatus: 'idle',
       orgDomains: [],
       orgDomainsStatus: 'idle',
+      orgJoinRequests: [],
+      orgJoinRequestsStatus: 'idle',
+      orgRemovedMembers: [],
+      orgRemovedMembersStatus: 'idle',
     }),
 
   setInviteTokenFromUrl: (token) => set({ inviteTokenFromUrl: token }),
@@ -140,5 +189,11 @@ export const createOrgSlice: StateCreator<any, [], [], OrgSlice> = (set, get) =>
     const next = [...get().dismissedDomainOrgIds, orgId];
     saveDismissed(DISMISSED_DOMAIN_KEY, next);
     set({ dismissedDomainOrgIds: next });
+  },
+
+  dismissAutoJoinBanner: (orgId) => {
+    const next = [...get().dismissedAutoJoinOrgIds, orgId];
+    saveDismissed(DISMISSED_AUTOJOIN_KEY, next);
+    set({ dismissedAutoJoinOrgIds: next });
   },
 });

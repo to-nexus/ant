@@ -176,7 +176,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     }));
   }
 
-  // Phase 3: organization search (powers onboarding-screen autocomplete).
+  // Join discovery: search over orgs that opted into being discoverable.
   // Available only when the OrganizationRepository is wired (cloud mode).
   if (deps.organizationRepository) {
     router.use(createOrganizationsRoutes({
