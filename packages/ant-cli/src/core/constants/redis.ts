@@ -318,16 +318,6 @@ export const REDIS_KEYS = {
      * via SCAN on first listUsers call.
      */
     USER_INDEX: `${REDIS_DOMAINS.AUTH}:user:index`,
-    /**
-     * Purge tombstone - ant:auth:user:purged:{userId} (JSON, no PII).
-     *
-     * Survives the deleted USER record so `getUserApproval` can answer `denied`
-     * instead of the missing-record default `approved` — JWTs are stateless
-     * with no denylist, so without this a purged account's cookie keeps working
-     * for days and its desktop token for 90. Also stops `upsertUser` from
-     * silently re-creating the identity at the next OAuth callback.
-     */
-    USER_PURGED: `${REDIS_DOMAINS.AUTH}:user:purged:`,
     /** Team invitation record - ant:auth:invite:{id} (JSON) */
     INVITE: `${REDIS_DOMAINS.AUTH}:invite:`,
     /** Invite token → inviteId lookup - ant:auth:invite:byToken:{token} (string) */

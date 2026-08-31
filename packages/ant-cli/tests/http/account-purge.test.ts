@@ -1,12 +1,13 @@
 /**
  * Account purge — the engine's step order and the three hazards it exists for.
  *
- * 1. A purged identity must NOT read as `approved`. `getUserApproval` defaults
- *    a MISSING record to `approved` (legacy backfill), and JWTs are stateless
- *    with no denylist — without the tombstone a purged account's cookie keeps
- *    working for days and its desktop token for 90.
- * 2. `upsertUser` must not resurrect an admin-purged identity at the next
- *    OAuth callback (it would restore the email/name/picture just removed).
+ * 1. Deletion is NOT a ban. A purge leaves no tombstone, so the same address
+ *    signs up again as a brand-new account; refusing a person is
+ *    `approvalStatus: 'denied'`, which keeps the record and is reversible.
+ * 2. A still-held JWT must still die. `getUserApproval` answers `'unknown'`
+ *    for a vanished record — a 401, so the holder re-authenticates — instead of
+ *    the old missing-record default `approved`, which kept a deleted account's
+ *    cookie alive for days and its desktop token for 90.
  * 3. A team member's PERSONAL data anchors under `individual/`, not under the
  *    team org — `resolveTenantUserDir`. Sweeping only the membership orgs
  *    leaves the encrypted credential store on disk.
@@ -17,10 +18,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type Redis from 'ioredis';
-import {
-  RedisOrganizationRepository,
-  PurgedAccountError,
-} from '../../src/infrastructure/auth/RedisOrganizationRepository';
+import { RedisOrganizationRepository } from '../../src/infrastructure/auth/RedisOrganizationRepository';
 import { purgeAccount, resolvePurgeScopes } from '../../src/core/account/purgeAccount';
 import type { CreditLedgerPort } from '../../src/core/ports/creditLedger';
 import type { UserContext } from '../../src/core/types/user';
@@ -94,6 +92,7 @@ const USER = { id: 'lee@acme.com', email: 'lee@acme.com' };
 const ADMIN = 'root@ant.dev';
 
 let repo: RedisOrganizationRepository;
+let fakeRedis: FakeRedis;
 let workspacesPath = '';
 /** Every (orgId, projectId) the fake project service was asked to delete. */
 let deleted: Array<{ orgId: string; projectId: string; force?: boolean }> = [];
@@ -154,7 +153,8 @@ async function seed(): Promise<void> {
 
 beforeEach(async () => {
   vi.stubEnv('ANT_SUPER_ADMIN_EMAILS', ADMIN);
-  repo = new RedisOrganizationRepository(new FakeRedis() as unknown as Redis);
+  fakeRedis = new FakeRedis();
+  repo = new RedisOrganizationRepository(fakeRedis as unknown as Redis);
   workspacesPath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-purge-'));
   deleted = [];
 });
@@ -224,7 +224,7 @@ describe('purgeAccount — full', () => {
     expect(fs.existsSync(path.join(workspacesPath, 'individual', USER.id))).toBe(false);
   });
 
-  it('detaches every membership and tombstones the identity', async () => {
+  it('detaches every membership and deletes the identity outright', async () => {
     await seed();
     await purgeAccount(deps(), {
       userId: USER.id,
@@ -236,10 +236,8 @@ describe('purgeAccount — full', () => {
     expect(await repo.listMembershipsByUser(USER.id)).toEqual([]);
     expect(await repo.getUser(USER.id)).toBeNull();
     expect(await repo.getUserByEmail(USER.email)).toBeNull();
-    expect(await repo.getUserPurge(USER.id)).toMatchObject({
-      reason: 'admin-purge',
-      purgedBy: ADMIN,
-    });
+    // No tombstone survives — the purge leaves nothing that could block a re-signup.
+    expect([...fakeRedis.kv.keys()].filter((k) => k.includes(':purged:'))).toEqual([]);
   });
 
   it('reports a failed step instead of throwing, so the rest still runs', async () => {
@@ -253,9 +251,9 @@ describe('purgeAccount — full', () => {
 
     expect(report.ok).toBe(false);
     expect(report.steps.find((s) => s.step === 'projects')).toMatchObject({ ok: false });
-    // The identity step still ran — a partial purge must still be locked out.
+    // The identity step still ran — a partial purge must still end the session.
     expect(report.steps.find((s) => s.step === 'identity')?.ok).toBe(true);
-    expect(await repo.getUserPurge(USER.id)).not.toBeNull();
+    expect(await repo.getUserApproval(USER.id)).toBe('unknown');
   });
 
   it('prunes org ACL rows naming the purged user', async () => {
@@ -299,19 +297,19 @@ describe('purgeAccount — data-only (POST /user/reset)', () => {
     expect(report.steps.map((s) => s.step)).toEqual(['projects', 'userFiles', 'redisState']);
     // Identity and memberships are untouched — this is a reset, not a withdrawal.
     expect(await repo.getUser(USER.id)).not.toBeNull();
-    expect(await repo.getUserPurge(USER.id)).toBeNull();
+    expect(await repo.getUserApproval(USER.id)).toBe('approved');
     expect(await repo.listMembershipsByUser(USER.id)).toHaveLength(2);
   });
 });
 
-// ---------- Hazard (a): the approval default ----------
+// ---------- Hazard: a still-held JWT must die without a blocklist ----------
 
-describe('a purged identity is denied, not approved-by-default', () => {
-  it('an unknown id still defaults to approved (legacy accounts were never pended)', async () => {
-    expect(await repo.getUserApproval('never-seen@acme.com')).toBe('approved');
+describe('a vanished record reads unknown, not approved', () => {
+  it('an id with no record is unknown — the verdict that 401s a stale session', async () => {
+    expect(await repo.getUserApproval('never-seen@acme.com')).toBe('unknown');
   });
 
-  it('a purged id reads denied, which is what invalidates a live cookie or desktop token', async () => {
+  it('a purged id is unknown, which is what invalidates a live cookie or desktop token', async () => {
     await seed();
     expect(await repo.getUserApproval(USER.id)).toBe('approved');
 
@@ -323,27 +321,22 @@ describe('a purged identity is denied, not approved-by-default', () => {
     });
 
     expect(await repo.getUser(USER.id)).toBeNull();
-    expect(await repo.getUserApproval(USER.id)).toBe('denied');
+    expect(await repo.getUserApproval(USER.id)).toBe('unknown');
   });
 
-  it('lifting the tombstone re-opens the identity', async () => {
+  it('an EXISTING record with no approval field still reads approved (legacy, never pended)', async () => {
     await seed();
-    await purgeAccount(deps(), {
-      userId: USER.id,
-      purgedBy: ADMIN,
-      reason: 'admin-purge',
-      mode: 'full',
-    });
-
-    await repo.clearUserPurge(USER.id);
+    const raw = JSON.parse(fakeRedis.kv.get(`ant:auth:user:${USER.id}`)!);
+    delete raw.approvalStatus;
+    fakeRedis.kv.set(`ant:auth:user:${USER.id}`, JSON.stringify(raw));
     expect(await repo.getUserApproval(USER.id)).toBe('approved');
   });
 });
 
-// ---------- Hazard (b): login must not resurrect ----------
+// ---------- Deletion is not a ban: re-signup must work ----------
 
-describe('upsertUser honours the tombstone', () => {
-  it('refuses an admin-purged identity rather than restoring its PII', async () => {
+describe('a deleted account may sign up again', () => {
+  it('an admin purge does not block the next OAuth callback', async () => {
     await seed();
     await purgeAccount(deps(), {
       userId: USER.id,
@@ -352,13 +345,13 @@ describe('upsertUser honours the tombstone', () => {
       mode: 'full',
     });
 
-    await expect(
-      repo.upsertUser({ ...USER, name: 'Lee', currentOrganizationId: 'individual' }),
-    ).rejects.toBeInstanceOf(PurgedAccountError);
-    expect(await repo.getUser(USER.id)).toBeNull();
+    const fresh = await repo.upsertUser({ ...USER, name: 'Lee', currentOrganizationId: 'individual' });
+    expect(fresh.id).toBe(USER.id);
+    expect(await repo.getUser(USER.id)).not.toBeNull();
+    expect(await repo.getUserApproval(USER.id)).toBe('approved');
   });
 
-  it('lets a self-withdrawn person sign up again as a fresh account', async () => {
+  it('a self-withdrawal behaves identically — the reason never gates re-signup', async () => {
     await seed();
     await purgeAccount(deps(), {
       userId: USER.id,
@@ -369,7 +362,31 @@ describe('upsertUser honours the tombstone', () => {
 
     const fresh = await repo.upsertUser({ ...USER, currentOrganizationId: 'individual' });
     expect(fresh.id).toBe(USER.id);
-    expect(await repo.getUserPurge(USER.id)).toBeNull();
+    expect(await repo.getUserApproval(USER.id)).toBe('approved');
+  });
+
+  it('a re-signup is a NEW record — the deleted one is not restored', async () => {
+    await seed();
+    await purgeAccount(deps(), {
+      userId: USER.id,
+      purgedBy: ADMIN,
+      reason: 'admin-purge',
+      mode: 'full',
+    });
+
+    const fresh = await repo.upsertUser({ ...USER, currentOrganizationId: 'individual' });
+    expect(fresh.name).toBeUndefined();
+    expect(await repo.listMembershipsByUser(USER.id)).toEqual([]);
+  });
+
+  it('BLOCKING is approvalStatus, and it survives a re-login', async () => {
+    await seed();
+    await repo.setUserApproval(USER.id, 'denied', ADMIN);
+
+    await repo.upsertUser({ ...USER, currentOrganizationId: 'individual' });
+    expect(await repo.getUserApproval(USER.id)).toBe('denied');
+
+    await repo.setUserApproval(USER.id, 'approved', ADMIN);
     expect(await repo.getUserApproval(USER.id)).toBe('approved');
   });
 });

@@ -91,9 +91,31 @@ describe('approval stamping at signup (upsertUser)', () => {
 });
 
 describe('getUserApproval', () => {
-  it('returns approved for unknown/legacy users (no retroactive pend)', async () => {
+  /**
+   * The legacy carve-out is about a record that predates the approval FIELD,
+   * not about a missing record. Keeping the two apart is what lets a deleted
+   * account's still-held cookie die without a permanent purge tombstone.
+   */
+  it('returns approved for an existing record with no approval field (no retroactive pend)', async () => {
+    const { repo, redis } = makeRepo();
+    await repo.upsertUser({ id: 'legacy@x.com', email: 'legacy@x.com', currentOrganizationId: 'individual' });
+    const raw = JSON.parse(redis.strings.get('ant:auth:user:legacy@x.com')!);
+    delete raw.approvalStatus;
+    redis.strings.set('ant:auth:user:legacy@x.com', JSON.stringify(raw));
+
+    expect(await repo.getUserApproval('legacy@x.com')).toBe('approved');
+  });
+
+  it('returns unknown when no record backs the id — a stale session, not a denial', async () => {
     const { repo } = makeRepo();
-    expect(await repo.getUserApproval('nobody@x.com')).toBe('approved');
+    expect(await repo.getUserApproval('nobody@x.com')).toBe('unknown');
+  });
+
+  it('hasIdentity mirrors it without judging approval', async () => {
+    const { repo } = makeRepo();
+    expect(await repo.hasIdentity('nobody@x.com')).toBe(false);
+    await repo.upsertUser({ id: 'c@x.com', email: 'c@x.com', currentOrganizationId: 'individual' });
+    expect(await repo.hasIdentity('c@x.com')).toBe(true);
   });
 });
 

@@ -26,7 +26,7 @@ import { BridgeSessionManager } from './BridgeSessionManager';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import { logger } from '../../utils/logger';
-import { checkApproval } from '../../periphery/adapters/http/routes/helpers/approvalGate';
+import { checkApproval, approvalHttpStatus } from '../../periphery/adapters/http/routes/helpers/approvalGate';
 
 const COMPONENT = 'BridgeWS';
 
@@ -155,7 +155,10 @@ export class BridgeWebSocketHandler {
           `Bridge upgrade refused (approval): user=${authResult.userId} status=${notApproved.status}`,
           { component: COMPONENT },
         );
-        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        // One owner for the verdict→status mapping: a vanished identity is 401
+        // (re-authenticate), a judgement about the person is 403.
+        const code = approvalHttpStatus(notApproved.status);
+        socket.write(`HTTP/1.1 ${code} ${code === 401 ? 'Unauthorized' : 'Forbidden'}\r\n\r\n`);
         socket.destroy();
         return;
       }

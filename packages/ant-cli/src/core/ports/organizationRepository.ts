@@ -39,15 +39,18 @@ export interface OrganizationSummary {
   kind?: OrganizationKind;
 }
 
-/** Tombstone left by `purgeAccount` — see `recordUserPurge`. Carries no PII. */
-export interface UserPurgeRecord {
-  userId: string;
-  purgedAt: string;
-  /** Operator email for an admin purge; the account's own id for a withdrawal. */
-  purgedBy: string;
-  reason: UserPurgeReason;
-}
+/**
+ * The approval gate's verdict. `ApprovalStatus` plus one value the status
+ * enum cannot express: `'unknown'` — a valid JWT with no user record behind it.
+ * That is a stale session, not a judgement about the person, so it maps to 401
+ * (re-authenticate) rather than the 403 `denied` / `pending` carry.
+ */
+export type AccountVerdict = ApprovalStatus | 'unknown';
 
+/**
+ * Why an account was purged. Audit-log context only — it does NOT gate a
+ * re-signup. Deletion destroys data; refusing an identity is `approvalStatus`.
+ */
 export type UserPurgeReason = 'admin-purge' | 'self-withdrawal';
 
 export interface OrganizationRepositoryPort {
@@ -287,22 +290,20 @@ export interface OrganizationRepositoryPort {
     lastDomainAutoJoin?: UserRecord['lastDomainAutoJoin'];
   }): Promise<UserRecord>;
 
-  // -------- Purge tombstones --------
+  // -------- Identity deletion --------
 
   /**
-   * Record that an account was purged. The tombstone carries NO PII — its only
-   * job is to answer two questions the deleted record can no longer answer:
+   * Does a record still back this id? Asked by `/auth/me`, which is a public
+   * path the approval guard never sees — without it the FE renders a signed-in
+   * user whose every other call 401s (`getUserApproval` → `'unknown'`).
    *
-   *  - `getUserApproval` must say `denied`, not the missing-record default
-   *    `approved`. JWTs are stateless with no denylist, so a plain delete would
-   *    leave the session cookie working for days and a desktop token for 90.
-   *  - `upsertUser` must not silently re-create the identity (and re-populate
-   *    the email / name / picture a purge just removed) on the next OAuth
-   *    callback.
-   *
-   * `reason` is the policy fork: `admin-purge` refuses a re-signup outright,
-   * `self-withdrawal` lets the person come back as a brand-new account.
+   * This is NOT the approval verdict: it has no opinion on pending / denied,
+   * and `checkApproval` remains the single owner of that judgement. Local
+   * mode's Noop repo answers `true` — it has one hard-coded tenant and no
+   * account lifecycle.
    */
+  hasIdentity(userId: string): Promise<boolean>;
+
   /**
    * Delete the identity records for a purged account: the user JSON, its
    * `byEmail` pointer, its entry in the admin enumeration index, its raised
@@ -310,18 +311,11 @@ export interface OrganizationRepositoryPort {
    * to its email. `email` is optional because the caller may already have
    * dropped the record; without it the byEmail pointer cannot be resolved.
    *
-   * ALWAYS pair this with `recordUserPurge` — on its own it leaves an id whose
-   * approval reads as the missing-record default `approved`.
+   * It leaves NO tombstone: deletion is not a blocklist, so the same address
+   * may sign up again as a brand-new account. What stops a still-held JWT is
+   * `getUserApproval` answering `'unknown'` for the vanished record.
    */
   deleteUserIdentity(userId: string, email?: string): Promise<void>;
-
-  recordUserPurge(purge: UserPurgeRecord): Promise<void>;
-
-  /** Tombstone for a purged account, or `null` when the id was never purged. */
-  getUserPurge(userId: string): Promise<UserPurgeRecord | null>;
-
-  /** Lift a tombstone — an admin undoing a mistaken purge, or a re-signup. */
-  clearUserPurge(userId: string): Promise<void>;
 
   // -------- Backfill --------
 
@@ -343,11 +337,17 @@ export interface OrganizationRepositoryPort {
   // -------- Approval / admin (cloud-only; Noop = always approved) --------
 
   /**
-   * Read a user's approval state. Returns `'approved'` when the field is absent
-   * (legacy / unmanaged — never retroactively pended). This is the gate read
-   * consumed by the OSS job/chat start routes.
+   * Read a user's approval verdict. `'approved'` when the field is absent on an
+   * EXISTING record (legacy / unmanaged — never retroactively pended).
+   *
+   * `'unknown'` means the JWT is valid but no record backs it — a deleted
+   * account, or state loss. It is not a denial: the surface guard answers 401
+   * so the holder re-authenticates, which recreates the record for a legitimate
+   * user and is exactly the re-signup a deleted account is entitled to. This is
+   * what makes a purge tombstone unnecessary. Local mode's Noop repo answers
+   * `'approved'` unconditionally.
    */
-  getUserApproval(userId: string): Promise<ApprovalStatus>;
+  getUserApproval(userId: string): Promise<AccountVerdict>;
 
   /**
    * Set a user's approval state to any of approved/pending/denied (bidirectional

@@ -489,18 +489,12 @@ describe('DELETE /admin/users/:userId — purge guards', () => {
     expect(json.code).toBe('PURGE_FORBIDDEN');
   });
 
-  it('lifts a tombstone, and 404s when there is none', async () => {
+  // The tombstone-lifting route is gone with the tombstone: a purge leaves no
+  // blocklist, so there is nothing to undo. `:userId/purge` now falls through
+  // to the `:userId` shape, which 404s on an id that no longer exists.
+  it('has no un-purge route — a deleted id is simply not found', async () => {
     await seedUser();
     await startApp(ledger);
     expect((await api('DELETE', `/admin/users/${encodeURIComponent(USER.id)}/purge`)).status).toBe(404);
-
-    await repo.recordUserPurge({
-      userId: USER.id,
-      purgedAt: new Date().toISOString(),
-      purgedBy: ADMIN_EMAIL,
-      reason: 'admin-purge',
-    });
-    expect((await api('DELETE', `/admin/users/${encodeURIComponent(USER.id)}/purge`)).status).toBe(200);
-    expect(await repo.getUserPurge(USER.id)).toBeNull();
   });
 });

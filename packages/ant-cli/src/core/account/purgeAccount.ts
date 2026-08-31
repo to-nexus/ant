@@ -17,10 +17,12 @@
  *     anchors a TEAM member's personal data (credentials, agents, pipelines)
  *     under `{ws}/individual/{user}` — sweeping only the membership orgs leaves
  *     the encrypted credential store on disk.
- *  3. The identity leaves a tombstone rather than a hole. `getUserApproval`
- *     answers `approved` for a MISSING record, and JWTs are stateless with no
- *     denylist, so a plain delete would leave a live cookie working for days
- *     and a desktop token for 90.
+ *  3. Deleting the identity leaves NO blocklist. Deletion destroys data; it is
+ *     not a ban — the same address may sign up again as a brand-new account,
+ *     and refusing a person is `approvalStatus: 'denied'`, which is reversible.
+ *     A still-held JWT dies because `getUserApproval` answers `'unknown'` for
+ *     the vanished record (a 401, so the holder re-authenticates), not because
+ *     a permanent tombstone is left behind.
  *
  * Steps report rather than throw: one wedged project must not leave a
  * half-purged account with no record of what remains.
@@ -79,7 +81,7 @@ export interface PurgeAccountInput {
   purgedBy: string;
   reason: UserPurgeReason;
   /**
-   * `full` also detaches memberships and tombstones the identity.
+   * `full` also detaches memberships and deletes the identity.
    * `data-only` stops after the workspace + Redis sweep — the account keeps
    * working, which is what `POST /api/user/reset` means.
    */
@@ -239,17 +241,15 @@ export async function purgeAccount(
     return `${pruned} ACL entr(ies)`;
   });
 
-  // 6. Identity → tombstone. See the file header for why this is not a delete.
+  // 6. Identity. Nothing survives it — see the file header for why a purge
+  //    leaves no tombstone. `reason` is carried into the audit log only.
   await run('identity', async () => {
     const user = await repo.getUser(userId);
     await repo.deleteUserIdentity(userId, user?.email);
-    await repo.recordUserPurge({
-      userId,
-      purgedAt: new Date().toISOString(),
-      purgedBy,
-      reason,
+    logger.info(`🧹 [PurgeAccount] identity ${userId} deleted by ${purgedBy} (${reason})`, {
+      component: 'PurgeAccount',
     });
-    return 'tombstoned';
+    return 'deleted';
   });
 
   const ok = steps.every((s) => s.ok);

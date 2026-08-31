@@ -621,6 +621,31 @@ export function createAuthRoutes(deps: {
 
     try {
       const payload = jwtService.verify(token);
+
+      // A valid JWT whose user record is gone (a deleted account, or state
+      // loss). `/auth/me` is a PUBLIC_PATH, so the approval guard never runs
+      // here — without this the FE would render a signed-in user whose every
+      // other call 401s (`getUserApproval` → `'unknown'`). This asks only
+      // whether the subject exists; approval stays `checkApproval`'s alone.
+      // The Noop repo answers `true`, so local mode never takes this branch.
+      if (organizationRepository) {
+        if (!(await organizationRepository.hasIdentity(payload.sub))) {
+          res.clearCookie(
+            JwtService.cookieName,
+            jwtService.getClearCookieOptions(isProduction, req.hostname),
+          );
+          return res.json({
+            user: null,
+            activeOrg: null,
+            memberships: [],
+            pendingInvites: [],
+            domainJoinableOrgs: [],
+            myJoinRequests: [],
+            autoJoinedOrg: null,
+          });
+        }
+      }
+
       const activeKind = payload.kind ?? deriveKindFromOrgId(payload.org);
 
       // Account envelope (active org + memberships) when the repo is wired;

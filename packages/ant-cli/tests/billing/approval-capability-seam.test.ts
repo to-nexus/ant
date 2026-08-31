@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NoopOrganizationRepository } from '../../src/periphery/adapters/auth/NoopOrganizationRepository';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
-import { approvalErrorCode } from '../../src/periphery/adapters/http/routes/helpers/approvalGate';
+import { approvalErrorCode, approvalHttpStatus } from '../../src/periphery/adapters/http/routes/helpers/approvalGate';
 
 describe('NoopOrganizationRepository — approval defaults (local = always approved)', () => {
   // Typed as the PORT, not the concrete class: the no-op bodies legitimately
@@ -42,10 +42,19 @@ describe('NoopOrganizationRepository — approval defaults (local = always appro
 });
 
 describe('approvalErrorCode', () => {
-  it('maps denied → ACCOUNT_DENIED, else ACCOUNT_PENDING_APPROVAL', () => {
+  it('maps denied → ACCOUNT_DENIED, unknown → SESSION_IDENTITY_GONE, else pending', () => {
     expect(approvalErrorCode('denied')).toBe('ACCOUNT_DENIED');
     expect(approvalErrorCode('pending')).toBe('ACCOUNT_PENDING_APPROVAL');
     expect(approvalErrorCode('approved')).toBe('ACCOUNT_PENDING_APPROVAL');
+    expect(approvalErrorCode('unknown')).toBe('SESSION_IDENTITY_GONE');
+  });
+
+  // `unknown` is a stale session, not a judgement — the only verdict that 401s.
+  it('maps unknown to 401 and every judgement to 403', () => {
+    expect(approvalHttpStatus('unknown')).toBe(401);
+    expect(approvalHttpStatus('denied')).toBe(403);
+    expect(approvalHttpStatus('pending')).toBe(403);
+    expect(approvalHttpStatus('approved')).toBe(403);
   });
 });
 
@@ -195,6 +204,19 @@ describe('requireApprovedAccount — whole-surface account gate', () => {
       const res = await fetch(`${app.url}/api/projects`);
       expect(res.status).toBe(403);
       expect((await res.json()).code).toBe(code);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Deletion is not a ban: a vanished record must not 403 as "deactivated".
+  // 401 tells the client to re-authenticate, which is the re-signup itself.
+  it('answers 401 SESSION_IDENTITY_GONE when the JWT outlives its user record', async () => {
+    const app = await startApp('unknown');
+    try {
+      const res = await fetch(`${app.url}/api/projects`);
+      expect(res.status).toBe(401);
+      expect((await res.json()).code).toBe('SESSION_IDENTITY_GONE');
     } finally {
       await app.close();
     }

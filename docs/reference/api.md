@@ -186,11 +186,16 @@ the approval gate.
 |------|------|-------|
 | DELETE | `/api/admin/organizations/:orgId/members/:userId` | Purge a membership. Above the role ladder (may remove an `admin`) but the **owner is still refused** — transfer, or delete the org. Writes the removal row. |
 | DELETE | `/api/admin/users/:userId?confirmEmail=` | Purge an account. Guards in order: 404 unknown → 400 `PURGE_CONFIRM_MISMATCH` → 403 `PURGE_FORBIDDEN` (super-admin or self) → 501 when the deployment wired no purge deps. Returns a per-step report; a **partial purge is still a 200**, because the steps that succeeded are permanent. |
-| DELETE | `/api/admin/users/:userId/purge` | Lift a purge tombstone so a mistakenly purged email can sign up again. The data is gone either way. |
 
-A purge leaves a tombstone rather than a hole — see
-[internals/40-org-model.md](../internals/40-org-model.md#account-purge) for why a
-plain delete would leave a live cookie and a 90-day desktop token working.
+**A purge destroys data; it does not ban.** It leaves no tombstone, so the same
+address may sign up again as a brand-new account. To keep refusing a person, use
+`POST /api/admin/users/:userId/approval { status: 'denied' }` — that keeps the
+record and is reversible. A still-held cookie or 90-day desktop token dies
+because `getUserApproval` answers `'unknown'` for the vanished record, which the
+surface guard maps to **401 `SESSION_IDENTITY_GONE`** (re-authenticate) rather
+than the 403 a judgement carries; `/api/auth/me` reports the same via
+`hasIdentity`. See
+[internals/40-org-model.md](../internals/40-org-model.md#account-purge).
 `POST /api/user/reset` runs the same engine in `data-only` mode, so a self-reset
 gets the full project-lifecycle cascade instead of a bare `fs.rm`.
 

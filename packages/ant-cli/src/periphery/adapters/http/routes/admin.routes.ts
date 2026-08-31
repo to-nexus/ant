@@ -362,6 +362,11 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
    * boot's `syncSuperAdmins`, leaving a purged-but-privileged identity) and for
    * the caller themselves (an operator must not lock themselves out of the
    * screen that undoes a mistake).
+   *
+   * This DESTROYS DATA; it does not ban. No tombstone is left, so the same
+   * address may sign up again as a brand-new account. To keep refusing a
+   * person, use `POST /admin/users/:userId/approval { status: 'denied' }` —
+   * that keeps the record and is reversible.
    */
   router.delete('/admin/users/:userId', async (req: Request, res: Response) => {
     try {
@@ -403,27 +408,6 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       // 200 even on a partial purge: the steps that succeeded are permanent, so
       // the operator needs the report, not an error that hides it.
       res.json(report);
-    } catch (err) {
-      sendErrorResponse(res, 500, err, 'Admin');
-    }
-  });
-
-  /**
-   * DELETE /admin/users/:userId/purge — lift a tombstone so a mistakenly
-   * purged email can sign up again. The DATA is gone either way; this only
-   * re-opens the identity.
-   */
-  router.delete('/admin/users/:userId/purge', async (req: Request, res: Response) => {
-    try {
-      const { userId } = req.params;
-      const tombstone = await organizationRepository.getUserPurge(userId);
-      if (!tombstone) {
-        res.status(404).json({ error: 'no purge tombstone for this id', code: USER_NOT_FOUND });
-        return;
-      }
-      await organizationRepository.clearUserPurge(userId);
-      logger.info(`[Admin] lifted purge tombstone for ${userId}`, { component: 'Admin' });
-      res.json({ ok: true });
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Admin');
     }

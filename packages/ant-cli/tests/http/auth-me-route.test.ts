@@ -182,6 +182,8 @@ describe('GET /api/auth/me — cloud mode', () => {
         id === 'acme'
           ? { id: 'acme', name: 'Acme Inc', kind: 'team', ownerId: 'kim@acme.com', createdAt: future }
           : { id, name: id, kind: 'individual', ownerId: null, createdAt: future },
+      // The identity exists; `getUser` is null only so no auto-join stamp is read.
+      hasIdentity: async () => true,
       getUser: async () => null,
       getMembership: async () => null, // not yet a member of acme
       listInvitesByEmail: async () => [
@@ -269,6 +271,27 @@ describe('GET /api/auth/me — cloud mode', () => {
     ]);
     // `getUser` returns null here ⇒ no auto-join stamp ⇒ no backfill notice.
     expect(body.autoJoinedOrg).toBeNull();
+  });
+
+  /**
+   * A deleted account's cookie outlives it by up to 7 days (a desktop token by
+   * 90). `/auth/me` is a public path, so the approval guard never judges it —
+   * without this branch the FE would render a signed-in user whose every other
+   * call 401s `SESSION_IDENTITY_GONE`. Signing out is also what lets the person
+   * sign up again, since deletion is not a ban.
+   */
+  it('answers signed-out and drains the cookie when the JWT outlives its identity', async () => {
+    const jwtService = makeJwtService();
+    const token = jwtService.sign({ sub: 'gone@acme.com', email: 'gone@acme.com', org: 'individual' });
+    currentOrgRepo = { hasIdentity: async () => false };
+    app = await startApp(jwtService);
+
+    const res = await fetch(`${app.url}/api/auth/me`, {
+      headers: { Cookie: `${JwtService.cookieName}=${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).user).toBeNull();
+    expect(res.headers.get('set-cookie') ?? '').toContain(JwtService.cookieName);
   });
 
   it('kind falls back to deriveKindFromOrgId when the token lacks a kind claim (BC)', async () => {

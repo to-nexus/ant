@@ -239,7 +239,8 @@ export function UserDetail({
         </div>
       </div>
 
-      {/* Purge — distinct from 차단 (an approvalStatus flip that keeps the data). */}
+      {/* Purge destroys DATA. Refusing the person is 차단 above — that keeps the
+          record and is reversible; this leaves no blocklist behind. */}
       {!detail.isSuperAdmin && (
         <div
           className="card"
@@ -247,9 +248,11 @@ export function UserDetail({
         >
           <strong>계정 완전 삭제</strong>
           <div className="muted" style={{ marginBottom: 8 }}>
-            프로젝트·정의·자격증명·소속을 모두 제거하고 신원에 tombstone 을 남깁니다.
-            보유 중인 세션 쿠키와 데스크톱 토큰이 즉시 무효화되고, 같은 계정으로 다시
-            가입할 수 없습니다. 결제 원장은 회계 기록이므로 보존됩니다.
+            프로젝트·정의·자격증명·소속과 신원 레코드를 모두 제거합니다. 보유 중인 세션
+            쿠키와 데스크톱 토큰은 즉시 무효화됩니다. 데이터는 복구할 수 없지만
+            <strong> 같은 계정으로 다시 가입할 수 있습니다</strong> — 계속 막으려면
+            삭제가 아니라 위의 <strong>차단</strong>을 쓰세요. 결제 원장은 회계 기록이므로
+            보존됩니다.
           </div>
           <div className="row">
             <input

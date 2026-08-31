@@ -1,4 +1,5 @@
-import type { ApprovalStatus, OrganizationKind } from '@ant/shared';
+import type { OrganizationKind } from '@ant/shared';
+import type { AccountVerdict } from '../../../../../core/ports/organizationRepository';
 import { deriveKindFromOrgId } from '@ant/shared';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { logger } from '../../../../../utils/logger';
@@ -7,6 +8,11 @@ import { logger } from '../../../../../utils/logger';
  * The single read of the approval verdict: consult the organization-repository
  * port, fail open on infra error. Returns `{ status }` when the account is not
  * `approved` (caller maps that to a 403 / a failure reason), else null (allow).
+ *
+ * `status: 'unknown'` is the one verdict that is NOT a judgement about the
+ * person — the JWT is valid but no record backs it (a deleted account, or state
+ * loss). Callers answer 401 so the holder re-authenticates; see the port's
+ * `getUserApproval`.
  *
  * Three callers, one per plane that can admit an identity:
  *  - `createRequireApprovedAccount` — the whole HTTP surface, on every server
@@ -27,7 +33,7 @@ import { logger } from '../../../../../utils/logger';
  */
 export async function checkApproval(
   userContext: { userId: string; organizationId: string },
-): Promise<{ status: ApprovalStatus } | null> {
+): Promise<{ status: AccountVerdict } | null> {
   try {
     const repo = getInfrastructureFactory().getOrganizationRepository();
     const status = await repo.getUserApproval(userContext.userId);
@@ -38,9 +44,20 @@ export async function checkApproval(
   return null;
 }
 
-/** Map a non-approved status to a stable client error code. */
-export function approvalErrorCode(status: ApprovalStatus): 'ACCOUNT_DENIED' | 'ACCOUNT_PENDING_APPROVAL' {
+/**
+ * Map a non-approved verdict to a stable client error code. `unknown` is a
+ * stale session, so it pairs with 401 rather than the 403 the other two carry.
+ */
+export function approvalErrorCode(
+  status: AccountVerdict,
+): 'ACCOUNT_DENIED' | 'ACCOUNT_PENDING_APPROVAL' | 'SESSION_IDENTITY_GONE' {
+  if (status === 'unknown') return 'SESSION_IDENTITY_GONE';
   return status === 'denied' ? 'ACCOUNT_DENIED' : 'ACCOUNT_PENDING_APPROVAL';
+}
+
+/** HTTP status for a verdict: a vanished identity is 401, a judgement is 403. */
+export function approvalHttpStatus(status: AccountVerdict): 401 | 403 {
+  return status === 'unknown' ? 401 : 403;
 }
 
 /**

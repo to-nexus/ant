@@ -41,7 +41,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { checkApproval, approvalErrorCode } from '../routes/helpers/approvalGate';
+import { checkApproval, approvalErrorCode, approvalHttpStatus } from '../routes/helpers/approvalGate';
 
 /** ant-api's super-admin surface, as seen after `app.use('/api', …)` strips its prefix. */
 export const ADMIN_SURFACE_PREFIX = '/admin';
@@ -70,13 +70,18 @@ export function createRequireApprovedAccount(options: RequireApprovedAccountOpti
       });
       if (!notApproved) return next();
 
-      res.status(403).json({
-        error: 'Account is not approved.',
+      // `unknown` is a stale session, not a judgement: the JWT is valid but no
+      // record backs it. 401 so the client re-authenticates — that recreates a
+      // legitimate user's record and lets a deleted account sign up afresh.
+      res.status(approvalHttpStatus(notApproved.status)).json({
+        error: notApproved.status === 'unknown' ? 'Session identity no longer exists.' : 'Account is not approved.',
         code: approvalErrorCode(notApproved.status),
         message:
-          notApproved.status === 'denied'
-            ? 'This account has been deactivated. Please contact the operator.'
-            : 'This account is waiting for operator approval.',
+          notApproved.status === 'unknown'
+            ? 'This session is no longer valid. Please sign in again.'
+            : notApproved.status === 'denied'
+              ? 'This account has been deactivated. Please contact the operator.'
+              : 'This account is waiting for operator approval.',
       });
     } catch {
       // `checkApproval` already fails open on a repository error; this catches

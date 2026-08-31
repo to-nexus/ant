@@ -315,7 +315,8 @@ encrypted credential store on disk.
 Step order — `projects` → `userFiles` → `redisState` → `memberships` →
 `orgAcls` → `identity`. Each step reports rather than throws: one wedged project
 must not leave a half-purged account with no record of what remains, and the
-identity step must still run so a partially purged account is locked out.
+identity step must still run so a partially purged account's live sessions still
+end.
 
 - **Projects go through `ProjectService.deleteProject(..., { force: true })`**,
   never a bare `fs.rm`. That is the 5-step cascade — job cancellation, pipeline
@@ -338,29 +339,57 @@ identity step must still run so a partially purged account is locked out.
   org property, not personal data.
 - **Billing is deliberately NOT deleted.** `ant:billing:ledger:*` is the only
   record of purchases — there is no invoice system and, with
-  `MockPaymentProvider`, no PSP copy. The tombstone makes it unreachable and the
-  admin list already renders such rows as `orphaned`. Revisit with an
-  export-and-archive step when a real PSP lands.
+  `MockPaymentProvider`, no PSP copy. The rows become unreachable once the
+  identity is gone, and the admin list already renders them as `orphaned`.
+  Revisit with an export-and-archive step when a real PSP lands.
 
-### The identity is tombstoned, never merely deleted
+### Deletion is not a ban — there is no tombstone
 
-`ant:auth:user:purged:{userId}` (JSON, no PII: `purgedAt` / `purgedBy` /
-`reason`) survives the deleted `USER` record because a plain delete is
-**cosmetic**:
+A purge destroys DATA. It does not refuse a person, and it leaves **no record
+that could**: `deleteUserIdentity` is the last step and nothing survives it, so
+the same address signs up again through the ordinary OAuth callback and gets a
+brand-new account stamped by `defaultApprovalMode`.
 
-- `getUserApproval` returns `'approved'` for a MISSING record — the legacy
-  backfill default, which must stay for accounts that predate the approval
-  field. JWTs are stateless ES256 with no denylist, so without the tombstone a
-  purged account's session cookie keeps working for days and its desktop token
-  for **90**. The tombstone makes the read answer `'denied'`, so
-  `checkApproval` 403s `ACCOUNT_DENIED` on the very next request.
-- `upsertUser` runs on every OAuth callback and would re-create the identity,
-  restoring the email / name / picture the purge just removed. It now consults
-  the tombstone first: `admin-purge` throws `PurgedAccountError`;
-  `self-withdrawal` lifts the tombstone and proceeds as a brand-new signup,
-  because a person who deleted their own account may come back.
-- `DELETE /admin/users/:userId/purge` lifts a tombstone so a mistaken purge is
-  recoverable as an identity. The DATA is gone either way.
+Refusing a person is a different verb on a different axis:
+`POST /admin/users/:userId/approval { status: 'denied' }`. It keeps the record,
+survives every re-login (`upsertUser` stamps approval only when
+`existing === null`), and reverses with one call. The admin screen carries both,
+and the danger zone says which is which.
+
+This was inverted once. The original engine wrote a TTL-less tombstone
+(`ant:auth:user:purged:{userId}`) and `upsertUser` threw `PurgedAccountError`
+for `reason: 'admin-purge'`, so "delete" was a permanent, irreversible ban whose
+only escape — `DELETE /admin/users/:userId/purge` — had no admin-ui caller and
+whose target had already left `USER_INDEX`, making the detail pane 404. The
+operator could not undo it from the UI at all.
+
+**What the tombstone was load-bearing for, and what replaced it.** JWTs are
+stateless ES256 with no denylist, and `getUserApproval` used to answer
+`'approved'` for a MISSING record — so a plain delete left the session cookie
+working for days and a desktop token for **90**. That is now answered without a
+blocklist:
+
+- `getUserApproval` returns **`'unknown'`** when no record backs the id.
+  `checkApproval` carries it and the surface guard answers **401
+  `SESSION_IDENTITY_GONE`**, not 403. The distinction is the whole point: 401
+  means re-authenticate, which recreates a legitimate user's record via
+  `upsertUser` and, for a deleted account, IS the re-signup.
+- The legacy carve-out narrows to what it was always about — an **existing**
+  record with no `approvalStatus` field still reads `'approved'`. A missing
+  record was never a legacy account: `upsertUser` runs on every login, so any
+  account that has signed in has a record.
+- `/auth/me` is a `PUBLIC_PATH`, so the guard never judges it. It asks
+  `hasIdentity(userId)` and answers signed-out, draining the cookie. Without
+  that branch the FE rendered a signed-in user whose every other call 401s.
+  `hasIdentity` deliberately does NOT read approval — `checkApproval` stays the
+  single owner of that verdict (`tests/policy/resource-admission.test.ts` pins
+  that no route handler calls it).
+- Local mode is untouched: `NoopOrganizationRepository` answers `'approved'` and
+  `hasIdentity → true`, so neither branch is reachable there.
+
+`reason` (`admin-purge` | `self-withdrawal`) survives as audit-log context only.
+It no longer forks policy — both reasons permit a re-signup, which is what
+removed the need for a self-withdrawal special case.
 
 Route guards, in order: 404 unknown user → 400 `PURGE_CONFIRM_MISMATCH`
 (`?confirmEmail=` must match; a `userId` here IS an email and the admin table is
@@ -370,13 +399,19 @@ the caller themselves → **then** 501 if the deployment wired no purge deps. Th
 capability check is last on purpose: every deployment must refuse the same
 targets, or a misconfiguration would mask one that was never purgeable.
 
+**Audit trail.** With the tombstone gone, the only structural record of a purge
+is the `[PurgeAccount] identity … deleted by … (reason)` log line;
+`ant:billing:ledger:*` rows keep rendering as `orphaned` in the admin list. If a
+real audit requirement lands, add a log that does not gate access — the moment a
+record participates in an access decision it is a tombstone again.
+
 **Self-serve withdrawal is designed but NOT implemented.** The engine is the
 whole backend; what remains is `DELETE /api/auth/account` (own purge with
 `reason: 'self-withdrawal'`, typed-email confirmation, the same owner refusal as
 leave, clearing the session cookie), an `AccountConfigEditor` danger zone reusing
-`tenantScrubPatch` for FE teardown, and a post-purge landing state. Immediate vs
-grace-period is answerable either way on the tombstone, which already denies
-access without destroying the id.
+`tenantScrubPatch` for FE teardown, and a post-purge landing state. A
+grace-period variant would need a real deferred-delete record, since there is no
+longer a tombstone to park the decision on.
 
 **Org-admin approval seam**: team membership itself is the org-level
 authorization; the account-level `approvalStatus` stays superadmin-owned and
@@ -462,8 +497,10 @@ into the new identity. Pre-launch alternative: wipe the legacy cloud trees +
   per project, the individual-anchored credential store removed, memberships
   detached, ACL rows pruned, a failed step reported without aborting the
   identity step), `data-only` stopping before the identity, and the two
-  tombstone hazards (a purged id reads `denied` while an unknown id still reads
-  `approved`; `upsertUser` refuses an admin purge and lets a withdrawal re-signup).
+  invariants that replaced the tombstone (a vanished record reads `'unknown'`
+  while an existing one missing the field still reads `'approved'`; a re-signup
+  succeeds as a NEW account after either purge reason, and blocking is
+  `approvalStatus`, which survives a re-login).
 - `tests/http/team-routes.test.ts` also pins the org hub's premise — a member
   whose active org is `individual` can read and leave a team by path orgId.
 - `tests/http/org-individual-policy.test.ts` — lookup (404-as-null) + visibility config.
