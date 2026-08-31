@@ -93,9 +93,10 @@ export class RouteConfigurator {
   }
 
   /**
-   * Pipeline scheduling surface. Definitions are ACCOUNT-scoped
-   * (`/api/pipelines` — cross-project); the only project-scoped read is the
-   * chat surface's `active-pipeline`. Services are built by
+   * Pipeline scheduling surface. Definitions are scoped TEMPLATES in the
+   * `/api/definitions` family (`/api/definitions/pipelines` — user|org roots,
+   * cross-project); the only project-scoped read is the chat surface's
+   * `active-pipeline`. Services are built by
    * ExpressServerAdapter; absent (no resolver / no Redis config) ⇒ no routes.
    */
   private setupPipelineRoutes(app: Express): void {
@@ -109,7 +110,7 @@ export class RouteConfigurator {
       organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
       chatService: this.deps.chatService,
     };
-    app.use('/api/pipelines', createPipelinesRoutes(pipelineDeps));
+    app.use('/api/definitions/pipelines', createPipelinesRoutes(pipelineDeps));
     app.use('/api/projects/:projectId/active-pipeline', createActivePipelineRoute(pipelineDeps));
   }
 
@@ -131,9 +132,12 @@ export class RouteConfigurator {
       // Backs the cluster-wide per-account budget on the artifact tree scan.
       stateStore: getInfrastructureFactory().getStateStore(),
     }));
-    // Account-scoped agent settings (profile menu) — no project required (D-G).
+    // Scoped agent DEFINITIONS (settings screen) — no project required.
+    // Not `/api/account/*`: a definition is a user|org|builtin scoped template
+    // resolved closest-wins, not an account-owned record — and `/api/agents` is
+    // taken by the public canonical job-agent catalog.
     app.use(
-      '/api/account/agents',
+      '/api/definitions/agents',
       createAccountAgentRoutes({
         workspaceResolver: this.deps.workspaceResolver,
         organizationRepository,
@@ -144,7 +148,7 @@ export class RouteConfigurator {
     // MCP credential registration — the encrypted per-user store the universal
     // runtime resolves `mcp.servers[].headers`/`env` key names against (A16).
     app.use(
-      '/api/account/mcp-credentials',
+      '/api/credentials/mcp',
       createMcpCredentialRoutes({ credentialsStore: new CredentialsStore(this.config.workspacesPath) }),
     );
   }

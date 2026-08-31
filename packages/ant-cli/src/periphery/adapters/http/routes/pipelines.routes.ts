@@ -1,7 +1,8 @@
 /**
  * Pipeline CRUD + availability + activation + run surface.
  *
- * Definitions are scoped TEMPLATES (`/api/pipelines`): personal + org scope
+ * Definitions are scoped TEMPLATES (`/api/definitions/pipelines`, the agents
+ * family): personal + org scope
  * roots (agents precedent), merged closest-wins, org writes judged per-caller
  * by the pipeline ACL. The AVAILABILITY state machine binds the write surface:
  * PUT/DELETE/promote require `disabled`, activate requires `enabled`, disable
@@ -562,7 +563,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         res.status(503).json({ error: 'Chat service not available' });
         return;
       }
-      // The card lives in the RUN's project (route is account-scoped now).
+      // The card lives in the RUN's project (the route is cross-project).
       const run = await deps.coordinator.getRun(hitl.runId);
       if (!run) {
         res.status(404).json({ error: 'run not found for gate', gateId: req.params.gateId });

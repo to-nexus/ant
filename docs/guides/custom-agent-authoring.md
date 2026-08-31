@@ -216,13 +216,13 @@ apis:
   ant:
     self: true
     allow:
-      - GET /account/agents/**
-      - PUT /account/agents/**
+      - GET /definitions/agents/**
+      - PUT /definitions/agents/**
 ```
 
 The runtime supplies both, so the definition works unchanged on any install and
 needs nothing registered. In exchange the token it receives is pinned
-server-side to `/api/account/agents` — it cannot reach the rest of the API, and
+server-side to `/api/definitions/agents` — it cannot reach the rest of the API, and
 it is refused on `promote`, `editors`, `import`, and `files/upload` no matter
 what `allow` says. Writing `self: true` next to `baseUrl` or `headers` is a
 validation error: an entry is one form or the other.
@@ -234,7 +234,7 @@ run**, or the connection fails loud as `config_invalid` rather than sending an
 empty credential:
 
 ```bash
-curl -X PUT .../api/account/mcp-credentials \
+curl -X PUT .../api/credentials/mcp \
   -H 'content-type: application/json' \
   -d '{"key":"OPS_API_TOKEN","value":"Bearer …"}'
 ```
@@ -404,7 +404,7 @@ hooks:
   runs the loader's full validation (broken YAML, id mismatches, unknown
   tools, removed legacy fields, malformed `${secret:…}` references, a
   `headers` block on a stdio server or `env` on an http one).
-- `GET /api/account/agents/{agentId}/jobs/{jobId}/prompt-preview?intents=a,b`
+- `GET /api/definitions/agents/{agentId}/jobs/{jobId}/prompt-preview?intents=a,b`
   returns the exact composed definition block the runtime will inject — the
   settings screen's "Composed prompt" card renders it per intent selection.
   (The preview is an authoring aid and accepts several ids to compare

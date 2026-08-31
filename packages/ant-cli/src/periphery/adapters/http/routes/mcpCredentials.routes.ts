@@ -1,5 +1,5 @@
 /**
- * MCP credential registration API (`/api/account/mcp-credentials`).
+ * MCP credential registration API (`/api/credentials/mcp`).
  *
  * The write-side of the A16 credential plane: agent definitions reference
  * credential KEY NAMES in `mcp.servers[].headers`/`env`; the values are

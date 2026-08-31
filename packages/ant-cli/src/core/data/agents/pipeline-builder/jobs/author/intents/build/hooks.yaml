@@ -1,0 +1,8 @@
+# Turn completion contract for pinned/inherited build turns: the turn is not
+# done until a pipeline write actually went through the API. `create_file` and
+# the rest write artifacts, never definitions — only this call changes what
+# will fire. When there is legitimately nothing to write, the exit is clarify
+# (exempt from this gate) — never a re-save of identical content.
+hooks:
+  stop:
+    - action: api__ant__request

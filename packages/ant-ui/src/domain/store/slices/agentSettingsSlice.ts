@@ -36,7 +36,7 @@ export interface AgentSettingsState {
    *
    * An empty `accountAgents` is ambiguous on its own — "this account has no
    * agents" and "the request failed" render identically, which is how a 404 on
-   * `/api/account/agents` read as a missing-agents bug. `kind` separates the
+   * `/api/definitions/agents` read as a missing-agents bug. `kind` separates the
    * one cause the UI can explain precisely (the endpoint is absent, i.e. the
    * server predates it) from everything else.
    */

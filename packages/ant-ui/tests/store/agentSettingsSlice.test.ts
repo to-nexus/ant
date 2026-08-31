@@ -103,7 +103,7 @@ describe('loadAccountAgents', () => {
   });
 
   // A failure must be distinguishable from "this account has no agents" —
-  // swallowing it made a 404 on /api/account/agents render as an empty tree,
+  // swallowing it made a 404 on /api/definitions/agents render as an empty tree,
   // i.e. as missing builtin agents rather than as a dead endpoint.
   it('records a 404 as endpoint-missing, not as an empty agent list', async () => {
     const s = makeStore();

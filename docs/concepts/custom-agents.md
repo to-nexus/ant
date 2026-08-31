@@ -184,7 +184,7 @@ A server's `env` (stdio) or `headers` (http) value is one of two things, and
 
 - `${secret:OPS_API_TOKEN}` — a reference. The value lives in an encrypted
   per-user store (`.ant/credentials.json`, AES-256-GCM), registered once through
-  Settings → Agents or `PUT /api/account/mcp-credentials`. Rotate it there
+  Settings → Agents or `PUT /api/credentials/mcp`. Rotate it there
   without touching the definition file. Reading the list back returns key names
   only; values are write-only.
 - anything else — a literal, stored verbatim in the yaml. Fine for a region or a

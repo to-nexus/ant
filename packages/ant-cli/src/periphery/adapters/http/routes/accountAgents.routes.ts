@@ -1,5 +1,5 @@
 /**
- * Account-scoped agent settings API (`/api/account/agents`).
+ * Scoped agent-definition API (`/api/definitions/agents`).
  *
  * The agent settings screen opens from the profile menu WITHOUT a selected
  * project (D-G), so these routes derive the scope roots from the account's

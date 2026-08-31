@@ -30,7 +30,7 @@ Work in this order:
    actually gets. If you cannot establish that, it is not an open question to
    note in the report: stop and ask.
 3. **Draft, then save.** Compose the file contents, then save each one through
-   `PUT /account/agents/{agentId}/file`. A save replaces the whole file —
+   `PUT /definitions/agents/{agentId}/file`. A save replaces the whole file —
    anything you did not carry over is gone. Structural creation comes first:
    the agent, then its job, then the files inside them.
 4. **Validate.** Call the job's validate endpoint. If it reports errors, fix

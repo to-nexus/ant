@@ -153,7 +153,7 @@ export class McpConnectionManager {
       if (value === undefined) {
         throw new McpConfigError(
           `${label} "${serverName}" ${field} "${key}" references credential key "${credentialKey}" which is not registered — ` +
-            `register it via PUT /api/account/mcp-credentials (or the agent settings UI) before starting the job`,
+            `register it via PUT /api/credentials/mcp (or the agent settings UI) before starting the job`,
           { serverName },
         );
       }

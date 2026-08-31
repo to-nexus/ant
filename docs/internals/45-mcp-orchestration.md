@@ -46,7 +46,7 @@ only one is Ant-spawned foreign code. Confusing them mis-assigns trust.
 | job-runner → **stdio MCP child** | OS process (`StdioClientTransport` spawns `cfg.command`) | Ant (connect at job start, close at job end) | **Arbitrary third-party code on Ant's host.** Receives ONLY `buildStdioChildEnv()` = exec baseline (`PATH`/`HOME`/`LANG`/`LC_ALL`/`TMPDIR`/`SystemRoot`) + explicitly declared vars — never Ant's env (`McpConnectionManager.ts`) |
 | job-runner → **HTTP MCP server** | network (streamable HTTP) | **the server's operator** | Not a child at all: an independent peer with its own deploy, monitoring, and credentials. Auth = `headers` whose values are `${secret:KEY}` references into the encrypted per-user store. The server never runs on Ant's host |
 | job-runner → **declared REST API** (`apis` entry) | network (plain HTTP, Ant-authored in-process executor) | **the API's operator** | No MCP counterpart exists; `restApi.ts` synthesizes `api__{server}__get`/`__request` and executes fetch itself — no child process, no handshake. Auth = `headers` with `${secret:KEY}`, same store; scope = baseUrl origin+prefix + optional `allow` rules, asserted per call; redirects never followed. See [44 §apis](44-universal-job.md#apis--declared-rest-api-connections-no-mcp-server-exists) |
-| job-runner → **Ant's own API** (`apis` self entry) | network (plain HTTP, same executor) | **Ant** | The one entry the author does not configure: base URL from `ANT_API_URL`, bearer from `ANT_SELF_API_TOKEN` (minted at accept by the key-holding process, C-001). The definition's `allow` is guidance; the boundary is `createSelfApiScopeGuard`, which pins the token to `/api/account/agents` and refuses promote / editors / import / upload. See [44 §apis self entries](44-universal-job.md#apis-self-entries--this-ant-servers-own-api) |
+| job-runner → **Ant's own API** (`apis` self entry) | network (plain HTTP, same executor) | **Ant** | The one entry the author does not configure: base URL from `ANT_API_URL`, bearer from `ANT_SELF_API_TOKEN` (minted at accept by the key-holding process, C-001). The definition's `allow` is guidance; the boundary is `createSelfApiScopeGuard`, which pins the token to `/api/definitions/agents` and refuses promote / editors / import / upload. See [44 §apis self entries](44-universal-job.md#apis-self-entries--this-ant-servers-own-api) |
 | job-runner → **subagent** (explore seam) | none (same process, separate LLM loop) | Ant | Logical child only; shares the tool registry via `ctx.subagent` — no process or trust boundary |
 
 The stdio/HTTP asymmetry drives the deployment policy: **HTTP transport is the
@@ -139,7 +139,7 @@ together, same as any cross-package contract.
 
 Secrets live only in the encrypted per-user store
 (`workspaces/{org}/{user}/.ant/credentials.json`, AES-256-GCM; registered via
-`PUT /api/account/mcp-credentials` or the settings UI). A `headers`/`env` value
+`PUT /api/credentials/mcp` or the settings UI). A `headers`/`env` value
 carries the marker `${secret:KEY}`, which names a store key; resolution is
 store-only (`McpCredentialResolver` never reads `process.env`), so a definition
 cannot name-and-exfiltrate a platform secret.

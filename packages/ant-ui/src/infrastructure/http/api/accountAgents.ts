@@ -1,5 +1,5 @@
 /**
- * Account-scoped agent settings API (`/api/account/agents`) — the settings
+ * Scoped agent-definition API (`/api/definitions/agents`) — the settings
  * screen opens from the profile menu without a selected project, so nothing
  * here takes a projectId.
  */
@@ -19,7 +19,7 @@ import { downloadAttachment } from './download';
 
 export type { CustomAgentDefinitionFileNode, DefinitionValidationResult };
 
-const base = () => `${API_BASE()}/account/agents`;
+const base = () => `${API_BASE()}/definitions/agents`;
 
 export function fetchAccountAgents(): Promise<{
   agents: CustomAgentSummary[];
@@ -121,15 +121,15 @@ export interface McpCredentialSummary {
 }
 
 export function fetchMcpCredentials(): Promise<{ credentials: McpCredentialSummary[] }> {
-  return apiGet(`${API_BASE()}/account/mcp-credentials`);
+  return apiGet(`${API_BASE()}/credentials/mcp`);
 }
 
 export function saveMcpCredential(key: string, value: string): Promise<{ success: boolean; key: string }> {
-  return apiPut(`${API_BASE()}/account/mcp-credentials`, { key, value });
+  return apiPut(`${API_BASE()}/credentials/mcp`, { key, value });
 }
 
 export function deleteMcpCredential(key: string): Promise<{ success: boolean }> {
-  return apiDelete(`${API_BASE()}/account/mcp-credentials/${encodeURIComponent(key)}`);
+  return apiDelete(`${API_BASE()}/credentials/mcp/${encodeURIComponent(key)}`);
 }
 
 // ── definition files ─────────────────────────────────────────────────────────

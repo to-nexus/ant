@@ -124,8 +124,8 @@ apis:
   ant:
     self: true          # no baseUrl, no headers — declaring either is rejected
     allow:
-      - GET /account/agents/**
-      - PUT /account/agents/**
+      - GET /definitions/agents/**
+      - PUT /definitions/agents/**
 ```
 
 The runtime resolves the origin and attaches the job's own token, so this form
@@ -134,14 +134,23 @@ server, because the runtime issues no credential an external entry could carry
 in its `Authorization` header.
 
 Its base is the server's `/api` mount, so `allow` patterns are written **without
-that prefix** — `/account/agents/**`, not `/api/account/agents/**`.
+that prefix** — `/definitions/agents/**`, not `/api/definitions/agents/**`.
 
-**The token reaches `/account/agents` and nothing else.** Every other path is
-`403`, and inside the surface `promote`, `editors`, `import`, and `files/upload`
-are refused as well. That bound lives on the server; `allow` only narrows what
-the running agent is told it may call, so widening `allow` grants nothing. An
-agent that must drive any other part of this server — pipelines, projects,
-billing — cannot get there through this channel, and saying so is the honest
+**The token reaches two surfaces and nothing else.** Every other path is `403`.
+That bound lives on the server; `allow` only narrows what the running agent is
+told it may call, so widening `allow` grants nothing.
+
+- `/definitions/agents` — agent definitions. `promote`, `editors`, `import`, and
+  `files/upload` are refused inside it.
+- `/definitions/pipelines` — pipeline definitions ONLY: list, create, read, replace,
+  delete, `preview-fires`, and the activatable-project list. Enabling,
+  activating, running, sharing, and approving a pipeline are refused; a person
+  decides those in the Pipelines tab. A job that authors pipelines declares
+  this surface and reads its route table from that agent's own on-demand
+  reference — do not infer the route shapes from this paragraph.
+
+An agent that must drive any other part of this server — projects, billing,
+auth — cannot get there through this channel, and saying so is the honest
 answer rather than declaring the connection anyway.
 
 ## Prose

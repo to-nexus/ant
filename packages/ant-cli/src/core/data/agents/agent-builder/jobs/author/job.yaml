@@ -15,11 +15,11 @@ apis:
   ant:
     self: true
     allow:
-      - GET /account/agents/**
-      - POST /account/agents/**
-      - PUT /account/agents/**
-      - PATCH /account/agents/**
-      - DELETE /account/agents/**
+      - GET /definitions/agents/**
+      - POST /definitions/agents/**
+      - PUT /definitions/agents/**
+      - PATCH /definitions/agents/**
+      - DELETE /definitions/agents/**
 tools:
   # Allowlist — validates directly against the universal preset. Omitting
   # `builtin` entirely would grant the full preset. This is the preset MINUS

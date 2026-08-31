@@ -1,0 +1,68 @@
+# The pipeline-builder's single job: author and edit pipeline definitions
+# through this Ant server's own pipelines API.
+id: author
+name: 'Author'
+version: 1
+apis:
+  # `self: true` targets THIS Ant server. The runtime resolves the base URL
+  # from the process environment and attaches the job's capability-pinned
+  # token, so a shipped definition assumes neither an install's origin nor a
+  # registered credential.
+  #
+  # `allow` scopes what this job may compose; it is not the security boundary.
+  # The token is pinned server-side to two surfaces, and the pipelines one is
+  # deny-except: enable / disable / activate / deactivate / run-now / promote /
+  # editors / approvals / runs are refused whatever this list says. The list
+  # below mirrors the pin exactly — telling the model it may call a route that
+  # answers 403 is a wasted round trip it cannot fix.
+  ant:
+    self: true
+    allow:
+      # Pipeline definitions — the authoring surface.
+      - GET /definitions/pipelines
+      - POST /definitions/pipelines
+      - GET /definitions/pipelines/*
+      - PUT /definitions/pipelines/*
+      - DELETE /definitions/pipelines/*
+      - GET /definitions/pipelines/*/permissions
+      - POST /definitions/pipelines/preview-fires
+      - GET /definitions/pipelines/activatable-projects
+      # Agent definitions — READ only. Every step names an agent, a job and an
+      # intent; this is how they are confirmed to exist. Authoring agents is
+      # the agent builder's surface, not this one.
+      - GET /definitions/agents
+      - GET /definitions/agents/*
+      - GET /definitions/agents/**
+tools:
+  # Allowlist — validates directly against the universal preset. Omitting
+  # `builtin` entirely would grant the full preset. This is the preset MINUS
+  # four deliberate exclusions:
+  #   http_request — loopback-only service probe; this job's HTTP is api__ant__*
+  #   run_command  — pipelines are authored through the validated API route
+  #   read_state   — session recall adds nothing to single-sitting authoring turns
+  #   delete_file / copy_file — this job writes no artifacts worth either
+  builtin:
+    - read_file
+    - list_files
+    - search_files
+    - create_file
+    - edit_file
+    - append_file
+    - mkdir
+    - fetch_url
+    - search_web
+    - explore
+    - subagent_report
+    # Ant platform self-source (read-only) — check a validation rule against the
+    # actual code instead of guessing at it.
+    - read_ant_source
+    - list_ant_files
+    - search_ant_code
+  # Per-tool approval override: 'always' | 'never'. Writes through a declared
+  # API default to 'always'; authoring a pipeline IS this job's purpose, and its
+  # boundary is the token's server-side scope pin plus the save-time validation
+  # gate — not a prompt on every write. Everything a person must decide
+  # (enable / activate / run / share / approve) is refused by the pin, so there
+  # is nothing here for an approval prompt to protect.
+  approval:
+    api__ant__request: never

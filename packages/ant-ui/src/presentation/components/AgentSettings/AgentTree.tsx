@@ -132,7 +132,7 @@ export interface AgentTreeProps {
 
 /**
  * Load-failure banner. Without it an empty tree is indistinguishable from "this
- * account has no agents", which is what made a 404 on `/api/account/agents`
+ * account has no agents", which is what made a 404 on `/api/definitions/agents`
  * present itself as missing builtin agents.
  */
 function LoadErrorNotice({

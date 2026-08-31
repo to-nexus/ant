@@ -212,7 +212,7 @@ export function definitionMount(definitionFs: FileSystemPort): UniversalReadOnly
 /**
  * Peer-definition mount (`_agents/{agentId}/…`) — read-only view of every agent
  * definition this account can see, resolved through the SAME ordered scope
- * roots (`findAgentRoot`, user > org > builtin) that `GET /account/agents`
+ * roots (`findAgentRoot`, user > org > builtin) that `GET /definitions/agents`
  * lists. Read authority is therefore identical to the settings screen's; this
  * mount widens nothing, it only removes an HTTP round trip.
  *

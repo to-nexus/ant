@@ -1,5 +1,5 @@
 /**
- * Pipeline scheduling API (`/api/pipelines`) — scoped definition CRUD (user/org,
+ * Pipeline scheduling API (`/api/definitions/pipelines`) — scoped definition CRUD (user/org,
  * agents precedent), availability (enable/disable), org promote/permissions/
  * editors, per-activation runs/approvals, and the cron preview round-trip.
  * The FE NEVER parses cron locally: `previewPipelineFires` is both the "next
@@ -34,7 +34,7 @@ export type {
   RunRecord,
 };
 
-const base = () => `${API_BASE()}/pipelines`;
+const base = () => `${API_BASE()}/definitions/pipelines`;
 
 export function fetchPipelines(): Promise<{
   pipelines: PipelineListEntry[];

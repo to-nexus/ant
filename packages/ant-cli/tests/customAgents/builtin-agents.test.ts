@@ -29,6 +29,10 @@ import {
 import { deriveCustomAgentScopeRoots } from '../../src/core/customAgents/scopeRoots';
 import { isSelfApiConfig } from '@ant/shared';
 import { McpConnectionManager } from '../../src/core/customAgents/McpConnectionManager';
+import {
+  SELF_API_SURFACE_PREFIX,
+  SELF_API_PIPELINES_PREFIX,
+} from '../../src/periphery/adapters/http/middleware/selfApiScopeGuard';
 
 const SRC_AGENTS_DIR = path.join(__dirname, '../../src/core/data/agents');
 
@@ -261,15 +265,37 @@ describe('shipped agent-builder definition', () => {
     expect(review?.hooks).toBeUndefined();
   });
 
+  /**
+   * The declared scope is guidance for the model; the token's server-side pin
+   * is the boundary (that the allow lines stay INSIDE the pin is asserted
+   * against the guard itself in `tests/http/account-agent-routes.test.ts`).
+   * What this row owns is the LANE: the two builtins split one boundary, so
+   * neither may name the other's write surface.
+   */
   it('reaches this Ant server through a self entry — no URL, no credential', () => {
     const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
     expect(Object.keys(resolved.apiServers)).toEqual(['ant']);
     expect(isSelfApiConfig(resolved.apiServers.ant)).toBe(true);
-    // The declared scope is guidance for the model; the token's server-side
-    // pin is the boundary. Both must point at the same surface.
     for (const rule of resolved.apiServers.ant.allow ?? []) {
-      expect(rule).toMatch(/^[A-Z]+ \/account\/agents/);
+      expect(rule.startsWith(`${rule.split(' ')[0]} ${SELF_API_SURFACE_PREFIX}`)).toBe(true);
     }
+  });
+
+  it('the two builtins split one boundary — neither names the other write surface', () => {
+    const builder = loadCustomJob(builtinRoots, 'agent-builder', 'author');
+    const pipeline = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
+
+    // The agent builder filters schedules out; it must not be able to write one.
+    for (const rule of builder.apiServers.ant.allow ?? []) {
+      expect(rule).not.toContain(SELF_API_PIPELINES_PREFIX);
+    }
+    // The pipeline builder composes a finished agent's intents; it READS agent
+    // definitions and never authors them.
+    for (const rule of pipeline.apiServers.ant.allow ?? []) {
+      const [method, pattern] = rule.split(/\s+/, 2);
+      if (pattern.startsWith(SELF_API_SURFACE_PREFIX)) expect(method).toBe('GET');
+    }
+    expect((pipeline.apiServers.ant.allow ?? []).some((r) => r.includes(SELF_API_PIPELINES_PREFIX))).toBe(true);
   });
 
   it('authors through the validated API route, never from a shell', () => {

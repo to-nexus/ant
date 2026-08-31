@@ -359,7 +359,7 @@ answer       → applyClarifyAnswer (guard: awaiting_clarify ∧ clarify.jobId m
   carries `customJobRef`) resolves through the NX choice-resolved and then the
   `clarifying` branch calls `applyClarifyAnswer` — interactive clarify cards
   no-op instantly (no `ant:pipe:job` mapping). The inbox/API channel is
-  `POST /api/pipelines/runs/:runId/steps/:stepId/clarify` (own-run
+  `POST /api/definitions/pipelines/runs/:runId/steps/:stepId/clarify` (own-run
   `hasRunLog` check). The coordinator's status guard is the double-submit
   authority; an API-path answer leaves the chat card visually open but inert
   (a later click no-ops). The FE card skips `runJob` on a pipeline-owned
@@ -414,7 +414,7 @@ activator's live runs across their activations).
 
 ## 7. HTTP / FE surface
 
-Routes (`pipelines.routes.ts`, mounted **account-scoped `/api/pipelines`** —
+Routes (`pipelines.routes.ts`, mounted **account-scoped `/api/definitions/pipelines`** —
 definitions are cross-project): list (scope-merged closest-wins; entries
 carry `scope` / per-caller `readonly` / `enabled` / `org` permission
 projection / `activations: PipelineActivationView[]` — own rows plus, for
@@ -485,6 +485,16 @@ standard ChoiceCard variant. UI-authored definitions stay implicit-linear
 degrades to append (v2 opens free-DAG editing on the same wire contract — no
 migration).
 
+The canvas is not the only author. The builtin `pipeline-builder` agent
+(`core/data/agents/pipeline-builder/`) composes definitions through the same
+`POST|PUT /pipelines` routes under the self-api pin — it reads a finished
+agent's jobs and intents from `/definitions/agents`, writes the DAG, and checks the
+trigger through `preview-fires`. Everything it writes lands as a disabled draft
+and stays immutable once enabled, so the availability machine (§1) is what makes
+machine authoring safe: the job drafts, a person publishes and activates. There
+is no YAML import route and none is needed — the API takes `{ id, def }` as
+JSON, and the agent composes `def` directly.
+
 ---
 
 ## 8. Rules
@@ -540,6 +550,25 @@ migration).
 - **A second ACL rule set.** Pipelines and agents share
   `orgAclStore.ts` (`canEditOrgResource` / gate resolver) — a diverging copy
   re-opens the per-caller-authority drift the generalization closed.
+- **Widening the self-api pin past the DEFINITION surface.** The builtin
+  `pipeline-builder` authors pipelines through this API with a
+  `scope: 'self-api'` token, and `createSelfApiScopeGuard` admits exactly the
+  authoring shapes: `GET|POST /pipelines`, `GET|PUT|DELETE /pipelines/:id`,
+  `GET /pipelines/:id/permissions`, `POST /pipelines/preview-fires`,
+  `GET /pipelines/activatable-projects`. Everything else — `enable`,
+  `disable`, `activate`, `deactivate`, `run-now`, `promote`, `editors`,
+  `approvals/**`, `runs/**`, `download` — is a person's decision and stays
+  refused: activating takes a project over (§3) and running one spends the
+  activator's credits (§6), neither of which an LLM-composed call may do. The
+  list is **deny-except** for exactly that reason — a route added to
+  `pipelines.routes.ts` later is refused until someone lists it on purpose.
+  A `:id` rule must exclude the reserved literals (`preview-fires`,
+  `activatable-projects`, `approvals`, `runs`): Express separates them by
+  registration order, the guard matches independently.
+- **Relying on the definition's `allow` list to keep a job out of the
+  operational surface.** It is user-editable and one save away from `* *`. The
+  shipped definitions mirror the pin so the model is never told to call a route
+  that answers 403, but the bound is the guard.
 
 ### ✅ Correct
 
@@ -576,7 +605,7 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
   full FE tab (rail / canvas editor / runs / inbox), chat card variant.
 - **Phase 1.5 (shipped — the definition/activation overhaul)**: def v2
   (projectId/enabled → `activation.json`, 1:1 both ways), account-scoped
-  `/api/pipelines` + `active-pipeline` read, three-directional mutual
+  `/api/definitions/pipelines` + `active-pipeline` read, three-directional mutual
   exclusion (quiet-project activate gate, `project-pipeline-active` job-start
   gate, `pipeline-activated` edit/delete lock, deactivate = cancel + kill),
   chat parity (pre-enqueue user_turn + run lifecycle notices + stateTracker),

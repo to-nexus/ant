@@ -1,5 +1,5 @@
 /**
- * Account-scoped agent settings routes (`/api/account/agents`) — CRUD,
+ * Account-scoped agent settings routes (`/api/definitions/agents`) — CRUD,
  * readonly-scope 403s, and the definition-file endpoint table (single write
  * funnel: 400 gates vs 200-with-warnings semantic validation, traversal
  * guard, whitelist, structural-file protection, folder import).
@@ -29,7 +29,7 @@ let server: http.Server;
 let baseUrl: string;
 
 function api(pathname: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${baseUrl}/api/account/agents${pathname}`, {
+  return fetch(`${baseUrl}/api/definitions/agents${pathname}`, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   });
@@ -66,7 +66,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use(
-    '/api/account/agents',
+    '/api/definitions/agents',
     createAccountAgentRoutes({ workspaceResolver: resolver, organizationRepository: fakeOrgRepo(new Map()) }),
   );
   server = http.createServer(app);
@@ -659,7 +659,7 @@ describe('directory-unit upload (replaceDir)', () => {
   }
 
   it('replaces the target directory — files absent from the upload are gone', async () => {
-    const res = await fetch(`${baseUrl}/api/account/agents/ops/files/upload`, {
+    const res = await fetch(`${baseUrl}/api/definitions/agents/ops/files/upload`, {
       method: 'POST',
       body: jobUpload({ replaceDir: 'jobs/weekly' }),
     });
@@ -671,7 +671,7 @@ describe('directory-unit upload (replaceDir)', () => {
   });
 
   it('without replaceDir it merges — siblings survive', async () => {
-    const res = await fetch(`${baseUrl}/api/account/agents/ops/files/upload`, {
+    const res = await fetch(`${baseUrl}/api/definitions/agents/ops/files/upload`, {
       method: 'POST',
       body: jobUpload(),
     });
@@ -685,7 +685,7 @@ describe('directory-unit upload (replaceDir)', () => {
     ['jobs/other', 'paths outside it'],
   ])('rejects replaceDir=%s and writes nothing', async (replaceDir) => {
     const body = replaceDir === '' ? jobUpload({ replaceDir: '.' }) : jobUpload({ replaceDir });
-    const res = await fetch(`${baseUrl}/api/account/agents/ops/files/upload`, { method: 'POST', body });
+    const res = await fetch(`${baseUrl}/api/definitions/agents/ops/files/upload`, { method: 'POST', body });
     expect(res.status).toBe(400);
     // The pre-existing directory is untouched — validation precedes the rm.
     expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base/stale.md'))).toBe(true);
@@ -697,7 +697,7 @@ describe('folder import', () => {
     const form = new FormData();
     form.append('files', new Blob(['# base']), 'system.md');
     form.append('relativePaths', 'imported/base/system.md');
-    const missing = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: form });
+    const missing = await fetch(`${baseUrl}/api/definitions/agents/import`, { method: 'POST', body: form });
     expect(missing.status).toBe(400);
 
     const full = new FormData();
@@ -710,7 +710,7 @@ describe('folder import', () => {
     // Legacy agent-level intents.yaml is off-whitelist now — must be skipped.
     full.append('files', new Blob(['version: 1\nintents: []\n']), 'intents.yaml');
     full.append('relativePaths', 'imported/intents.yaml');
-    const ok = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: full });
+    const ok = await fetch(`${baseUrl}/api/definitions/agents/import`, { method: 'POST', body: full });
     expect(ok.status).toBe(201);
     const body = await ok.json();
     expect(body.agentId).toBe('imported');
@@ -735,11 +735,11 @@ describe('folder import', () => {
       return form;
     };
 
-    const blocked = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: build() });
+    const blocked = await fetch(`${baseUrl}/api/definitions/agents/import`, { method: 'POST', body: build() });
     expect(blocked.status).toBe(409);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/base/stale.md'))).toBe(true);
 
-    const ok = await fetch(`${baseUrl}/api/account/agents/import`, {
+    const ok = await fetch(`${baseUrl}/api/definitions/agents/import`, {
       method: 'POST',
       body: build({ overwrite: 'true' }),
     });
@@ -753,7 +753,7 @@ describe('folder import', () => {
     form.append('files', new Blob(['id: assistant\nname: Mine\n']), 'agent.yaml');
     form.append('relativePaths', 'assistant/agent.yaml');
     form.append('overwrite', 'true');
-    const res = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: form });
+    const res = await fetch(`${baseUrl}/api/definitions/agents/import`, { method: 'POST', body: form });
     expect(res.status).toBe(409);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/assistant'))).toBe(false);
   });
@@ -762,7 +762,7 @@ describe('folder import', () => {
     const form = new FormData();
     form.append('files', new Blob(['id: assistant\nname: Mine\n']), 'agent.yaml');
     form.append('relativePaths', 'assistant/agent.yaml');
-    const res = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: form });
+    const res = await fetch(`${baseUrl}/api/definitions/agents/import`, { method: 'POST', body: form });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toMatch(/built-in/);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/assistant'))).toBe(false);
@@ -872,7 +872,7 @@ describe('org-owned agents (team org)', () => {
   const memberships = new Map<string, OrgMembershipRole>();
 
   function teamApi(pathname: string, init?: RequestInit): Promise<Response> {
-    return fetch(`${teamBaseUrl}/api/account/agents${pathname}`, {
+    return fetch(`${teamBaseUrl}/api/definitions/agents${pathname}`, {
       headers: { 'Content-Type': 'application/json' },
       ...init,
     });
@@ -913,7 +913,7 @@ describe('org-owned agents (team org)', () => {
       next();
     });
     app.use(
-      '/api/account/agents',
+      '/api/definitions/agents',
       createAccountAgentRoutes({ workspaceResolver: resolver, organizationRepository: fakeOrgRepo(memberships, ORG) }),
     );
     teamServer = http.createServer(app);
@@ -1207,7 +1207,8 @@ describe('self-api scope pin', () => {
     app.use('/api', createSelfApiScopeGuard());
     app.use('/api/projects', (_req, res) => res.status(200).json({ reached: true }));
     app.use('/api/auth/refresh', (_req, res) => res.status(200).json({ reached: true }));
-    app.use('/api/account/agents', (_req, res) => res.status(200).json({ reached: true }));
+    app.use('/api/definitions/agents', (_req, res) => res.status(200).json({ reached: true }));
+    app.use('/api/definitions/pipelines', (_req, res) => res.status(200).json({ reached: true }));
     pinnedServer = http.createServer(app);
     await new Promise<void>((resolve) => pinnedServer.listen(0, resolve));
     pinnedBase = `http://127.0.0.1:${(pinnedServer.address() as { port: number }).port}`;
@@ -1222,8 +1223,8 @@ describe('self-api scope pin', () => {
 
   it('reaches the definition surface', async () => {
     scope = 'self-api';
-    expect((await call('/api/account/agents')).status).toBe(200);
-    expect((await call('/api/account/agents/ops/file', 'PUT')).status).toBe(200);
+    expect((await call('/api/definitions/agents')).status).toBe(200);
+    expect((await call('/api/definitions/agents/ops/file', 'PUT')).status).toBe(200);
   });
 
   it('refuses every other route, including the one that would mint another token', async () => {
@@ -1238,10 +1239,10 @@ describe('self-api scope pin', () => {
   it('refuses the routes that spread authority or skip validation', async () => {
     scope = 'self-api';
     for (const pathname of [
-      '/api/account/agents/ops/promote',
-      '/api/account/agents/ops/editors',
-      '/api/account/agents/import',
-      '/api/account/agents/ops/files/upload',
+      '/api/definitions/agents/ops/promote',
+      '/api/definitions/agents/ops/editors',
+      '/api/definitions/agents/import',
+      '/api/definitions/agents/ops/files/upload',
     ]) {
       const res = await call(pathname, 'POST');
       expect(res.status, pathname).toBe(403);
@@ -1249,10 +1250,111 @@ describe('self-api scope pin', () => {
     }
   });
 
+  /**
+   * The pipelines surface is deny-except: only the definition-authoring shapes
+   * are admitted, so a route added to `pipelines.routes.ts` later is refused
+   * until someone adds it here on purpose.
+   */
+  it.each([
+    ['GET', '/api/definitions/pipelines'],
+    ['POST', '/api/definitions/pipelines'],
+    ['POST', '/api/definitions/pipelines/preview-fires'],
+    ['GET', '/api/definitions/pipelines/activatable-projects'],
+    ['GET', '/api/definitions/pipelines/weekly-report'],
+    ['PUT', '/api/definitions/pipelines/weekly-report'],
+    ['DELETE', '/api/definitions/pipelines/weekly-report'],
+    ['GET', '/api/definitions/pipelines/weekly-report/permissions'],
+  ])('reaches the pipeline definition surface: %s %s', async (method, pathname) => {
+    scope = 'self-api';
+    expect((await call(pathname, method)).status).toBe(200);
+  });
+
+  it.each([
+    // Publish state and project binding are a person's decisions.
+    ['POST', '/api/definitions/pipelines/weekly-report/enable'],
+    ['POST', '/api/definitions/pipelines/weekly-report/disable'],
+    ['POST', '/api/definitions/pipelines/weekly-report/activate'],
+    ['POST', '/api/definitions/pipelines/weekly-report/deactivate'],
+    ['POST', '/api/definitions/pipelines/weekly-report/run-now'],
+    ['POST', '/api/definitions/pipelines/weekly-report/promote'],
+    ['PUT', '/api/definitions/pipelines/weekly-report/editors'],
+    ['GET', '/api/definitions/pipelines/weekly-report/download'],
+    ['GET', '/api/definitions/pipelines/weekly-report/activations'],
+    // A job must not resolve its own gate, nor drive run history.
+    ['GET', '/api/definitions/pipelines/approvals'],
+    ['POST', '/api/definitions/pipelines/approvals/gate-1'],
+    ['GET', '/api/definitions/pipelines/runs/run-1'],
+    ['POST', '/api/definitions/pipelines/runs/run-1/cancel'],
+    ['POST', '/api/definitions/pipelines/runs/run-1/steps/step-1/clarify'],
+    ['GET', '/api/definitions/pipelines/weekly-report/runs'],
+    // Right shape, wrong method.
+    ['POST', '/api/definitions/pipelines/weekly-report'],
+    ['PUT', '/api/definitions/pipelines'],
+  ])('refuses the operational pipeline surface: %s %s', async (method, pathname) => {
+    scope = 'self-api';
+    const res = await call(pathname, method);
+    expect(res.status, `${method} ${pathname}`).toBe(403);
+    expect((await res.json()).code).toBe('self-api-scope');
+  });
+
+  it('a reserved literal is never swallowed by the :id rule', async () => {
+    scope = 'self-api';
+    // `GET /pipelines/:id` is admitted; `GET /pipelines/approvals` must not be.
+    expect((await call('/api/definitions/pipelines/weekly-report')).status).toBe(200);
+    expect((await call('/api/definitions/pipelines/approvals')).status).toBe(403);
+    expect((await call('/api/definitions/pipelines/runs')).status).toBe(403);
+    expect((await call('/api/definitions/pipelines/preview-fires')).status).toBe(403); // GET — the route is POST
+  });
+
   it('an ordinary session is untouched — absence of the claim is not a pin', async () => {
     scope = undefined;
     expect((await call('/api/projects')).status).toBe(200);
-    expect((await call('/api/account/agents/ops/promote', 'POST')).status).toBe(200);
+    expect((await call('/api/definitions/agents/ops/promote', 'POST')).status).toBe(200);
+  });
+});
+
+/**
+ * A shipped definition must not tell the model it may call a route the pin
+ * refuses. `allow` is not the boundary, but a builtin that names a refused
+ * route sends the agent into a 403 it cannot fix.
+ */
+describe('builtin definitions stay inside the pin', () => {
+  const AGENTS_DIR = path.join(__dirname, '../../src/core/data/agents');
+
+  function selfApiAllowLines(): { agent: string; job: string; line: string }[] {
+    const out: { agent: string; job: string; line: string }[] = [];
+    for (const agent of fs.readdirSync(AGENTS_DIR)) {
+      const jobsDir = path.join(AGENTS_DIR, agent, 'jobs');
+      if (!fs.existsSync(jobsDir)) continue;
+      for (const job of fs.readdirSync(jobsDir)) {
+        const jobYaml = path.join(jobsDir, job, 'job.yaml');
+        if (!fs.existsSync(jobYaml)) continue;
+        const def = yaml.load(fs.readFileSync(jobYaml, 'utf-8')) as any;
+        for (const cfg of Object.values(def?.apis ?? {}) as any[]) {
+          if (cfg?.self !== true) continue;
+          for (const line of cfg.allow ?? []) out.push({ agent, job, line });
+        }
+      }
+    }
+    return out;
+  }
+
+  it('every self-api allow line names a route the pin admits', () => {
+    const lines = selfApiAllowLines();
+    expect(lines.length).toBeGreaterThan(0);
+    for (const { agent, job, line } of lines) {
+      const [method, pattern] = line.split(/\s+/, 2);
+      // Substitute a concrete segment for each wildcard, then ask the guard.
+      const concrete = pattern.replace(/\*\*/g, 'x/y').replace(/(?<![a-z])\*(?![a-z*])/g, 'x');
+      const res = { statusCode: 0, status(c: number) { this.statusCode = c; return this; }, json() { return this; } };
+      let passed = false;
+      createSelfApiScopeGuard()(
+        { user: { scope: 'self-api' }, path: concrete, method } as any,
+        res as any,
+        () => { passed = true; },
+      );
+      expect(passed, `${agent}/${job}: "${line}" resolves to ${method} ${concrete}, which the pin refuses`).toBe(true);
+    }
   });
 });
 

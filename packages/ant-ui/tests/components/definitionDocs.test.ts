@@ -350,7 +350,7 @@ describe('apis round-trip (declared REST APIs)', () => {
   });
 
   it('a self entry round-trips without acquiring the connectivity keys that would invalidate it', () => {
-    const servers = { ant: { self: true as const, allow: ['GET /account/agents/**'] } };
+    const servers = { ant: { self: true as const, allow: ['GET /definitions/agents/**'] } };
     const next = editRaw(JOB_YAML, (doc) => applyApiServers(doc, servers));
     expect(deriveApiServers(docOf(next))).toEqual(servers);
     expect(next).not.toContain('baseUrl');

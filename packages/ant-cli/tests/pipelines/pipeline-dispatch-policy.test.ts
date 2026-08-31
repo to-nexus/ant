@@ -109,10 +109,15 @@ describe('pipeline↔project mutual exclusion', () => {
     expect(routes).toMatch(/findDuplicateActiveJob/);
   });
 
-  it('pipeline routes mount account-scoped, not project-scoped', () => {
+  // A definition is a user|org scoped TEMPLATE, activated onto many projects —
+  // so its routes are cross-project, and they sit in the `/api/definitions`
+  // family beside agents (same scope roots, same ACL store, same promote flow).
+  it('pipeline routes mount in the definitions family, never project-scoped', () => {
     const rc = read('periphery/adapters/http/express/config/RouteConfigurator.ts');
-    expect(rc).toMatch(/'\/api\/pipelines'/);
+    expect(rc).toMatch(/'\/api\/definitions\/pipelines'/);
     expect(rc).not.toMatch(/'\/api\/projects\/:projectId\/pipelines'/);
+    // The one project-scoped read stays project-scoped: the chat lock signal.
+    expect(rc).toMatch(/'\/api\/projects\/:projectId\/active-pipeline'/);
   });
 });
 

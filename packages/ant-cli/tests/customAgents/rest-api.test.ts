@@ -398,15 +398,15 @@ describe('self entry — connectivity resolved by the runtime', () => {
     const escaped = await executeRestCall(server, 'get', { path: '/../auth/me' }, impl);
     expect(escaped.isError).toBe(true);
     expect(calls).toHaveLength(0);
-    const inside = await executeRestCall(server, 'get', { path: '/account/agents' }, impl);
+    const inside = await executeRestCall(server, 'get', { path: '/definitions/agents' }, impl);
     expect(inside.isError).toBe(false);
-    expect(calls[0].url).toBe('https://api.example.com/api/account/agents');
+    expect(calls[0].url).toBe('https://api.example.com/api/definitions/agents');
   });
 });
 
 describe('validator — the two entry forms are mutually exclusive', () => {
   it('accepts a self entry with only allow rules', () => {
-    expect(validateApiServers({ ant: { self: true, allow: ['GET /account/agents/**'] } })).toEqual([]);
+    expect(validateApiServers({ ant: { self: true, allow: ['GET /definitions/agents/**'] } })).toEqual([]);
   });
 
   it('refuses connectivity keys alongside self', () => {

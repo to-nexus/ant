@@ -48,7 +48,7 @@ import type { ExtensionServers } from './overview/actionHook';
 /**
  * Agent Settings — account-scoped standalone screen (profile menu → main
  * panel tab, D-G). Works WITHOUT a selected project: everything reads
- * `/api/account/agents`.
+ * `/api/definitions/agents`.
  *
  * FILE ↔ SECTION ISOMORPHISM (the screen's core philosophy): the left tree
  * and the right sections show the SAME definition content — structured vs

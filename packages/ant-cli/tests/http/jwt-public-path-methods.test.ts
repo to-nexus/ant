@@ -91,6 +91,6 @@ describe('createPublicRequestMatcher', () => {
     expect(isPublic({ path: '/health', method: 'POST' })).toBe(false);
     expect(isPublic({ path: '/legacy-any', method: 'POST' })).toBe(true);
     expect(isPublic({ path: '/assets/logo.png', method: 'GET' })).toBe(true);
-    expect(isPublic({ path: '/api/account/agents/a1/file', method: 'PUT' })).toBe(false);
+    expect(isPublic({ path: '/api/definitions/agents/a1/file', method: 'PUT' })).toBe(false);
   });
 });

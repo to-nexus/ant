@@ -1,5 +1,5 @@
 /**
- * Pipeline routes (`/api/pipelines`) — the scoped-definition + availability +
+ * Pipeline routes (`/api/definitions/pipelines`) — the scoped-definition + availability +
  * multi-activation contract: create lands DISABLED in the personal root,
  * enable requires a valid def, PUT/DELETE/promote refuse while enabled,
  * disable refuses while ANY activation exists (never cascades), activate
@@ -32,7 +32,7 @@ const cronUpserts: string[] = [];
 const cronRemoved: string[] = [];
 
 function api(pathname: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${baseUrl}/api/pipelines${pathname}`, {
+  return fetch(`${baseUrl}/api/definitions/pipelines${pathname}`, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   });
@@ -104,7 +104,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use(
-    '/api/pipelines',
+    '/api/definitions/pipelines',
     createPipelinesRoutes({
       workspaceResolver: resolver as any,
       coordinator: coordinator as any,
@@ -309,7 +309,7 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
       next();
     });
     app.use(
-      '/api/pipelines',
+      '/api/definitions/pipelines',
       createPipelinesRoutes({
         workspaceResolver: resolver as any,
         coordinator: {
@@ -339,7 +339,7 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
     await new Promise<void>((resolve) => srv.listen(0, resolve));
     const port = (srv.address() as { port: number }).port;
     return {
-      url: `http://127.0.0.1:${port}/api/pipelines`,
+      url: `http://127.0.0.1:${port}/api/definitions/pipelines`,
       close: () => new Promise<void>((resolve, reject) => srv.close((e) => (e ? reject(e) : resolve()))),
     };
   }

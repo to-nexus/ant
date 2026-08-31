@@ -353,18 +353,18 @@ The facade's mount table (`composition/orchestrator.ts`) IS that plane:
 
 Every mount is read-only: a write refuses if EITHER operand is mounted, so a
 copy out of a mount is still a mount write. Definition writes keep their single
-funnel (`PUT /account/agents/:agentId/file` → `gateDefinitionSave`) — the mount
+funnel (`PUT /definitions/agents/:agentId/file` → `gateDefinitionSave`) — the mount
 never becomes a second write path.
 
 **`_agents/` — designating a peer definition.** `agent-builder` could always
 *reach* other definitions over its declared `apis.ant.self` connection; what it
 had no way to receive was *which one the user meant*, so every turn spent a
-discovery round on `GET /account/agents` and could still pick the wrong
+discovery round on `GET /definitions/agents` and could still pick the wrong
 similarly-named agent. `@ctx:` now addresses them directly as
 `_agents/{agentId}/{definitionPath}` — a file, or a folder unit that is exactly
 an agent / job / intent directory.
 
-- Read authority equals `GET /account/agents/:agentId/files`: both resolve
+- Read authority equals `GET /definitions/agents/:agentId/files`: both resolve
   through `deriveCustomAgentScopeRootsForTenant` → `findAgentRoot`, and
   `findViewableAgent` consults no ACL (`readonly`/`aclGoverned` gate WRITES).
   The mount widens the *path set* for nobody. It does widen *job* authority:
@@ -504,8 +504,8 @@ apis:
   ant:
     self: true
     allow:
-      - GET /account/agents/**
-      - PUT /account/agents/**
+      - GET /definitions/agents/**
+      - PUT /definitions/agents/**
 ```
 
 `resolveSelfApiConfig` (`restApi.ts`) resolves the base URL from
@@ -537,7 +537,7 @@ authentication and before every router:
 
 | Request under a `self-api` token | Result |
 |---|---|
-| `/api/account/agents/**` | admitted — the account router's own ACL then decides |
+| `/api/definitions/agents/**` | admitted — the account router's own ACL then decides |
 | anything else under `/api` | 403 (`self-api-scope`) — including the auth routes, so the token cannot mint another |
 | `…/promote`, `…/editors` | 403 — publishing to the org and granting edit access are a person's decision |
 | `…/import`, `…/files/upload` | 403 — the two write routes that skip `gateDefinitionSave` |
@@ -545,7 +545,7 @@ authentication and before every router:
 Absence of the claim is an ordinary session and is never treated as a pin.
 The builtin `agent-builder` agent is the first consumer of this form; job
 authoring therefore goes through the same validated write funnel as the
-settings UI (`PUT /account/agents/:agentId/file` → `gateDefinitionSave` →
+settings UI (`PUT /definitions/agents/:agentId/file` → `gateDefinitionSave` →
 `loadCustomJob`), and needs no new write plane.
 
 Out of scope by design: session-login dances, request signing (HMAC), OAuth —
@@ -597,7 +597,7 @@ validation/idempotency/dry-run, take the capability-server escalation path
   'config_invalid'` at the single `job-runner` boundary — non-infrastructure,
   `canResume:false`, and explicitly **never** `process_crash`. A definition
   mistake reported as a crash sends the reader to the wrong subsystem.
-- **Write API**: `/api/account/mcp-credentials` — `GET` returns key names and
+- **Write API**: `/api/credentials/mcp` — `GET` returns key names and
   `updatedAt` only (values are write-only), `PUT` upserts, `DELETE` removes.
   Rotation touches the store, never the definition file.
 - Connect is fail-loud at job start (`runner.ts`), 60s connect/call timeouts,
@@ -896,15 +896,15 @@ unnamed:
   opened with a calendar ("on the 1st of each month") instead of a
   condition: the definition text named no owner for calendars, and the
   builder structurally cannot write one (`isAllowedDefinitionPath` rejects
-  pipeline paths; its self-api token is pinned to `/account/agents`). The
+  pipeline paths; its self-api token is pinned to `/definitions/agents`). The
   corrected text reframes the intent as two prose files plus an optional
   observable-completion contract, and draws the jurisdiction line: calendars
   and cross-intent run order are pipeline material the build job FILTERS —
-  authored by the separate pipeline surface (today a person in the Pipelines
-  tab, § 46; eventually a dedicated pipeline-authoring builtin job that
-  reads the finished agent plus the same source), never proposed or
-  preserved by the builder, so the two authoring jobs keep single ownership
-  of their halves. In-task time rules — a filing deadline, a do-not-resend
+  authored by the separate pipeline surface (a person in the Pipelines tab,
+  § 46, or the builtin `pipeline-builder` that reads the finished agent plus
+  the same source and composes its intents), never proposed or preserved by
+  the builder, so the two authoring jobs keep single ownership of their
+  halves. In-task time rules — a filing deadline, a do-not-resend
   window — stay in `prompt.md` because they change what the agent does, not
   when it is started.
 
@@ -953,7 +953,10 @@ The tests assert structure only (intent id set, every builder intent ships a
 per the no-prose-pinning policy. The hook-authoring criterion and the
 schedule/pipeline boundary are prose and are likewise not pinned — the gated
 inverse remains the structural suite above, including the
-`/account/agents` allow pin (the builder cannot write a pipeline).
+`/definitions/agents` allow pin (the builder cannot write a pipeline — the
+self-api pin's pipelines surface is `pipeline-builder`'s, and both builtins'
+allow lines are asserted to resolve through the pin in
+`tests/http/account-agent-routes.test.ts`).
 
 ## Streaming & turn identity (A14/A15)
 

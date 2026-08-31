@@ -29,10 +29,31 @@ In cloud mode, every endpoint outside `/health` requires a valid token.
 | Preview            | `/api/preview`      | Lifecycle ops on preview servers           |
 | Git                | `/api/git`          | Per-feature git operations                 |
 | Figma              | `/api/figma`        | Figma MCP bridge endpoints (cloud)         |
-| Account agents     | `/api/account/agents` | Custom agent/job definitions (account-scoped) |
-| MCP credentials    | `/api/account/mcp-credentials` | Encrypted credential store (write-only values) |
+| Agent definitions  | `/api/definitions/agents` | Custom agent/job definitions (scoped template) |
+| Pipeline definitions | `/api/definitions/pipelines` | Scheduled custom-job chains (scoped template) |
+| MCP credentials    | `/api/credentials/mcp` | Encrypted credential store (write-only values) |
 | Custom agents      | `/api/projects/:id/custom-agents` | Per-project discovery + workspace artifacts |
-| Pipelines          | `/api/pipelines`    | Scheduled custom-job chains (account-scoped) |
+
+### Grouping rule — by KIND, not by owner
+
+Top-level `/api` groups name what a resource IS, not who holds it. The three
+non-project families:
+
+| Prefix | Family | Members |
+|---|---|---|
+| `/api/definitions/**` | scoped TEMPLATES — `user` \| `org` \| `builtin` roots, resolved closest-wins, promotable between scopes, project-independent, one shared ACL (`orgAclStore.ts`) | `agents`, `pipelines` |
+| `/api/credentials/**` | secret stores keyed by `{org, user}`, values write-only | `mcp` |
+| `/api/config/**` | configuration reads/writes | *(reserved — `user`/`org` config still sit bare)* |
+
+A new resource joins the family it belongs to. **"The bare name happened to be
+free" is not a reason to mount at the root** — that is how `/api/account/agents`
+(a template, not an account record) and `/api/pipelines` (the same template,
+spelled differently) diverged. `/api/agents` stays the PUBLIC canonical
+job-agent catalog and is a different concept from a custom agent definition.
+
+Still bare and not yet moved: `/api/user/config`, `/api/org/config`,
+`/api/github/pat` (a `{org, user}` credential — the clearest remaining
+inconsistency), `/api/artifacts/transfer*`.
 
 ## Health
 
@@ -114,29 +135,29 @@ control plane goes through `ant-api`.
 > only for the workspace project kind (`projectType: 'universal'`).
 
 Definitions are **account-owned, not project-owned**, so CRUD lives under
-`/api/account/agents` and works with no project selected. Writes always target
+`/api/definitions/agents` and works with no project selected. Writes always target
 the user scope; org and builtin scopes are read-only.
 
 | Verb | Path | Notes |
 |------|------|-------|
-| GET  | `/api/account/agents` | List agents + their jobs, with `scope` and `readonly`. |
-| POST | `/api/account/agents` | Scaffold an agent. **409** if the id is owned by *any* scope, builtin included. |
-| DELETE | `/api/account/agents/:agentId` | Delete (user scope only). |
-| POST | `/api/account/agents/:agentId/rename` | Rename, moving container data across every universal project of the account (dry-run, then move; refuses on any conflict). |
-| POST | `/api/account/agents/:agentId/jobs` | Scaffold a job. |
-| POST | `/api/account/agents/:agentId/jobs/:jobId/rename` | Rename a job, same move contract. |
-| GET  | `/api/account/agents/:agentId/jobs/:jobId/validate` | Run the loader's full validation without starting a job. |
-| GET  | `/api/account/agents/:agentId/jobs/:jobId/prompt-preview?intents=a,b` | The exact definition block the runtime would inject for that intent selection. |
-| GET/PUT/POST/DELETE | `/api/account/agents/:agentId/files/**` | Definition file tree, read, write, create, rename, delete, upload. Paths are checked against `isAllowedDefinitionPath`. |
+| GET  | `/api/definitions/agents` | List agents + their jobs, with `scope` and `readonly`. |
+| POST | `/api/definitions/agents` | Scaffold an agent. **409** if the id is owned by *any* scope, builtin included. |
+| DELETE | `/api/definitions/agents/:agentId` | Delete (user scope only). |
+| POST | `/api/definitions/agents/:agentId/rename` | Rename, moving container data across every universal project of the account (dry-run, then move; refuses on any conflict). |
+| POST | `/api/definitions/agents/:agentId/jobs` | Scaffold a job. |
+| POST | `/api/definitions/agents/:agentId/jobs/:jobId/rename` | Rename a job, same move contract. |
+| GET  | `/api/definitions/agents/:agentId/jobs/:jobId/validate` | Run the loader's full validation without starting a job. |
+| GET  | `/api/definitions/agents/:agentId/jobs/:jobId/prompt-preview?intents=a,b` | The exact definition block the runtime would inject for that intent selection. |
+| GET/PUT/POST/DELETE | `/api/definitions/agents/:agentId/files/**` | Definition file tree, read, write, create, rename, delete, upload. Paths are checked against `isAllowedDefinitionPath`. |
 | POST | `/api/account/import` | Import a definition bundle. |
 
 Credentials referenced by a definition's `${secret:KEY}` markers:
 
 | Verb | Path | Notes |
 |------|------|-------|
-| GET  | `/api/account/mcp-credentials` | Key names + `updatedAt` **only** — values are write-only. |
-| PUT  | `/api/account/mcp-credentials` | Upsert `{ key, value }`. Rotation is a repeat PUT; the definition file never changes. |
-| DELETE | `/api/account/mcp-credentials/:key` | Remove. |
+| GET  | `/api/credentials/mcp` | Key names + `updatedAt` **only** — values are write-only. |
+| PUT  | `/api/credentials/mcp` | Upsert `{ key, value }`. Rotation is a repeat PUT; the definition file never changes. |
+| DELETE | `/api/credentials/mcp/:key` | Remove. |
 
 Per-project surfaces — discovery, and the workspace's shared artifact tree
 (the counterpart of `/api/files` for a workspace):
@@ -177,27 +198,27 @@ separate call (`activate`), and the activation lives in the caller's account.
 
 | Verb | Path | Notes |
 |------|------|-------|
-| GET  | `/api/pipelines` | List definitions with `scope`, availability, and activation counts. |
-| POST | `/api/pipelines` | Create. Body is validated by `validatePipelineDef`; reserved knobs are rejected, never ignored. |
-| GET/PUT/DELETE | `/api/pipelines/:pipelineId` | Read, replace, delete. Writes answer **409** `pipeline-enabled` while the definition is enabled. |
-| POST | `/api/pipelines/:pipelineId/enable` · `/disable` | The availability state machine. `disable` answers **409** `pipeline-has-activations` while anyone holds one — never cascaded. |
-| POST | `/api/pipelines/:pipelineId/promote` | Move a user-scope definition into the org scope (team organizations only). Requires **disabled**. |
-| GET  | `/api/pipelines/:pipelineId/permissions` · PUT `/editors` | Org ACL — owner plus delegated editors, the same rule set as agent definitions. |
-| POST | `/api/pipelines/preview-fires` | Server-side cron expansion; the FE never parses cron itself. |
-| GET  | `/api/pipelines/activatable-projects` | Workspace projects with no live pipeline and no live job. |
+| GET  | `/api/definitions/pipelines` | List definitions with `scope`, availability, and activation counts. |
+| POST | `/api/definitions/pipelines` | Create. Body is validated by `validatePipelineDef`; reserved knobs are rejected, never ignored. |
+| GET/PUT/DELETE | `/api/definitions/pipelines/:pipelineId` | Read, replace, delete. Writes answer **409** `pipeline-enabled` while the definition is enabled. |
+| POST | `/api/definitions/pipelines/:pipelineId/enable` · `/disable` | The availability state machine. `disable` answers **409** `pipeline-has-activations` while anyone holds one — never cascaded. |
+| POST | `/api/definitions/pipelines/:pipelineId/promote` | Move a user-scope definition into the org scope (team organizations only). Requires **disabled**. |
+| GET  | `/api/definitions/pipelines/:pipelineId/permissions` · PUT `/editors` | Org ACL — owner plus delegated editors, the same rule set as agent definitions. |
+| POST | `/api/definitions/pipelines/preview-fires` | Server-side cron expansion; the FE never parses cron itself. |
+| GET  | `/api/definitions/pipelines/activatable-projects` | Workspace projects with no live pipeline and no live job. |
 
 Activation, runs, and the human gates:
 
 | Verb | Path | Notes |
 |------|------|-------|
-| GET  | `/api/pipelines/:pipelineId/activations` | Every binding, including other members' (`mine: false`, read-only). |
-| POST | `/api/pipelines/:pipelineId/activate` | Body `{ projectId }`. Gates in order: enabled → universal project → project free → no live job. |
-| POST | `/api/pipelines/:pipelineId/deactivate` | Body `{ projectId }`, own activation only. Cancels the live run, kills running step jobs, keeps run history. |
-| POST | `/api/pipelines/:pipelineId/run-now` | Fire once through the same path a cron fire takes. |
-| GET  | `/api/pipelines/:pipelineId/runs` · `/api/pipelines/runs/:runId` | Run index and one run's history. |
-| POST | `/api/pipelines/runs/:runId/cancel` | Cancel a live run. |
-| POST | `/api/pipelines/runs/:runId/steps/:stepId/clarify` | Answer a step parked on `awaiting_clarify`; the step re-dispatches under a new job id. |
-| GET  | `/api/pipelines/approvals` · POST `/approvals/:gateId` | The approvals inbox. Resolving is idempotent and shares one funnel with the chat card and the timeout arm, so a gate settles exactly once. |
+| GET  | `/api/definitions/pipelines/:pipelineId/activations` | Every binding, including other members' (`mine: false`, read-only). |
+| POST | `/api/definitions/pipelines/:pipelineId/activate` | Body `{ projectId }`. Gates in order: enabled → universal project → project free → no live job. |
+| POST | `/api/definitions/pipelines/:pipelineId/deactivate` | Body `{ projectId }`, own activation only. Cancels the live run, kills running step jobs, keeps run history. |
+| POST | `/api/definitions/pipelines/:pipelineId/run-now` | Fire once through the same path a cron fire takes. |
+| GET  | `/api/definitions/pipelines/:pipelineId/runs` · `/api/definitions/pipelines/runs/:runId` | Run index and one run's history. |
+| POST | `/api/definitions/pipelines/runs/:runId/cancel` | Cancel a live run. |
+| POST | `/api/definitions/pipelines/runs/:runId/steps/:stepId/clarify` | Answer a step parked on `awaiting_clarify`; the step re-dispatches under a new job id. |
+| GET  | `/api/definitions/pipelines/approvals` · POST `/approvals/:gateId` | The approvals inbox. Resolving is idempotent and shares one funnel with the chat card and the timeout arm, so a gate settles exactly once. |
 | GET  | `/api/projects/:id/active-pipeline` | The one project-scoped read: which pipeline, if any, currently owns this project. |
 
 While a project holds an activation, every interactive job start on it
