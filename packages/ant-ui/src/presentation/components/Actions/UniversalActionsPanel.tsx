@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { IntentChipGrid } from './ActionChipGrid';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
-import { PageTransition } from './PageTransition';
+import { ActionsScrollArea } from './ActionsScrollArea';
 import { DomainBadge } from './DomainBadge';
 import { useUniversalActionSurface } from './useUniversalActionSurface';
 import { UniversalIntentDetailView } from './UniversalIntentDetailView';
@@ -42,16 +42,18 @@ export function UniversalActionsPanel() {
 
   if (!surface.ready) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-1.5 px-6 text-center">
-        <span className="text-sm" style={{ color: 'var(--text-3)' }}>
-          {t('universal.noAgent', { defaultValue: 'Select an agent in the chat toolbar first' })}
-        </span>
-        <span className="text-xs" style={{ color: 'var(--text-4)', maxWidth: 380, lineHeight: 1.6 }}>
-          {t('universal.noAgentHint', {
-            defaultValue: 'Agents and their jobs are authored in Agent Settings, from the profile menu.',
-          })}
-        </span>
-      </div>
+      <Shell>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1.5 px-6 text-center">
+          <span className="text-sm" style={{ color: 'var(--text-3)' }}>
+            {t('universal.noAgent', { defaultValue: 'Select an agent in the chat toolbar first' })}
+          </span>
+          <span className="text-xs" style={{ color: 'var(--text-4)', maxWidth: 380, lineHeight: 1.6 }}>
+            {t('universal.noAgentHint', {
+              defaultValue: 'Agents and their jobs are authored in Agent Settings, from the profile menu.',
+            })}
+          </span>
+        </div>
+      </Shell>
     );
   }
 
@@ -61,21 +63,21 @@ export function UniversalActionsPanel() {
 
   if (step === 'pick-action') {
     return (
-      <div className="h-full flex flex-col overflow-y-auto">
-        <div className="flex-1 flex items-center justify-center p-8">
+      <Shell>
+        <ActionsScrollArea>
           <IntentChipGrid
             items={surface.jobChipItems}
             onSelect={handleJobSelect}
             title={t('universal.pickJobTitle', { defaultValue: 'What should this agent do?' })}
             subtitle={surface.agentName}
           />
-        </div>
-      </div>
+        </ActionsScrollArea>
+      </Shell>
     );
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <Shell>
       <div className="shrink-0 px-5 pt-5">
         <ScrollableTabNav
           items={jobTabItems}
@@ -85,13 +87,9 @@ export function UniversalActionsPanel() {
           rightAccessory={<DomainBadge />}
         />
       </div>
-      <PageTransition
-        pageKey={surface.selectedJobId ?? ''}
-        direction={1}
-        className="flex-1 flex items-center justify-center p-5 overflow-y-auto"
-      >
+      <ActionsScrollArea pageKey={surface.selectedJobId ?? ''} direction={1}>
         {surface.intentChipItems.length === 0 ? (
-          <span className="text-xs text-center" style={{ color: 'var(--text-4)', maxWidth: 380, lineHeight: 1.6 }}>
+          <span className="block mx-auto text-xs text-center" style={{ color: 'var(--text-4)', maxWidth: 380, lineHeight: 1.6 }}>
             {t('universal.noIntents', {
               defaultValue:
                 'This job declares no intents — every turn runs with its base prompt.',
@@ -113,7 +111,19 @@ export function UniversalActionsPanel() {
             })}
           />
         )}
-      </PageTransition>
+      </ActionsScrollArea>
+    </Shell>
+  );
+}
+
+/** Canonical parity: the panel paints `--bg-app` and clips; each step scrolls itself. */
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="h-full flex flex-col overflow-hidden"
+      style={{ background: 'var(--bg-app)' }}
+    >
+      {children}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, isActionSurfaced, getActionLabel, getActionDescription, type IntentGroup, type ActionReadiness } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { ActionChip } from './ActionChip';
+import { chipGridStyle } from './chipGridLayout';
 
 const EMPTY_READINESS: ActionReadiness = {
   buildReady: false,
@@ -40,11 +41,9 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
       return intents.some(intent => deriveFromIntent(intent.id).agent === agentFilter);
     });
   }, [agentFilter, currentDomain]);
-  const isSingle = defs.length === 1;
-  const gapStyle: React.CSSProperties = { gap: variant === 'large' ? 14 : 10 };
 
   return (
-    <div className="@container flex flex-col items-center w-full">
+    <div className="flex flex-col items-center w-full">
       {title && (
         <h2
           className={`font-semibold mb-5 ${variant === 'large' ? 'text-xl' : 'text-lg'}`}
@@ -57,17 +56,9 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
         <p className="text-sm mb-6" style={{ color: 'var(--text-3)' }}>{subtitle}</p>
       )}
 
-      <div
-        className={`
-          w-full
-          flex flex-wrap justify-center
-          @xs:grid @xs:grid-cols-1 @xs:max-w-[15rem] @xs:mx-auto
-          ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
-        `}
-        style={gapStyle}
-      >
+      <div style={chipGridStyle(defs.length, variant === 'large' ? 14 : 10)}>
         {defs.map((def, idx) => (
-          <div key={def.id} className="w-full">
+          <div key={def.id} className="w-full h-full">
             <ActionChip
               actionId={def.id}
               label={getActionLabel(def, currentDomain, lang)}
@@ -107,10 +98,8 @@ interface IntentChipGridProps {
 }
 
 export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipGridProps) {
-  const isSingle = items.length === 1;
-
   return (
-    <div className="@container flex flex-col items-center w-full">
+    <div className="flex flex-col items-center w-full">
       {title && (
         <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-1)' }}>
           {title}
@@ -120,17 +109,9 @@ export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipG
         <p className="text-sm mb-6" style={{ color: 'var(--text-3)' }}>{subtitle}</p>
       )}
 
-      <div
-        className={`
-          w-full
-          grid grid-cols-1
-          max-w-[15rem] mx-auto
-          ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
-        `}
-        style={{ gap: 14 }}
-      >
+      <div style={chipGridStyle(items.length)}>
         {items.map((item, idx) => (
-          <div key={item.id} className="w-full">
+          <div key={item.id} className="w-full h-full">
             <ActionChip
               label={item.label}
               description={item.description}

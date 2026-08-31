@@ -22,6 +22,7 @@ import { ActionConfigView } from './ActionConfigView';
 import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
+import { ActionsScrollArea } from './ActionsScrollArea';
 import { BasisWizard } from './basis';
 import { DomainBadge } from './DomainBadge';
 import { UniversalActionsPanel } from './UniversalActionsPanel';
@@ -180,16 +181,14 @@ function CanonicalActionsPanel() {
       // changed only in project settings (ConfigEditor). There is no in-panel
       // switcher; lower depths surface a read-only DomainBadge for context.
       return (
-        <div className="h-full flex flex-col overflow-y-auto">
-          <div className="flex-1 flex items-center justify-center p-8">
-            <ActionChipGrid
-              readiness={readiness}
-              variant="large"
-              onSelect={handleActionSelect}
-              title={t('title')}
-            />
-          </div>
-        </div>
+        <ActionsScrollArea>
+          <ActionChipGrid
+            readiness={readiness}
+            variant="large"
+            onSelect={handleActionSelect}
+            title={t('title')}
+          />
+        </ActionsScrollArea>
       );
     }
 
@@ -208,23 +207,19 @@ function CanonicalActionsPanel() {
               rightAccessory={<DomainBadge />}
             />
           </div>
-          <PageTransition
-            pageKey={selectedActionId}
-            direction={actionDirRef.current}
-            className="flex-1 flex items-center justify-center p-5 overflow-y-auto"
-          >
+          <ActionsScrollArea pageKey={selectedActionId} direction={actionDirRef.current}>
             <IntentChipGrid
               items={intentChipItems()}
               onSelect={handleIntentSelect}
             />
-          </PageTransition>
+          </ActionsScrollArea>
         </div>
       );
     }
 
     if (step === 'config' && selectedActionId && selectedIntentId) {
       return (
-        <div className="h-full">
+        <div className="flex-1 min-h-0">
           <ActionConfigView
             actionId={selectedActionId as IntentGroup}
             intentId={selectedIntentId as IntentId}
@@ -241,7 +236,7 @@ function CanonicalActionsPanel() {
       // gen-*-figma where figma is the authority) fall through to null.
       if (listActiveTiers(selectedSlots.basis, currentDomain ?? 'service').length > 0) {
         return (
-          <div className="h-full">
+          <div className="flex-1 min-h-0">
             <BasisWizard
               basisSlot={selectedSlots.basis}
               onBack={() => setActionsStep('config')}
@@ -262,8 +257,8 @@ function CanonicalActionsPanel() {
       className="h-full flex flex-col overflow-hidden"
       style={{ background: 'var(--bg-app)' }}
     >
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        <PageTransition pageKey={step} direction={stepDirRef.current} className="h-full">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <PageTransition pageKey={step} direction={stepDirRef.current} className="h-full flex flex-col">
           {renderStep()}
         </PageTransition>
       </div>

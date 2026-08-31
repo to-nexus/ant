@@ -180,6 +180,7 @@ function LargeTile({
   const rootStyle: React.CSSProperties = {
     position: 'relative',
     width: '100%',
+    height: '100%',
     minHeight: 88,
     borderRadius: 16,
     padding: '14px 16px 12px',
@@ -256,10 +257,10 @@ function LargeTile({
           aria-hidden
           style={{
             position: 'absolute',
-            right: -14,
-            bottom: -22,
-            width: 108,
-            height: 108,
+            right: -12,
+            bottom: -18,
+            width: 92,
+            height: 92,
             color: 'oklch(100% 0 0 / 0.18)',
             transform: active
               ? 'rotate(-8deg) scale(1.08)'
@@ -271,7 +272,7 @@ function LargeTile({
             justifyContent: 'center',
           }}
         >
-          <IconCmp className="w-[108px] h-[108px]" />
+          <IconCmp className="w-[92px] h-[92px]" />
         </span>
       )}
 
@@ -314,7 +315,7 @@ function LargeTile({
           display: 'flex',
           flexDirection: 'column',
           gap: 4,
-          paddingRight: 60,
+          paddingRight: 44,
         }}
       >
         <span
@@ -326,6 +327,7 @@ function LargeTile({
             letterSpacing: '-0.02em',
             textShadow: '0 2px 6px oklch(0% 0 0 / 0.20)',
             lineHeight: 1.2,
+            overflowWrap: 'anywhere',
           }}
         >
           {label}
