@@ -11,12 +11,10 @@ import type {
   AdminOrgDetail,
   OrgDomainClaimView,
 } from '@ant/shared';
-
-/** Same-origin API base — cookies ride automatically (`credentials: 'include'`). */
-const API = '/api';
+import { API_BASE } from './base';
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method,
     credentials: 'include',
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,

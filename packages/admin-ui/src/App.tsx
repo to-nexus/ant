@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { fetchAuthMeDetailed, type AuthMeResult } from '@ant/auth-client';
 import { Dashboard } from './Dashboard';
+import { API_BASE } from './api/base';
 
-const LOGIN_URL = `/api/auth/google?returnTo=${encodeURIComponent('/admin/')}`;
+const LOGIN_URL = `${API_BASE}/auth/google?returnTo=${encodeURIComponent('/admin/')}`;
 
 export function App() {
   const [result, setResult] = useState<AuthMeResult | null>(null);
 
   useEffect(() => {
-    fetchAuthMeDetailed({ apiBase: '/api' })
+    fetchAuthMeDetailed({ apiBase: API_BASE })
       .then(setResult)
       .catch(() => setResult({ kind: 'network', message: 'auth check failed' }));
   }, []);

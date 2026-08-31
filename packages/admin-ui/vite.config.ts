@@ -2,9 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
- * Admin SPA served under the same host at `/admin/` (customer app is `/app/`).
- * Same-origin ⇒ cookies shared, `/api` is relative (no CORS, no split-host).
- * Dev proxies `/api` to the local API server (4100), same as ant-ui.
+ * Admin SPA served at `/admin/` (customer app is `/app/`).
+ * Production is split-host: `VITE_CLOUD_BACKEND_BASE` names the API host, as
+ * in ant-ui. Dev leaves it unset ⇒ relative `/api`, proxied to 4100 below.
  */
 export default defineConfig({
   base: '/admin/',
