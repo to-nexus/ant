@@ -1,11 +1,91 @@
 {
-  "stars": 0,
-  "forks": 0,
-  "contributorsCount": 0,
-  "openIssues": 0,
-  "contributors": [],
-  "recentPRs": [],
-  "recentIssues": [],
+  "stars": 13,
+  "forks": 2,
+  "contributorsCount": 5,
+  "openIssues": 1,
+  "contributors": [
+    {
+      "login": "harvey-probe",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/197703441?v=4",
+      "htmlUrl": "https://github.com/harvey-probe",
+      "contributions": 2451
+    },
+    {
+      "login": "nx-owen",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/193873669?v=4",
+      "htmlUrl": "https://github.com/nx-owen",
+      "contributions": 51
+    },
+    {
+      "login": "dependabot[bot]",
+      "avatarUrl": "https://avatars.githubusercontent.com/in/29110?v=4",
+      "htmlUrl": "https://github.com/apps/dependabot",
+      "contributions": 9
+    },
+    {
+      "login": "nx-tom",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/193867945?v=4",
+      "htmlUrl": "https://github.com/nx-tom",
+      "contributions": 4
+    },
+    {
+      "login": "nx-hans",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/193867950?v=4",
+      "htmlUrl": "https://github.com/nx-hans",
+      "contributions": 1
+    }
+  ],
+  "recentPRs": [
+    {
+      "number": 61,
+      "title": "chore(deps): bump the prod-minor-patch group with 3 updates",
+      "htmlUrl": "https://github.com/to-nexus/ant/pull/61",
+      "author": "dependabot[bot]",
+      "mergedAt": "2026-08-25T03:14:22Z",
+      "createdAt": "2026-08-24T23:30:56Z"
+    },
+    {
+      "number": 60,
+      "title": "chore(deps): bump @anthropic-ai/sdk from 0.117.1 to 0.120.0 in the volatile group",
+      "htmlUrl": "https://github.com/to-nexus/ant/pull/60",
+      "author": "dependabot[bot]",
+      "mergedAt": "2026-08-25T03:14:09Z",
+      "createdAt": "2026-08-24T23:28:01Z"
+    },
+    {
+      "number": 57,
+      "title": "chore(deps): bump @anthropic-ai/sdk from 0.116.0 to 0.117.1 in the volatile group across 1 directory",
+      "htmlUrl": "https://github.com/to-nexus/ant/pull/57",
+      "author": "dependabot[bot]",
+      "mergedAt": "2026-08-18T02:17:03Z",
+      "createdAt": "2026-08-17T23:26:46Z"
+    },
+    {
+      "number": 59,
+      "title": "chore(deps): bump tsx from 4.23.11 to 4.23.12 in the dev-minor-patch group",
+      "htmlUrl": "https://github.com/to-nexus/ant/pull/59",
+      "author": "dependabot[bot]",
+      "mergedAt": "2026-08-17T23:37:03Z",
+      "createdAt": "2026-08-17T23:29:50Z"
+    },
+    {
+      "number": 58,
+      "title": "chore(deps): bump @langchain/langgraph from 1.4.9 to 1.4.10 in the prod-minor-patch group",
+      "htmlUrl": "https://github.com/to-nexus/ant/pull/58",
+      "author": "dependabot[bot]",
+      "mergedAt": "2026-08-17T23:35:40Z",
+      "createdAt": "2026-08-17T23:28:43Z"
+    }
+  ],
+  "recentIssues": [
+    {
+      "number": 53,
+      "title": "Quarterly major sweep — deferred dependency majors",
+      "htmlUrl": "https://github.com/to-nexus/ant/issues/53",
+      "author": "harvey-probe",
+      "createdAt": "2026-08-12T06:19:36Z"
+    }
+  ],
   "goodFirstIssues": [],
-  "lastUpdated": "2026-05-07"
+  "lastUpdated": "2026-08-31"
 }

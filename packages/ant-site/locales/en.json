@@ -82,7 +82,8 @@
     },
     "demo": {
       "title": "See it in action",
-      "desc": "A short walkthrough of the Plan → Design → Code → Preview loop."
+      "desc": "A short walkthrough of the Plan → Design → Code → Preview loop.",
+      "alt": "A directive decomposed into tasks on Ant's board, then documents streaming into the workspace"
     },
     "split": {
       "title": "Self-host or use the cloud",

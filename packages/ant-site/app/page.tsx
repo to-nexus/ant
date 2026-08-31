@@ -329,13 +329,14 @@ export default function HomePage() {
             <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 28 }}>{t('home.demo.desc')}</p>
             <GlassCard padding="none">
               <div
-                className="flex items-center justify-center"
                 style={{ aspectRatio: '16 / 9', borderRadius: 'var(--r-2xl)', overflow: 'hidden' }}
               >
-                <div className="flex items-center gap-3 text-mono" style={{ color: 'var(--text-4)', fontSize: 13 }}>
-                  <Eye className="w-5 h-5" />
-                  demo coming soon
-                </div>
+                <img
+                  src="/code-job.webp"
+                  alt={t('home.demo.alt')}
+                  loading="lazy"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
               </div>
             </GlassCard>
           </Reveal>

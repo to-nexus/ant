@@ -82,7 +82,8 @@
     },
     "demo": {
       "title": "직접 보기",
-      "desc": "Plan → Design → Code → Preview 루프의 짧은 워크스루."
+      "desc": "Plan → Design → Code → Preview 루프의 짧은 워크스루.",
+      "alt": "디렉티브가 태스크로 분해되어 Ant 보드에 오르고, 문서가 워크스페이스로 스트리밍되는 화면"
     },
     "split": {
       "title": "셀프호스트 또는 클라우드",
