@@ -15,6 +15,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import {
   MCP_ENV_VAR_NAME_PATTERN,
   UNIVERSAL_BUILTIN_TOOLS,
@@ -27,6 +28,7 @@ import {
   type CustomAgentScopeRoot,
 } from '../../src/core/customAgents/CustomAgentLoader';
 import { deriveCustomAgentScopeRoots } from '../../src/core/customAgents/scopeRoots';
+import { validateHooksFileDoc } from '../../src/core/customAgents/intents';
 import { isSelfApiConfig } from '@ant/shared';
 import { McpConnectionManager } from '../../src/core/customAgents/McpConnectionManager';
 import {
@@ -325,6 +327,26 @@ describe('shipped agent-builder definition', () => {
       .filter((line) => line.startsWith('|'))
       .flatMap((line) => [...line.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]));
     expect(documented.sort()).toEqual([...UNIVERSAL_BUILTIN_TOOLS].sort());
+  });
+
+  // The doc's hooks.yaml example omitted the top-level `hooks` wrapper the gate
+  // requires, so a job that followed it verbatim was refused 400 — the builtin
+  // taught a violation of its own loader. Pin the EXAMPLE against the real
+  // parser, not the prose: any yaml fence in the authoring doc that declares
+  // hooks must be a file the loader accepts.
+  it('every hooks.yaml example in the authoring doc parses through the real gate', () => {
+    const doc = fs.readFileSync(
+      path.join(SRC_AGENTS_DIR, 'agent-builder', 'on-demand', 'definition-format.md'),
+      'utf-8',
+    );
+    const fences = [...doc.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]);
+    const hooksExamples = fences.filter((f) => /^\s*(hooks|stop):/m.test(f));
+    expect(hooksExamples.length).toBeGreaterThan(0);
+    for (const example of hooksExamples) {
+      expect(() =>
+        validateHooksFileDoc(yaml.load(example), 'build', 'agent-builder', 'author'),
+      ).not.toThrow();
+    }
   });
 });
 

@@ -699,8 +699,19 @@ export function createAccountAgentRoutes(deps: {
       if (!found) return;
       const rel = String(req.body?.path || '');
       const content = req.body?.content;
-      if (!rel || typeof content !== 'string') {
-        return res.status(400).json({ error: 'path and content (string) are required' });
+      // Name the field that is missing. One message for both made a dropped
+      // `path` read as a size/serialization problem, and the caller "fixed" it
+      // by splitting the file across two PUTs — which overwrites, not appends.
+      if (!rel) {
+        return res.status(400).json({ error: 'path is required (the definition-relative file path to write)' });
+      }
+      if (typeof content !== 'string') {
+        return res.status(400).json({
+          error:
+            content === undefined
+              ? 'content is required (the file\'s full text — this route replaces the file, it never appends)'
+              : `content must be a string (got: ${Array.isArray(content) ? 'array' : typeof content})`,
+        });
       }
       const gate = gateDefinitionSave(req.params.agentId, rel, content, found.agentDir);
       if (!gate.ok) {
@@ -708,9 +719,14 @@ export function createAccountAgentRoutes(deps: {
       }
       const full = resolveDefinitionPath(found.agentDir, rel);
       fs.mkdirSync(path.dirname(full), { recursive: true });
+      // Report what this write replaced. A second PUT to one path is legitimate
+      // (a shrinking rewrite is a normal edit) so it is never refused — but a
+      // caller that believed it was appending has no other way to observe that
+      // it destroyed the previous content.
+      const replacedBytes = fs.existsSync(full) ? fs.statSync(full).size : 0;
       fs.writeFileSync(full, content, 'utf-8');
       const validation = validateDefinitionSave(scopeRootsFor(req), found.agentDir, req.params.agentId, rel);
-      res.json({ success: true, validation });
+      res.json({ success: true, validation, replacedBytes, newBytes: Buffer.byteLength(content, 'utf-8') });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
@@ -770,7 +786,8 @@ export function createAccountAgentRoutes(deps: {
       if (!found) return;
       const rel = String(req.body?.path || '').replace(/\\/g, '/');
       const newName = String(req.body?.newName || '');
-      if (!rel || !newName) return res.status(400).json({ error: 'path and newName are required' });
+      if (!rel) return res.status(400).json({ error: 'path is required' });
+      if (!newName) return res.status(400).json({ error: 'newName is required' });
       if (newName.includes('/') || newName.includes('\\') || newName.startsWith('.')) {
         return res.status(400).json({ error: `Invalid name: ${newName}` });
       }

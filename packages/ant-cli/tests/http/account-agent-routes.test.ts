@@ -387,6 +387,35 @@ describe('definition file endpoints', () => {
     expect(res.status).toBe(expectedStatus);
   });
 
+  // One message for a missing `path` and a missing `content` made a dropped
+  // `path` read as a size problem; the caller "fixed" it by splitting the file
+  // across two PUTs, which replaced instead of appending. Each field names
+  // itself, and the response reports what the write replaced.
+  it.each([
+    ['path missing', { content: '# doc' }, /^path is required/],
+    ['content missing', { path: 'on-demand/notes.md' }, /^content is required/],
+    ['content not a string', { path: 'on-demand/notes.md', content: 42 }, /^content must be a string \(got: number\)/],
+    ['content is an array', { path: 'on-demand/notes.md', content: ['a'] }, /^content must be a string \(got: array\)/],
+  ] as const)('PUT missing field: %s → 400 naming that field', async (_label, body, pattern) => {
+    const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify(body) });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(pattern);
+  });
+
+  it('PUT reports the bytes it replaced — a shrinking rewrite is visible, not refused', async () => {
+    const put = (c: string) => api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: 'on-demand/doc.md', content: c }) });
+
+    const created = await put('#'.repeat(100));
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({ replacedBytes: 0, newBytes: 100 });
+
+    // The overwrite that looked like an append: allowed, but observable.
+    const overwritten = await put('tail');
+    expect(overwritten.status).toBe(200);
+    expect(await overwritten.json()).toMatchObject({ replacedBytes: 100, newBytes: 4 });
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/on-demand/doc.md'), 'utf-8')).toBe('tail');
+  });
+
   it('PUT job-level on-demand doc lands under the job dir', async () => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
     const res = await api('/ops/file', {

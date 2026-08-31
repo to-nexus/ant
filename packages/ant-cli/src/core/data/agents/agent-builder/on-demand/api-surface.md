@@ -59,10 +59,27 @@ The first two are a person's decision in agent settings. The last two write
 definition files without validating them, and everything you author must go
 through the validated route.
 
+## One file, one write
+
+`PUT /file` REPLACES the file at `path` with `content`. A second PUT to the
+same path does not continue the first — it destroys what the first one wrote.
+There is no append: no endpoint takes a partial file, and the definition
+mount you can read at `_agent-definition/` is read-only, so a write tool
+cannot reach it either. Send each file's full text in one call, however long
+it is; `prompt.md` and `on-demand/**` have no size limit.
+
+If a write is refused, the body names the field or the rule that refused it.
+Read it literally. A refusal is never about how long `content` was, so
+splitting the file is never the fix — a "too large" reading of a `4xx` is a
+misreading, and acting on it silently throws away the half you sent first.
+
 ## Reading a response
 
 `PUT /file` answers `200` with `{ valid, errors[] }` for the job the file
-belongs to. `valid: false` means the file saved but the job does not load —
-finish the remaining writes, then fix what the errors name.
+belongs to, alongside `replacedBytes` (what was there before, `0` for a new
+file) and `newBytes`. `valid: false` means the file saved but the job does not
+load — finish the remaining writes, then fix what the errors name. A
+`replacedBytes` larger than `newBytes` on a file you meant to extend is proof
+you overwrote it.
 
 A `4xx` carries the reason in its body. Read it; it names the rule.

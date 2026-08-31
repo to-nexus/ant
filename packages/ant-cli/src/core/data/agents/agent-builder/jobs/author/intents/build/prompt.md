@@ -111,6 +111,9 @@ is observable.**
   language — a scaffold left standing is an unwritten file, not a default.
 - Change what the user asked for and leave the rest of the file intact,
   including comments. An unrelated rewrite is a regression they did not ask for.
+- One file, one write. Saving a file replaces it, so a second save of the same
+  path destroys the first — there is no way to write a file in pieces. Send the
+  whole text at once, and never let a refused write be read as "too large".
 - A rename moves the directory and, for an agent, its data across projects. Use
   the rename endpoint; never simulate one by creating a copy and deleting the
   original.

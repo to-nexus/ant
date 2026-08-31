@@ -188,12 +188,14 @@ one optional key, `clarify: <bool>`; `default`, `injections`, `description`,
 `prompt.md` has no size limit and is inlined only while its intent is active —
 it is where a task's procedure lives; `infer.md` only decides when it applies.
 
-`hooks.yaml` declares what must be true for a turn to be complete:
+`hooks.yaml` declares what must be true for a turn to be complete. The file
+must declare exactly one top-level `hooks` key; the events nest under it:
 
 ```yaml
-stop:
-  - artifact: reports/*.md          # a file matching this glob was written
-  - action: api__my-api__request    # this tool was called successfully
+hooks:
+  stop:
+    - artifact: reports/*.md          # a file matching this glob was written
+    - action: api__my-api__request    # this tool was called successfully
 ```
 
 Each entry carries exactly one of `artifact` or `action`. An `action` must name
