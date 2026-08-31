@@ -709,6 +709,102 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
    * index entry and any residual JOB.* keys it points to. Errors logged +
    * swallowed; the deleteFeature fsVerify phase is the final guard.
    */
+  /**
+   * Purge-only sweep of the keys `cleanupProject` cannot reach: they are keyed
+   * by (org,user) or by user alone, not by project. Best-effort — every arm
+   * logs and continues, because a half-swept cache is strictly better than a
+   * purge that aborts before the identity tombstone.
+   */
+  async cleanupUserScope(organizationId: string, userId: string): Promise<number> {
+    let deleted = 0;
+
+    const scanDel = async (pattern: string): Promise<void> => {
+      let cursor = '0';
+      const keys: string[] = [];
+      do {
+        const [next, batch] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+        cursor = next;
+        keys.push(...batch);
+      } while (cursor !== '0');
+      if (keys.length === 0) return;
+      const pipeline = this.redis.pipeline();
+      keys.forEach((k) => pipeline.del(k));
+      await pipeline.exec();
+      deleted += keys.length;
+    };
+
+    const arm = async (label: string, fn: () => Promise<void>): Promise<void> => {
+      try {
+        await fn();
+      } catch (err) {
+        logger.warn(
+          `[StateStore] cleanupUserScope ${label} failed (continuing)`,
+          { component: 'RedisStateStore' },
+          { organizationId, userId, err },
+        );
+      }
+    };
+
+    await arm('runSlots', async () => {
+      const key = REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId);
+      deleted += await this.redis.del(key);
+    });
+
+    await arm('baselines', () =>
+      scanDel(`${REDIS_KEYS.BASELINE}:${organizationId}:${userId}:*`),
+    );
+
+    // Artifact caches are keyed by userId alone (no org segment).
+    await arm('artifacts', async () => {
+      await scanDel(`${REDIS_KEYS.ARTIFACTS.UNSEEN}${userId}:*`);
+      await scanDel(`${REDIS_KEYS.ARTIFACTS.FILETREE}${userId}:*`);
+    });
+
+    // Transfers are two-sided: dropping only this user's index would leave the
+    // counterparty's list holding request ids that resolve to nothing.
+    await arm('transfers', async () => {
+      const mine = `${organizationId}:${userId}`;
+      const sentKey = `${REDIS_KEYS.TRANSFER.BY_SENDER}${mine}`;
+      const recvKey = `${REDIS_KEYS.TRANSFER.BY_RECIPIENT}${mine}`;
+      const requestIds = [
+        ...new Set([
+          ...(await this.redis.smembers(sentKey)),
+          ...(await this.redis.smembers(recvKey)),
+        ]),
+      ];
+      for (const id of requestIds) {
+        const reqKey = `${REDIS_KEYS.TRANSFER.REQUEST}${id}`;
+        const raw = await this.redis.get(reqKey);
+        if (raw) {
+          try {
+            const tr = JSON.parse(raw) as {
+              sender: { orgId: string; userId: string };
+              recipient: { orgId: string; userId: string };
+            };
+            for (const [side, prefix] of [
+              [tr.sender, REDIS_KEYS.TRANSFER.BY_SENDER],
+              [tr.recipient, REDIS_KEYS.TRANSFER.BY_RECIPIENT],
+            ] as const) {
+              await this.redis.srem(`${prefix}${side.orgId}:${side.userId}`, id);
+            }
+          } catch {
+            /* corrupt record — the DEL below still removes it */
+          }
+        }
+        deleted += await this.redis.del(reqKey);
+      }
+      deleted += await this.redis.del(sentKey);
+      deleted += await this.redis.del(recvKey);
+    });
+
+    logger.info(
+      `[StateStore] cleanupUserScope removed ${deleted} key(s)`,
+      { component: 'RedisStateStore' },
+      { organizationId, userId },
+    );
+    return deleted;
+  }
+
   async cleanupFeature(
     organizationId: string,
     userId: string,

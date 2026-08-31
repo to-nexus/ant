@@ -91,4 +91,25 @@ export const adminApi = {
     req<{ domain: OrgDomainClaimView }>('POST', `/admin/organizations/${enc(orgId)}/domains/${enc(domain)}/reject`),
   adminForceDeleteOrg: (orgId: string) =>
     req<{ ok: boolean }>('DELETE', `/admin/organizations/${enc(orgId)}`),
+  /** Purge a membership. Owners are refused — transfer or delete the org. */
+  adminRemoveOrgMember: (orgId: string, userId: string) =>
+    req<{ ok: boolean }>('DELETE', `/admin/organizations/${enc(orgId)}/members/${enc(userId)}`),
+  /**
+   * Purge an account. `confirmEmail` must match the record — the row list is a
+   * dense table of near-identical emails, so the operator states which one.
+   * Returns a per-step report; a partial purge is still a 200.
+   */
+  purgeUser: (userId: string, confirmEmail: string) =>
+    req<AdminPurgeReport>(
+      'DELETE',
+      `/admin/users/${enc(userId)}?confirmEmail=${enc(confirmEmail)}`,
+    ),
 };
+
+/** Mirrors `PurgeReport` in `core/account/purgeAccount.ts`. */
+export interface AdminPurgeReport {
+  userId: string;
+  scopes: string[];
+  ok: boolean;
+  steps: Array<{ step: string; ok: boolean; detail?: string; error?: string }>;
+}

@@ -39,6 +39,17 @@ export interface OrganizationSummary {
   kind?: OrganizationKind;
 }
 
+/** Tombstone left by `purgeAccount` — see `recordUserPurge`. Carries no PII. */
+export interface UserPurgeRecord {
+  userId: string;
+  purgedAt: string;
+  /** Operator email for an admin purge; the account's own id for a withdrawal. */
+  purgedBy: string;
+  reason: UserPurgeReason;
+}
+
+export type UserPurgeReason = 'admin-purge' | 'self-withdrawal';
+
 export interface OrganizationRepositoryPort {
   // -------- Organizations --------
 
@@ -275,6 +286,42 @@ export interface OrganizationRepositoryPort {
     /** Stamp of the last login-time domain auto-join (backfill notice). */
     lastDomainAutoJoin?: UserRecord['lastDomainAutoJoin'];
   }): Promise<UserRecord>;
+
+  // -------- Purge tombstones --------
+
+  /**
+   * Record that an account was purged. The tombstone carries NO PII — its only
+   * job is to answer two questions the deleted record can no longer answer:
+   *
+   *  - `getUserApproval` must say `denied`, not the missing-record default
+   *    `approved`. JWTs are stateless with no denylist, so a plain delete would
+   *    leave the session cookie working for days and a desktop token for 90.
+   *  - `upsertUser` must not silently re-create the identity (and re-populate
+   *    the email / name / picture a purge just removed) on the next OAuth
+   *    callback.
+   *
+   * `reason` is the policy fork: `admin-purge` refuses a re-signup outright,
+   * `self-withdrawal` lets the person come back as a brand-new account.
+   */
+  /**
+   * Delete the identity records for a purged account: the user JSON, its
+   * `byEmail` pointer, its entry in the admin enumeration index, its raised
+   * join requests (and their per-org pending guards), and the invites addressed
+   * to its email. `email` is optional because the caller may already have
+   * dropped the record; without it the byEmail pointer cannot be resolved.
+   *
+   * ALWAYS pair this with `recordUserPurge` — on its own it leaves an id whose
+   * approval reads as the missing-record default `approved`.
+   */
+  deleteUserIdentity(userId: string, email?: string): Promise<void>;
+
+  recordUserPurge(purge: UserPurgeRecord): Promise<void>;
+
+  /** Tombstone for a purged account, or `null` when the id was never purged. */
+  getUserPurge(userId: string): Promise<UserPurgeRecord | null>;
+
+  /** Lift a tombstone — an admin undoing a mistaken purge, or a re-signup. */
+  clearUserPurge(userId: string): Promise<void>;
 
   // -------- Backfill --------
 

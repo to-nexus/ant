@@ -50,6 +50,8 @@ export interface RoutesDeps {
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };  // ✅ For file tree updates after file writes
   transferService?: any;  // ArtifactTransferService for transfer operations
   stateStore?: any;  // RedisStateStore for transfer state management
+  /** Credit ledger — the account purge unions ledger scopes with memberships. */
+  creditLedger?: import('../../../../core/ports/creditLedger').CreditLedgerPort;
   gitWatcherService?: any;  // GitWatcherService for retrying deferred watchers after init/clone
   gitStateBroadcaster?: any;  // GitStateBroadcaster for publishing `gitState` SSE events (will be renamed GitStateBroadcaster at cutover)
   /** ✅ Feature DELETE + Hard Reset use these to finalize/pause jobs via the SSOT lifecycle helpers. */
@@ -173,6 +175,11 @@ export function createApiRoutes(deps: RoutesDeps): Router {
       // Phase 1: team member listing prefers the membership port over the
       // directory walk (a member who never created a workspace dir still shows).
       organizationRepository: deps.organizationRepository,
+      // `POST /user/reset` runs the shared purge engine, so it gets the same
+      // project-lifecycle cascade an admin purge does.
+      projectService: deps.projectService,
+      stateStore: deps.stateStore,
+      creditLedger: deps.creditLedger,
     }));
   }
 

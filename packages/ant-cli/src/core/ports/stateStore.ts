@@ -782,6 +782,19 @@ export interface StateStorePort {
   ): Promise<void>;
 
   /**
+   * Delete the Redis keys owned by an (organizationId, userId) pair that
+   * `cleanupProject` cannot reach because they are not project-keyed:
+   * pipeline run slots, artifact file-tree / unseen caches, RAC baselines, and
+   * both sides of the artifact-transfer index.
+   *
+   * Called only by the account purge. Best-effort and idempotent like
+   * `cleanupProject`; returns the number of keys deleted so the purge report
+   * can name it. The transfer sweep also prunes the COUNTERPARTY's index —
+   * their list otherwise holds request ids pointing at a deleted account.
+   */
+  cleanupUserScope(organizationId: string, userId: string): Promise<number>;
+
+  /**
    * Feature-scoped cleanup — mirrors `cleanupProject` but only touches keys
    * belonging to a single `(projectId, featureName)`. Deletes:
    *

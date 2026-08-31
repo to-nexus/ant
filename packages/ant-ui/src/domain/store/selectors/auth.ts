@@ -113,6 +113,31 @@ export function selectActiveUserRole(state: StoreState): 'owner' | 'admin' | 'me
   return m?.role;
 }
 
+/**
+ * Role in an ARBITRARY org the user belongs to. The org hub manages a team the
+ * user is not currently active in (`requireTeamRole` reads the path orgId and
+ * the live membership row, never the JWT claim), so its gates cannot use
+ * `selectActiveUserRole`, which is pinned to `userOrganization`.
+ */
+export function selectRoleForOrg(
+  state: StoreState,
+  orgId: string | null | undefined,
+): 'owner' | 'admin' | 'member' | undefined {
+  if (!orgId) return undefined;
+  return state.memberships.find((x) => x.organizationId === orgId)?.role;
+}
+
+/** admin+ in an arbitrary org — the org-hub counterpart of `selectIsOrgAdmin`. */
+export function selectIsAdminOfOrg(state: StoreState, orgId: string | null | undefined): boolean {
+  const role = selectRoleForOrg(state, orgId);
+  return role === 'owner' || role === 'admin';
+}
+
+/** Team memberships only — the shared `individual` org is not a manageable org. */
+export function selectTeamMemberships(state: StoreState) {
+  return state.memberships.filter((m) => m.kind === 'team');
+}
+
 /** Is the active org a team? Gates every org-settings surface (kind-dispatch). */
 export function selectIsTeamActive(state: StoreState): boolean {
   return state.userOrgKind === 'team';

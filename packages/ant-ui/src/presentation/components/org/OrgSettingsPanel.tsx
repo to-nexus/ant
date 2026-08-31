@@ -1,23 +1,29 @@
 /**
- * OrgSettingsPanel — team organization settings.
+ * OrgSettingsPanel — the organization hub for every cloud account.
  *
  * Static OSS panel (NOT a slot): rendered by MainContentArea for the
- * `orgSettings` tab. Reachable only when the active org kind is `team`
- * (the navbar entry point is kind-gated), so there is no dead-tab state.
+ * `orgSettings` tab, reachable from the navbar by ANY signed-in cloud account
+ * — including one that belongs to no team, which lands on My teams (empty) +
+ * Find a team rather than on a dead tab.
  * AccountConfigEditor scaffold clone: TwoColLayout + TocNav + SectionCard,
  * per-field optimistic saves, destructive actions behind showConfirm.
  *
+ * The panel is scoped to `selectedOrgId`, NOT to the active org: `requireTeamRole`
+ * resolves from the path orgId and the live membership row, so a team can be
+ * inspected and left without switching into it first. Everything below the two
+ * always-present sections is gated on a selection.
+ *
  * Role model: member sees General (read) / Members (read) / Danger (leave);
  * Invitations, Join requests and Domains are admin+ only and hidden (not
- * disabled) below that.
+ * disabled) below that — admin-ness is per SELECTED org.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
-  selectActiveUserRole,
-  selectIsOrgAdmin,
+  selectRoleForOrg,
+  selectTeamMemberships,
 } from '@/domain/store/selectors';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import {
@@ -34,7 +40,7 @@ import { Button } from '../aurora/Button';
 import { Badge } from '../aurora/Badge';
 import { Avatar } from '../aurora/Avatar';
 import { KebabMenu } from '../aurora/KebabMenu';
-import { Copy, Check, Mail, ArrowRightLeft, UserMinus, Trash2, X, Undo2 } from 'lucide-react';
+import { Copy, Check, Mail, ArrowRightLeft, UserMinus, Trash2, X, Undo2, LogOut, ChevronRight } from 'lucide-react';
 import type { OrgInviteRole, OrgMemberView } from '@ant/shared';
 import {
   fetchOrg,
@@ -58,8 +64,12 @@ import {
 import { RoleBadge } from './RoleBadge';
 import { InviteLinkChip } from './InviteLinkChip';
 import { orgErrorMessage } from './orgErrors';
+import { TeamDiscovery } from './TeamDiscovery';
+import { switchOrg } from '@/infrastructure/http/api/auth';
 
 const SECTION_IDS = [
+  'c3o-teams',
+  'c3o-discover',
   'c3o-general',
   'c3o-members',
   'c3o-requests',
@@ -72,14 +82,35 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation('config');
   const { showError, showSuccess, showConfirm } = useAlertModalContext();
 
-  const orgId = useStore((s) => s.userOrganization);
+  const activeOrgId = useStore((s) => s.userOrganization);
+  const activeOrgKind = useStore((s) => s.userOrgKind);
+  const teamMemberships = useStore(selectTeamMemberships);
   const userId = useStore((s) => s.userId);
   const userEmail = useStore((s) => s.userEmail);
-  const role = useStore(selectActiveUserRole) ?? 'member';
-  const isAdmin = useStore(selectIsOrgAdmin);
+
+  /**
+   * The org this panel is acting on. Defaults to the active org when that is a
+   * team; a personal-only account starts with no selection and sees the two
+   * always-present sections only.
+   */
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(
+    activeOrgKind === 'team' ? (activeOrgId ?? null) : null,
+  );
+
+  // A membership that disappears underneath us (leave, admin removal, org
+  // delete) must not leave the detail sections pointed at a dead org.
+  useEffect(() => {
+    if (selectedOrgId && !teamMemberships.some((m) => m.organizationId === selectedOrgId)) {
+      setSelectedOrgId(null);
+    }
+  }, [teamMemberships, selectedOrgId]);
+
+  const orgId = selectedOrgId;
+  const role = useStore((s) => selectRoleForOrg(s, selectedOrgId)) ?? 'member';
+  const isAdmin = role === 'owner' || role === 'admin';
   const isOwner = role === 'owner';
   const orgName = useStore(
-    (s) => s.memberships.find((m) => m.organizationId === s.userOrganization)?.name ?? s.userOrganization,
+    (s) => s.memberships.find((m) => m.organizationId === selectedOrgId)?.name ?? selectedOrgId ?? '',
   );
 
   const orgMembers = useStore((s) => s.orgMembers);
@@ -438,16 +469,24 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
 
   const soleMember = orgMembers.length === 1;
 
-  const handleLeave = () => {
-    if (!orgId) return;
+  /**
+   * Leaving reloads: the JWT still carries the old `org` claim, and
+   * `removeMembership` reverts `currentOrganizationId` server-side, so the tab
+   * must re-authenticate rather than keep a stale tenant.
+   */
+  const handleLeave = (targetOrgId?: string, targetName?: string) => {
+    const id = targetOrgId ?? orgId;
+    if (!id) return;
     showConfirm(
-      t('org.danger.confirmLeave', 'Leave {{org}}? Your account switches back to Individual.', { org: orgName }),
+      t('org.danger.confirmLeave', 'Leave {{org}}? Your account switches back to Individual.', {
+        org: targetName ?? orgName,
+      }),
       {
         type: 'warning',
         title: t('org.danger.leaveTitle', 'Leave organization'),
         onConfirm: async () => {
           try {
-            await leaveOrg(orgId);
+            await leaveOrg(id);
             window.location.reload();
           } catch (err) {
             showError(orgErrorMessage(err, t));
@@ -455,6 +494,15 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
         },
       },
     );
+  };
+
+  const handleSwitch = async (targetOrgId: string) => {
+    try {
+      await switchOrg(targetOrgId);
+      window.location.reload();
+    } catch (err) {
+      showError(orgErrorMessage(err, t));
+    }
   };
 
   const handleDelete = () => {
@@ -487,9 +535,21 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
   const tocNode = (
     <TocNav
       items={[
-        { id: 'c3o-general', label: t('org.tocGeneral', 'General'), icon: 'Building2' },
-        { id: 'c3o-members', label: t('org.tocMembers', 'Members'), icon: 'Users' },
-        ...(isAdmin
+        {
+          id: 'c3o-teams',
+          label: t('org.tocTeams', 'My teams'),
+          icon: 'Users' as const,
+          ...(teamMemberships.length > 0 ? { count: teamMemberships.length } : {}),
+        },
+        { id: 'c3o-discover', label: t('org.tocDiscover', 'Find a team'), icon: 'Search' as const },
+        // Everything below acts on the SELECTED org — absent until one is picked.
+        ...(orgId
+          ? [
+              { id: 'c3o-general', label: t('org.tocGeneral', 'General'), icon: 'Building2' as const },
+              { id: 'c3o-members', label: t('org.tocMembers', 'Members'), icon: 'Users' as const },
+            ]
+          : []),
+        ...(orgId && isAdmin
           ? [
               {
                 id: 'c3o-requests',
@@ -501,7 +561,9 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
               { id: 'c3o-domains', label: t('org.tocDomains', 'Domains'), icon: 'Globe' as const },
             ]
           : []),
-        { id: 'c3o-danger', label: t('org.tocDanger', 'Danger'), icon: 'AlertTriangle' },
+        ...(orgId
+          ? [{ id: 'c3o-danger', label: t('org.tocDanger', 'Danger'), icon: 'AlertTriangle' as const }]
+          : []),
       ]}
       active={activeSection}
       onSelect={(id) => {
@@ -515,19 +577,28 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="h-full flex flex-col spring-in" style={{ background: 'var(--bg-canvas)', overflow: 'hidden' }}>
-      {/* Header band */}
+      {/* Header band — identifies the SELECTED org, or the hub itself when none. */}
       <div className="flex items-center gap-4 px-6 pt-6 pb-2 shrink-0">
-        <IdentityOrb initial={orgName?.[0]?.toUpperCase()} size={56} gradient="var(--gradient-cool)" />
+        <IdentityOrb
+          initial={orgId ? orgName?.[0]?.toUpperCase() : undefined}
+          size={56}
+          gradient="var(--gradient-cool)"
+        />
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="truncate" style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--fs-2xl, 22px)', color: 'var(--text-1)' }}>
-              {orgName}
+              {orgId ? orgName : t('org.hubTitle', 'Organizations')}
             </span>
-            <RoleBadge role={role} />
-            <Badge tone="info" size="sm">{t('org.kindTeam', 'Team')}</Badge>
+            {orgId && <RoleBadge role={role} />}
+            {orgId && <Badge tone="info" size="sm">{t('org.kindTeam', 'Team')}</Badge>}
+            {orgId && orgId === activeOrgId && (
+              <Badge tone="success" size="sm">{t('org.badgeActive', 'Active')}</Badge>
+            )}
           </div>
           <div style={{ color: 'var(--text-4)', fontSize: 12 }}>
-            {t('org.headerMeta', '{{count}} member(s)', { count: orgMembers.length })}
+            {orgId
+              ? t('org.headerMeta', '{{count}} member(s)', { count: orgMembers.length })
+              : t('org.hubSubtitle', 'Your teams, and how to join one.')}
           </div>
         </div>
         {onClose && (
@@ -543,6 +614,104 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
 
       <div ref={scrollerRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <TwoColLayout toc={tocNode}>
+          {/* My teams — always present. Individual is not a manageable org
+              (ownerId is null), so only `team` memberships are listed. */}
+          <SectionCard
+            id="c3o-teams"
+            icon="Users"
+            title={t('org.teams.title', 'My teams')}
+            description={t('org.teams.description', 'Teams you belong to. Select one to manage it — you do not have to switch into it first.')}
+            accent="violet-pink"
+          >
+            {teamMemberships.length === 0 ? (
+              <div className="text-xs" style={{ color: 'var(--text-3)' }}>
+                {t('org.teams.empty', 'You are not a member of any team yet. Find one below, or ask an admin for an invite.')}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {teamMemberships.map((m) => {
+                  const isSelected = m.organizationId === selectedOrgId;
+                  const isActive = m.organizationId === activeOrgId;
+                  return (
+                    <div
+                      key={m.organizationId}
+                      className="flex items-center gap-3 px-2 py-2 rounded"
+                      style={{
+                        background: isSelected ? 'var(--bg-hover)' : 'transparent',
+                        border: `1px solid ${isSelected ? 'var(--border-2)' : 'transparent'}`,
+                      }}
+                    >
+                      <Avatar name={m.name} size={28} />
+                      <button
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => setSelectedOrgId(m.organizationId)}
+                      >
+                        <span className="block truncate text-sm" style={{ color: 'var(--text-1)' }}>
+                          {m.name}
+                        </span>
+                        <span
+                          className="block truncate"
+                          style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-4)' }}
+                        >
+                          {m.organizationId}
+                        </span>
+                      </button>
+                      <RoleBadge role={m.role} />
+                      {isActive && (
+                        <Badge tone="success" size="sm">{t('org.badgeActive', 'Active')}</Badge>
+                      )}
+                      {!isSelected && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setSelectedOrgId(m.organizationId)}
+                        >
+                          {t('org.teams.select', 'Manage')}
+                          <ChevronRight className="w-3 h-3" />
+                        </Button>
+                      )}
+                      {!isActive && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => void handleSwitch(m.organizationId)}
+                        >
+                          <ArrowRightLeft className="w-3 h-3" />
+                          {t('org.teams.switch', 'Switch to')}
+                        </Button>
+                      )}
+                      {/* An owner must transfer first — the BE 403s either way. */}
+                      {m.role !== 'owner' && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => handleLeave(m.organizationId, m.name)}
+                        >
+                          <LogOut className="w-3 h-3" />
+                          {t('org.teams.leave', 'Leave')}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
+
+          {/* Find a team — same component the navbar's Join-a-team modal renders. */}
+          <SectionCard
+            id="c3o-discover"
+            icon="Search"
+            title={t('org.discover.title', 'Find a team')}
+            description={t('org.discover.description', 'Only teams that opted into discovery are listed. Searching finds a team; an admin still approves the request.')}
+            accent="cool"
+          >
+            <TeamDiscovery listMaxHeight={360} />
+          </SectionCard>
+
+          {/* Everything below acts on the selected org. */}
+          {orgId && (
+          <>
           {/* General */}
           <SectionCard
             id="c3o-general"
@@ -1120,7 +1289,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
                   <div className="text-xs" style={{ color: 'var(--text-3)' }}>
                     {t('org.danger.leaveHint', 'Leave this organization. Your account switches back to Individual.')}
                   </div>
-                  <Button variant="danger" size="sm" onClick={handleLeave}>
+                  <Button variant="danger" size="sm" onClick={() => handleLeave()}>
                     {t('org.danger.leave', 'Leave organization')}
                   </Button>
                 </div>
@@ -1151,6 +1320,8 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
               )}
             </div>
           </SectionCard>
+          </>
+          )}
         </TwoColLayout>
       </div>
     </div>

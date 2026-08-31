@@ -36,9 +36,12 @@ import {
   INDIVIDUAL_ORG_ID,
   ORG_NOT_FOUND,
   DOMAIN_NOT_FOUND,
+  NOT_A_MEMBER,
+  OWNER_MUST_TRANSFER,
   deriveKindFromOrgId,
 } from '@ant/shared';
 import { isSuperAdminEmail } from '../../../../core/auth/superAdmin';
+import { purgeAccount, type PurgeAccountDeps } from '../../../../core/account/purgeAccount';
 import {
   toInviteView,
   toDomainClaimView,
@@ -52,9 +55,19 @@ import { logger } from '../../../../utils/logger';
 export interface AdminRoutesDeps {
   creditLedger: CreditLedgerPort;
   organizationRepository: OrganizationRepositoryPort;
+  /**
+   * Account purge dependencies. Absent in test harnesses and in any deployment
+   * without a workspace resolver — the purge route then answers 501 rather than
+   * half-deleting an account.
+   */
+  purge?: Omit<PurgeAccountDeps, 'organizationRepository' | 'creditLedger'>;
 }
 
 const APPROVAL_VALUES: readonly ApprovalStatus[] = ['pending', 'approved', 'denied'];
+const USER_NOT_FOUND = 'USER_NOT_FOUND';
+const PURGE_CONFIRM_MISMATCH = 'PURGE_CONFIRM_MISMATCH';
+const PURGE_FORBIDDEN = 'PURGE_FORBIDDEN';
+const PURGE_UNAVAILABLE = 'PURGE_UNAVAILABLE';
 /** Onboarding sentinel — never a real billing scope. */
 const PENDING_ORG_SENTINEL = '_pending';
 
@@ -71,7 +84,7 @@ const POLICY_VALUES: readonly DefaultApprovalMode[] = ['auto-approve', 'require-
 
 export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   const router = Router();
-  const { creditLedger, organizationRepository } = deps;
+  const { creditLedger, organizationRepository, purge } = deps;
 
   // Every /admin/* route requires a super-admin session (env-authoritative).
   const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
@@ -338,6 +351,84 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
     };
   }
 
+  /**
+   * DELETE /admin/users/:userId?confirmEmail=... — purge an account.
+   *
+   * `confirmEmail` must match the record: a `userId` here IS the account's
+   * email, and the admin list is a dense table of near-identical rows, so the
+   * operator states which one they meant rather than trusting the click.
+   *
+   * Refused for a super-admin (the env grant would resurrect them at the next
+   * boot's `syncSuperAdmins`, leaving a purged-but-privileged identity) and for
+   * the caller themselves (an operator must not lock themselves out of the
+   * screen that undoes a mistake).
+   */
+  router.delete('/admin/users/:userId', async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const adminEmail = (req as any).user?.email as string;
+
+      const user = await organizationRepository.getUser(userId);
+      if (!user) {
+        res.status(404).json({ error: 'user not found', code: USER_NOT_FOUND });
+        return;
+      }
+      const confirmEmail = typeof req.query.confirmEmail === 'string' ? req.query.confirmEmail : '';
+      if (confirmEmail.toLowerCase() !== (user.email ?? '').toLowerCase()) {
+        res.status(400).json({ error: 'confirmEmail does not match this account', code: PURGE_CONFIRM_MISMATCH });
+        return;
+      }
+      if (isSuperAdminEmail(user.email) || user.isSuperAdmin) {
+        res.status(403).json({ error: 'a super admin cannot be purged', code: PURGE_FORBIDDEN });
+        return;
+      }
+      if (userId === adminEmail || user.email?.toLowerCase() === adminEmail?.toLowerCase()) {
+        res.status(403).json({ error: 'an operator cannot purge their own account here', code: PURGE_FORBIDDEN });
+        return;
+      }
+
+      // Capability is checked LAST: a deployment without purge deps must still
+      // answer 404 / 400 / 403 the same way every other one does, or a
+      // misconfiguration would mask a target that was never purgeable anyway.
+      if (!purge) {
+        res.status(501).json({ error: 'account purge is not available on this deployment', code: PURGE_UNAVAILABLE });
+        return;
+      }
+
+      const report = await purgeAccount(
+        { ...purge, organizationRepository, creditLedger },
+        { userId, purgedBy: adminEmail, reason: 'admin-purge', mode: 'full' },
+      );
+      logger.info(`[Admin] purged ${userId} by ${adminEmail} (ok=${report.ok})`, { component: 'Admin' });
+      // 200 even on a partial purge: the steps that succeeded are permanent, so
+      // the operator needs the report, not an error that hides it.
+      res.json(report);
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
+
+  /**
+   * DELETE /admin/users/:userId/purge — lift a tombstone so a mistakenly
+   * purged email can sign up again. The DATA is gone either way; this only
+   * re-opens the identity.
+   */
+  router.delete('/admin/users/:userId/purge', async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const tombstone = await organizationRepository.getUserPurge(userId);
+      if (!tombstone) {
+        res.status(404).json({ error: 'no purge tombstone for this id', code: USER_NOT_FOUND });
+        return;
+      }
+      await organizationRepository.clearUserPurge(userId);
+      logger.info(`[Admin] lifted purge tombstone for ${userId}`, { component: 'Admin' });
+      res.json({ ok: true });
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
+
   // GET /admin/organizations → AdminOrgSummary[] (soft-deleted included)
   router.get('/admin/organizations', async (_req: Request, res: Response) => {
     try {
@@ -415,6 +506,48 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       await organizationRepository.updateDomainClaim(claim);
       logger.info(`[Admin] domain ${claim.domain} rejected by ${adminEmail}`, { component: 'Admin' });
       res.json({ domain: toDomainClaimView(claim) });
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
+
+  /**
+   * DELETE /admin/organizations/:orgId/members/:userId — purge a membership.
+   *
+   * The org-admin counterpart (`teams.routes.ts`) enforces a role ladder;
+   * super-admin sits above it and may remove an `admin`. The OWNER is still
+   * refused: an ownerless team cannot transfer, rename or delete itself, and
+   * `DELETE /admin/organizations/:orgId` is the verb for disposing of the org.
+   *
+   * The removal row is the point — without it the domain auto-join shortcut
+   * re-adds the member at their very next login.
+   */
+  router.delete('/admin/organizations/:orgId/members/:userId', async (req: Request, res: Response) => {
+    try {
+      const { orgId, userId } = req.params;
+      const org = await organizationRepository.getOrganization(orgId);
+      if (!org || org.deletedAt) {
+        res.status(404).json({ error: 'organization not found', code: ORG_NOT_FOUND });
+        return;
+      }
+      const membership = await organizationRepository.getMembership(userId, orgId);
+      if (!membership) {
+        res.status(404).json({ error: 'member not found', code: NOT_A_MEMBER });
+        return;
+      }
+      if (membership.role === 'owner') {
+        res.status(403).json({
+          error: 'The owner cannot be removed — transfer ownership or delete the organization.',
+          code: OWNER_MUST_TRANSFER,
+        });
+        return;
+      }
+      const adminEmail = (req as any).user?.email as string;
+      await organizationRepository.removeMembership(userId, orgId, {
+        record: { removedBy: adminEmail, reason: 'removed' },
+      });
+      logger.info(`[Admin] removed ${userId} from ${orgId} by ${adminEmail}`, { component: 'Admin' });
+      res.json({ ok: true });
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Admin');
     }

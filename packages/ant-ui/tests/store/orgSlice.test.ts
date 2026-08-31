@@ -48,6 +48,9 @@ import {
   selectVisibleDomainJoinableOrgs,
   selectVisibleAutoJoinedOrg,
   selectMyPendingJoinRequestByOrg,
+  selectRoleForOrg,
+  selectIsAdminOfOrg,
+  selectTeamMemberships,
 } from '../../src/domain/store/selectors/auth';
 
 function makeStore(seed?: Partial<OrgSlice>) {
@@ -222,5 +225,45 @@ describe('own join requests', () => {
     const byOrg = selectMyPendingJoinRequestByOrg(state);
     expect([...byOrg.keys()].sort()).toEqual(['acme', 'gamma']);
     expect(byOrg.get('acme')?.id).toBe('r1');
+  });
+});
+
+describe('org-hub membership selectors', () => {
+  /**
+   * The hub manages a team the user is NOT active in, so these must read the
+   * membership row for the given org — never `userOrganization`.
+   */
+  const state = {
+    userOrganization: 'individual',
+    memberships: [
+      { organizationId: 'individual', kind: 'individual', name: 'Individual', role: 'member' },
+      { organizationId: 'acme', kind: 'team', name: 'Acme', role: 'owner' },
+      { organizationId: 'beta', kind: 'team', name: 'Beta', role: 'admin' },
+      { organizationId: 'gamma', kind: 'team', name: 'Gamma', role: 'member' },
+    ],
+  } as any;
+
+  it.each([
+    ['acme', 'owner', true],
+    ['beta', 'admin', true],
+    ['gamma', 'member', false],
+    ['unknown', undefined, false],
+    [null, undefined, false],
+  ])('org %s → role %s, admin %s', (orgId, role, isAdmin) => {
+    expect(selectRoleForOrg(state, orgId as any)).toBe(role);
+    expect(selectIsAdminOfOrg(state, orgId as any)).toBe(isAdmin);
+  });
+
+  it('resolves a non-active org, so the active org is not the authority', () => {
+    expect(state.userOrganization).toBe('individual');
+    expect(selectRoleForOrg(state, 'acme')).toBe('owner');
+  });
+
+  it('lists team memberships only — individual is not a manageable org', () => {
+    expect(selectTeamMemberships(state).map((m: any) => m.organizationId)).toEqual([
+      'acme',
+      'beta',
+      'gamma',
+    ]);
   });
 });

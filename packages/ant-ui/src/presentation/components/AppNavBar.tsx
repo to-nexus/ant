@@ -45,7 +45,6 @@ export function AppNavBar({}: AppNavBarProps) {
   const userPicture = useStore((state) => state.userPicture);
   const signOut = useSignOut();
   const serverMode = useStore((state) => selectServerMode(state));
-  const userOrgKind = useStore((state) => state.userOrgKind);
   const pendingInvites = useStore((state) => state.pendingInvites);
   const undismissAllInvites = useStore((state) => state.undismissAllInvites);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
@@ -598,23 +597,23 @@ export function AppNavBar({}: AppNavBarProps) {
                           {t('auth.joinTeam', 'Join a team')}
                         </button>
                         <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }}></div>
-                        {userOrgKind === 'team' && (
-                          <button
-                            onClick={() => {
-                              setQuickStartProjectId(undefined);
-                              setOnboardingSkipped(true);
-                              openMainPanelTab('orgSettings');
-                              setShowUserMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
-                            style={{ color: 'var(--text-2)' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                          >
-                            <Building2 className="w-4 h-4" />
-                            {t('auth.orgSettings', 'Organization settings')}
-                          </button>
-                        )}
+                        {/* Ungated: the panel is the org hub for every cloud
+                            account — a member-less one lands on discovery. */}
+                        <button
+                          onClick={() => {
+                            setQuickStartProjectId(undefined);
+                            setOnboardingSkipped(true);
+                            openMainPanelTab('orgSettings');
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                          style={{ color: 'var(--text-2)' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <Building2 className="w-4 h-4" />
+                          {t('auth.orgSettings', 'Organization settings')}
+                        </button>
                         <button
                           onClick={() => {
                             setQuickStartProjectId(undefined);

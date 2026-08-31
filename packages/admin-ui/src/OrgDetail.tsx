@@ -81,6 +81,7 @@ export function OrgDetail({
               <th>이메일</th>
               <th>역할</th>
               <th>가입</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -89,6 +90,29 @@ export function OrgDetail({
                 <td>{m.email}</td>
                 <td>{m.role}</td>
                 <td className="muted">{new Date(m.joinedAt).toLocaleDateString()}</td>
+                <td>
+                  {/* The owner is refused server-side too — transfer or delete the org. */}
+                  {m.role === 'owner' ? (
+                    <span className="muted">소유자</span>
+                  ) : (
+                    <button
+                      className="danger"
+                      disabled={busy}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `${m.email} 을(를) ${detail.id} 에서 제거합니다.\n` +
+                              '도메인 자동 가입 제외 목록에 기록되어 다음 로그인에 다시 합류하지 않습니다.',
+                          )
+                        )
+                          return;
+                        void run(() => adminApi.adminRemoveOrgMember(detail.id, m.userId));
+                      }}
+                    >
+                      제거
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

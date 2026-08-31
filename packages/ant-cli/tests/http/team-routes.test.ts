@@ -822,3 +822,40 @@ describe('domain join policy', () => {
     expect(json.code).toBe('DOMAIN_NOT_FOUND');
   });
 });
+
+// ---------- Active-org independence (the org hub leans on this) ----------
+
+describe('authorization reads the path org, not the JWT org claim', () => {
+  /**
+   * The FE org hub manages any team in `memberships` without switching into it
+   * first. That is only sound because `requireTeamRole` resolves the org from
+   * the path and the LIVE membership row — the JWT `org` claim below stays
+   * `individual` for every request in this harness.
+   */
+  it.each([
+    ['read the org', 'GET', '/organizations/acme', undefined, 200],
+    ['read members', 'GET', '/organizations/acme/members', undefined, 200],
+    ['leave it', 'POST', '/organizations/acme/leave', {}, 200],
+  ])('a member whose active org is individual can %s', async (_label, method, path, body, expected) => {
+    await seedTeam();
+    const { status } = await as(MEMBER, method, path, body);
+    expect(status).toBe(expected);
+  });
+
+  it('still refuses a non-member holding the same individual claim', async () => {
+    await seedTeam();
+    const { status, json } = await as(OUTSIDER, 'GET', '/organizations/acme/members');
+    expect(status).toBe(404);
+    expect(json.code).toBe('NOT_A_MEMBER');
+  });
+
+  it('leaving a non-active org records the row and detaches only that membership', async () => {
+    await seedTeam();
+    await as(MEMBER, 'POST', '/organizations/acme/leave', {});
+
+    expect(await repo.getMembership(MEMBER.id, 'acme')).toBeNull();
+    expect(await repo.getMemberRemoval('acme', MEMBER.id)).toMatchObject({ reason: 'left' });
+    // The active org was never `acme`, so the pointer is untouched.
+    expect((await repo.getUser(MEMBER.id))!.currentOrganizationId).toBe('individual');
+  });
+});

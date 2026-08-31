@@ -95,6 +95,18 @@ class FakeOrgRepo implements OrganizationRepositoryPort {
   async getUserApproval(): Promise<never> {
     throw new Error('not used');
   }
+  async deleteUserIdentity(): Promise<never> {
+    throw new Error('not used');
+  }
+  async recordUserPurge(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getUserPurge(): Promise<never> {
+    throw new Error('not used');
+  }
+  async clearUserPurge(): Promise<never> {
+    throw new Error('not used');
+  }
   async setUserApproval(): Promise<never> {
     throw new Error('not used');
   }

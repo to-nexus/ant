@@ -172,6 +172,28 @@ domain, an admin-approved join request. Search finds a team; it never joins one.
 `domainJoinableOrgs`, `myJoinRequests`, `autoJoinedOrg`. It is a pure read: the
 membership a verified domain grants is written by the OAuth callback, not here.
 
+Authorization reads the **path `orgId` and the live membership row**, never the
+JWT `org` claim, so every route above works on any org the caller belongs to
+regardless of which one is active. The FE organization hub relies on this to
+inspect and leave a team without switching into it first.
+
+### Super-admin org / account surface
+
+`/api/admin/*` is env-authoritative (`ANT_SUPER_ADMIN_EMAILS`) and exempt from
+the approval gate.
+
+| Verb | Path | Notes |
+|------|------|-------|
+| DELETE | `/api/admin/organizations/:orgId/members/:userId` | Purge a membership. Above the role ladder (may remove an `admin`) but the **owner is still refused** — transfer, or delete the org. Writes the removal row. |
+| DELETE | `/api/admin/users/:userId?confirmEmail=` | Purge an account. Guards in order: 404 unknown → 400 `PURGE_CONFIRM_MISMATCH` → 403 `PURGE_FORBIDDEN` (super-admin or self) → 501 when the deployment wired no purge deps. Returns a per-step report; a **partial purge is still a 200**, because the steps that succeeded are permanent. |
+| DELETE | `/api/admin/users/:userId/purge` | Lift a purge tombstone so a mistakenly purged email can sign up again. The data is gone either way. |
+
+A purge leaves a tombstone rather than a hole — see
+[internals/40-org-model.md](../internals/40-org-model.md#account-purge) for why a
+plain delete would leave a live cookie and a 90-day desktop token working.
+`POST /api/user/reset` runs the same engine in `data-only` mode, so a self-reset
+gets the full project-lifecycle cascade instead of a bare `fs.rm`.
+
 ## Custom agents (universal runtime)
 
 > ⚠️ **Experimental** — see

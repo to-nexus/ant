@@ -29,6 +29,7 @@ import type { CreditLedgerPort } from '../../src/core/ports/creditLedger';
 class FakeRedis {
   kv = new Map<string, string>();
   sets = new Map<string, Set<string>>();
+  hashes = new Map<string, Map<string, string>>();
   async get(key: string): Promise<string | null> {
     return this.kv.get(key) ?? null;
   }
@@ -54,6 +55,23 @@ class FakeRedis {
   }
   async scan(_cursor: string, ..._args: unknown[]): Promise<[string, string[]]> {
     return ['0', []];
+  }
+  // Removal rows are a HASH — `removeMembership` writes one on every detach.
+  async hget(key: string, field: string): Promise<string | null> {
+    return this.hashes.get(key)?.get(field) ?? null;
+  }
+  async hset(key: string, field: string, value: string): Promise<number> {
+    const h = this.hashes.get(key) ?? new Map<string, string>();
+    const fresh = !h.has(field);
+    h.set(field, value);
+    this.hashes.set(key, h);
+    return fresh ? 1 : 0;
+  }
+  async hdel(key: string, field: string): Promise<number> {
+    return this.hashes.get(key)?.delete(field) ? 1 : 0;
+  }
+  async hgetall(key: string): Promise<Record<string, string>> {
+    return Object.fromEntries(this.hashes.get(key) ?? []);
   }
   multi(): any {
     const ops: Array<() => void> = [];
@@ -364,5 +382,125 @@ describe('GET /admin/users/:userId — per-scope detail', () => {
     // An unaccounted scope reports no balance and is not queried for a ledger.
     expect(byOrg['team-b'].balance).toBeNull();
     expect(byOrg['team-b'].transactions).toEqual([]);
+  });
+});
+
+describe('DELETE /admin/organizations/:orgId/members/:userId', () => {
+  /**
+   * Super-admin sits above the org role ladder (it may remove an `admin`), but
+   * not above the owner invariant — an ownerless team can no longer transfer,
+   * rename or delete itself.
+   */
+  it.each([
+    ['member', 200],
+    ['admin', 200],
+    ['owner', 403],
+  ])('role %s → %i', async (role, expected) => {
+    await seedUser();
+    await repo.setMembershipRole(USER.id, 'team-a', role as any);
+    await startApp(ledger);
+
+    const { status } = await api(
+      'DELETE',
+      `/admin/organizations/team-a/members/${encodeURIComponent(USER.id)}`,
+    );
+    expect(status).toBe(expected);
+    expect(await repo.getMembership(USER.id, 'team-a')).toEqual(
+      expected === 200 ? null : expect.objectContaining({ role }),
+    );
+  });
+
+  it('records a removal row, so the domain shortcut cannot re-add them at next login', async () => {
+    await seedUser();
+    await startApp(ledger);
+
+    await api('DELETE', `/admin/organizations/team-a/members/${encodeURIComponent(USER.id)}`);
+
+    const removal = await repo.getMemberRemoval('team-a', USER.id);
+    expect(removal).toMatchObject({ reason: 'removed', removedBy: ADMIN_EMAIL });
+  });
+
+  it('reverts an active-org pointer that named the org it just detached', async () => {
+    await seedUser();
+    const user = await repo.getUser(USER.id);
+    user!.currentOrganizationId = 'team-a';
+    await repo.upsertUser({ ...user!, currentOrganizationId: 'team-a' } as any);
+    await startApp(ledger);
+
+    await api('DELETE', `/admin/organizations/team-a/members/${encodeURIComponent(USER.id)}`);
+
+    expect((await repo.getUser(USER.id))!.currentOrganizationId).toBe('individual');
+  });
+
+  it.each([
+    ['unknown org', '/admin/organizations/nope/members/kim%40acme.com'],
+    ['non-member', `/admin/organizations/team-a/members/${encodeURIComponent('ghost@acme.com')}`],
+  ])('%s → 404', async (_label, path) => {
+    await seedUser();
+    await startApp(ledger);
+    expect((await api('DELETE', path)).status).toBe(404);
+  });
+});
+
+describe('DELETE /admin/users/:userId — purge guards', () => {
+  /**
+   * The purge deps are absent in this harness, so a request that reaches the
+   * engine answers 501. Every case below must be REFUSED before that point —
+   * a 501 here would mean the guard did not run.
+   */
+  it('501s when the deployment has no purge deps wired', async () => {
+    await seedUser();
+    await startApp(ledger);
+    const { status } = await api(
+      'DELETE',
+      `/admin/users/${encodeURIComponent(USER.id)}?confirmEmail=${encodeURIComponent(USER.email)}`,
+    );
+    expect(status).toBe(501);
+  });
+
+  it.each([
+    ['no confirmEmail', '', 400],
+    ['wrong confirmEmail', 'someone@else.com', 400],
+  ])('%s → %i', async (_label, confirm, expected) => {
+    await seedUser();
+    await startApp(ledger);
+    const { status, json } = await api(
+      'DELETE',
+      `/admin/users/${encodeURIComponent(USER.id)}?confirmEmail=${encodeURIComponent(confirm)}`,
+    );
+    expect(status).toBe(expected);
+    expect(json.code).toBe('PURGE_CONFIRM_MISMATCH');
+  });
+
+  it('404s for an unknown user, before the confirm check', async () => {
+    await startApp(ledger);
+    const { status } = await api('DELETE', '/admin/users/ghost%40acme.com?confirmEmail=ghost%40acme.com');
+    expect(status).toBe(404);
+  });
+
+  it('refuses a super admin — the env grant would resurrect them at next boot', async () => {
+    await repo.upsertUser({ id: ADMIN_EMAIL, email: ADMIN_EMAIL, currentOrganizationId: 'individual' });
+    await startApp(ledger);
+    const { status, json } = await api(
+      'DELETE',
+      `/admin/users/${encodeURIComponent(ADMIN_EMAIL)}?confirmEmail=${encodeURIComponent(ADMIN_EMAIL)}`,
+    );
+    expect(status).toBe(403);
+    expect(json.code).toBe('PURGE_FORBIDDEN');
+  });
+
+  it('lifts a tombstone, and 404s when there is none', async () => {
+    await seedUser();
+    await startApp(ledger);
+    expect((await api('DELETE', `/admin/users/${encodeURIComponent(USER.id)}/purge`)).status).toBe(404);
+
+    await repo.recordUserPurge({
+      userId: USER.id,
+      purgedAt: new Date().toISOString(),
+      purgedBy: ADMIN_EMAIL,
+      reason: 'admin-purge',
+    });
+    expect((await api('DELETE', `/admin/users/${encodeURIComponent(USER.id)}/purge`)).status).toBe(200);
+    expect(await repo.getUserPurge(USER.id)).toBeNull();
   });
 });

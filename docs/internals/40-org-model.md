@@ -290,6 +290,94 @@ release domain claims. Workspace directories are preserved. Owner self-delete
 requires sole membership (409 `ORG_NOT_EMPTY`); superadmin force-delete has no
 such guard. Deleted orgs are indistinguishable 404s on every team route.
 
+**Super-admin member removal**: `DELETE /admin/organizations/:orgId/members/:userId`
+is the org-role ladder's superset — it may remove an `admin` — but NOT its
+exception: the owner is still refused (`OWNER_MUST_TRANSFER`), because an
+ownerless team can no longer transfer, rename or delete itself, and
+`DELETE /admin/organizations/:orgId` is the verb for disposing of the org. It
+writes the same removal row an org admin's removal does; without it the domain
+shortcut re-adds the member at their very next login.
+
+## Account purge
+
+`core/account/purgeAccount.ts` is the single owner of "destroy everything this
+identity owns". Two callers today — `DELETE /api/admin/users/:userId`
+(`mode: 'full'`) and `POST /api/user/reset` (`mode: 'data-only'`) — and a third,
+self-serve withdrawal, is the same call with `reason: 'self-withdrawal'`.
+
+The scope set is `memberships ∪ ledger accounts ∪ {individual}`. The last term
+is **mandatory, not a convenience**: `resolveTenantUserDir` anchors a TEAM
+member's personal data (`.ant/agents`, `.ant/pipelines`, `credentials.json`,
+`encryption.key`) under `{ws}/individual/{user}` so an org switch never re-homes
+their definitions. A purge that swept only the membership orgs would leave the
+encrypted credential store on disk.
+
+Step order — `projects` → `userFiles` → `redisState` → `memberships` →
+`orgAcls` → `identity`. Each step reports rather than throws: one wedged project
+must not leave a half-purged account with no record of what remains, and the
+identity step must still run so a partially purged account is locked out.
+
+- **Projects go through `ProjectService.deleteProject(..., { force: true })`**,
+  never a bare `fs.rm`. That is the 5-step cascade — job cancellation, pipeline
+  deactivation, IDE pod teardown, preview ack, Redis sweep. `POST /api/user/reset`
+  used to walk the project dirs and `fs.rm` them, skipping all of it: jobs were
+  never cancelled, activations kept firing against a deleted project, IDE pods
+  kept their file handles open, and project Redis keys survived as ghost state.
+  It now calls this engine, so there is one owner instead of two.
+- **`StateStorePort.cleanupUserScope(orgId, userId)`** sweeps what
+  `cleanupProject` cannot reach because it is not project-keyed: pipeline run
+  slots, artifact file-tree / unseen caches, RAC baselines, and the transfer
+  index. The transfer arm also prunes the **counterparty's** index — their list
+  otherwise holds request ids resolving to a deleted account.
+- **Memberships detach with `record: null`.** The account is gone, so a
+  domain-shortcut blocklist row would gate a login that can never happen — the
+  same reasoning `softDeleteOrganization` already applies.
+- **Org ACL rows are pruned.** Left in place they are inert (`canEditOrgResource`
+  needs a live membership row) but a re-added namesake would silently inherit
+  the old ownership. Org-scoped *definitions* the user promoted stay: they are
+  org property, not personal data.
+- **Billing is deliberately NOT deleted.** `ant:billing:ledger:*` is the only
+  record of purchases — there is no invoice system and, with
+  `MockPaymentProvider`, no PSP copy. The tombstone makes it unreachable and the
+  admin list already renders such rows as `orphaned`. Revisit with an
+  export-and-archive step when a real PSP lands.
+
+### The identity is tombstoned, never merely deleted
+
+`ant:auth:user:purged:{userId}` (JSON, no PII: `purgedAt` / `purgedBy` /
+`reason`) survives the deleted `USER` record because a plain delete is
+**cosmetic**:
+
+- `getUserApproval` returns `'approved'` for a MISSING record — the legacy
+  backfill default, which must stay for accounts that predate the approval
+  field. JWTs are stateless ES256 with no denylist, so without the tombstone a
+  purged account's session cookie keeps working for days and its desktop token
+  for **90**. The tombstone makes the read answer `'denied'`, so
+  `checkApproval` 403s `ACCOUNT_DENIED` on the very next request.
+- `upsertUser` runs on every OAuth callback and would re-create the identity,
+  restoring the email / name / picture the purge just removed. It now consults
+  the tombstone first: `admin-purge` throws `PurgedAccountError`;
+  `self-withdrawal` lifts the tombstone and proceeds as a brand-new signup,
+  because a person who deleted their own account may come back.
+- `DELETE /admin/users/:userId/purge` lifts a tombstone so a mistaken purge is
+  recoverable as an identity. The DATA is gone either way.
+
+Route guards, in order: 404 unknown user → 400 `PURGE_CONFIRM_MISMATCH`
+(`?confirmEmail=` must match; a `userId` here IS an email and the admin table is
+a dense list of near-identical rows) → 403 `PURGE_FORBIDDEN` for a super-admin
+(the env grant would resurrect them at the next boot's `syncSuperAdmins`) or for
+the caller themselves → **then** 501 if the deployment wired no purge deps. The
+capability check is last on purpose: every deployment must refuse the same
+targets, or a misconfiguration would mask one that was never purgeable.
+
+**Self-serve withdrawal is designed but NOT implemented.** The engine is the
+whole backend; what remains is `DELETE /api/auth/account` (own purge with
+`reason: 'self-withdrawal'`, typed-email confirmation, the same owner refusal as
+leave, clearing the session cookie), an `AccountConfigEditor` danger zone reusing
+`tenantScrubPatch` for FE teardown, and a post-purge landing state. Immediate vs
+grace-period is answerable either way on the tombstone, which already denies
+access without destroying the id.
+
 **Org-admin approval seam**: team membership itself is the org-level
 authorization; the account-level `approvalStatus` stays superadmin-owned and
 orthogonal.
@@ -369,6 +457,15 @@ into the new identity. Pre-launch alternative: wipe the legacy cloud trees +
   the repo, sensitive-field projection.
 - ant-ui `tests/store/orgSlice.test.ts` — the five org resources, three
   independent dismissal sets, auto-join notice visibility, own-request index.
+- `tests/http/account-purge.test.ts` — scope resolution (individual always
+  included; a ledger scope outliving its membership), the cascade (force-delete
+  per project, the individual-anchored credential store removed, memberships
+  detached, ACL rows pruned, a failed step reported without aborting the
+  identity step), `data-only` stopping before the identity, and the two
+  tombstone hazards (a purged id reads `denied` while an unknown id still reads
+  `approved`; `upsertUser` refuses an admin purge and lets a withdrawal re-signup).
+- `tests/http/team-routes.test.ts` also pins the org hub's premise — a member
+  whose active org is `individual` can read and leave a team by path orgId.
 - `tests/http/org-individual-policy.test.ts` — lookup (404-as-null) + visibility config.
 - `tests/policy/kind-dispatch-not-mode.test.ts` — no `isLocalServerMode` business gate.
 - `tests/deploy/deployVisibilityGate.test.ts` — 404-not-403 private gate.

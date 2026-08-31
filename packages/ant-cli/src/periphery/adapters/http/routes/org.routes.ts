@@ -21,16 +21,20 @@ import { CANONICAL_FEATURE_DIRS, ROLE_FORBIDDEN, featureSlugToName, featureNameT
 import { OrgConfig } from '../../../../core/types/orgConfig';
 import {
   UserConfig,
-  getUserConfigPath,
   readUserConfig,
   writeUserConfig,
   readUserVisibility,
 } from './helpers/userConfigStore';
+import { purgeAccount, type PurgeAccountDeps } from '../../../../core/account/purgeAccount';
 
 export interface OrgRoutesDeps {
   workspaceResolver: any;
   /** Phase 1: membership port — team member listing SSOT when wired. */
   organizationRepository?: import('../../../../core/ports/organizationRepository').OrganizationRepositoryPort;
+  /** `POST /user/reset` runs the shared purge engine; absent → 501. */
+  projectService?: PurgeAccountDeps['projectService'];
+  stateStore?: PurgeAccountDeps['stateStore'];
+  creditLedger?: import('../../../../core/ports/creditLedger').CreditLedgerPort;
 }
 
 /** Validate an email param: lowercase, single `@`, no path separators. */
@@ -445,56 +449,39 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
   /**
    * POST /api/user/reset
-   * Reset user account: delete all workspaces, sessions, and user config.
-   * Git repositories are preserved.
+   *
+   * Delete the caller's own projects, definitions and config. Git repositories
+   * outside the workspace tree are untouched, and the ACCOUNT survives — this
+   * is a data reset, not a withdrawal (`mode: 'data-only'`).
+   *
+   * It runs the same engine as the admin purge on purpose. The hand-rolled
+   * version this replaced walked the project dirs and `fs.rm`-ed them, skipping
+   * the 5-step lifecycle cascade entirely: jobs were never cancelled, pipeline
+   * activations kept firing against a deleted project, IDE pods kept their
+   * file handles open, and the project's Redis keys survived as ghost state.
    */
   router.post('/user/reset', async (req: Request, res: Response) => {
     try {
+      if (!deps.projectService || !deps.organizationRepository || !deps.creditLedger) {
+        return res.status(501).json({ error: 'Account reset is not available on this deployment.' });
+      }
       const userContext = extractUserContext(req);
-      const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
-      const userWorkspacePath = path.join(workspacesPath, userContext.organizationId, userContext.userId);
-
-      logger.debug(`[UserReset] Starting account reset for user ${userContext.userId} in org ${userContext.organizationId}`);
-
-      if (!fs.existsSync(userWorkspacePath)) {
-        logger.debug('[UserReset] User workspace not found, nothing to reset');
-        res.json({ success: true, message: 'No data to reset' });
-        return;
-      }
-
-      // Read all project directories
-      const projectDirs = fs.readdirSync(userWorkspacePath, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory() && dirent.name !== '.ant')
-        .map(dirent => dirent.name);
-
-      logger.debug(`[UserReset] Found ${projectDirs.length} projects to delete`);
-
-      // Delete each project directory entirely
-      for (const projectId of projectDirs) {
-        const projectPath = path.join(userWorkspacePath, projectId);
-        await fs.promises.rm(projectPath, { recursive: true, force: true });
-        logger.debug(`[UserReset] Deleted project ${projectId}`);
-      }
-
-      // Delete user config
-      const userConfigPath = getUserConfigPath(workspacesPath, userContext.organizationId, userContext.userId);
-      if (fs.existsSync(userConfigPath)) {
-        await fs.promises.unlink(userConfigPath);
-        logger.debug('[UserReset] Deleted user-config.json');
-      }
-
-      // Delete .ant directory if it exists and is now empty
-      const antDirPath = path.join(userWorkspacePath, '.ant');
-      if (fs.existsSync(antDirPath)) {
-        const antDirContents = fs.readdirSync(antDirPath);
-        if (antDirContents.length === 0) {
-          await fs.promises.rmdir(antDirPath);
-          logger.debug('[UserReset] Deleted empty .ant directory');
-        }
-      }
-
-      logger.debug('[UserReset] ✅ Account reset complete');
-      res.json({ success: true, message: 'Account reset successfully' });
+      const report = await purgeAccount(
+        {
+          organizationRepository: deps.organizationRepository,
+          creditLedger: deps.creditLedger,
+          stateStore: deps.stateStore,
+          workspacesPath: workspaceResolver.getPhysicalWorkspacesPath(),
+          projectService: deps.projectService,
+        },
+        {
+          userId: userContext.userId,
+          purgedBy: userContext.userId,
+          reason: 'self-withdrawal',
+          mode: 'data-only',
+        },
+      );
+      res.json({ success: report.ok, report });
     } catch (error: any) {
       logger.error('[UserReset] Failed', { component: 'UserReset' }, error);
       sendErrorResponse(res, 500, error, 'Org');

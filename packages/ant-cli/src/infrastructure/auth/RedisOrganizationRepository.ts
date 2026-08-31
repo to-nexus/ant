@@ -16,6 +16,7 @@ import { REDIS_KEYS } from '../state/redisConstants';
 import type {
   OrganizationRepositoryPort,
   OrganizationSummary,
+  UserPurgeRecord,
 } from '../../core/ports/organizationRepository';
 import type {
   Organization,
@@ -39,6 +40,18 @@ import type {
 import { isSuperAdminEmail } from '../../core/auth/superAdmin';
 
 const PENDING_ORG_SENTINEL = '_pending';
+
+/**
+ * An admin-purged identity signing in again. Thrown from `upsertUser` so the
+ * OAuth callback can answer with a refusal instead of resurrecting the account.
+ */
+export class PurgedAccountError extends Error {
+  readonly code = 'ACCOUNT_PURGED';
+  constructor(userId: string) {
+    super(`Account ${userId} was removed by an administrator.`);
+    this.name = 'PurgedAccountError';
+  }
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -99,6 +112,9 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
   }
   private orgRemovedKey(orgId: string): string {
     return `${REDIS_KEYS.AUTH.ORG_REMOVED}${orgId}`;
+  }
+  private userPurgedKey(userId: string): string {
+    return `${REDIS_KEYS.AUTH.USER_PURGED}${userId}`;
   }
 
   // -------- Organizations --------
@@ -647,6 +663,20 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     lastDomainAutoJoin?: UserRecord['lastDomainAutoJoin'];
   }): Promise<UserRecord> {
     const existing = await this.getUser(input.id);
+
+    // A purged identity must not be silently re-created by the next OAuth
+    // callback — that would restore the email / name / picture the purge just
+    // removed. `admin-purge` refuses outright; a person who deleted their own
+    // account may come back, so `self-withdrawal` lifts the tombstone and
+    // proceeds as a brand-new signup.
+    if (!existing) {
+      const purge = await this.getUserPurge(input.id);
+      if (purge?.reason === 'admin-purge') {
+        throw new PurgedAccountError(input.id);
+      }
+      if (purge) await this.clearUserPurge(input.id);
+    }
+
     const isSuper = isSuperAdminEmail(input.email);
 
     // Approval is stamped ONLY when the record is newly created (existing===null)
@@ -787,7 +817,59 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
 
   async getUserApproval(userId: string): Promise<ApprovalStatus> {
     const u = await this.getUser(userId);
-    return u?.approvalStatus ?? 'approved';
+    if (u) return u.approvalStatus ?? 'approved';
+    // A MISSING record defaults to `approved` (legacy / unmanaged accounts were
+    // never retroactively pended). A PURGED one must not inherit that default:
+    // the JWT is stateless, so the tombstone is the only thing that stops a
+    // still-held cookie or a 90-day desktop token from working after deletion.
+    return (await this.getUserPurge(userId)) ? 'denied' : 'approved';
+  }
+
+  // -------- Purge tombstones --------
+
+  async deleteUserIdentity(userId: string, email?: string): Promise<void> {
+    const pipeline = this.redis.multi();
+    pipeline.del(this.userKey(userId));
+    pipeline.srem(REDIS_KEYS.AUTH.USER_INDEX, userId);
+    if (email) {
+      pipeline.del(this.userByEmailKey(email));
+      pipeline.del(this.invitesByEmailKey(email));
+    }
+    await pipeline.exec();
+
+    // Join requests this account raised: drop the records, their per-org
+    // pending guard, and the by-user index. Leaving them would show an admin a
+    // request from an identity that no longer resolves.
+    const requests = await this.listJoinRequestsByUser(userId);
+    for (const r of requests) {
+      await this.redis.del(this.joinRequestKey(r.id));
+      await this.redis.del(this.joinRequestPendingKey(r.organizationId, r.userId));
+      await this.redis.srem(this.orgJoinRequestsKey(r.organizationId), r.id);
+    }
+    await this.redis.del(this.userJoinRequestsKey(userId));
+
+    // The org-orgs index is dropped by removeMembership per org, but a
+    // membership-less account still owns the (empty) set key.
+    await this.redis.del(this.userOrgsKey(userId));
+  }
+
+  async recordUserPurge(purge: UserPurgeRecord): Promise<void> {
+    await this.redis.set(this.userPurgedKey(purge.userId), JSON.stringify(purge));
+  }
+
+  async getUserPurge(userId: string): Promise<UserPurgeRecord | null> {
+    const raw = await this.redis.get(this.userPurgedKey(userId));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as UserPurgeRecord;
+    } catch {
+      logger.warn(`[OrgRepo] corrupt purge tombstone for ${userId}`, { component: 'OrgRepo' });
+      return null;
+    }
+  }
+
+  async clearUserPurge(userId: string): Promise<void> {
+    await this.redis.del(this.userPurgedKey(userId));
   }
 
   async setUserApproval(userId: string, status: ApprovalStatus, adminEmail: string): Promise<void> {

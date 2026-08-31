@@ -223,6 +223,24 @@ export class NoopOrganizationRepository implements OrganizationRepositoryPort {
     return 'approved';
   }
 
+  // Local mode has one hard-coded tenant and no account lifecycle, so there is
+  // nothing to purge and never a tombstone to honour.
+  async deleteUserIdentity(): Promise<void> {
+    // intentional no-op
+  }
+
+  async recordUserPurge(): Promise<void> {
+    // intentional no-op
+  }
+
+  async getUserPurge(): Promise<null> {
+    return null;
+  }
+
+  async clearUserPurge(): Promise<void> {
+    // intentional no-op
+  }
+
   async setUserApproval(): Promise<void> {
     // intentional no-op
   }

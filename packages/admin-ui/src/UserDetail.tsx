@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminScopeDetail, AdminUserDetail, ApprovalStatus } from '@ant/shared';
-import { adminApi, getSystemConfig } from './api/admin';
+import { adminApi, getSystemConfig, type AdminPurgeReport } from './api/admin';
 
 /**
  * One card per billing scope. Credits are keyed per (org, user), so a refund
@@ -118,6 +118,9 @@ export function UserDetail({
   const [testLevel, setTestLevel] = useState('');
   // Refund is a billing action — self-hosted (unmetered) deployments have no refund route.
   const [billingEnabled, setBillingEnabled] = useState(false);
+  /** Typed-email confirmation for the purge — the button stays disabled until it matches. */
+  const [purgeConfirm, setPurgeConfirm] = useState('');
+  const [purgeReport, setPurgeReport] = useState<AdminPurgeReport | null>(null);
 
   useEffect(() => {
     getSystemConfig()
@@ -156,6 +159,20 @@ export function UserDetail({
 
   const setApproval = (status: ApprovalStatus) => run(() => adminApi.setApproval(userId, status));
   const applyTestLevel = () => run(() => adminApi.setTestLevel(userId, Number(testLevel) || 0));
+  const purge = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setPurgeReport(await adminApi.purgeUser(userId, purgeConfirm.trim()));
+      setPurgeConfirm('');
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const applyRefund = (organizationId: string, credits: number, reason: string) =>
     run(() =>
       adminApi.refund(
@@ -221,6 +238,49 @@ export function UserDetail({
           </div>
         </div>
       </div>
+
+      {/* Purge — distinct from 차단 (an approvalStatus flip that keeps the data). */}
+      {!detail.isSuperAdmin && (
+        <div
+          className="card"
+          style={{ background: 'var(--surface-2)', marginBottom: 16, borderColor: 'var(--danger, #b91c1c)' }}
+        >
+          <strong>계정 완전 삭제</strong>
+          <div className="muted" style={{ marginBottom: 8 }}>
+            프로젝트·정의·자격증명·소속을 모두 제거하고 신원에 tombstone 을 남깁니다.
+            보유 중인 세션 쿠키와 데스크톱 토큰이 즉시 무효화되고, 같은 계정으로 다시
+            가입할 수 없습니다. 결제 원장은 회계 기록이므로 보존됩니다.
+          </div>
+          <div className="row">
+            <input
+              value={purgeConfirm}
+              onChange={(e) => setPurgeConfirm(e.target.value)}
+              placeholder={`확인을 위해 ${detail.email} 입력`}
+              style={{ minWidth: 280 }}
+            />
+            <button
+              className="danger"
+              disabled={busy || purgeConfirm.trim().toLowerCase() !== detail.email.toLowerCase()}
+              onClick={() => void purge()}
+            >
+              영구 삭제
+            </button>
+          </div>
+          {purgeReport && (
+            <table style={{ marginTop: 10 }}>
+              <tbody>
+                {purgeReport.steps.map((st) => (
+                  <tr key={st.step}>
+                    <td>{st.step}</td>
+                    <td className={st.ok ? undefined : 'error'}>{st.ok ? '완료' : '실패'}</td>
+                    <td className="muted">{st.detail ?? st.error ?? ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <strong>소속별 결제 ({detail.scopes.length})</strong>
       {detail.scopes.map((s) => (

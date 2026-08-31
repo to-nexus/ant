@@ -201,6 +201,16 @@ export class RouteConfigurator {
     const adminRoutes = createAdminRoutes({
       creditLedger: factory.getCreditLedger(),
       organizationRepository,
+      // Absent deps → the purge route answers 501 rather than half-deleting.
+      ...(this.deps.workspaceResolver && this.deps.projectService
+        ? {
+            purge: {
+              workspacesPath: this.deps.workspaceResolver.getPhysicalWorkspacesPath(),
+              projectService: this.deps.projectService,
+              stateStore: factory.getStateStore(),
+            },
+          }
+        : {}),
     });
     app.use('/api', adminRoutes);
 
@@ -275,6 +285,7 @@ export class RouteConfigurator {
       // so wiring it unconditionally is harmless — the cloud overlay supplies
       // the real Redis-backed repo when present.
       organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
+      creditLedger: getInfrastructureFactory().getCreditLedger(),
       pipelineCoordinator: this.deps.pipelineCoordinator,
     });
     app.use('/api', apiRoutes);
