@@ -1,7 +1,7 @@
 /**
  * Ant-source read/list/search core
  *
- * Shared SSOT for reading Ant's OWN in-image source (cli / ui / docs) with
+ * Shared SSOT for reading Ant's OWN in-image source (cli / ui / docs / shared) with
  * security filters. Extracted from the ask job so the code / design jobs can
  * reuse the exact same logic (self-diagnosis of app↔platform boundary
  * defects) without a layering inversion into the ask graph.
@@ -45,7 +45,7 @@ export const FORBIDDEN_PATTERNS = [
 ];
 
 /** Source type for ant-source tools. */
-export type AntSource = 'cli' | 'ui' | 'docs';
+export type AntSource = 'cli' | 'ui' | 'docs' | 'shared';
 
 /** Result shape shared with the ask job's local ToolResult. */
 export interface AntSourceResult {
@@ -73,11 +73,17 @@ function getDocsRoot(): string {
   return path.resolve(getCliRoot(), '../../../docs');
 }
 
+/** Get @ant/shared source root (the BE↔FE contract SSOT — types live in src, not dist). */
+function getSharedRoot(): string {
+  return path.resolve(getCliRoot(), '../../ant-shared/src');
+}
+
 export function resolveSourceRoot(source: AntSource): string {
   switch (source) {
     case 'cli': return getCliRoot();
     case 'ui': return getUiRoot();
     case 'docs': return getDocsRoot();
+    case 'shared': return getSharedRoot();
   }
 }
 
@@ -175,7 +181,7 @@ export async function readAntSource(args: {
  */
 export function findInAntSourceRoots(relativePath: string): AntSource | undefined {
   if (!relativePath || !validatePath(relativePath).valid) return undefined;
-  for (const source of ['cli', 'ui', 'docs'] as AntSource[]) {
+  for (const source of ['cli', 'ui', 'docs', 'shared'] as AntSource[]) {
     try {
       const root = resolveSourceRoot(source);
       if (fs.existsSync(root) && fs.existsSync(path.join(root, relativePath))) return source;
@@ -196,6 +202,7 @@ export function antSourceToCodebasePath(source: AntSource, relativePath: string)
     case 'cli': return `codebase/packages/ant-cli/src/${relativePath}`;
     case 'ui': return `codebase/packages/ant-ui/${relativePath}`;
     case 'docs': return `codebase/docs/${relativePath}`;
+    case 'shared': return `codebase/packages/ant-shared/src/${relativePath}`;
   }
 }
 

@@ -137,7 +137,13 @@ describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
   });
 
   it('subagentUniversal is read-only and never contains explore (depth-1)', () => {
-    const readOnly = new Set([ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_FILES]);
+    const readOnly = new Set([
+      ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_FILES,
+      // ant-source family: domain-free read-only (see the preset test above) —
+      // without it a universal explore child researching the platform itself
+      // sees only the artifacts tree (pine-crafting-cargo).
+      ToolName.READ_ANT_SOURCE, ToolName.LIST_ANT_FILES, ToolName.SEARCH_ANT_CODE,
+    ]);
     for (const t of TOOL_SETS.subagentUniversal) {
       expect(readOnly.has(t), `subagentUniversal contains non-read-only tool "${t}"`).toBe(true);
     }
@@ -280,6 +286,31 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
     ['run log mount strips its prefix', 'pipeline-runs/r1.jsonl', 'runs:r1.jsonl'],
   ] as const)('%s', async (_label, p, expected) => {
     await expect(build().readFile(p)).resolves.toBe(expected);
+  });
+
+  it.each([
+    ['_agent-definition', 'own-def:'],
+    ['pipeline-runs', 'runs:'],
+  ] as const)('bare mount root %s lists the mount root, not artifacts', async (p, expected) => {
+    // Trailing-slash-only matching let bare roots fall through to the
+    // artifacts adapter ("missing") — pine-crafting-cargo.
+    await expect(build().listFiles(p)).resolves.toEqual([expected]);
+  });
+
+  it('bare _agents root is a mount error, never a fall-through to the artifacts root', () => {
+    // Peer listing needs an agent id; the honest answer is the mount's own
+    // refusal, not the artifacts adapter's "missing".
+    expect(() => build().listFiles('_agents')).toThrow(/Cannot resolve mounted path/);
+  });
+
+  it.each([
+    ['_agent-definition'],
+    ['_agents'],
+    ['pipeline-runs'],
+  ] as const)('bare mount root %s refuses writes (no shadow directory in artifacts)', (p) => {
+    const fs = build();
+    expect(() => fs.createDirectory(p)).toThrow(/read-only/);
+    expect(() => fs.writeFile(`${p}`, 'x')).toThrow(/read-only/);
   });
 
   it('an unresolvable peer id is an error, never a fall-through to the artifacts root', () => {

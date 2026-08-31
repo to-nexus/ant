@@ -503,8 +503,12 @@ export const TOOL_SETS = {
     ToolName.READ_ANT_SOURCE, ToolName.LIST_ANT_FILES, ToolName.SEARCH_ANT_CODE,
     ToolName.READ_WORKSPACE_FILE, ToolName.LIST_WORKSPACE_FILES,
   ] as ToolName[],
+  // ant-source rides along (subagentAsk precedent): a universal parent's
+  // research is often about the Ant platform itself, and a child confined to
+  // the artifacts tree comes back empty-handed (pine-crafting-cargo).
   subagentUniversal: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_FILES,
+    ToolName.READ_ANT_SOURCE, ToolName.LIST_ANT_FILES, ToolName.SEARCH_ANT_CODE,
   ] as ToolName[],
 } as const;
 

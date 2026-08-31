@@ -82,7 +82,7 @@ describe('handleExplore', () => {
 });
 
 describe('catalog policy pins', () => {
-  const CHILD_SETS = ['subagentCode', 'subagentDesign', 'subagentPlanner', 'subagentAsk'] as const;
+  const CHILD_SETS = ['subagentCode', 'subagentDesign', 'subagentPlanner', 'subagentAsk', 'subagentUniversal'] as const;
 
   it('EXPLORE is exposed in all four job matrices (always-on)', () => {
     for (const job of [JobType.CODE, JobType.DESIGN, JobType.PLAN, JobType.ASK]) {

@@ -94,12 +94,33 @@ describe('readAntSource — startLine/endLine', () => {
 describe('findInAntSourceRoots', () => {
   const rows: Array<[string, string | undefined]> = [
     [PLATFORM_FILE, 'cli'],
+    ['pipeline.ts', 'shared'], // @ant/shared contract source is a probed root
     ['no/such/file/anywhere.ts', undefined],
     ['config/.env', undefined], // FORBIDDEN_PATTERNS — never probed
     ['', undefined],
   ];
   it.each(rows)('%s → %s', (rel, expected) => {
     expect(findInAntSourceRoots(rel)).toBe(expected);
+  });
+});
+
+describe('shared source root — the BE↔FE contract SSOT is reachable (pine-crafting-cargo)', () => {
+  it('resolveSourceRoot("shared") points at packages/ant-shared/src', () => {
+    const root = resolveSourceRoot('shared');
+    expect(root.replace(/\\/g, '/')).toMatch(/packages\/ant-shared\/src$/);
+    expect(fs.existsSync(path.join(root, 'pipeline.ts'))).toBe(true);
+  });
+
+  it('readAntSource reads a shared contract file', async () => {
+    const res = await readAntSource({ path: 'pipeline.ts', source: 'shared' });
+    expect(res.success).toBe(true);
+    expect(res.content).toContain('PipelineDef');
+  });
+
+  it('antSourceToCodebasePath maps shared into the clone namespace', () => {
+    expect(antSourceToCodebasePath('shared', 'pipeline.ts')).toBe(
+      'codebase/packages/ant-shared/src/pipeline.ts',
+    );
   });
 });
 

@@ -270,8 +270,12 @@ export function createUniversalFileSystem(
   artifactsFs: FileSystemPort,
   mounts: UniversalReadOnlyMount[],
 ): FileSystemPort {
+  // Bare mount roots (`_agent-definition`, no trailing slash) belong to the
+  // mount too — matching only `prefix/` let them fall through to the
+  // artifacts adapter, so listing a mount root answered "missing" and a write
+  // could shadow it with a real artifacts directory (pine-crafting-cargo).
   const mountFor = (p: string): UniversalReadOnlyMount | undefined =>
-    mounts.find((m) => p.startsWith(m.prefix));
+    mounts.find((m) => p.startsWith(m.prefix) || `${p}/` === m.prefix);
 
   const readOnly = (op: string, prefix: string): never => {
     throw new Error(`${op}: the ${prefix} mount is read-only`);
@@ -279,7 +283,7 @@ export function createUniversalFileSystem(
 
   /** Resolve a mounted path, or throw the mount's own "cannot serve this" error. */
   const target = (m: UniversalReadOnlyMount, p: string): { fs: FileSystemPort; path: string } => {
-    const t = m.resolve(p.slice(m.prefix.length));
+    const t = m.resolve(`${p}/` === m.prefix ? '' : p.slice(m.prefix.length));
     if (!t) throw new Error(`Cannot resolve mounted path: ${p}`);
     return t;
   };

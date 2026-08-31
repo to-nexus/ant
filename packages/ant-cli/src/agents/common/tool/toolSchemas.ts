@@ -395,7 +395,7 @@ export const ARCHITECT_TOOLS = {
       type: 'object' as const,
       properties: {
         path: { type: 'string', description: 'File path relative to the source root (e.g. "periphery/adapters/http/middleware/deployProxy.ts").' },
-        source: { type: 'string', enum: ['cli', 'ui', 'docs'], description: 'Which Ant source: "cli" (backend/serving), "ui" (frontend), "docs". Default: cli.' },
+        source: { type: 'string', enum: ['cli', 'ui', 'docs', 'shared'], description: 'Which Ant source: "cli" (backend/serving), "ui" (frontend), "docs", "shared" (BE↔FE contract types — @ant/shared). Default: cli.' },
         startLine: {
           type: 'number',
           description: 'Start line number (1-based, inclusive). Omit to read from the beginning.',
@@ -416,7 +416,7 @@ export const ARCHITECT_TOOLS = {
       type: 'object' as const,
       properties: {
         path: { type: 'string', description: 'Directory path relative to the source root.' },
-        source: { type: 'string', enum: ['cli', 'ui', 'docs'], description: 'Which Ant source. Default: cli.' },
+        source: { type: 'string', enum: ['cli', 'ui', 'docs', 'shared'], description: 'Which Ant source ("shared" = BE↔FE contract types). Default: cli.' },
       },
       required: ['path'],
     },
@@ -429,8 +429,8 @@ export const ARCHITECT_TOOLS = {
       type: 'object' as const,
       properties: {
         query: { type: 'string', description: 'Substring to search for (2-100 chars).' },
-        source: { type: 'string', enum: ['cli', 'ui', 'docs'], description: 'Which Ant source. Default: cli.' },
-        filePattern: { type: 'string', description: 'Optional file suffix filter (e.g. "*.ts", "*.md"). Default: *.ts (cli/ui) or *.md (docs).' },
+        source: { type: 'string', enum: ['cli', 'ui', 'docs', 'shared'], description: 'Which Ant source ("shared" = BE↔FE contract types). Default: cli.' },
+        filePattern: { type: 'string', description: 'Optional file suffix filter (e.g. "*.ts", "*.md"). Default: *.md (docs) or *.ts (others).' },
       },
       required: ['query'],
     },
