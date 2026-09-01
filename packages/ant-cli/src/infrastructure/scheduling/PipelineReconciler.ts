@@ -76,7 +76,14 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
   const acquired = await deps.stateStore.acquireLock(RECONCILE_LOCK_KEY, RECONCILE_LOCK_TTL);
   if (!acquired) return;
   try {
-    const wanted = new Map<string, { fire: PipelineFireJobData; cron: string; tz?: string; activatedAt: string }>();
+    // Every enabled+resolvable activation gets its projections refreshed —
+    // the mutual-exclusion gate lives on `ant:pipe:proj` and fails OPEN on a
+    // lapse, so a MANUAL-ONLY activation (no cron) must refresh too; only the
+    // scheduler upsert is cron-gated.
+    const wanted = new Map<
+      string,
+      { fire: PipelineFireJobData; schedule?: { cron: string; tz?: string }; activatedAt: string }
+    >();
 
     for (const { dir, owner, projectId } of scanActivationDirs(deps.workspacesPath)) {
       try {
@@ -101,8 +108,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
             projectId,
             firedBy: 'cron',
           },
-          cron: def.on.schedule.cron,
-          tz: def.on.schedule.tz,
+          ...(def.on?.schedule && { schedule: { cron: def.on.schedule.cron, tz: def.on.schedule.tz } }),
           activatedAt: activation.activatedAt,
         });
       } catch (e) {
@@ -112,8 +118,12 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
       }
     }
 
+    const scheduled = new Set<string>();
     for (const [schedulerId, entry] of wanted) {
-      await deps.scheduleQueue.upsertCron(schedulerId, entry.cron, entry.tz, entry.fire);
+      if (entry.schedule) {
+        await deps.scheduleQueue.upsertCron(schedulerId, entry.schedule.cron, entry.schedule.tz, entry.fire);
+        scheduled.add(schedulerId);
+      }
       // Refresh the activation projections — this is what keeps the job-start
       // mutual-exclusion gate alive (TTL > interval; lapse fails OPEN).
       const { owner, pipelineId, projectId } = entry.fire;
@@ -137,9 +147,11 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
       await healOverlapGuard(deps.stateStore, owner, projectId);
     }
 
+    // Sweep against what was actually UPSERTED — a manual-only activation is
+    // wanted (projections) but never scheduled, so its stale cron must go.
     const registered = await deps.scheduleQueue.listCronIds();
     for (const id of registered) {
-      if (id.startsWith('pipe|') && !wanted.has(id)) {
+      if (id.startsWith('pipe|') && !scheduled.has(id)) {
         await deps.scheduleQueue.removeCron(id);
         logger.info(`[Pipeline] removed orphan scheduler: ${id}`, { component: COMPONENT });
       }

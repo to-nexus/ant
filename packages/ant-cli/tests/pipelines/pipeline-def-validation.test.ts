@@ -95,6 +95,8 @@ describe('validatePipelineDef — structural rules', () => {
     ['context glob pin', baseDef({
       steps: [{ id: 'collect', customJobRef: 'research/collect', directive: 'x', context: ['reports/**', 'plan/spec.md'] }],
     })],
+    // Manual-only: no trigger block at all — run-now is the only fire source.
+    ['manual-only pipeline (no on block)', baseDef({ on: undefined })],
     // Retry / timeout / remindAfter on their legal step kinds.
     ['job step with retry + timeout, gate with remindAfter', baseDef({
       steps: [

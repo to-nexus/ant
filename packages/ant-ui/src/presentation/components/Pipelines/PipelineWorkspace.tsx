@@ -104,7 +104,9 @@ export function PipelineWorkspace() {
     setPipelineDraft(next);
   };
 
-  const cronSummary = describeCron(draft.on.schedule.cron, draft.on.schedule.tz, t, i18n.language);
+  const cronSummary = draft.on?.schedule
+    ? describeCron(draft.on.schedule.cron, draft.on.schedule.tz, t, i18n.language)
+    : t('trigger.manualOnly', 'Manual only');
 
   const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate') => {
     if (!editable) return;

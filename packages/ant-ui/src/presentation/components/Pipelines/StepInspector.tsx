@@ -30,7 +30,7 @@ import { HintBadge } from '../common/HintBadge';
 import { Tooltip } from '../common/Tooltip';
 import { FileTreePicker } from '../common/FileTreePicker';
 import { CronBuilder } from './CronBuilder';
-import { TRIGGER_NODE_ID, descendantsOf, effectiveNeedsOf, removeStep, setStepNeeds, updateSchedule, updateStep } from './draft';
+import { TRIGGER_NODE_ID, descendantsOf, effectiveNeedsOf, removeStep, setScheduleEnabled, setStepNeeds, updateSchedule, updateStep } from './draft';
 import { upstreamOutputSuggestions } from './upstreamOutputs';
 
 export interface StepInspectorProps {
@@ -124,37 +124,56 @@ export function StepInspector({ def, nodeId, onChange, onClose, onCronValidity }
 
 function TriggerPanel({ def, onChange, onCronValidity }: { def: PipelineDef; onChange: (d: PipelineDef) => void; onCronValidity: (ok: boolean) => void }) {
   const { t } = useTranslation('pipelines');
-  const sched = def.on.schedule;
+  const sched = def.on?.schedule;
   return (
     <>
-      <CronBuilder
-        cron={sched.cron}
-        tz={sched.tz}
-        onChange={(patch) => onChange(updateSchedule(def, patch))}
-        onValidity={onCronValidity}
-      />
       <div>
-        <FieldLabel>{t('trigger.onMissed', 'If a fire is missed')}</FieldLabel>
+        <FieldLabel>{t('trigger.mode', 'Trigger')}</FieldLabel>
         <AuroraSelect
-          value={sched.onMissed ?? 'skip'}
-          onChange={(v) => onChange(updateSchedule(def, { onMissed: v as 'skip' | 'runOnce' }))}
+          value={sched ? 'schedule' : 'manual'}
+          onChange={(v) => {
+            onChange(setScheduleEnabled(def, v === 'schedule'));
+            // A manual-only def has no cron to validate — the save gate opens.
+            if (v === 'manual') onCronValidity(true);
+          }}
           options={[
-            { value: 'skip', label: t('trigger.onMissedSkip', 'Skip it (default)') },
-            { value: 'runOnce', label: t('trigger.onMissedRunOnce', 'Run once on recovery') },
+            { value: 'schedule', label: t('trigger.modeSchedule', 'Cron schedule') },
+            { value: 'manual', label: t('trigger.modeManual', 'Manual only (Run now)') },
           ]}
         />
       </div>
-      <div>
-        <FieldLabel>{t('trigger.overlap', 'If the previous run is still live')}</FieldLabel>
-        <AuroraSelect
-          value={sched.overlap ?? 'skip'}
-          onChange={(v) => onChange(updateSchedule(def, { overlap: v as 'skip' | 'queue' }))}
-          options={[
-            { value: 'skip', label: t('trigger.overlapSkip', 'Skip this fire (default)') },
-            { value: 'queue', label: t('trigger.overlapQueue', 'Queue until it finishes') },
-          ]}
-        />
-      </div>
+      {sched && (
+        <>
+          <CronBuilder
+            cron={sched.cron}
+            tz={sched.tz}
+            onChange={(patch) => onChange(updateSchedule(def, patch))}
+            onValidity={onCronValidity}
+          />
+          <div>
+            <FieldLabel>{t('trigger.onMissed', 'If a fire is missed')}</FieldLabel>
+            <AuroraSelect
+              value={sched.onMissed ?? 'skip'}
+              onChange={(v) => onChange(updateSchedule(def, { onMissed: v as 'skip' | 'runOnce' }))}
+              options={[
+                { value: 'skip', label: t('trigger.onMissedSkip', 'Skip it (default)') },
+                { value: 'runOnce', label: t('trigger.onMissedRunOnce', 'Run once on recovery') },
+              ]}
+            />
+          </div>
+          <div>
+            <FieldLabel>{t('trigger.overlap', 'If the previous run is still live')}</FieldLabel>
+            <AuroraSelect
+              value={sched.overlap ?? 'skip'}
+              onChange={(v) => onChange(updateSchedule(def, { overlap: v as 'skip' | 'queue' }))}
+              options={[
+                { value: 'skip', label: t('trigger.overlapSkip', 'Skip this fire (default)') },
+                { value: 'queue', label: t('trigger.overlapQueue', 'Queue until it finishes') },
+              ]}
+            />
+          </div>
+        </>
+      )}
       <div>
         <FieldLabel>{t('trigger.onStepFailure', 'When a step fails')}</FieldLabel>
         <AuroraSelect

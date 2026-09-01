@@ -136,7 +136,12 @@ export function isApprovalStep(step: PipelineStepDef): step is ApprovalStepDef {
 export interface PipelineDef {
   version: typeof PIPELINE_DEF_VERSION;
   name: string;
-  on: { schedule: PipelineScheduleTrigger };
+  /**
+   * Trigger block. ABSENT = manual-only: the pipeline fires only via run-now
+   * (the same fire path — activation, overlap and caps gates unchanged).
+   * When declared it must carry a trigger (`schedule` is the only kind today).
+   */
+  on?: { schedule: PipelineScheduleTrigger };
   defaults?: { onStepFailure?: StepFailurePolicy };
   steps: PipelineStepDef[];
 }
@@ -528,7 +533,8 @@ export interface PipelineActivationView {
 export interface PipelineListEntry {
   id: string;
   name: string;
-  cron: string;
+  /** Absent = manual-only (no schedule trigger). */
+  cron?: string;
   tz?: string;
   stepCount: number;
   /** Which scope root resolved this definition (closest wins on id collision). */
@@ -731,10 +737,10 @@ export function validatePipelineDef(
     errors.push('name must be at most 100 characters');
   }
 
-  // Trigger
-  if (!isPlainObject(raw.on) || !isPlainObject(raw.on.schedule)) {
-    errors.push('on.schedule is required (cron trigger)');
-  } else {
+  // Trigger — absent `on` = manual-only (run-now is the only fire source).
+  if (raw.on !== undefined && (!isPlainObject(raw.on) || !isPlainObject(raw.on.schedule))) {
+    errors.push('on.schedule is required when "on" is declared (omit "on" entirely for a manual-only pipeline)');
+  } else if (raw.on !== undefined && isPlainObject(raw.on) && isPlainObject(raw.on.schedule)) {
     const sched = raw.on.schedule as Record<string, unknown>;
     errors.push(...unknownKeyErrors(raw.on, ['schedule'], 'on'));
     errors.push(...unknownKeyErrors(sched, SCHEDULE_KEYS, 'on.schedule'));

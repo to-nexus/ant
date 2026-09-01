@@ -186,6 +186,17 @@ queue runs `attempts: 3` + backoff. **`ant-jobs` keeps `attempts: 1`** — that
 invariant belongs to a different queue and is untouched (a BullMQ retry would
 replay an LLM job's payload without `isResume`).
 
+**The trigger block is optional**: a definition with no `on` is MANUAL-ONLY —
+run-now is its only fire source, riding the identical fire path (activation
+authority, overlap NX, caps — nothing forks). A manual-only activation
+registers no scheduler; the reconciler still refreshes its `ant:pipe:actv` /
+`ant:pipe:proj` projections and heals its overlap guard (the projection
+refresh is deliberately DECOUPLED from the cron upsert — tying them together
+would let the exclusion gate lapse permanently fail-open for manual-only
+activations), and its orphan sweep compares against the set actually
+UPSERTED, so a schedule removed by an edit is swept even while the activation
+stays wanted.
+
 Fire semantics (`PipelineRunCoordinator.handleFire`, addressed by
 `(activator, projectId)`):
 - **Activation is the fire authority**: no `activation.json` ⇒ the fire is an
@@ -711,6 +722,7 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
   re-arms (`gre-`, bounded by MAX_GATE_REMINDERS). Remaining: A3
   approval-await integration (consumes the runner-axis `pendingApproval`
   seal), event triggers (`runCompleted` — pipeline→pipeline chaining).
+  Also shipped: the trigger block became OPTIONAL (manual-only pipelines, §2).
 - **Phase 3**: per-(project, customJobRef) duplicate-gate relaxation +
   tenant concurrency slots, parallel branches/fan-in + FE turn grouping,
   free-DAG canvas editing, `cancelPrevious`, caps admin surface.

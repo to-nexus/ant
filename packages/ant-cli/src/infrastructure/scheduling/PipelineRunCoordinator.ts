@@ -252,7 +252,7 @@ export class PipelineRunCoordinator {
 
     // Missed-fire policy (cron only; manual fires are always "now").
     if (data.firedBy === 'cron' && Date.now() - intendedFireAt > STALE_FIRE_MS) {
-      if ((def.on.schedule.onMissed ?? 'skip') === 'skip') {
+      if ((def.on?.schedule?.onMissed ?? 'skip') === 'skip') {
         logger.info(`[Pipeline] missed fire skipped: ${pipelineId} @ ${new Date(fireEpoch).toISOString()}`, { component: COMPONENT });
         return;
       }
@@ -291,7 +291,7 @@ export class PipelineRunCoordinator {
     const acquired = await this.deps.stateStore.tryAcquireLock(activeKey, runId, REDIS_TTL.PIPE.ACTIVE);
     if (!acquired) {
       await this.deps.stateStore.releaseSlot(slotKey, projectId).catch(() => {});
-      const overlap = def.on.schedule.overlap ?? 'skip';
+      const overlap = def.on?.schedule?.overlap ?? 'skip';
       // Release the fire NX so a queued re-arm (same fireEpoch) can pass it.
       await this.deps.stateStore.releaseLock(firedKey).catch(() => {});
       if (overlap === 'queue' && (data.requeues ?? 0) < MAX_OVERLAP_REQUEUES) {

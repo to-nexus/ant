@@ -65,8 +65,10 @@ export function validatePipelineDefServer(raw: unknown): string[] {
   const errors = validatePipelineDef(raw);
   if (errors.length > 0) return errors;
   const def = raw as PipelineDef;
-  const intervalError = checkMinInterval(def.on.schedule.cron, def.on.schedule.tz);
-  if (intervalError) errors.push(`on.schedule.cron: ${intervalError}`);
+  if (def.on?.schedule) {
+    const intervalError = checkMinInterval(def.on.schedule.cron, def.on.schedule.tz);
+    if (intervalError) errors.push(`on.schedule.cron: ${intervalError}`);
+  }
   return errors;
 }
 

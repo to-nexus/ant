@@ -183,7 +183,7 @@ describe('availability sidecar — missing = disabled draft', () => {
 });
 
 describe('reconciler — activations drive scheduling; pinned scope; availability gates', () => {
-  function writeDef(defRoot: string, id: string, opts: { enabled?: boolean } = {}) {
+  function writeDef(defRoot: string, id: string, opts: { enabled?: boolean; manualOnly?: boolean } = {}) {
     const dir = path.join(defRoot, id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
@@ -191,7 +191,7 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
       yaml.dump({
         version: 2,
         name: id,
-        on: { schedule: { cron: '0 9 * * 1' } },
+        ...(opts.manualOnly ? {} : { on: { schedule: { cron: '0 9 * * 1' } } }),
         steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a' }],
       }),
     );
@@ -297,6 +297,21 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     deps.workspacesPath = tmp;
     await reconcilePipelines(deps as any);
     expect(removed).toEqual(['pipe|local|user|p-old']);
+  });
+
+  it('manual-only activation: projections refresh, no cron registers, a stale scheduler is swept', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1', { manualOnly: true });
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    // A scheduler left over from when the def still had a cron must be swept
+    // even though the activation itself stays wanted.
+    const { deps, upserts, removed, keys } = makeDeps(['pipe|local|user|proj-a']);
+    deps.workspacesPath = tmp;
+    await reconcilePipelines(deps as any);
+    expect(upserts).toEqual([]);
+    expect(removed).toEqual(['pipe|local|user|proj-a']);
+    // The mutual-exclusion gate stays armed — the projection refresh is
+    // decoupled from the cron upsert (it would otherwise lapse fail-OPEN).
+    expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
   });
 
   it('heals a stale overlap guard whose run doc is terminal (projectId key)', async () => {

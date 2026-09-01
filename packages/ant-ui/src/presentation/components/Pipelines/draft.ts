@@ -17,6 +17,7 @@ import {
   type ApprovalStepDef,
   type JobStepDef,
   type PipelineDef,
+  type PipelineScheduleTrigger,
   type PipelineStepDef,
 } from '@ant/shared';
 
@@ -162,8 +163,19 @@ export function descendantsOf(def: PipelineDef, stepId: string): Set<string> {
   return out;
 }
 
-export function updateSchedule(def: PipelineDef, patch: Partial<PipelineDef['on']['schedule']>): PipelineDef {
-  return { ...def, on: { schedule: { ...def.on.schedule, ...patch } } };
+export const DEFAULT_SCHEDULE_CRON = '0 9 * * 1';
+
+export function updateSchedule(def: PipelineDef, patch: Partial<PipelineScheduleTrigger>): PipelineDef {
+  return { ...def, on: { schedule: { cron: DEFAULT_SCHEDULE_CRON, ...def.on?.schedule, ...patch } } };
+}
+
+/** Toggle the schedule trigger. Off deletes `on` entirely — a manual-only def. */
+export function setScheduleEnabled(def: PipelineDef, enabled: boolean): PipelineDef {
+  if (!enabled) {
+    const { on: _drop, ...rest } = def;
+    return rest as PipelineDef;
+  }
+  return def.on?.schedule ? def : { ...def, on: { schedule: { cron: DEFAULT_SCHEDULE_CRON } } };
 }
 
 /** Client copy of the executor's implicit-needs rule for edge rendering. */

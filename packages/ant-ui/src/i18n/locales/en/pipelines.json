@@ -126,6 +126,10 @@
     "deleteStep": "Remove step"
   },
   "trigger": {
+    "mode": "Trigger",
+    "modeSchedule": "Cron schedule",
+    "modeManual": "Manual only (Run now)",
+    "manualOnly": "Manual only",
     "preset": "Frequency",
     "presets": {
       "hourly": "Hourly",

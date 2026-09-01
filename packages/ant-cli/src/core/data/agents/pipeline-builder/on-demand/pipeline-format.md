@@ -1,20 +1,20 @@
 # Pipeline definition contract
 
-A pipeline is ONE definition object: a cron trigger plus a chain of steps.
-This is every field the validator accepts and every rule it enforces. The
-definition rides the save routes as the JSON value of `def`; it is shown here
-as YAML for readability — the two shapes are the same object.
+A pipeline is ONE definition object: an optional trigger plus a chain of
+steps. This is every field the validator accepts and every rule it enforces.
+The definition rides the save routes as the JSON value of `def`; it is shown
+here as YAML for readability — the two shapes are the same object.
 
 ## A complete definition
 
 ```yaml
 version: 2                      # required, exactly 2
 name: Weekly ops report         # required, at most 100 characters
-on:
-  schedule:                     # the only trigger kind
-    cron: '0 9 * * 1'           # 5 fields: minute hour day month weekday
-    tz: Asia/Seoul              # IANA timezone; omitted = UTC
-    onMissed: skip              # skip (default) | runOnce
+on:                             # OPTIONAL — omit `on` entirely for a
+  schedule:                     # manual-only pipeline (fires only via
+    cron: '0 9 * * 1'           # Run now); when declared, `schedule` is
+    tz: Asia/Seoul              # the only trigger kind. 5-field cron,
+    onMissed: skip              # IANA tz (omitted = UTC); skip | runOnce
     overlap: skip               # skip (default) | queue
 defaults:
   onStepFailure: abort          # abort (default) | continue

@@ -251,6 +251,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
   }
 
   function nextFireOf(def: PipelineDef): string | undefined {
+    if (!def.on?.schedule) return undefined; // manual-only — no scheduled fire
     const preview = getNextFires(def.on.schedule.cron, def.on.schedule.tz, 1);
     return preview.ok ? preview.nextFires[0] : undefined;
   }
@@ -360,8 +361,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
     return {
       id: pipelineId,
       name: def.name,
-      cron: def.on.schedule.cron,
-      tz: def.on.schedule.tz,
+      ...(def.on?.schedule && { cron: def.on.schedule.cron, tz: def.on.schedule.tz }),
       stepCount: def.steps.length,
       scope: scopeRoot.scope,
       readonly,
@@ -1125,14 +1125,18 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       }
 
       await setActivationProjections(owner, activation);
-      await deps.scheduleQueue.upsertCron(schedulerIdFor(owner, projectId), def.on.schedule.cron, def.on.schedule.tz, {
-        kind: 'fire',
-        owner,
-        pipelineId,
-        pipelineScope: activation.pipelineScope,
-        projectId,
-        firedBy: 'cron',
-      });
+      // Manual-only pipelines register no scheduler — run-now is their only
+      // fire source; the projections above still arm the exclusion gate.
+      if (def.on?.schedule) {
+        await deps.scheduleQueue.upsertCron(schedulerIdFor(owner, projectId), def.on.schedule.cron, def.on.schedule.tz, {
+          kind: 'fire',
+          owner,
+          pipelineId,
+          pipelineScope: activation.pipelineScope,
+          projectId,
+          firedBy: 'cron',
+        });
+      }
       const nextFireAt = nextFireOf(def);
       await publishPipelineEvent(owner, {
         cause: 'activationChanged',
@@ -1341,8 +1345,10 @@ export function createActivePipelineRoute(deps: PipelinesRoutesDeps): Router {
       try {
         const def = loadPipeline(resolveDefRoot(ctx, bound.pipelineScope), bound.pipelineId);
         name = def.name;
-        const preview = getNextFires(def.on.schedule.cron, def.on.schedule.tz, 1);
-        nextFireAt = preview.ok ? preview.nextFires[0] : undefined;
+        if (def.on?.schedule) {
+          const preview = getNextFires(def.on.schedule.cron, def.on.schedule.tz, 1);
+          nextFireAt = preview.ok ? preview.nextFires[0] : undefined;
+        }
       } catch {
         /* invalid def: still report the binding */
       }

@@ -126,6 +126,10 @@
     "deleteStep": "스텝 삭제"
   },
   "trigger": {
+    "mode": "트리거",
+    "modeSchedule": "크론 스케줄",
+    "modeManual": "수동 전용 (지금 실행)",
+    "manualOnly": "수동 전용",
     "preset": "주기",
     "presets": {
       "hourly": "매시간",
