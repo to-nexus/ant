@@ -6,10 +6,13 @@ import {
   fetchFileBlob,
   getDownloadUrl,
   getRawFileDirUrl,
+  hasDistinctContentOrigin,
   isBinaryFilePath,
   isBinaryImageFilePath,
   isHtmlFilePath,
   isSvgFilePath,
+  mintFilePreviewTicket,
+  resolveAppUrl,
 } from '@/infrastructure/http/api';
 import {
   canToggleViewMode,
@@ -17,7 +20,11 @@ import {
   resolveViewMode,
   type ViewMode,
 } from '@/domain/file/viewMode';
-import { withBaseHref } from '@/domain/file/htmlPreviewDocument';
+import {
+  resolveHtmlPreviewFrame,
+  withBaseHref,
+  type HtmlPreviewFrame,
+} from '@/domain/file/htmlPreviewDocument';
 import { Button, ViewModeToggle } from '@/presentation/components/aurora';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -142,6 +149,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
   const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
+  const [htmlPreviewFrame, setHtmlPreviewFrame] = useState<HtmlPreviewFrame | null>(null);
 
   // NOTE: Streaming preview routing is owned by MainContentArea
   // (`shouldRenderStreamingPreView` → renders <VirtualDocumentViewer/>).
@@ -276,30 +284,61 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSvgFile, viewMode, editedContent]);
 
-  // HTML preview — blob document in a sandboxed iframe. The blob keeps the
-  // live (unsaved) buffer as the preview source; an injected `<base href>`
-  // pointing at the file's real directory is what lets its relative `<link>` /
-  // `<img>` references resolve, since a blob URL carries no directory context.
+  // HTML preview, part 1 — WHERE the document resolves its references.
+  //
+  // Deliberately NOT keyed on `editedContent`: minting a ticket per keystroke
+  // would be one POST per character. The frame changes when the file does.
   useEffect(() => {
-    if (!isHtmlFile || viewMode !== 'preview') {
+    if (!isHtmlFile || viewMode !== 'preview' || !selectedProject || !selectedFeature || !selectedFile) {
+      setHtmlPreviewFrame(null);
+      return;
+    }
+    const rawDirHref = getRawFileDirUrl(selectedProject, selectedFeature, selectedFile);
+    if (!hasDistinctContentOrigin()) {
+      setHtmlPreviewFrame(resolveHtmlPreviewFrame({ contentBaseHref: null, rawDirHref }));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { basePath } = await mintFilePreviewTicket(selectedProject, selectedFeature, selectedFile);
+        if (cancelled) return;
+        setHtmlPreviewFrame(
+          resolveHtmlPreviewFrame({ contentBaseHref: resolveAppUrl(basePath), rawDirHref }),
+        );
+      } catch {
+        // A mint hiccup degrades to the pre-lane row rather than blanking the
+        // preview — subresources still resolve, links and scripts do not.
+        if (!cancelled) {
+          setHtmlPreviewFrame(resolveHtmlPreviewFrame({ contentBaseHref: null, rawDirHref }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isHtmlFile, viewMode, selectedProject, selectedFeature, selectedFile]);
+
+  // HTML preview, part 2 — WHAT is rendered. The blob keeps the live (unsaved)
+  // buffer as the preview source, and the injected `<base href>` is what lets a
+  // relative `<link>` / `<img>` / `<a>` resolve, since a blob URL carries no
+  // directory context of its own.
+  useEffect(() => {
+    if (!htmlPreviewFrame) {
       setHtmlPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
       return;
     }
-    const baseHref =
-      selectedProject && selectedFeature && selectedFile
-        ? getRawFileDirUrl(selectedProject, selectedFeature, selectedFile)
-        : '';
     setHtmlPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      const blob = new Blob([withBaseHref(editedContent, baseHref)], {
+      const blob = new Blob([withBaseHref(editedContent, htmlPreviewFrame.baseHref)], {
         type: 'text/html;charset=utf-8',
       });
       return URL.createObjectURL(blob);
     });
-  }, [isHtmlFile, viewMode, editedContent, selectedProject, selectedFeature, selectedFile]);
+  }, [htmlPreviewFrame, editedContent]);
 
   // ── Smart edit ───────────────────────────────────────
   const smartEditConfig = useMemo(
@@ -649,27 +688,31 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             className="flex-1 min-h-0 overflow-hidden"
             style={previewSurface}
           >
-            {htmlPreviewUrl ? (
+            {htmlPreviewUrl && htmlPreviewFrame ? (
               <iframe
                 title={selectedFile || 'html-preview'}
                 src={htmlPreviewUrl}
-                // `allow-same-origin` without `allow-scripts`: no JS can run in
-                // the frame, so the normal origin grants no reachable
-                // capability — it only restores the session cookie the
-                // stylesheet / image subresource requests need. Never add
-                // `allow-scripts` here; the document is LLM-authored.
-                sandbox="allow-same-origin"
+                // The two flags are mutually exclusive here and the resolver is
+                // their single owner (`resolveHtmlPreviewFrame`). A blob
+                // document carries the APP origin, so `allow-scripts` together
+                // with `allow-same-origin` would hand an LLM-authored page the
+                // session cookie and `window.parent`. On the ticketed content
+                // lane no cookie is needed, so `allow-same-origin` goes and the
+                // frame runs opaque — which is what makes scripts safe. The
+                // rule did not flip; the origin did.
+                sandbox={htmlPreviewFrame.sandbox}
+                referrerPolicy="no-referrer"
                 className="h-full min-h-[70vh] w-full"
                 style={{ border: 'none', background: 'var(--bg-canvas)' }}
               />
-            ) : (
+            ) : htmlPreviewFrame ? (
               <div
                 className="p-4 text-sm"
                 style={{ color: 'var(--text-3)' }}
               >
                 {t('editor.htmlPreviewFailed')}
               </div>
-            )}
+            ) : null}
           </div>
         ) : viewMode === 'preview' ? (
           <div className="flex-1 overflow-auto p-4" style={previewSurface}>

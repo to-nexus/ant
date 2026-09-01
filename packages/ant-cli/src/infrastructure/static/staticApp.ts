@@ -28,9 +28,11 @@ export interface StaticAppOptions {
    * `'always-index'` — every unmatched path returns the entry file (SPA
    * routing). `'navigation-only'` — only extension-less HTML navigations do; a
    * missing `.css` / `.js` / image 404s, so a typo'd asset stays visible as a
-   * typo.
+   * typo. `'none'` — nothing falls back: an unmatched path is a broken link in
+   * somebody's workspace, and answering it with an unrelated `index.html` would
+   * be both a lie and a disclosure.
    */
-  fallback: 'always-index' | 'navigation-only';
+  fallback: 'always-index' | 'navigation-only' | 'none';
   /**
    * Entry filename inside `root` that `/` and the fallback serve. Defaults to
    * `index.html`. Decided at detection time by the manifest SSOT
@@ -114,6 +116,10 @@ export function createStaticApp(options: StaticAppOptions): Express {
   );
 
   app.get(`${basePath === '/' ? '' : basePath}/{*splat}`, (req, res) => {
+    if (fallback === 'none') {
+      res.status(404).send('Not found');
+      return;
+    }
     if (fallback === 'navigation-only' && !isHtmlNavigation(req.path, req.headers.accept)) {
       res.status(404).send('Not found');
       return;

@@ -41,3 +41,33 @@ export function withBaseHref(html: string, baseHref: string): string {
 
   return `<head>${tag}</head>${html}`;
 }
+
+/** How the preview iframe is configured for one file. */
+export interface HtmlPreviewFrame {
+  baseHref: string;
+  sandbox: string;
+}
+
+/**
+ * Two rows, and never a third.
+ *
+ * Row 1 — the deployment publishes a content origin, so the preview browses a
+ * real static site through a ticketed lane. No cookie is needed for its
+ * subresources, which is exactly what lets `allow-same-origin` go: the frame
+ * runs at an OPAQUE origin, so `allow-scripts` grants an LLM-authored document
+ * no reachable capability. The two flags must never appear together — a blob
+ * document carries the APP origin, and the pair would hand that document the
+ * session cookie and `window.parent`.
+ *
+ * Row 2 — no distinct content origin (single-host, or a cloud whose content
+ * ingress has not landed). Behaviour is exactly what it was before the lane
+ * existed: subresources resolve through the byte route, and nothing scripts.
+ */
+export function resolveHtmlPreviewFrame(args: {
+  contentBaseHref: string | null;
+  rawDirHref: string;
+}): HtmlPreviewFrame {
+  return args.contentBaseHref
+    ? { baseHref: args.contentBaseHref, sandbox: 'allow-scripts' }
+    : { baseHref: args.rawDirHref, sandbox: 'allow-same-origin' };
+}

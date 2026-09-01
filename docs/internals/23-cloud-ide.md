@@ -137,3 +137,18 @@ In local mode, there is also an option to launch a local IDE app (Cursor, VS Cod
 - Redis state conventions: [02-infrastructure.md](02-infrastructure.md)
 - Workspace isolation: [20-workspace-isolation.md](20-workspace-isolation.md)
 - Preview system: [22-preview-system.md](22-preview-system.md)
+
+## Navigation Ticket
+
+The `/ide/*` gate admits the iframe's document navigation with a short-lived
+ticket rather than a Fetch-Metadata rule, because a GET navigation carries no
+`Origin` and reads `same-site` in a split-host deployment — indistinguishable
+from attacker-authored preview content.
+
+The random/hash-as-key/TTL/strip half of that mechanism lives in
+`middleware/navTicket.ts` and is shared with the workspace preview lane
+(see [22-preview-system.md](22-preview-system.md)). **Admission is not shared.**
+The IDE gate compares the stored owner against a verified cookie payload; the
+preview lane has no cookie and reads the owner out of the ticket. Each scope owns
+that decision in its own module, and the Redis key prefix (`ide:nav:` vs
+`ws:nav:`) keeps one lane's ticket from being spent on the other.

@@ -132,6 +132,24 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   is the **reference implementation**; IDE and Preview are 🔄 remediation
   targets. Public deploy access is the only intentional open path
   (visibility-gated).
+- **A non-ambient capability, not a guessable key, admits the content origin.**
+  ✅ The workspace preview lane (`GET /workspace/:ticket/*` on the ant-preview
+  CONTENT listener) is the counter-example to the rule above and deliberately so:
+  it is keyed by a random 32-byte ticket rather than an enumerable urlKey,
+  because the listener that serves it has no cookie-parser and the content host
+  may sit outside the session cookie's domain entirely. Redemption therefore
+  returns the owner instead of comparing against a verified payload — there is
+  nothing to compare against, and "check the cookie if one happens to be present"
+  fails open. The served root is resolved from the STORED owner, never from the
+  URL. It shares its primitive (`navTicket.ts`) with the `/ide/*` nav ticket, and
+  the scope prefix is what stops one being spent on the other.
+  The same property is what lets the preview iframe drop `allow-same-origin`:
+  with no cookie to restore, the frame runs opaque, so `allow-scripts` grants an
+  LLM-authored document nothing. The two flags must never be combined — the
+  entry document is a blob and carries the app origin.
+  This is also why `files-raw` now serves HTML as `attachment` alongside SVG:
+  browsing a document is a static-host job on the content origin, and the control
+  plane no longer serves an active document at all.
 - **A user-authored upstream never receives platform credentials.** ✅ Both the
   HTTP proxy (`buildCleanHeaders`) and the WebSocket upgrade
   (`rewriteUpgradeHeaders`) strip the platform session cookie and a *verifiable*

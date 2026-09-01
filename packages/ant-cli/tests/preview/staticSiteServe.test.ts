@@ -1,11 +1,13 @@
 /**
- * Locks the two serving PROFILES of `createStaticApp` — the single owner shared
- * by the deploy SPA server and the preview static server.
+ * Locks the serving PROFILES of `createStaticApp` — the single owner shared by
+ * the deploy SPA server, the preview static server, and the workspace preview
+ * lane.
  *
  * The axis is the profile truth table (cache × fallback × basePath), not any
  * particular byte of HTML: a preview serves a live source directory (no cache,
- * honest 404s for missing assets) while a deploy serves an immutable SPA build
- * (cached, every unmatched path is a client-side route).
+ * honest 404s for missing assets), a deploy serves an immutable SPA build
+ * (cached, every unmatched path is a client-side route), and a workspace
+ * artifact tree has no client-side routes at all, so nothing falls back.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -35,6 +37,12 @@ beforeAll(() => {
   fs.writeFileSync(path.join(root, 'index.html'), '<h1>site</h1>');
   fs.writeFileSync(path.join(root, 'style.css'), 'body{}');
   fs.writeFileSync(path.join(root, '.env'), 'SECRET=1');
+  // Directory index resolution — a link to a folder is what the file editor's
+  // HTML preview kept 400ing on before this profile existed.
+  fs.mkdirSync(path.join(root, 'pages'));
+  fs.writeFileSync(path.join(root, 'pages', 'index.html'), '<h1>pages</h1>');
+  fs.mkdirSync(path.join(root, 'docs'));
+  fs.writeFileSync(path.join(root, 'docs', 'note.txt'), 'note');
 });
 afterAll(async () => {
   await Promise.all(servers.map(s => new Promise<void>(r => s.close(() => r()))));
@@ -223,5 +231,51 @@ describe('entryFile option (non-index static entry)', () => {
     const base = await serve({ basePath: '/', cache: 'none', fallback: 'navigation-only', entryFile: entry, root: namedRoot });
     const res = await fetch(`${base}/`, { headers: html });
     expect(await res.text()).toContain('<h1>report</h1>');
+  });
+});
+
+describe('workspace profile (cache: none, fallback: none)', () => {
+  const workspace = { basePath: '/', cache: 'none', fallback: 'none' } as const;
+
+  it('a directory link serves that directory index — the defect this profile fixes', async () => {
+    const base = await serve(workspace);
+    const res = await fetch(`${base}/pages/`, { headers: html });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<h1>pages</h1>');
+  });
+
+  it('a directory without the trailing slash redirects to the slash form', async () => {
+    const base = await serve(workspace);
+    const res = await fetch(`${base}/pages`, { headers: html, redirect: 'manual' });
+    expect(res.status).toBe(301);
+    expect(res.headers.get('location')).toContain('/pages/');
+  });
+
+  it('a directory with no index 404s rather than borrowing the root entry', async () => {
+    const base = await serve(workspace);
+    const res = await fetch(`${base}/docs/`, { headers: html });
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('<h1>site</h1>');
+  });
+
+  it('a missing HTML navigation 404s — the row that separates `none` from `navigation-only`', async () => {
+    const base = await serve(workspace);
+    const res = await fetch(`${base}/about`, { headers: html });
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('<h1>site</h1>');
+  });
+
+  it('still serves a real file, uncached', async () => {
+    const base = await serve(workspace);
+    const res = await fetch(`${base}/style.css`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('refuses dotfiles — a feature root holds the preview machinery\'s own .env', async () => {
+    const base = await serve(workspace);
+    const res = await fetch(`${base}/.env`);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('SECRET');
   });
 });

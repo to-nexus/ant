@@ -236,6 +236,12 @@ export function createDirectory(
  * endpoint. Absolute on purpose: it is consumed as an HTML `<base href>` inside
  * a blob document, which cannot resolve the root-relative form `API_BASE()`
  * returns in local mode.
+ *
+ * This is the FALLBACK-topology base only (no distinct content origin — see
+ * `hasDistinctContentOrigin`). It resolves subresources and nothing else: the
+ * byte route has no directory-index resolution, so a link to a folder 400s.
+ * Where a content origin exists, `mintFilePreviewTicket` supplies the base
+ * instead and browsing works like the static site it is.
  */
 export function getRawFileDirUrl(
   projectId: string,
@@ -245,6 +251,32 @@ export function getRawFileDirUrl(
   const dir = filePath.replace(/\\/g, '/').replace(/[^/]*$/, '');
   const relative = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files-raw/${dir}`;
   return new URL(relative, window.location.origin).href;
+}
+
+/** Where the ticketed workspace preview lane serves this file's directory. */
+export interface FilePreviewTicket {
+  ticket: string;
+  expiresInSec: number;
+  /** Root-relative — resolve it against the content origin with `resolveAppUrl`. */
+  basePath: string;
+}
+
+/**
+ * Mint a short-lived ticket that lets the preview iframe browse this file's
+ * feature root as a static site on the content origin.
+ *
+ * The ticket is the frame's only credential — the content listener has no
+ * cookie — which is what lets the iframe drop `allow-same-origin`.
+ */
+export function mintFilePreviewTicket(
+  projectId: string,
+  featureName: string,
+  filePath: string,
+): Promise<FilePreviewTicket> {
+  return apiPost(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files-preview-ticket`,
+    { path: filePath },
+  );
 }
 
 export function getDownloadUrl(

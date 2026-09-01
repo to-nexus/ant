@@ -29,6 +29,9 @@ vi.mock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
 }));
 
 const { mintIdeNavTicket } = await import('../../src/periphery/adapters/http/middleware/ideNavTicket');
+const { mintWorkspacePreviewTicket } = await import(
+  '../../src/periphery/adapters/http/middleware/workspacePreviewTicket'
+);
 const { ServerConfigurator } = await import(
   '../../src/periphery/adapters/http/express/config/ServerConfigurator'
 );
@@ -167,6 +170,16 @@ describe('/ide/* gate admission', () => {
     ['unknown', 'a'.repeat(64)],
     ['malformed', 'not-a-ticket'],
   ])('REFUSES an %s ticket', async (_label, ticket) => {
+    const res = await call({ path: `/ide/${KEY}/?ant_nav=${ticket}`, cookie: SESSION, site: 'same-site' });
+    expect(res.status).toBe(403);
+  });
+
+  it('REFUSES a workspace-preview ticket — the two lanes share a primitive, not a scope', async () => {
+    // Both lanes mint through `navTicket.ts` into the same Redis. The scope
+    // prefix is what stops a content-origin browsing ticket being spent here.
+    const { ticket } = await mintWorkspacePreviewTicket(fakeStore, {
+      org: OWNER.org, userId: OWNER.userId, projectId: OWNER.projectId, feature: OWNER.feature,
+    });
     const res = await call({ path: `/ide/${KEY}/?ant_nav=${ticket}`, cookie: SESSION, site: 'same-site' });
     expect(res.status).toBe(403);
   });

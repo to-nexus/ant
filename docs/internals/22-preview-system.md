@@ -58,6 +58,55 @@ Design principles:
 
 Preview uses a dedicated host (`ant-preview.example.com`). Even when a framework uses its native base path, some resources (`<img src="/logo.svg">`, etc.) are requested without the base path. With a dedicated host, host-based routing ensures those requests still reach ant-preview.
 
+## Workspace Preview Lane (file editor HTML preview)
+
+The content listener serves a third thing beside the preview and deploy proxies:
+`GET /workspace/:ticket/*`, which hands one feature root to the browser as a
+static site. It exists because the file editor's HTML preview used to browse a
+mini site through `GET /api/.../files-raw/<path>` — a byte route whose contract
+is one path → one file. A link to a folder came back as
+`400 {"error":"Path is a directory, not a file"}`, rendered as raw JSON inside
+the preview frame, and on a split-host deployment even a link to a valid file
+was refused by that response's `frame-ancestors 'self'`.
+
+Browsing a document is a static-host job, and it does not belong on the control
+plane. So the lane reuses `createStaticApp` (directory index resolution, dotfile
+403, realpath symlink containment) under a third fallback profile, `'none'`:
+an artifact tree has no client-side routes, so an unmatched path 404s rather
+than borrowing an unrelated `index.html`.
+
+| Property | Value | Why |
+|---|---|---|
+| Credential | the ticket in the URL, nothing else | the content listener has no cookie-parser, and the content host may sit on a different registrable domain entirely |
+| Scope | `{org, userId, projectId, feature}`, stored server-side | the served root comes from the STORED owner, never from the URL |
+| Root | `{container}/artifacts` on a workspace project, else the feature root | the universal MERGED view grafts `sessions/**` in — that is job state, not an artifact |
+| TTL | 30 min, not sliding | sliding would cost a Redis write per subresource |
+| Methods | GET/HEAD; anything else 405 and never `next()` | a fall-through would become a new admission surface on the proxies behind it |
+| Mount | before the preview proxy, deferred on a content host | the proxy claims the root, and under subdomain routing `/workspace` belongs to the user's own app |
+
+The lane also overrides two headers helmet stamps on this listener
+(`X-Frame-Options: SAMEORIGIN`, `Cross-Origin-Resource-Policy: same-origin`).
+Both are correct for a deployed page opened in its own tab and wrong for the one
+surface that exists to be embedded — so they are overridden on the lane, never by
+loosening helmet for the whole listener.
+
+Because the frame needs no cookie, the preview iframe drops `allow-same-origin`
+and gains `allow-scripts`: it runs at an opaque origin, so a script in an
+LLM-authored document reaches neither the app, its cookies, nor its storage.
+Those two flags must never appear together — the entry document is a blob, which
+carries the APP origin. `resolveHtmlPreviewFrame` (ant-ui) is their single owner.
+
+**Known limit:** a root-relative reference (`href="/x.css"`) drops the
+`/workspace/:ticket` prefix — `<base>` does not affect absolute paths. This
+predates the lane (under the byte-route base such a path resolved to the app
+origin root). A per-ticket host label would fix it, but a 64-hex ticket exceeds
+the 63-character DNS label limit and shortening it weakens the capability.
+
+**Topology:** the lane is reachable only where a distinct content origin is
+published (`VITE_PREVIEW_CONTENT_HOST`). Where it is not, `hasDistinctContentOrigin()`
+selects the pre-lane row — byte-route subresources, no scripts, directory links
+still refused. Delete that row once every deployment publishes the content host.
+
 ## Proxy Strategy
 
 All frameworks use their native base path. The proxy operates on a single path.

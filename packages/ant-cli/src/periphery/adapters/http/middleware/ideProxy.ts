@@ -22,7 +22,7 @@ import {
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { parseIDEKey, NO_FEATURE_KEY } from '../../../../infrastructure/state/redisKeyUtils';
-import { allowedFrontendOrigins } from './corsConfig';
+import { frameAncestors } from './frameAncestors';
 
 
 export interface IDEProxyConfig {
@@ -145,19 +145,6 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
   protected overrideResponseHeaders(res: ExpressResponse): void {
     res.setHeader('content-security-policy', `frame-ancestors ${frameAncestors().join(' ')}`);
   }
-}
-
-/**
- * `'self'` covers the single-origin deployment; the registered frontend origins
- * cover split-host. Loopback is prefix-matched by the origin predicate and so
- * cannot be enumerated — outside cloud, allow it by pattern instead.
- */
-function frameAncestors(): string[] {
-  const sources = ["'self'", ...allowedFrontendOrigins()];
-  if (process.env.ANT_SERVER_MODE !== 'cloud') {
-    sources.push('http://localhost:*', 'http://127.0.0.1:*');
-  }
-  return sources;
 }
 
 /**

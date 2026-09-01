@@ -54,6 +54,29 @@ describe('PreviewServer listener split (H-NEW-001)', () => {
     expect(contentSection).not.toContain('cookieParser');
   });
 
+  it('the content listener mounts the workspace preview lane BEFORE the preview proxy', () => {
+    // The preview proxy claims the root, so a lane mounted after it is a lane
+    // that never runs. Order is the contract, not the presence of the line.
+    const lane = contentSection.indexOf("this.contentApp.use(WORKSPACE_LANE_PREFIX");
+    const proxy = contentSection.indexOf('this.contentApp.use(createPreviewProxyMiddleware(');
+    expect(lane).toBeGreaterThan(-1);
+    expect(lane).toBeLessThan(proxy);
+  });
+
+  it('the workspace lane defers on a content host — a user app owns its own /workspace', () => {
+    // Under subdomain routing the deploy proxy is a root catch-all and preview
+    // apps serve at their host root, so claiming `/workspace` unconditionally
+    // would hijack a deployed app that happens to have that route.
+    expect(contentSection).toMatch(
+      /WORKSPACE_LANE_PREFIX[\s\S]{0,200}this\.contentHostKind\(req\)/,
+    );
+  });
+
+  it('the workspace lane is content-only — it never appears on the control listener', () => {
+    expect(controlSection).not.toContain('WORKSPACE_LANE_PREFIX');
+    expect(controlSection).not.toContain('createWorkspacePreviewLane');
+  });
+
   it('the control listener mounts no content proxy', () => {
     expect(controlSection).not.toContain('createPreviewProxyMiddleware');
     expect(controlSection).not.toContain('deployProxy');

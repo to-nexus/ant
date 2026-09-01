@@ -12,8 +12,9 @@
  * there has no same-origin API to drive with the viewer's session (H-NEW-001).
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  hasDistinctContentOrigin,
   resolveAppUrl,
   PREVIEW_BASE,
   PREVIEW_CONTENT_BASE,
@@ -45,5 +46,32 @@ describe('resolveAppUrl', () => {
   it('falls back to the management origin when no content host is configured', () => {
     // Keeps a not-yet-migrated single-host deployment working unchanged.
     expect(PREVIEW_CONTENT_BASE()).toBe(PREVIEW_BASE());
+  });
+});
+
+/**
+ * The one predicate that decides whether the workspace preview lane is reachable.
+ * The lane is mounted only on the content listener, so "is a second origin
+ * published?" is a host-environment capability, not a mode.
+ */
+describe('hasDistinctContentOrigin', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is false when no content host is declared — the single-host topology', () => {
+    expect(hasDistinctContentOrigin()).toBe(false);
+  });
+
+  it('is false when the content host is declared but equal to the management host', () => {
+    vi.stubEnv('VITE_PREVIEW_HOST', 'https://ant-preview.example.com');
+    vi.stubEnv('VITE_PREVIEW_CONTENT_HOST', 'https://ant-preview.example.com');
+    expect(hasDistinctContentOrigin()).toBe(false);
+  });
+
+  it('is true only when the two origins actually differ', () => {
+    vi.stubEnv('VITE_PREVIEW_HOST', 'https://ant-preview.example.com');
+    vi.stubEnv('VITE_PREVIEW_CONTENT_HOST', 'https://ant-app.example.com');
+    expect(hasDistinctContentOrigin()).toBe(true);
   });
 });

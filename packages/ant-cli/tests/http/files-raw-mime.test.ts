@@ -6,8 +6,9 @@
  * The endpoint only knew image extensions, so every stylesheet came back as
  * `application/octet-stream` — refused outright by strict MIME checking, which
  * left each `var(--…)` at `initial` (collapsed layout, invisible text) with no
- * error signal anywhere. HTML additionally needs script-blocking headers: the
- * bytes are LLM-authored and served inline on the app origin.
+ * error signal anywhere. Active documents (SVG, HTML) are additionally served
+ * as attachments and carry script-blocking headers: the bytes are LLM-authored,
+ * and this route answers on the control-plane origin.
  *
  * Real Express app on port 0 called via fetch — same shape as
  * tests/http/files-routes-feature-slug.test.ts.
@@ -120,6 +121,14 @@ describe('files.routes — files-raw content types', () => {
     const res = await fetch(rawUrl(`${BUNDLE}/assets/mark.svg`));
     expect(res.headers.get('content-disposition')).toMatch(/^attachment;/);
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('serves HTML as an attachment too — browsing it belongs to the content origin', async () => {
+    // Same rule as SVG, one type over: an active document must not render on
+    // the origin that answers this API. The UI browses HTML through the
+    // ticketed workspace lane on the preview CONTENT listener instead.
+    const res = await fetch(rawUrl(`${BUNDLE}/screens/home.html`));
+    expect(res.headers.get('content-disposition')).toMatch(/^attachment;/);
   });
 
   it('keeps other images inline', async () => {

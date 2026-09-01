@@ -105,6 +105,13 @@ outside the current workspace.
 | GET  | `/api/files/list?featureId=...&path=...`    | List.                              |
 | POST | `/api/files?featureId=...`                  | Write. Body is the file contents.  |
 
+Two project-scoped routes sit beside them:
+
+| Verb | Path | Notes |
+|------|------|-------|
+| GET  | `/api/projects/:id/features/:feature/files-raw/<path>` | Raw bytes. Active documents (SVG, HTML) come back as `attachment` — they must not render on the origin that answers this API. |
+| POST | `/api/projects/:id/features/:feature/files-preview-ticket` | Mints a 30-minute ticket for the workspace preview lane on the preview CONTENT origin. Returns `{ ticket, expiresInSec, basePath }`; `basePath` is root-relative because this process does not know which host publishes the content listener. See [22-preview-system.md](../internals/22-preview-system.md). |
+
 ## Cloud IDE
 
 Available only when `ANT_K8S_NAMESPACE` is set.

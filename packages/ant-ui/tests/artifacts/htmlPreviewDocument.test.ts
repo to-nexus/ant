@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { withBaseHref } from '@/domain/file/htmlPreviewDocument';
+import { resolveHtmlPreviewFrame, withBaseHref } from '@/domain/file/htmlPreviewDocument';
 
 const BASE = 'http://localhost:4200/api/projects/p/features/main/files-raw/visual/ui/handoff/screens/';
 
@@ -61,5 +61,36 @@ describe('withBaseHref', () => {
   it('escapes attribute-breaking characters in the URL', () => {
     const out = withBaseHref('<head></head>', 'http://h/a"b&c/');
     expect(out).toContain('<base href="http://h/a&quot;b&amp;c/">');
+  });
+});
+
+/**
+ * The preview frame truth table. Two rows and one invariant — the invariant is
+ * the point: a blob document carries the APP origin, so `allow-scripts` together
+ * with `allow-same-origin` would give an LLM-authored page the session cookie
+ * and `window.parent`.
+ */
+describe('resolveHtmlPreviewFrame', () => {
+  const rawDirHref = 'https://api.example.com/api/projects/p/features/main/files-raw/docs/';
+  const contentBaseHref = 'https://ant-app.example.com/workspace/abc/docs/';
+
+  it('browses the ticketed content lane, scripts on, when a content origin exists', () => {
+    const frame = resolveHtmlPreviewFrame({ contentBaseHref, rawDirHref });
+    expect(frame.baseHref).toBe(contentBaseHref);
+    expect(frame.sandbox).toContain('allow-scripts');
+  });
+
+  it('falls back to the byte route, scripts off, when there is no content origin', () => {
+    const frame = resolveHtmlPreviewFrame({ contentBaseHref: null, rawDirHref });
+    expect(frame.baseHref).toBe(rawDirHref);
+    expect(frame.sandbox).toBe('allow-same-origin');
+  });
+
+  it.each([
+    ['content origin', contentBaseHref],
+    ['fallback', null],
+  ])('never combines allow-scripts with allow-same-origin (%s row)', (_label, base) => {
+    const { sandbox } = resolveHtmlPreviewFrame({ contentBaseHref: base, rawDirHref });
+    expect(sandbox.includes('allow-scripts') && sandbox.includes('allow-same-origin')).toBe(false);
   });
 });

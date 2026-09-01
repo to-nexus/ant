@@ -43,6 +43,10 @@ import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/c
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, healthRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
+import {
+  createWorkspacePreviewLane,
+  WORKSPACE_LANE_PREFIX,
+} from '../../periphery/adapters/http/middleware/workspacePreviewLane';
 import { createRequireApprovedAccount } from '../../periphery/adapters/http/middleware/requireApprovedAccount';
 import { createNoStoreForAuthenticated } from '../../periphery/adapters/http/middleware/noStoreForAuthenticated';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
@@ -941,6 +945,21 @@ export class PreviewServer {
     this.contentApp.get('/health', (req: Request, res: Response, next) => {
       if (this.contentHostKind(req)) return next();
       res.json({ healthy: true, service: 'ant-preview-content' });
+    });
+
+    // 3b. Workspace preview lane — the file editor's HTML preview, served as a
+    // real static site. Read-only, ticket-authorized, no cookie: it is CONTENT,
+    // which is why it lives here and not beside the file API on the control
+    // plane. Mounted BEFORE the preview proxy (which claims the root) and
+    // deferred on a content host, where `/workspace` belongs to the user's own
+    // app rather than to us.
+    const workspaceLane = createWorkspacePreviewLane({
+      workspaceResolver: this.workspaceResolver,
+      ticketStore: this.stateStore,
+    });
+    this.contentApp.use(WORKSPACE_LANE_PREFIX, (req: Request, res: Response, next) => {
+      if (this.contentHostKind(req)) return next();
+      return workspaceLane(req, res, next);
     });
 
     // 4. Preview Proxy - MUST be before body parsers and JWT auth

@@ -19,8 +19,12 @@ import { boundedMultipart } from '../middleware/boundedMultipart';
 import {
   downloadRateLimiter,
   forceRefreshRateLimiter,
+  previewRateLimiter,
   treeRateLimiter,
 } from '../middleware/rateLimiter';
+import { resolveNavTicketStore } from '../middleware/navTicket';
+import { mintWorkspacePreviewTicket } from '../middleware/workspacePreviewTicket';
+import { WORKSPACE_LANE_PREFIX } from '../middleware/workspacePreviewLane';
 import { acquireLock } from '../../../../core/redis/distributedLock';
 import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
@@ -158,6 +162,12 @@ export function createFilesRoutes(deps: {
    * policy still allows everything a design specimen needs (sibling stylesheets,
    * inline `<style>`, svg/data images, fonts).
    */
+  /**
+   * Types the browser would execute as a top-level document. One owner, so the
+   * question is not re-answered per call site.
+   */
+  const ACTIVE_DOCUMENT_TYPES = new Set(['image/svg+xml', 'text/html']);
+
   const HTML_PREVIEW_CSP =
     "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'self'";
 
@@ -410,13 +420,15 @@ export function createFilesRoutes(deps: {
         if (mimeType.startsWith('text/html')) {
           res.setHeader('Content-Security-Policy', HTML_PREVIEW_CSP);
         }
-        // SVG is an ACTIVE document: opened as a top-level navigation it runs
-        // its own script/event handlers on the app origin, and the global CSP is
-        // disabled. Serving it as an attachment removes that sink without
-        // touching the UI's preview, which renders SVG through a blob `<img>`
-        // (passive context) rather than this URL (M-001). Other image types stay
-        // inline.
-        const disposition = mimeType === 'image/svg+xml' ? 'attachment' : 'inline';
+        // ACTIVE documents are served as attachments. Opened as a top-level
+        // navigation each one runs its own script / event handlers on the app
+        // origin with the global CSP disabled — a sink no filter closes, because
+        // it is the browser's origin model. Neither is reachable this way in the
+        // UI: SVG previews through a blob `<img>` (passive context, M-001) and
+        // HTML through a sandboxed iframe whose browsable form is the workspace
+        // lane on the CONTENT origin. Other types stay inline — a handoff
+        // bundle's stylesheets and fonts load from here.
+        const disposition = ACTIVE_DOCUMENT_TYPES.has(mimeType.split(';')[0]) ? 'attachment' : 'inline';
         res.setHeader(
           'Content-Disposition',
           `${disposition}; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}`,
@@ -438,6 +450,86 @@ export function createFilesRoutes(deps: {
     }
   });
   
+  /**
+   * Mint a workspace preview ticket for one HTML file.
+   *
+   * The file editor's HTML preview is a mini static site — a handoff bundle's
+   * `screens/home.html` links `../styles.css`, and its links point at sibling
+   * pages and folders. Browsing that is a static-host job, and it is served by
+   * the workspace lane on the preview CONTENT origin, never here: an
+   * LLM-authored active document must not run on the origin that answers this
+   * API (H-NEW-001).
+   *
+   * This endpoint is the only bridge. It inherits, whole-surface, everything the
+   * content listener deliberately lacks — cookie auth, the approval gate, and
+   * `createSameOriginGuard` (POST is state-changing), which is what stops an
+   * attacker's content origin from minting one.
+   *
+   * `basePath` comes back ROOT-RELATIVE: the API process does not know which
+   * host the ingress publishes the content listener on, and the FE already owns
+   * that question (`resolveAppUrl`).
+   *
+   * POST /projects/:id/features/:feature/files-preview-ticket  { path }
+   */
+  router.post(
+    '/projects/:id/features/:feature/files-preview-ticket',
+    previewRateLimiter,
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const featureName = req.params.feature;
+        const userContext = extractUserContext(req);
+        const filePath = typeof req.body?.path === 'string' ? req.body.path : '';
+
+        if (!filePath) {
+          res.status(400).json({ error: 'File path is required' });
+          return;
+        }
+
+        // Same containment the byte route uses — a ticket must never be minted
+        // for a path that resolve refuses.
+        const workspaceResolver = (deps.projectService as any).workspaceResolver;
+        let fullPath: string;
+        try {
+          fullPath = resolveFeatureScopedFilePath(
+            workspaceResolver, userContext, projectId, featureName, filePath,
+          );
+        } catch {
+          res.status(404).json({ error: 'File not found' });
+          return;
+        }
+
+        const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
+        const isFile = br
+          ? (() => { const st = statContainedBase(br); return st.ok && st.stat.isFile(); })()
+          : await fs.promises.stat(fullPath).then(st => st.isFile()).catch(() => false);
+        if (!isFile) {
+          res.status(404).json({ error: 'File not found' });
+          return;
+        }
+
+        const { ticket, expiresInSec } = await mintWorkspacePreviewTicket(
+          await resolveNavTicketStore(),
+          {
+            org: userContext.organizationId,
+            userId: userContext.userId,
+            projectId,
+            feature: featureName,
+          },
+        );
+
+        const dir = filePath.replace(/\\/g, '/').replace(/[^/]*$/, '');
+        res.json({
+          ticket,
+          expiresInSec,
+          basePath: `${WORKSPACE_LANE_PREFIX}/${ticket}/${dir}`,
+        });
+      } catch (error: any) {
+        sendErrorResponse(res, 500, error, 'Files');
+      }
+    },
+  );
+
   // Get file content — returns FileResource (content + ground-truth meta)
   router.get(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
