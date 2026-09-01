@@ -95,11 +95,29 @@ catches it too. The one server-side rule that needs I/O lives in
 minimum-interval cap.
 
 **Unknown and reserved YAML keys are rejected loudly** (`retry`,
-`remindAfter`, `overlap: cancelPrevious`, `{{steps.*}}` templates each get a
-"not supported yet" message) — an author must never conclude a silently
-ignored knob works. Directive templating is a whitelist substitution
-(`{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`, `{{run.id}}`), never a
-template engine.
+`remindAfter`, `overlap: cancelPrevious`, `{{steps.<id>.verdict}}` templates
+each get a "not supported yet" message) — an author must never conclude a
+silently ignored knob works. Directive templating is a whitelist substitution
+(`{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`, `{{run.id}}`, plus the
+step-output grammar below), never a template engine.
+
+**Step-output substitution** (`{{steps.<id>.answer}}` /
+`{{steps.<id>.artifacts}}`): on step completion the coordinator captures
+`StepRecord.output` — the final assistant text of the seal's `session:main`
+(jobId-guarded, `PIPELINE_STEP_OUTPUT_MAX_CHARS` = 16k, same bounded read as
+the clarify detection) and the files matching the pinned intent's
+`hooks.stop` globs (`expandArtifactGlobsBounded`, non-failing). Capture is
+best-effort: failure means an absent record, never a step failure. The
+validator restricts references to the step's transitive `needs` closure
+(never itself, never a gate) — the compile-time guarantee the referenced
+step is terminal at render. A skipped/no-output upstream renders empty and is
+recorded as `unresolvedTemplates` on the `step_dispatched` event. The rendered
+directive stays under the existing `DIRECTIVE_MAX_CHARS` authority. SSE
+`runUpdate` strips captured answers (the wire stays lean); the run JSONL and
+the runs API serve them, and `finalizeRun`'s chat notice quotes the last
+step's first answer line. This is the summary/scalar channel — structured
+data still moves as artifacts + `context` pins (a producing intent writes a
+manifest artifact and declares it in `hooks.stop`).
 
 A step's `directive` is **optional**: an empty/absent one dispatches
 `defaultStepDirective(intent)` (shared, English — single owner in
@@ -674,9 +692,10 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
 - **Phase 1.7 (shipped)**: clarify-await (§5b — `awaiting_clarify` step
   state, jobId re-pointing, open-ended wait, two-channel answer funnel) and
   the read-only `pipeline-runs` artifacts-tree graft.
-- **Phase 2**: A3 approval-await integration (consumes
-  the runner-axis `pendingApproval` seal), per-step `retry`, `remindAfter`
-  re-arms, `{{steps.*}}` output substitution, event triggers
+- **Phase 2 (in progress)**: `{{steps.*}}` output substitution (SHIPPED — §1
+  step-output capture; `steps.<id>.verdict` stays reserved). Remaining: A3
+  approval-await integration (consumes the runner-axis `pendingApproval`
+  seal), per-step `retry`, `remindAfter` re-arms, event triggers
   (`runCompleted` — pipeline→pipeline chaining).
 - **Phase 3**: per-(project, customJobRef) duplicate-gate relaxation +
   tenant concurrency slots, parallel branches/fan-in + FE turn grouping,

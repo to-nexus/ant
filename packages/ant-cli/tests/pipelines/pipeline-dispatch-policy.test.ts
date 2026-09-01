@@ -232,6 +232,30 @@ describe('run cancel authority', () => {
   });
 });
 
+describe('step output capture ({{steps.*}} source)', () => {
+  it('capture is bounded, jobId-guarded, and best-effort (same seal channel as clarify)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/captureStepOutput/);
+    expect(coordinator).toMatch(/PIPELINE_STEP_OUTPUT_MAX_CHARS/);
+    // Both seal reads (clarify + capture) verify the seal belongs to this job.
+    expect(coordinator.match(/state\?\.jobId (!==|===) jobId/g)?.length ?? 0).toBe(2);
+    // Artifact expansion is the bounded, non-failing gate helper.
+    expect(coordinator).toMatch(/expandArtifactGlobsBounded\(/);
+  });
+
+  it('SSE runUpdate strips captured answers — JSONL/API serve them', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/answer: undefined/);
+  });
+
+  it('renderDirective substitutes steps.answer/artifacts and audits unresolved refs', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/steps\\\.\(\[a-z0-9-\]\+\)\\\.answer/);
+    expect(coordinator).toMatch(/steps\\\.\(\[a-z0-9-\]\+\)\\\.artifacts/);
+    expect(coordinator).toMatch(/unresolvedTemplates/);
+  });
+});
+
 describe('pipeline run-log graft (read-only)', () => {
   it('the merged view resolves and grafts the pipeline-runs node from the paths SSOT', () => {
     const container = read('core/customAgents/universalContainer.ts');

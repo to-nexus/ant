@@ -52,10 +52,19 @@ steps:
   chat directive. Omitted or blank, the runtime dispatches a standard "carry
   out this intent" statement — omit it when the pinned intent's definition
   already is the specification.
-- Template variables — exactly three: `{{trigger.fireDate}}` (ISO time of the
-  fire), `{{trigger.fireEpoch}}`, `{{run.id}}`. Anything else is rejected at
-  save, and `{{steps.*}}` is reserved; data moves between steps through
-  artifacts and `context`, not through directive text.
+- Template variables: `{{trigger.fireDate}}` (ISO time of the fire),
+  `{{trigger.fireEpoch}}`, `{{run.id}}`, plus step-output references —
+  `{{steps.<stepId>.answer}}` (the referenced step's final answer text) and
+  `{{steps.<stepId>.artifacts}}` (newline-joined paths its intent's stop-hook
+  globs matched at completion). A step-output reference must name an upstream
+  dependency in this step's `needs` chain (never itself, never a gate) — that
+  ordering is what guarantees the value exists at dispatch. Anything else is
+  rejected at save (`steps.<id>.verdict` is reserved).
+- Substituted directive text is a SUMMARY channel. Structured data still moves
+  between steps as artifacts + `context` pins: a producing intent should write
+  a manifest artifact (stable path, JSON) and declare it in `hooks.stop`, and
+  the consumer pins it — `{{steps.*.answer}}` complements that, it does not
+  replace it.
 - `context` pins ride into the step as attachments: concrete
   container-relative artifact paths, or globs over the artifacts tree — the
   upstream intent's `hooks.stop` globs are the natural pins, because they are
@@ -101,7 +110,7 @@ never concludes a silently ignored knob works:
 | `retry`, `remindAfter` | reserved — not supported yet |
 | `jobType`, `feature` | reserved for a future step kind |
 | `overlap: cancelPrevious` | reserved — use `skip` or `queue` |
-| `{{steps.*}}` in a directive | reserved — step-output substitution does not exist yet |
+| `{{steps.<id>.verdict}}` in a directive | reserved — verdict routing does not exist yet |
 
 ## Caps
 

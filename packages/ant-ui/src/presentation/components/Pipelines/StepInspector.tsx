@@ -247,6 +247,23 @@ function JobStepPanel({
     [def, step.id, customAgents],
   );
 
+  // Upstream JOB steps (transitive needs closure) — the legal {{steps.*}} refs.
+  const upstreamJobSteps = useMemo(() => {
+    const indexOf = new Map(def.steps.map((s, i) => [s.id, i]));
+    const upstream = new Set<string>();
+    const start = indexOf.get(step.id);
+    const queue = start === undefined ? [] : [...effectiveNeedsOf(def, start)];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (upstream.has(id)) continue;
+      const i = indexOf.get(id);
+      if (i === undefined) continue;
+      upstream.add(id);
+      queue.push(...effectiveNeedsOf(def, i));
+    }
+    return def.steps.filter((s) => upstream.has(s.id) && !isApprovalStep(s)).map((s) => s.id);
+  }, [def, step.id]);
+
   return (
     <>
       <div>
@@ -325,6 +342,20 @@ function JobStepPanel({
               <span key={v}>{chip}</span>
             );
           })}
+          {upstreamJobSteps.flatMap((id) =>
+            (['answer', 'artifacts'] as const).map((field) => (
+              <Tooltip
+                key={`${id}.${field}`}
+                content={t(`step.stepOutput.${field}`, field === 'answer' ? 'Final answer of step "{{id}}"' : 'Output artifact paths of step "{{id}}"', { id })}
+                placement="top"
+                trigger="hover"
+              >
+                <button onClick={() => insertTemplateVar(`{{steps.${id}.${field}}}`)} style={varChipStyle}>
+                  {`{{steps.${id}.${field}}}`}
+                </button>
+              </Tooltip>
+            )),
+          )}
         </div>
       </div>
       <div>

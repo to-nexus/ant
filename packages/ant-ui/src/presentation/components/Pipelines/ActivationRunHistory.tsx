@@ -203,6 +203,22 @@ export function RunTimeline({ steps, live, onCancel }: { steps: StepRecord[]; li
                   )}
                 </div>
                 {step.error && <div style={{ fontSize: 11, color: 'var(--red-500)', marginTop: 3 }}>{step.error}</div>}
+                {step.output?.answer && (
+                  <details style={{ marginTop: 3 }}>
+                    <summary style={{ fontSize: 11, color: 'var(--text-2)', cursor: 'pointer' }}>
+                      {step.output.answer.split('\n').find((l) => l.trim())?.slice(0, 120)}
+                      {step.output.answerTruncated ? ' …' : ''}
+                    </summary>
+                    <div style={{ fontSize: 11, color: 'var(--text-2)', whiteSpace: 'pre-wrap', marginTop: 4, maxHeight: 240, overflowY: 'auto', padding: '6px 8px', background: 'var(--bg-surface-2)', borderRadius: 'var(--r-sm, 4px)' }}>
+                      {step.output.answer}
+                    </div>
+                  </details>
+                )}
+                {step.output?.artifacts && step.output.artifacts.length > 0 && (
+                  <div style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--text-3)', marginTop: 3, overflowWrap: 'anywhere' }}>
+                    {step.output.artifacts.join(' · ')}
+                  </div>
+                )}
                 {step.clarify && (
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
                     {t('runs.clarifyAsked', 'Q{{round}}: {{question}}', { round: step.clarify.round, question: step.clarify.question })}

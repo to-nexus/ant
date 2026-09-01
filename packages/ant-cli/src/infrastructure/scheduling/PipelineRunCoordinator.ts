@@ -32,6 +32,7 @@ import {
   parsePipelineDuration,
   DEFAULT_PIPELINE_CAPS,
   DIRECTIVE_MAX_CHARS,
+  PIPELINE_STEP_OUTPUT_MAX_CHARS,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
   type ClarifyRecord,
@@ -43,6 +44,7 @@ import {
   type PipelinePendingApproval,
   type PipelineRunEvent,
   type RunRecord,
+  type StepOutputRecord,
   type StepRecord,
 } from '@ant/shared';
 import type { StateStorePort } from '../../core/ports/stateStore';
@@ -75,6 +77,7 @@ import {
   validateUniversalTurnMeta,
   findDuplicateActiveJob,
   checkStartCredits,
+  expandArtifactGlobsBounded,
 } from '../../core/scheduling/UniversalDispatchGate';
 import { UniversalDispatchService } from '../../core/scheduling/UniversalDispatchService';
 import { createSelfApiTokenMinter } from '../auth/selfApiToken';
@@ -336,10 +339,29 @@ export class PipelineRunCoordinator {
   }
 
   private renderDirective(template: string, run: RunRecord): string {
+    const outputOf = (stepId: string) => run.steps.find((s) => s.stepId === stepId)?.output;
     return template
       .replace(/\{\{\s*trigger\.fireDate\s*\}\}/g, new Date(run.fireEpoch).toISOString())
       .replace(/\{\{\s*trigger\.fireEpoch\s*\}\}/g, String(run.fireEpoch))
-      .replace(/\{\{\s*run\.id\s*\}\}/g, run.runId);
+      .replace(/\{\{\s*run\.id\s*\}\}/g, run.runId)
+      // Step-output substitution — validated at save time against the needs
+      // closure, so the referenced step is terminal here; a skipped/no-output
+      // upstream renders empty (recorded as unresolved on the dispatch event).
+      .replace(/\{\{\s*steps\.([a-z0-9-]+)\.answer\s*\}\}/g, (_, id: string) => outputOf(id)?.answer ?? '')
+      .replace(/\{\{\s*steps\.([a-z0-9-]+)\.artifacts\s*\}\}/g, (_, id: string) => (outputOf(id)?.artifacts ?? []).join('\n'));
+  }
+
+  /** Step-output refs in the template that render empty — dispatch-event audit detail. */
+  private unresolvedStepRefs(template: string, run: RunRecord): string[] {
+    const out: string[] = [];
+    const re = /\{\{\s*(steps\.([a-z0-9-]+)\.(answer|artifacts))\s*\}\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(template)) !== null) {
+      const output = run.steps.find((s) => s.stepId === m![2])?.output;
+      const value = m[3] === 'answer' ? output?.answer : output?.artifacts?.join('');
+      if (!value) out.push(m[1]);
+    }
+    return [...new Set(out)];
   }
 
   private async dispatchJobStep(
@@ -486,13 +508,18 @@ export class PipelineRunCoordinator {
       );
       return { run: { ...live, steps }, dispatches: [] };
     });
+    const unresolvedTemplates = directiveOverride ? [] : this.unresolvedStepRefs(template, run);
     await this.appendEvent(owner, run.projectId, {
       ts: new Date().toISOString(),
       event: 'step_dispatched',
       runId: run.runId,
       stepId: step.id,
       jobId,
-      detail: { turnId, ...(meta.contextExpanded && { contextExpanded: meta.contextExpanded }) },
+      detail: {
+        turnId,
+        ...(meta.contextExpanded && { contextExpanded: meta.contextExpanded }),
+        ...(unresolvedTemplates.length > 0 && { unresolvedTemplates }),
+      },
     });
   }
 
@@ -767,6 +794,7 @@ export class PipelineRunCoordinator {
     // Clarify seal: the job ended awaiting a human answer (universal
     // end-and-resume). Not an outcome — the step parks `awaiting_clarify`
     // until the answer funnels through `applyClarifyAnswer`.
+    let output: StepOutputRecord | undefined;
     if (outcome === 'succeeded') {
       const clarify = await this.detectClarifySeal(owner, runId, stepId, data.jobId);
       if (clarify) {
@@ -784,6 +812,9 @@ export class PipelineRunCoordinator {
         });
         return;
       }
+      // Step output capture ({{steps.*}} source + run-report summary) — reads
+      // the same seal the clarify check just did; best-effort by contract.
+      output = await this.captureStepOutput(owner, runId, stepId, data.jobId);
     }
 
     await this.appendEvent(owner, projectId, {
@@ -792,9 +823,10 @@ export class PipelineRunCoordinator {
       runId,
       stepId,
       jobId: data.jobId,
-      detail: { outcome, ...(error && { error }) },
+      detail: { outcome, ...(error && { error }), ...(output && { outputCaptured: true }) },
     });
-    const applied = await this.applyOutcome(owner, runId, stepId, outcome, error ? { error } : undefined);
+    const patch = { ...(error && { error }), ...(output && { output }) };
+    const applied = await this.applyOutcome(owner, runId, stepId, outcome, Object.keys(patch).length > 0 ? patch : undefined);
     if (!applied) {
       // Lock starvation would otherwise DROP the outcome and hang the run
       // `running` until the overlap TTL — re-arm a bounded re-apply instead.
@@ -807,6 +839,7 @@ export class PipelineRunCoordinator {
         stepId,
         outcome,
         ...(error && { error }),
+        ...(output && { output }),
         retries: 0,
       });
     }
@@ -820,11 +853,13 @@ export class PipelineRunCoordinator {
     stepId: string;
     outcome: 'succeeded' | 'failed';
     error?: string;
+    output?: StepOutputRecord;
     retries: number;
   }): Promise<void> {
+    const patch = { ...(data.error && { error: data.error }), ...(data.output && { output: data.output }) };
     const applied = await this.applyOutcome(
       data.owner, data.runId, data.stepId, data.outcome,
-      data.error ? { error: data.error } : undefined,
+      Object.keys(patch).length > 0 ? patch : undefined,
     );
     if (!applied && data.retries < MAX_OUTCOME_RETRIES) {
       await this.deps.scheduleQueue.armDelayed(
@@ -865,6 +900,83 @@ export class PipelineRunCoordinator {
       };
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Capture a completed step's output — the `{{steps.*}}` substitution source
+   * and the run history's business-readable summary. `.answer` = the final
+   * assistant text of the seal's `session:main` (jobId-guarded, same read
+   * channel as the clarify detection); `.artifacts` = files matching the
+   * pinned intent's `hooks.stop` globs at completion. Best-effort: any failure
+   * returns undefined and the step still succeeds.
+   */
+  private async captureStepOutput(
+    owner: PipelineOwner,
+    runId: string,
+    stepId: string,
+    jobId: string,
+  ): Promise<StepOutputRecord | undefined> {
+    try {
+      const run = await this.getRun(runId);
+      const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
+      if (!run || !stepDef || isApprovalStep(stepDef)) return undefined;
+      const ref = parseCustomJobRef(stepDef.customJobRef);
+      if (!ref) return undefined;
+      const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
+
+      let answer: string | undefined;
+      let answerTruncated = false;
+      const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
+      if (raw !== null) {
+        const session = JSON.parse(raw);
+        const state = session?.state ?? session;
+        // The seal must belong to THIS step's job — the session is shared by
+        // every step of the same customJobRef.
+        if (state?.jobId === jobId) {
+          const main = state?.conversations?.['session:main'];
+          if (Array.isArray(main)) {
+            for (let i = main.length - 1; i >= 0; i -= 1) {
+              const msg = main[i];
+              if (msg?.role !== 'assistant') continue;
+              const text =
+                typeof msg.content === 'string'
+                  ? msg.content
+                  : Array.isArray(msg.content)
+                    ? msg.content.map((b: any) => (typeof b?.text === 'string' ? b.text : '')).join('')
+                    : '';
+              if (text.trim().length > 0) {
+                answer = text;
+                break;
+              }
+            }
+          }
+          if (answer && answer.length > PIPELINE_STEP_OUTPUT_MAX_CHARS) {
+            answer = answer.slice(0, PIPELINE_STEP_OUTPUT_MAX_CHARS);
+            answerTruncated = true;
+          }
+        }
+      }
+
+      let artifacts: string[] | undefined;
+      if (stepDef.intent) {
+        const resolved = await resolveUniversalExecuteContext(this.deps.workspaceResolver, owner, run.projectId, stepDef.customJobRef);
+        if (resolved.ok) {
+          const globs = resolved.intentStopGlobs[stepDef.intent] ?? [];
+          const expanded = await expandArtifactGlobsBounded(containerPath, globs);
+          if (expanded.length > 0) artifacts = expanded;
+        }
+      }
+
+      if (!answer && !artifacts) return undefined;
+      return {
+        ...(answer && { answer }),
+        ...(answerTruncated && { answerTruncated: true }),
+        ...(artifacts && { artifacts }),
+        capturedAt: new Date().toISOString(),
+      };
+    } catch {
+      return undefined;
     }
   }
 
@@ -1212,9 +1324,13 @@ export class PipelineRunCoordinator {
     if (!anchor) return;
     const name = run.defSnapshot?.name ?? run.pipelineId;
     const failedStep = run.steps.find((s) => s.status === 'failed');
+    // Business-readable summary: the LAST job step's captured answer, first line.
+    const lastAnswer = [...run.steps].reverse().find((s) => s.output?.answer)?.output?.answer;
+    const summaryLine = lastAnswer?.split('\n').find((l) => l.trim().length > 0)?.trim().slice(0, 200);
+    const summary = summaryLine ? `\n— ${summaryLine}` : '';
     const text =
       run.status === 'completed'
-        ? `✅ 파이프라인 "${name}" 실행이 완료되었습니다. (run: ${run.runId})`
+        ? `✅ 파이프라인 "${name}" 실행이 완료되었습니다. (run: ${run.runId})${summary}`
         : run.status === 'failed'
           ? `❌ 파이프라인 "${name}" 실행이 실패했습니다.${failedStep ? ` (step: ${failedStep.stepId}${failedStep.error ? ` — ${failedStep.error}` : ''})` : ''}`
           : run.status === 'partial'
@@ -1368,11 +1484,25 @@ export class PipelineRunCoordinator {
 
   private async publish(owner: PipelineOwner, data: PipelineEventData): Promise<void> {
     try {
+      // The wire stays lean: captured step answers (≤16k each) ride the run
+      // JSONL and the runs API, never the SSE fan-out.
+      const payload: PipelineEventData =
+        data.cause === 'runUpdate'
+          ? {
+              ...data,
+              run: {
+                ...data.run,
+                steps: data.run.steps.map((s) =>
+                  s.output?.answer ? { ...s, output: { ...s.output, answer: undefined, answerTruncated: undefined } } : s,
+                ),
+              },
+            }
+          : data;
       // No projectId on the envelope — user-scoped delivery reaches the
       // approvals inbox even when another project is open.
       await this.deps.stateStore.publish(getRealtimeBroadcastChannel(owner.organizationId, owner.userId), {
         type: 'pipeline',
-        data,
+        data: payload,
         userContext: { userId: owner.userId, organizationId: owner.organizationId },
       });
     } catch (err) {

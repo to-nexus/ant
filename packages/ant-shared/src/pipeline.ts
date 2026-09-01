@@ -249,12 +249,21 @@ export interface ActivePipelineInfo {
 
 /**
  * Directive template whitelist — the ONLY substitutions the dispatcher
- * performs. No general template engine, no user code path. `steps.*`
- * substitution is a reserved v2 axis; the validator rejects it explicitly
- * so an author never concludes the knob silently works.
+ * performs. No general template engine, no user code path. Step-output
+ * references (`{{steps.<id>.answer}}` / `{{steps.<id>.artifacts}}`) are a
+ * separate grammar validated against the step's `needs` closure (upstream is
+ * terminal at render time by construction); `steps.<id>.verdict` stays a
+ * reserved axis the validator rejects explicitly.
  */
 export const PIPELINE_TEMPLATE_VARS = ['trigger.fireDate', 'trigger.fireEpoch', 'run.id'] as const;
 export type PipelineTemplateVar = (typeof PIPELINE_TEMPLATE_VARS)[number];
+
+/** `{{steps.<id>.<field>}}` fields the dispatcher substitutes. */
+export const PIPELINE_STEP_OUTPUT_FIELDS = ['answer', 'artifacts'] as const;
+export type PipelineStepOutputField = (typeof PIPELINE_STEP_OUTPUT_FIELDS)[number];
+
+/** Ceiling for a captured step answer — keeps run records and rendered directives bounded. */
+export const PIPELINE_STEP_OUTPUT_MAX_CHARS = 16_000;
 
 /**
  * Work statement synthesized when a job step declares no directive. English
@@ -361,6 +370,23 @@ export interface ClarifyRecord {
   via?: 'in-app' | 'api';
 }
 
+/**
+ * Captured on step completion — the `{{steps.*}}` substitution source and the
+ * run history's business-readable summary. `answer` = the job's final
+ * assistant text (session-seal read, jobId-guarded — clarify re-pointing means
+ * it comes from the LAST job); `artifacts` = files matching the pinned
+ * intent's `hooks.stop` artifact globs at completion. Capture failure means an
+ * absent record, never a step failure.
+ */
+export interface StepOutputRecord {
+  answer?: string;
+  /** Set when `answer` was cut at PIPELINE_STEP_OUTPUT_MAX_CHARS. */
+  answerTruncated?: boolean;
+  /** Container-relative artifact paths (newest first, bounded). */
+  artifacts?: string[];
+  capturedAt: string;
+}
+
 export interface StepRecord {
   stepId: string;
   status: PipelineStepStatus;
@@ -371,6 +397,7 @@ export interface StepRecord {
   error?: string;
   gate?: GateRecord;
   clarify?: ClarifyRecord;
+  output?: StepOutputRecord;
   /** Chat turn the step's user-turn line was minted under (coordinator-owned). */
   turnId?: string;
 }
@@ -547,7 +574,13 @@ function cronShapeError(cron: unknown): string | null {
   return null;
 }
 
-function templateVarErrors(directive: string, stepId: string): string[] {
+interface StepOutputRef {
+  fromStepId: string;
+  refStepId: string;
+  field: string;
+}
+
+function templateVarErrors(directive: string, stepId: string, stepRefs?: StepOutputRef[]): string[] {
   const errors: string[] = [];
   const re = /\{\{\s*([^}]*?)\s*\}\}/g;
   let m: RegExpExecArray | null;
@@ -555,7 +588,16 @@ function templateVarErrors(directive: string, stepId: string): string[] {
     const name = m[1];
     if ((PIPELINE_TEMPLATE_VARS as readonly string[]).includes(name)) continue;
     if (name.startsWith('steps.')) {
-      errors.push(`step "${stepId}": template variable "{{${name}}}" is not supported yet (step-output substitution is a v2 axis)`);
+      const ref = /^steps\.([a-z0-9-]+)\.([a-zA-Z]+)$/.exec(name);
+      if (!ref) {
+        errors.push(`step "${stepId}": template variable "{{${name}}}" must be "steps.<stepId>.<field>" (fields: ${PIPELINE_STEP_OUTPUT_FIELDS.join(', ')})`);
+      } else if (ref[2] === 'verdict') {
+        errors.push(`step "${stepId}": template variable "{{${name}}}" is not supported yet (verdict routing is a future axis)`);
+      } else if (!(PIPELINE_STEP_OUTPUT_FIELDS as readonly string[]).includes(ref[2])) {
+        errors.push(`step "${stepId}": unknown step-output field "{{${name}}}" (allowed: ${PIPELINE_STEP_OUTPUT_FIELDS.map((f) => `steps.<stepId>.${f}`).join(', ')})`);
+      } else if (stepRefs) {
+        stepRefs.push({ fromStepId: stepId, refStepId: ref[1], field: ref[2] });
+      }
     } else {
       errors.push(`step "${stepId}": unknown template variable "{{${name}}}" (allowed: ${PIPELINE_TEMPLATE_VARS.map((v) => `{{${v}}}`).join(', ')})`);
     }
@@ -661,6 +703,7 @@ export function validatePipelineDef(
 
   const ids = new Set<string>();
   const shapedSteps: Array<{ id: string; needs?: string[]; isApproval: boolean }> = [];
+  const stepOutputRefs: StepOutputRef[] = [];
   raw.steps.forEach((rawStep, index) => {
     const where = `steps[${index}]`;
     if (!isPlainObject(rawStep)) {
@@ -737,7 +780,7 @@ export function validatePipelineDef(
           // time is the only place the author sees why (M-NEW-029).
           errors.push(`step "${stepId}": directive must be at most ${DIRECTIVE_MAX_CHARS} characters`);
         } else {
-          errors.push(...templateVarErrors(rawStep.directive, stepId));
+          errors.push(...templateVarErrors(rawStep.directive, stepId, stepOutputRefs));
         }
       }
       if (rawStep.intent !== undefined) {
@@ -787,6 +830,39 @@ export function validatePipelineDef(
       errors.push(`step "${step.id}": an approval gate needs an upstream step (it cannot be the entry step)`);
     }
   });
+  // {{steps.*}} references resolve only against the step's transitive needs
+  // closure — that is the compile-time guarantee the referenced step is
+  // terminal when the directive renders.
+  if (stepOutputRefs.length > 0) {
+    const needsOf = new Map<string, string[]>();
+    shapedSteps.forEach((s, i) => {
+      needsOf.set(s.id, s.needs ?? (i > 0 ? [shapedSteps[i - 1].id] : []));
+    });
+    const closureOf = (id: string): Set<string> => {
+      const out = new Set<string>();
+      const queue = [...(needsOf.get(id) ?? [])];
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        if (out.has(cur)) continue;
+        out.add(cur);
+        queue.push(...(needsOf.get(cur) ?? []));
+      }
+      return out;
+    };
+    const approvalIds = new Set(shapedSteps.filter((s) => s.isApproval).map((s) => s.id));
+    for (const ref of stepOutputRefs) {
+      const at = `step "${ref.fromStepId}": "{{steps.${ref.refStepId}.${ref.field}}}"`;
+      if (!ids.has(ref.refStepId)) {
+        errors.push(`${at} references unknown step "${ref.refStepId}"`);
+      } else if (ref.refStepId === ref.fromStepId) {
+        errors.push(`${at} must not reference the step itself`);
+      } else if (approvalIds.has(ref.refStepId)) {
+        errors.push(`${at} references an approval gate — gates have no output`);
+      } else if (!closureOf(ref.fromStepId).has(ref.refStepId)) {
+        errors.push(`${at} must reference an upstream dependency (put "${ref.refStepId}" in this step's needs chain)`);
+      }
+    }
+  }
   if (errors.length === 0 && !isAcyclic(shapedSteps)) {
     errors.push('steps: the needs graph must be acyclic');
   }

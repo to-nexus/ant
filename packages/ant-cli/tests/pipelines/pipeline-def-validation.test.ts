@@ -95,6 +95,20 @@ describe('validatePipelineDef — structural rules', () => {
     ['context glob pin', baseDef({
       steps: [{ id: 'collect', customJobRef: 'research/collect', directive: 'x', context: ['reports/**', 'plan/spec.md'] }],
     })],
+    // {{steps.*}} output refs against the (implicit + explicit) needs closure.
+    ['steps.*.answer of the implicit previous step', baseDef({
+      steps: [
+        { id: 'collect', customJobRef: 'research/collect', directive: 'x' },
+        { id: 'digest', customJobRef: 'writer/digest', directive: 'Summarize:\n{{steps.collect.answer}}' },
+      ],
+    })],
+    ['steps.*.artifacts across a transitive needs chain', baseDef({
+      steps: [
+        { id: 'a', customJobRef: 'x/a', directive: 'a' },
+        { id: 'b', customJobRef: 'x/b', directive: 'b', needs: ['a'] },
+        { id: 'c', customJobRef: 'x/c', directive: '{{steps.a.artifacts}}', needs: ['b'] },
+      ],
+    })],
   ];
 
   it.each(valid)('accepts: %s', (_label, def) => {
@@ -115,7 +129,27 @@ describe('validatePipelineDef — structural rules', () => {
     ['unknown top-level key', baseDef({ webhookToken: 'x' }), /unknown key "webhookToken"/],
     ['reserved step key retry', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 1 } }] }), /"retry" is not supported yet/],
     ['reserved step key remindAfter', baseDef({ steps: [{ id: 'a', type: 'approval', prompt: 'p', needs: [], remindAfter: '4h' }] }), /"remindAfter" is not supported yet/],
-    ['steps.* template var', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{steps.b.summary}}' }] }), /not supported yet .*v2 axis/],
+    // {{steps.*}} grammar — answer/artifacts against the needs closure only.
+    ['steps.* unknown output field', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'b', customJobRef: 'x/b', directive: '{{steps.a.summary}}' },
+    ] }), /unknown step-output field/],
+    ['steps.*.verdict reserved', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'b', customJobRef: 'x/b', directive: '{{steps.a.verdict}}' },
+    ] }), /verdict routing is a future axis/],
+    ['steps.* self reference', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{steps.a.answer}}' }] }), /must not reference the step itself/],
+    ['steps.* unknown step', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{steps.ghost.answer}}' }] }), /references unknown step "ghost"/],
+    ['steps.* gate reference', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'g', type: 'approval', prompt: 'p' },
+      { id: 'b', customJobRef: 'x/b', directive: '{{steps.g.answer}}' },
+    ] }), /gates have no output/],
+    ['steps.* non-upstream reference (sibling branch)', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'b', customJobRef: 'x/b', directive: 'b', needs: [] },
+      { id: 'c', customJobRef: 'x/c', directive: '{{steps.b.answer}}', needs: ['a'] },
+    ] }), /must reference an upstream dependency/],
     ['unknown template var', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{fireDate}}' }] }), /unknown template variable/],
     ['malformed customJobRef', baseDef({ steps: [{ id: 'a', customJobRef: 'not-a-ref', directive: 'a' }] }), /customJobRef/],
     ['duplicate step ids', baseDef({ steps: [

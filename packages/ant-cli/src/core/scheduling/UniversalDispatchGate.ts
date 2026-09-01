@@ -58,6 +58,13 @@ export async function resolveUniversalExecuteContext(
        * consumer list — a fourth derivation site is a drift vector).
        */
       scopeRoots: CustomAgentScopeRoot[];
+      /**
+       * intentId → `hooks.stop` artifact globs — each intent's declared
+       * OUTPUT contract. The pipeline coordinator captures a completed step's
+       * `{{steps.*.artifacts}}` from these; decided here because this is
+       * where the definition is already loaded.
+       */
+      intentStopGlobs: Record<string, string[]>;
     }
   | { ok: false; status: number; error: string; code: string }
 > {
@@ -81,6 +88,7 @@ export async function resolveUniversalExecuteContext(
   let declaresSelfApi = false;
   let builtinTools: string[] = [];
   let scopeRoots: CustomAgentScopeRoot[] = [];
+  let intentStopGlobs: Record<string, string[]> = {};
   try {
     const { deriveCustomAgentScopeRootsForTenant } = await import('../customAgents/scopeRoots');
     const { loadCustomJob } = await import('../customAgents/CustomAgentLoader');
@@ -93,6 +101,12 @@ export async function resolveUniversalExecuteContext(
     const loaded = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
     intentIds = new Set(loaded.intents.map((i) => i.id));
     builtinTools = [...loaded.builtinTools];
+    intentStopGlobs = Object.fromEntries(
+      loaded.intents.map((i) => [
+        i.id,
+        (i.hooks?.stop ?? []).flatMap((h) => ('artifact' in h && typeof h.artifact === 'string' ? [h.artifact] : [])),
+      ]),
+    );
     const { isSelfApiConfig } = await import('@ant/shared');
     declaresSelfApi = Object.values(loaded.apiServers).some((cfg) => isSelfApiConfig(cfg));
   } catch (e) {
@@ -101,7 +115,37 @@ export async function resolveUniversalExecuteContext(
   const { ensureUniversalContainer } = await import('../customAgents/universalContainer');
   ensureUniversalContainer(projectPath);
   const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
-  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots };
+  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots, intentStopGlobs };
+}
+
+/**
+ * Bounded, non-failing glob expansion over the artifacts tree — the step
+ * OUTPUT capture counterpart of the context-pin expansion above (same walk,
+ * same caps, newest-mtime-first). Zero matches is an empty list, never an
+ * error: capture is best-effort by contract.
+ */
+export async function expandArtifactGlobsBounded(containerPath: string, globs: readonly string[]): Promise<string[]> {
+  if (globs.length === 0) return [];
+  try {
+    const { matchArtifactGlob } = await import('../customAgents/stopHooks');
+    const { UNIVERSAL_ARTIFACTS_DIRNAME } = await import('../customAgents/universalContainer');
+    const artifactsRoot = path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME);
+    const files = walkArtifactFiles(artifactsRoot);
+    const out: string[] = [];
+    for (const glob of globs) {
+      const matches = files
+        .filter((f) => matchArtifactGlob(glob, f))
+        .map((f) => ({ f, mtime: fs.statSync(path.join(artifactsRoot, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, GLOB_PIN_MAX_MATCHES)
+        .map((m) => m.f);
+      out.push(...matches);
+      if (out.length >= GLOB_PIN_TOTAL_CONTEXT_MAX) break;
+    }
+    return [...new Set(out)].slice(0, GLOB_PIN_TOTAL_CONTEXT_MAX);
+  } catch {
+    return [];
+  }
 }
 
 // Glob-pin expansion budgets (Authorization-budget doctrine: a dispatch must
