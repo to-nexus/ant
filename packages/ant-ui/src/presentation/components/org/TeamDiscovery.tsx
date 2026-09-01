@@ -15,10 +15,9 @@
  * "searching joined me": the membership had come from a silent login grant and
  * the screen offered nothing to explain or undo it.
  *
- * Presentational and chrome-free so the two entry points render the same code:
- * `JoinTeamModal` (navbar shortcut) and the `c3o-discover` section of
- * `OrgSettingsPanel`. `active` lets a host skip the debounce timer while it is
- * not visible.
+ * Presentational and chrome-free; its host is the `c3o-discover` section of
+ * `OrgSettingsPanel`, the one place team work lives. `active` lets a host skip
+ * the debounce timer while it is not visible.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';

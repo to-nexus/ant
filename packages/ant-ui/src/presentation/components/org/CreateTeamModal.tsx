@@ -21,6 +21,8 @@ import type { OrgSummaryView } from '@ant/shared';
 interface CreateTeamModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** The org hub uses this to point its sections at the team just created. */
+  onCreated?: (organization: OrgSummaryView) => void;
 }
 
 /** FE mirror of the BE slugify (preview only — the BE stays authoritative). */
@@ -33,7 +35,7 @@ function previewSlug(input: string): string {
     .slice(0, 64);
 }
 
-export function CreateTeamModal({ isOpen, onClose }: CreateTeamModalProps) {
+export function CreateTeamModal({ isOpen, onClose, onCreated }: CreateTeamModalProps) {
   const { t } = useTranslation('nav');
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -65,6 +67,7 @@ export function CreateTeamModal({ isOpen, onClose }: CreateTeamModalProps) {
     try {
       const { organization } = await createTeam(name.trim());
       setCreated(organization);
+      onCreated?.(organization);
     } catch (err) {
       setError(orgErrorMessage(err, t));
     } finally {

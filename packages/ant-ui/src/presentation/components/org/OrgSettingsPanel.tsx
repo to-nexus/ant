@@ -40,7 +40,7 @@ import { Button } from '../aurora/Button';
 import { Badge } from '../aurora/Badge';
 import { Avatar } from '../aurora/Avatar';
 import { KebabMenu } from '../aurora/KebabMenu';
-import { Copy, Check, Mail, ArrowRightLeft, UserMinus, Trash2, X, Undo2, LogOut, ChevronRight } from 'lucide-react';
+import { Copy, Check, Mail, ArrowRightLeft, UserMinus, Trash2, X, Undo2, LogOut, ChevronRight, Plus } from 'lucide-react';
 import type { OrgInviteRole, OrgMemberView } from '@ant/shared';
 import {
   fetchOrg,
@@ -65,6 +65,7 @@ import { RoleBadge } from './RoleBadge';
 import { InviteLinkChip } from './InviteLinkChip';
 import { orgErrorMessage } from './orgErrors';
 import { TeamDiscovery } from './TeamDiscovery';
+import { CreateTeamModal } from './CreateTeamModal';
 import { switchOrg } from '@/infrastructure/http/api/auth';
 
 const SECTION_IDS = [
@@ -96,6 +97,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(
     activeOrgKind === 'team' ? (activeOrgId ?? null) : null,
   );
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
 
   // A membership that disappears underneath us (leave, admin removal, org
   // delete) must not leave the detail sections pointed at a dead org.
@@ -627,10 +629,16 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
             title={t('org.teams.title', 'My teams')}
             description={t('org.teams.description', 'Teams you belong to. Select one to manage it — you do not have to switch into it first.')}
             accent="violet-pink"
+            headerAction={
+              <Button variant="primary" size="xs" onClick={() => setShowCreateTeam(true)}>
+                <Plus className="w-3 h-3" />
+                {t('org.teams.create', 'Create team')}
+              </Button>
+            }
           >
             {teamMemberships.length === 0 ? (
               <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-                {t('org.teams.empty', 'You are not a member of any team yet. Find one below, or ask an admin for an invite.')}
+                {t('org.teams.empty', 'You are not a member of any team yet. Create one above, find one below, or ask an admin for an invite.')}
               </div>
             ) : (
               <div className="space-y-1">
@@ -1329,6 +1337,19 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
           )}
         </TwoColLayout>
       </div>
+
+      {/* The panel owns the modal now — the navbar dropdown is an account
+          switcher and holds no team actions. */}
+      <CreateTeamModal
+        isOpen={showCreateTeam}
+        onClose={() => setShowCreateTeam(false)}
+        onCreated={(org) => {
+          // Refetch FIRST: the selection guard above drops any org that is not
+          // yet in `teamMemberships`, and creation does not switch the active
+          // org, so nothing else would refresh that list.
+          void refetchAuth().then(() => setSelectedOrgId(org.id));
+        }}
+      />
     </div>
   );
 }

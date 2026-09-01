@@ -408,8 +408,9 @@
     "tocDiscover": "Find a team",
     "teams": {
       "title": "My teams",
+      "create": "Create team",
       "description": "Teams you belong to. Select one to manage it — you do not have to switch into it first.",
-      "empty": "You are not a member of any team yet. Find one below, or ask an admin for an invite.",
+      "empty": "You are not a member of any team yet. Create one above, find one below, or ask an admin for an invite.",
       "select": "Manage",
       "switch": "Switch to",
       "leave": "Leave"

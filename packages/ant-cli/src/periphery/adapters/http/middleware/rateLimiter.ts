@@ -111,7 +111,7 @@ export const previewRateLimiter: RequestHandler = makeProxy('preview', () => pre
 /**
  * Organization search rate limit (30 req/min per user).
  *
- * Powers the JoinTeamModal autocomplete — the FE debounces at 300ms but a
+ * Powers the TeamDiscovery search box — the FE debounces at 300ms but a
  * misbehaving client could still flood the endpoint. The repo's search scans
  * every org id in the index, so cheap rate-limiting at the edge is cheaper
  * than letting the scan pile up.

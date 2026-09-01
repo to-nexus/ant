@@ -1,10 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail, Waypoints, Search } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Building2, Mail, Waypoints } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
-import { CreateTeamModal } from './auth/CreateTeamModal';
-import { JoinTeamModal } from './auth/JoinTeamModal';
 import { LocalLlmBadge } from './pricing/LocalLlmBadge';
 import { Slot } from '@/presentation/extensions/slots';
 import { useStore } from '@/domain/store';
@@ -55,8 +53,6 @@ export function AppNavBar({}: AppNavBarProps) {
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
-  const [showCreateTeam, setShowCreateTeam] = useState(false);
-  const [showJoinTeam, setShowJoinTeam] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
 
@@ -559,6 +555,9 @@ export function AppNavBar({}: AppNavBarProps) {
                           <button
                             onClick={() => {
                               undismissAllInvites();
+                              setQuickStartProjectId(undefined);
+                              setOnboardingSkipped(true);
+                              openMainPanelTab('orgSettings');
                               setShowUserMenu(false);
                             }}
                             className="w-full px-4 py-2 text-left text-xs flex items-center gap-2"
@@ -570,35 +569,12 @@ export function AppNavBar({}: AppNavBarProps) {
                             {t('auth.pendingInvitesRow', '{{count}} pending invite(s)', { count: pendingInvites.length })}
                           </button>
                         )}
-                        <button
-                          onClick={() => {
-                            setShowCreateTeam(true);
-                            setShowUserMenu(false);
-                          }}
-                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
-                          style={{ color: 'var(--text-2)' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          <Plus className="w-4 h-4" />
-                          {t('auth.createTeam', 'Create team')}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowJoinTeam(true);
-                            setShowUserMenu(false);
-                          }}
-                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
-                          style={{ color: 'var(--text-2)' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          <Search className="w-4 h-4" />
-                          {t('auth.joinTeam', 'Join a team')}
-                        </button>
                         <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }}></div>
-                        {/* Ungated: the panel is the org hub for every cloud
-                            account — a member-less one lands on discovery. */}
+                        {/* The ONLY entry to team work. Creating, finding,
+                            inviting and leaving all live inside the panel, so
+                            this dropdown stays what it is — an account
+                            switcher. Ungated: a member-less account lands on
+                            discovery. */}
                         <button
                           onClick={() => {
                             setQuickStartProjectId(undefined);
@@ -612,7 +588,7 @@ export function AppNavBar({}: AppNavBarProps) {
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                         >
                           <Building2 className="w-4 h-4" />
-                          {t('auth.orgSettings', 'Organization settings')}
+                          {t('auth.orgSettings', 'Organization')}
                         </button>
                         <button
                           onClick={() => {
@@ -689,8 +665,6 @@ export function AppNavBar({}: AppNavBarProps) {
       {/* Async UI Policy — ambient progress bar sits flush with the navbar's
           bottom edge. Does not affect navbar height or body layout. */}
       <AmbientActivityBar />
-      <CreateTeamModal isOpen={showCreateTeam} onClose={() => setShowCreateTeam(false)} />
-      <JoinTeamModal isOpen={showJoinTeam} onClose={() => setShowJoinTeam(false)} />
     </header>
   );
 }

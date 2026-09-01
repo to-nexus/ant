@@ -83,7 +83,13 @@ The switch foundation:
 - `POST /api/auth/switch-org { organizationId }` validates membership →
   updates `currentOrganizationId` → re-issues the JWT with the new `org`+`kind`.
 - FE: `AppNavBar` shows the active account (kind-aware label) and, when
-  `memberships.length > 1`, a switcher dropdown.
+  `memberships.length > 1`, a switcher dropdown. The dropdown switches and
+  nothing else — creating, finding, inviting and leaving all live in the
+  `orgSettings` panel (`OrgSettingsPanel`), which every cloud account can open
+  whether or not it belongs to a team. Team work used to be split across the
+  two by no rule at all: create-team existed only in the dropdown, invite-member
+  only in the panel, and find-a-team in both. One home, and the dropdown links
+  to it.
 
 ## Admin reads the scope axis, not `currentOrganizationId`
 
