@@ -97,6 +97,14 @@ describe('validatePipelineDef — structural rules', () => {
     })],
     // Manual-only: no trigger block at all — run-now is the only fire source.
     ['manual-only pipeline (no on block)', baseDef({ on: undefined })],
+    // runCompleted chaining — alone, and alongside a schedule.
+    ['runCompleted trigger alone', baseDef({ on: { runCompleted: { pipelineId: 'weekly-ops' } } })],
+    ['runCompleted error-workflow + schedule', baseDef({
+      on: {
+        schedule: { cron: '0 9 * * 1' },
+        runCompleted: { pipelineId: 'weekly-ops', statuses: ['failed', 'partial'] },
+      },
+    })],
     // Retry / timeout / remindAfter on their legal step kinds.
     ['job step with retry + timeout, gate with remindAfter', baseDef({
       steps: [
@@ -139,7 +147,10 @@ describe('validatePipelineDef — structural rules', () => {
     ['reserved step key jobType (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', jobType: 'code' }] }), /"jobType" is not supported yet/],
     ['reserved step key feature (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', feature: 'main' }] }), /"feature" is not supported yet/],
     ['empty name', baseDef({ name: '' }), /name/],
-    ['missing schedule', baseDef({ on: {} }), /on\.schedule is required/],
+    ['empty on block', baseDef({ on: {} }), /at least one trigger/],
+    ['runCompleted with a bad pipeline id', baseDef({ on: { runCompleted: { pipelineId: 'Not Valid!' } } }), /pipelineId must be a pipeline id/],
+    ['runCompleted with a non-terminal status', baseDef({ on: { runCompleted: { pipelineId: 'weekly-ops', statuses: ['running'] } } }), /not a terminal run status/],
+    ['runCompleted with empty statuses', baseDef({ on: { runCompleted: { pipelineId: 'weekly-ops', statuses: [] } } }), /non-empty array of terminal run statuses/],
     ['4-field cron', baseDef({ on: { schedule: { cron: '0 9 * *' } } }), /5 fields/],
     ['cancelPrevious overlap', baseDef({ on: { schedule: { cron: '0 9 * * 1', overlap: 'cancelPrevious' } } }), /not supported yet/],
     ['unknown top-level key', baseDef({ webhookToken: 'x' }), /unknown key "webhookToken"/],

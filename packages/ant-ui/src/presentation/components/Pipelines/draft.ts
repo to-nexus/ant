@@ -17,6 +17,7 @@ import {
   type ApprovalStepDef,
   type JobStepDef,
   type PipelineDef,
+  type PipelineRunCompletedTrigger,
   type PipelineScheduleTrigger,
   type PipelineStepDef,
 } from '@ant/shared';
@@ -176,6 +177,34 @@ export function setScheduleEnabled(def: PipelineDef, enabled: boolean): Pipeline
     return rest as PipelineDef;
   }
   return def.on?.schedule ? def : { ...def, on: { schedule: { cron: DEFAULT_SCHEDULE_CRON } } };
+}
+
+export type TriggerMode = 'schedule' | 'runCompleted' | 'manual';
+
+export function triggerModeOf(def: PipelineDef): TriggerMode {
+  if (def.on?.schedule) return 'schedule';
+  if (def.on?.runCompleted) return 'runCompleted';
+  return 'manual';
+}
+
+/**
+ * Switch the trigger kind. The inspector edits ONE trigger at a time (a
+ * hand-authored def carrying both still validates and fires on both; the UI
+ * shows its schedule half).
+ */
+export function setTriggerMode(def: PipelineDef, mode: TriggerMode): PipelineDef {
+  if (mode === 'manual') {
+    const { on: _drop, ...rest } = def;
+    return rest as PipelineDef;
+  }
+  if (mode === 'schedule') {
+    return { ...def, on: { schedule: def.on?.schedule ?? { cron: DEFAULT_SCHEDULE_CRON } } };
+  }
+  return { ...def, on: { runCompleted: def.on?.runCompleted ?? { pipelineId: '' } } };
+}
+
+export function updateRunCompleted(def: PipelineDef, patch: Partial<PipelineRunCompletedTrigger>): PipelineDef {
+  return { ...def, on: { ...def.on, runCompleted: { pipelineId: '', ...def.on?.runCompleted, ...patch } } };
 }
 
 /** Client copy of the executor's implicit-needs rule for edge rendering. */

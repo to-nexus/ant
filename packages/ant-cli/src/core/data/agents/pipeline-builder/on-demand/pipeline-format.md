@@ -12,10 +12,17 @@ version: 2                      # required, exactly 2
 name: Weekly ops report         # required, at most 100 characters
 on:                             # OPTIONAL — omit `on` entirely for a
   schedule:                     # manual-only pipeline (fires only via
-    cron: '0 9 * * 1'           # Run now); when declared, `schedule` is
-    tz: Asia/Seoul              # the only trigger kind. 5-field cron,
-    onMissed: skip              # IANA tz (omitted = UTC); skip | runOnce
+    cron: '0 9 * * 1'           # Run now). 5-field cron, IANA tz
+    tz: Asia/Seoul              # (omitted = UTC)
+    onMissed: skip              # skip (default) | runOnce
     overlap: skip               # skip (default) | queue
+  runCompleted:                 # pipeline→pipeline chaining: fires when
+    pipelineId: weekly-ops      # that pipeline's run (the SAME activator's)
+    statuses: [completed]       # seals one of these terminal statuses
+                                # (default [completed]; ['failed'] = an
+                                # error-handler pipeline). `schedule` and
+                                # `runCompleted` may coexist. Chain depth
+                                # is bounded (5) against fire loops.
 defaults:
   onStepFailure: abort          # abort (default) | continue
 steps:

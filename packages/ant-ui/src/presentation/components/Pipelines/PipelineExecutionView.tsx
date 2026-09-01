@@ -55,7 +55,9 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
   const enabled = entry?.enabled ?? false;
   const cronSummary = def.on?.schedule
     ? describeCron(def.on.schedule.cron, def.on.schedule.tz, t, i18n.language)
-    : t('trigger.manualOnly', 'Manual only');
+    : def.on?.runCompleted
+      ? t('trigger.chainedSummary', 'After "{{id}}"', { id: def.on.runCompleted.pipelineId })
+      : t('trigger.manualOnly', 'Manual only');
 
   const projectNameOf = useMemo(() => {
     const names = new Map(activatableProjects.map((p) => [p.id, p.name]));

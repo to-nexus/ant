@@ -186,6 +186,17 @@ queue runs `attempts: 3` + backoff. **`ant-jobs` keeps `attempts: 1`** — that
 invariant belongs to a different queue and is untouched (a BullMQ retry would
 replay an LLM job's payload without `isResume`).
 
+**`on.runCompleted` — pipeline→pipeline chaining**: fires when another
+pipeline's run seals a matching terminal status (default `['completed']`;
+`['failed']` is the error-workflow pattern). Scoped to the ACTIVATOR's own
+activations (identity never crosses users, §6): `finalizeRun` scans
+`listAccountActivations` (bounded disk scan — the no-reverse-index doctrine),
+matches each activation's pinned definition, and `addNow`s the SAME fire path
+with `firedBy: 'event'`, an un-rounded `fireEpoch` and `chainDepth + 1`;
+`handleFire` skips past `MAX_CHAIN_DEPTH` (5) — the loop guard lives at fire,
+caps doctrine. A pipeline never chains onto its own project. `schedule` and
+`runCompleted` may coexist on one definition.
+
 **The trigger block is optional**: a definition with no `on` is MANUAL-ONLY —
 run-now is its only fire source, riding the identical fire path (activation
 authority, overlap NX, caps — nothing forks). A manual-only activation
@@ -721,8 +732,9 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
   failure on expiry; stands down during clarify waits), and gate `remindAfter`
   re-arms (`gre-`, bounded by MAX_GATE_REMINDERS). Remaining: A3
   approval-await integration (consumes the runner-axis `pendingApproval`
-  seal), event triggers (`runCompleted` — pipeline→pipeline chaining).
-  Also shipped: the trigger block became OPTIONAL (manual-only pipelines, §2).
+  seal). Also shipped: the trigger block became OPTIONAL (manual-only
+  pipelines, §2) and `on.runCompleted` event triggers (pipeline→pipeline
+  chaining, §2 — `firedBy: 'event'`, chain-depth bound).
 - **Phase 3**: per-(project, customJobRef) duplicate-gate relaxation +
   tenant concurrency slots, parallel branches/fan-in + FE turn grouping,
   free-DAG canvas editing, `cancelPrevious`, caps admin surface.

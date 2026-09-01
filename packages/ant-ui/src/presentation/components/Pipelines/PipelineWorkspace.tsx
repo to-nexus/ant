@@ -106,7 +106,9 @@ export function PipelineWorkspace() {
 
   const cronSummary = draft.on?.schedule
     ? describeCron(draft.on.schedule.cron, draft.on.schedule.tz, t, i18n.language)
-    : t('trigger.manualOnly', 'Manual only');
+    : draft.on?.runCompleted
+      ? t('trigger.chainedSummary', 'After "{{id}}"', { id: draft.on.runCompleted.pipelineId || '…' })
+      : t('trigger.manualOnly', 'Manual only');
 
   const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate') => {
     if (!editable) return;

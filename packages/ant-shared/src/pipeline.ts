@@ -68,6 +68,18 @@ export interface PipelineScheduleTrigger {
   overlap?: PipelineOverlap;
 }
 
+/**
+ * Pipeline→pipeline chaining: fire when another pipeline's run (an activation
+ * of the SAME activator — identity never crosses users) seals one of the
+ * given terminal statuses. `statuses: ['failed']` is the error-workflow
+ * pattern. Chain depth is bounded (MAX_CHAIN_DEPTH) against fire loops.
+ */
+export interface PipelineRunCompletedTrigger {
+  pipelineId: string;
+  /** Terminal statuses that fire. Default: ['completed']. */
+  statuses?: PipelineRunStatus[];
+}
+
 export interface JobStepDef {
   id: string;
   /** `{agentId}/{jobId}` — cross-agent chaining is the point. */
@@ -139,9 +151,10 @@ export interface PipelineDef {
   /**
    * Trigger block. ABSENT = manual-only: the pipeline fires only via run-now
    * (the same fire path — activation, overlap and caps gates unchanged).
-   * When declared it must carry a trigger (`schedule` is the only kind today).
+   * When declared it must carry at least one trigger; `schedule` and
+   * `runCompleted` may coexist.
    */
-  on?: { schedule: PipelineScheduleTrigger };
+  on?: { schedule?: PipelineScheduleTrigger; runCompleted?: PipelineRunCompletedTrigger };
   defaults?: { onStepFailure?: StepFailurePolicy };
   steps: PipelineStepDef[];
 }
@@ -301,6 +314,8 @@ export const PIPELINE_STEP_OUTPUT_MAX_CHARS = 16_000;
 
 /** Hard ceiling on `retry.max` — coordinator re-dispatch rounds per step. */
 export const MAX_STEP_RETRY = 3;
+/** runCompleted chain-depth bound — a fire past this is skipped (loop guard). */
+export const MAX_CHAIN_DEPTH = 5;
 /** Reminder re-arms per gate — a nag, not a poll; resolve cancels it. */
 export const MAX_GATE_REMINDERS = 10;
 
@@ -370,7 +385,7 @@ export type PipelineStepStatus =
   | 'skipped'
   | 'cancelled';
 
-export type PipelineFiredBy = 'cron' | 'manual';
+export type PipelineFiredBy = 'cron' | 'manual' | 'event';
 
 export type GateDecision = 'approved' | 'rejected' | 'expired_approve' | 'expired_reject';
 
@@ -469,6 +484,8 @@ export interface RunRecord {
   activationSnapshot?: PipelineActivation;
   /** Previous COMPLETED run's fireEpoch, frozen at fire — `{{run.prevSuccess.*}}`. */
   prevSuccessFireEpoch?: number;
+  /** runCompleted chain position (0/absent = not event-fired). Bounded by MAX_CHAIN_DEPTH. */
+  chainDepth?: number;
 }
 
 /** One line per TERMINAL run in `runs/index.jsonl`; also the runs-list API row. */
@@ -738,26 +755,58 @@ export function validatePipelineDef(
   }
 
   // Trigger — absent `on` = manual-only (run-now is the only fire source).
-  if (raw.on !== undefined && (!isPlainObject(raw.on) || !isPlainObject(raw.on.schedule))) {
-    errors.push('on.schedule is required when "on" is declared (omit "on" entirely for a manual-only pipeline)');
-  } else if (raw.on !== undefined && isPlainObject(raw.on) && isPlainObject(raw.on.schedule)) {
-    const sched = raw.on.schedule as Record<string, unknown>;
-    errors.push(...unknownKeyErrors(raw.on, ['schedule'], 'on'));
-    errors.push(...unknownKeyErrors(sched, SCHEDULE_KEYS, 'on.schedule'));
-    const cronErr = cronShapeError(sched.cron);
-    if (cronErr) errors.push(cronErr);
-    if (sched.tz !== undefined && (typeof sched.tz !== 'string' || sched.tz.trim().length === 0)) {
-      errors.push('on.schedule.tz must be a non-empty string (IANA timezone)');
+  if (raw.on !== undefined && !isPlainObject(raw.on)) {
+    errors.push('on must be a mapping of triggers (omit "on" entirely for a manual-only pipeline)');
+  } else if (raw.on !== undefined && isPlainObject(raw.on)) {
+    errors.push(...unknownKeyErrors(raw.on, ['schedule', 'runCompleted'], 'on'));
+    if (raw.on.schedule === undefined && raw.on.runCompleted === undefined) {
+      errors.push('on must declare at least one trigger — "schedule" and/or "runCompleted" (omit "on" entirely for a manual-only pipeline)');
     }
-    if (sched.onMissed !== undefined && sched.onMissed !== 'skip' && sched.onMissed !== 'runOnce') {
-      errors.push(`on.schedule.onMissed must be "skip" or "runOnce" (got: ${String(sched.onMissed)})`);
+    if (raw.on.schedule !== undefined) {
+      if (!isPlainObject(raw.on.schedule)) {
+        errors.push('on.schedule must be a mapping');
+      } else {
+        const sched = raw.on.schedule as Record<string, unknown>;
+        errors.push(...unknownKeyErrors(sched, SCHEDULE_KEYS, 'on.schedule'));
+        const cronErr = cronShapeError(sched.cron);
+        if (cronErr) errors.push(cronErr);
+        if (sched.tz !== undefined && (typeof sched.tz !== 'string' || sched.tz.trim().length === 0)) {
+          errors.push('on.schedule.tz must be a non-empty string (IANA timezone)');
+        }
+        if (sched.onMissed !== undefined && sched.onMissed !== 'skip' && sched.onMissed !== 'runOnce') {
+          errors.push(`on.schedule.onMissed must be "skip" or "runOnce" (got: ${String(sched.onMissed)})`);
+        }
+        if (sched.overlap !== undefined && sched.overlap !== 'skip' && sched.overlap !== 'queue') {
+          errors.push(
+            sched.overlap === 'cancelPrevious'
+              ? 'on.schedule.overlap "cancelPrevious" is not supported yet — use "skip" or "queue"'
+              : `on.schedule.overlap must be "skip" or "queue" (got: ${String(sched.overlap)})`,
+          );
+        }
+      }
     }
-    if (sched.overlap !== undefined && sched.overlap !== 'skip' && sched.overlap !== 'queue') {
-      errors.push(
-        sched.overlap === 'cancelPrevious'
-          ? 'on.schedule.overlap "cancelPrevious" is not supported yet — use "skip" or "queue"'
-          : `on.schedule.overlap must be "skip" or "queue" (got: ${String(sched.overlap)})`,
-      );
+    if (raw.on.runCompleted !== undefined) {
+      if (!isPlainObject(raw.on.runCompleted)) {
+        errors.push('on.runCompleted must be a mapping { pipelineId, statuses? }');
+      } else {
+        const rc = raw.on.runCompleted as Record<string, unknown>;
+        errors.push(...unknownKeyErrors(rc, ['pipelineId', 'statuses'], 'on.runCompleted'));
+        if (typeof rc.pipelineId !== 'string' || !isValidCustomId(rc.pipelineId)) {
+          errors.push('on.runCompleted.pipelineId must be a pipeline id (lowercase kebab-case)');
+        }
+        if (rc.statuses !== undefined) {
+          const terminal = ['completed', 'failed', 'partial', 'cancelled'];
+          if (!Array.isArray(rc.statuses) || rc.statuses.length === 0) {
+            errors.push('on.runCompleted.statuses must be a non-empty array of terminal run statuses');
+          } else {
+            for (const s of rc.statuses) {
+              if (!terminal.includes(String(s))) {
+                errors.push(`on.runCompleted.statuses: "${String(s)}" is not a terminal run status (allowed: ${terminal.join(', ')})`);
+              }
+            }
+          }
+        }
+      }
     }
   }
 

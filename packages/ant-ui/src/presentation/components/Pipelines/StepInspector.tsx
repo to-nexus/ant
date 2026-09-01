@@ -20,6 +20,7 @@ import {
   type ApprovalStepDef,
   type JobStepDef,
   type PipelineDef,
+  type PipelineRunStatus,
   type StepEdgeCondition,
 } from '@ant/shared';
 import { useStore } from '@/domain/store';
@@ -30,7 +31,7 @@ import { HintBadge } from '../common/HintBadge';
 import { Tooltip } from '../common/Tooltip';
 import { FileTreePicker } from '../common/FileTreePicker';
 import { CronBuilder } from './CronBuilder';
-import { TRIGGER_NODE_ID, descendantsOf, effectiveNeedsOf, removeStep, setScheduleEnabled, setStepNeeds, updateSchedule, updateStep } from './draft';
+import { TRIGGER_NODE_ID, descendantsOf, effectiveNeedsOf, removeStep, setStepNeeds, setTriggerMode, triggerModeOf, updateRunCompleted, updateSchedule, updateStep, type TriggerMode } from './draft';
 import { upstreamOutputSuggestions } from './upstreamOutputs';
 
 export interface StepInspectorProps {
@@ -122,26 +123,68 @@ export function StepInspector({ def, nodeId, onChange, onClose, onCronValidity }
   );
 }
 
+const TERMINAL_STATUSES = ['completed', 'failed', 'partial', 'cancelled'] as const;
+
 function TriggerPanel({ def, onChange, onCronValidity }: { def: PipelineDef; onChange: (d: PipelineDef) => void; onCronValidity: (ok: boolean) => void }) {
   const { t } = useTranslation('pipelines');
   const sched = def.on?.schedule;
+  const runCompleted = def.on?.runCompleted;
+  const mode = triggerModeOf(def);
+  const pipelines = useStore((s) => s.pipelines);
+  const selectedId = useStore((s) => s.selectedPipelineId);
   return (
     <>
       <div>
         <FieldLabel>{t('trigger.mode', 'Trigger')}</FieldLabel>
         <AuroraSelect
-          value={sched ? 'schedule' : 'manual'}
+          value={mode}
           onChange={(v) => {
-            onChange(setScheduleEnabled(def, v === 'schedule'));
-            // A manual-only def has no cron to validate — the save gate opens.
-            if (v === 'manual') onCronValidity(true);
+            onChange(setTriggerMode(def, v as TriggerMode));
+            // Only a schedule has a cron to validate — other modes open the gate.
+            if (v !== 'schedule') onCronValidity(true);
           }}
           options={[
             { value: 'schedule', label: t('trigger.modeSchedule', 'Cron schedule') },
+            { value: 'runCompleted', label: t('trigger.modeRunCompleted', 'After another pipeline') },
             { value: 'manual', label: t('trigger.modeManual', 'Manual only (Run now)') },
           ]}
         />
       </div>
+      {mode === 'runCompleted' && (
+        <>
+          <div>
+            <FieldLabel required>{t('trigger.chainSource', 'Fires when this pipeline finishes')}</FieldLabel>
+            <AuroraSelect
+              value={runCompleted?.pipelineId ?? ''}
+              onChange={(v) => onChange(updateRunCompleted(def, { pipelineId: v }))}
+              placeholder={t('trigger.chainSourcePick', 'Choose a pipeline')}
+              options={pipelines.filter((p) => p.id !== selectedId).map((p) => ({ value: p.id, label: p.name }))}
+            />
+          </div>
+          <div>
+            <FieldLabel>{t('trigger.chainStatuses', 'On these outcomes')}</FieldLabel>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {TERMINAL_STATUSES.map((s) => {
+                const active = (runCompleted?.statuses ?? ['completed']).includes(s);
+                return (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      const current = new Set<PipelineRunStatus>(runCompleted?.statuses ?? ['completed']);
+                      if (active) current.delete(s);
+                      else current.add(s);
+                      onChange(updateRunCompleted(def, { statuses: current.size > 0 ? [...current] : ['completed'] }));
+                    }}
+                    style={{ ...chipStyle(active), cursor: 'pointer' }}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
       {sched && (
         <>
           <CronBuilder

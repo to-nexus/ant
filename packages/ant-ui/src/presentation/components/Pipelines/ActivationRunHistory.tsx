@@ -8,7 +8,7 @@
 
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Clock, Play, XCircle } from 'lucide-react';
+import { Clock, GitBranch, Play, XCircle } from 'lucide-react';
 import type { PipelineRunSummary, StepRecord } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { activationRunsKey } from '@/domain/store/slices/pipelineSlice';
@@ -133,8 +133,12 @@ function RunRow({
       }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-2)' }}>
-        {run.firedBy === 'cron' ? <Clock size={11} /> : <Play size={11} />}
-        {run.firedBy === 'cron' ? t('runs.cron', 'Scheduled') : t('runs.manual', 'Manual')}
+        {run.firedBy === 'cron' ? <Clock size={11} /> : run.firedBy === 'event' ? <GitBranch size={11} /> : <Play size={11} />}
+        {run.firedBy === 'cron'
+          ? t('runs.cron', 'Scheduled')
+          : run.firedBy === 'event'
+            ? t('runs.event', 'Chained')
+            : t('runs.manual', 'Manual')}
       </span>
       <StatusPill state={pill.state} label={t(pill.labelKey, pill.fallback)} />
       <span style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>

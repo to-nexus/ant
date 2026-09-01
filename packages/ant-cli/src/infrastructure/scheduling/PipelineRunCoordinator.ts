@@ -32,6 +32,7 @@ import {
   parsePipelineDuration,
   DEFAULT_PIPELINE_CAPS,
   DIRECTIVE_MAX_CHARS,
+  MAX_CHAIN_DEPTH,
   MAX_GATE_REMINDERS,
   MAX_STEP_RETRY,
   PIPELINE_STEP_OUTPUT_MAX_CHARS,
@@ -121,7 +122,7 @@ export interface PipelineCoordinatorDeps {
       userContext?: any,
       actionMetadata?: any,
       jobType?: any,
-      pipeline?: { pipelineId: string; runId: string; stepId: string; firedBy: 'cron' | 'manual' },
+      pipeline?: { pipelineId: string; runId: string; stepId: string; firedBy: 'cron' | 'manual' | 'event' },
     ): Promise<void>;
     appendAssistantMessage(
       projectId: string,
@@ -248,6 +249,15 @@ export class PipelineRunCoordinator {
       return;
     }
 
+    // Chain-depth loop guard (caps doctrine: enforce at fire, skip + log).
+    if ((data.chainDepth ?? 0) > MAX_CHAIN_DEPTH) {
+      logger.warn(
+        `[Pipeline] chained fire skipped — depth ${data.chainDepth} exceeds ${MAX_CHAIN_DEPTH}: ${pipelineId} on ${projectId}`,
+        { component: COMPONENT },
+      );
+      return;
+    }
+
     const fireEpoch = data.fireEpoch ?? Math.floor(intendedFireAt / 60_000) * 60_000;
 
     // Missed-fire policy (cron only; manual fires are always "now").
@@ -321,7 +331,7 @@ export class PipelineRunCoordinator {
       runId,
       pipelineId,
       projectId,
-      firedBy: data.firedBy === 'cron' ? 'cron' : 'manual',
+      firedBy: data.firedBy,
       fireEpoch,
       status: 'running',
       steps: buildInitialSteps(def),
@@ -329,6 +339,7 @@ export class PipelineRunCoordinator {
       defSnapshot: def,
       activationSnapshot: activation,
       ...(prevSuccessFireEpoch !== undefined && { prevSuccessFireEpoch }),
+      ...(data.chainDepth !== undefined && { chainDepth: data.chainDepth }),
     };
 
     await this.appendEvent(owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
@@ -525,7 +536,9 @@ export class PipelineRunCoordinator {
     if (isFirstTurn && this.deps.chatService) {
       const startedText = run.firedBy === 'cron'
         ? `🔁 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
-        : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
+        : run.firedBy === 'event'
+          ? `🔗 선행 파이프라인 완료로 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
+          : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
       this.deps.chatService
         .appendAssistantMessage(run.projectId, UNIVERSAL_FEATURE, startedText, {
           jobId,
@@ -1621,6 +1634,56 @@ export class PipelineRunCoordinator {
         .catch(() => {});
     }
     await this.emitRunFinishedNotice(owner, sealed);
+    await this.fireChainedPipelines(owner, sealed);
+  }
+
+  /**
+   * runCompleted chaining — scoped to the ACTIVATOR's own activations
+   * (identity never crosses users; doc 46 §6). Bounded disk scan per the
+   * no-reverse-index doctrine; each chained fire rides the SAME fire path
+   * with `firedBy: 'event'` and an incremented chainDepth (fire-side loop
+   * guard). Best-effort: a broken candidate never blocks finalize.
+   */
+  private async fireChainedPipelines(owner: PipelineOwner, run: RunRecord): Promise<void> {
+    const depth = (run.chainDepth ?? 0) + 1;
+    let activations: Array<{ projectId: string }>;
+    try {
+      activations = listAccountActivations(deriveActivationsRoot(this.tenantCtx(owner)));
+    } catch {
+      return;
+    }
+    for (const { projectId } of activations) {
+      // A pipeline never chains onto its own project — that run just finished.
+      if (projectId === run.projectId) continue;
+      try {
+        const activation = loadActivationByProject(deriveActivationsRoot(this.tenantCtx(owner)), projectId);
+        if (!activation) continue;
+        const defRoot = resolveDefRoot(this.tenantCtx(owner), activation.pipelineScope);
+        const def = loadPipeline(defRoot, activation.pipelineId);
+        const trigger = def.on?.runCompleted;
+        if (!trigger || trigger.pipelineId !== run.pipelineId) continue;
+        if (!(trigger.statuses ?? ['completed']).includes(run.status)) continue;
+        if (!loadAvailability(defRoot, activation.pipelineId).enabled) continue;
+        await this.deps.scheduleQueue.addNow({
+          kind: 'fire',
+          owner,
+          pipelineId: activation.pipelineId,
+          pipelineScope: activation.pipelineScope,
+          projectId,
+          firedBy: 'event',
+          // Un-rounded: two event fires in the same minute are distinct fires
+          // (the overlap guard still bounds concurrency per activation).
+          fireEpoch: Date.now(),
+          chainDepth: depth,
+        });
+        logger.info(
+          `[Pipeline] chained fire: ${run.pipelineId}(${run.status}) → ${activation.pipelineId} on ${projectId} (depth ${depth})`,
+          { component: COMPONENT },
+        );
+      } catch (e) {
+        logger.warn(`[Pipeline] chained-fire candidate failed: ${projectId}`, { component: COMPONENT }, e);
+      }
+    }
   }
 
   /**

@@ -205,6 +205,20 @@ describe('clarify funnel', () => {
   });
 });
 
+describe('runCompleted chaining', () => {
+  it('chained fires ride the SAME fire path, scoped to the activator, depth-bounded at fire', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    // Publish point is finalize; delivery is addNow into the control queue.
+    expect(coordinator).toMatch(/fireChainedPipelines\(owner, sealed\)/);
+    expect(coordinator).toMatch(/firedBy: 'event'/);
+    // The loop guard lives at FIRE (caps doctrine), not at publish.
+    expect(coordinator).toMatch(/data\.chainDepth \?\? 0\) > MAX_CHAIN_DEPTH/);
+    // Candidates come from the activator's own bounded disk scan — never a
+    // Redis reverse index (doc 46 §1 doctrine).
+    expect(coordinator.match(/listAccountActivations\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('run cancel authority', () => {
   it('cancelRun owns the stop legs — deactivate delegates, no second kill-loop copy', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');

@@ -28,11 +28,13 @@ export interface PipelineFireJobData {
   pipelineScope: PipelineScope;
   /** The activation's project — with `owner`, addresses the activation dir. */
   projectId: string;
-  firedBy: 'cron' | 'manual';
+  firedBy: 'cron' | 'manual' | 'event';
   /** Set on overlap-queue re-arms so the original fire's identity survives. */
   fireEpoch?: number;
   /** Overlap-queue retry counter (bounded). */
   requeues?: number;
+  /** runCompleted chain position — bounded at fire (MAX_CHAIN_DEPTH). */
+  chainDepth?: number;
 }
 
 export interface PipelineGateTimeoutJobData {
