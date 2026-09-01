@@ -119,9 +119,19 @@ steps:
 - A step with no `needs` follows the previous step in file order; `needs: []`
   makes it a root. The graph must be acyclic, and every `needs` entry must
   name an existing step.
-- `on` judges the upstream outcome: `success` (default), `failure`, `always`.
-  A step whose condition does not match is **skipped**, and a skipped need is
-  neither success nor failure — skips cascade.
+- `on` judges the upstream outcome: `success` (default), `failure`, `always`,
+  or `verdict:<outcome>`. A step whose condition does not match is
+  **skipped**, and a skipped need is neither success nor failure — skips
+  cascade.
+- **Verdict routing** (`on: verdict:<outcome>`): when an upstream step's
+  pinned intent declares an `outcomes` vocabulary (in that intent's `infer.md`
+  frontmatter — read it via the agents API), the run seals one verdict and
+  branches route on it — the switch pattern: one downstream step per outcome,
+  each `needs` the deciding step with its `on: verdict:…`. A run that seals no
+  valid verdict FAILS the deciding step (`missing-verdict`, retryable) unless
+  that step declares `onMissingVerdict: <outcome>` (or `fail`, the default).
+  Only compose verdict edges against intents that actually declare the named
+  outcome — a typo'd name is a branch that always skips.
 - `defaults.onStepFailure: abort` cancels everything still pending on the
   first failure; `continue` lets independent branches finish.
 - Branches never run concurrently: at most one job step is in flight per run,

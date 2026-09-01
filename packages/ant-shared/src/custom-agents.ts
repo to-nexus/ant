@@ -68,6 +68,15 @@ export interface CustomIntentDef {
    * (`universal_stop_hook_unmet`).
    */
   hooks?: IntentHooks;
+  /**
+   * Declared decision vocabulary (`infer.md` frontmatter,
+   * INTENT_OUTCOMES_MIN..MAX kebab ids). A turn under this intent must end
+   * its final reply with `<verdict>one-of-these</verdict>`; the runtime seals
+   * the parsed verdict, and pipeline `on: verdict:<name>` edges route on it.
+   * The vocabulary lives HERE — on the intent, where the business knowledge
+   * lives — never per-pipeline.
+   */
+  outcomes?: string[];
   /** Whether `intents/{id}/prompt.md` exists with a non-blank body. */
   hasPrompt?: boolean;
 }
@@ -89,6 +98,10 @@ export type IntentStopHook =
 
 /** Cap on stop-hook entries per intent (all must hold — AND). */
 export const INTENT_STOP_HOOKS_CAP = 8;
+
+/** Declared-outcomes bounds — one verdict must win, so fewer than 2 is not a decision. */
+export const INTENT_OUTCOMES_MIN = 2;
+export const INTENT_OUTCOMES_MAX = 5;
 
 /**
  * Per-intent hook declarations, keyed by event. v1 supports only `stop`

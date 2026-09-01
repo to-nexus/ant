@@ -703,6 +703,26 @@ function DependsOnField({ def, step, stepIndex, onChange }: { def: PipelineDef; 
 
 function EdgeConditionField({ def, step, onChange }: { def: PipelineDef; step: JobStepDef | ApprovalStepDef; onChange: (d: PipelineDef) => void }) {
   const { t } = useTranslation('pipelines');
+  const customAgents = useStore((s) => s.accountAgents);
+  // Verdict options: the upstream needs' pinned intents' declared outcomes.
+  const verdictOptions = useMemo(() => {
+    const idx = def.steps.findIndex((s) => s.id === step.id);
+    if (idx < 0) return [];
+    const out: string[] = [];
+    for (const needId of effectiveNeedsOf(def, idx)) {
+      const need = def.steps.find((s) => s.id === needId);
+      if (!need || isApprovalStep(need) || !need.intent) continue;
+      const ref = parseCustomJobRef(need.customJobRef);
+      if (!ref) continue;
+      const outcomes =
+        customAgents
+          .find((a) => a.id === ref.agentId)
+          ?.jobs.find((j) => j.id === ref.jobId)
+          ?.intents?.find((i) => i.id === need.intent)?.outcomes ?? [];
+      for (const o of outcomes) if (!out.includes(o)) out.push(o);
+    }
+    return out;
+  }, [def, step.id, customAgents]);
   return (
     <div>
       <FieldLabel>{t('step.on', 'Run when its dependencies…')}</FieldLabel>
@@ -713,6 +733,7 @@ function EdgeConditionField({ def, step, onChange }: { def: PipelineDef; step: J
           { value: 'success', label: t('step.onSuccess', 'Succeeded (default)') },
           { value: 'failure', label: t('step.onFailure', 'Failed (failure branch)') },
           { value: 'always', label: t('step.onAlways', 'Finished either way') },
+          ...verdictOptions.map((o) => ({ value: `verdict:${o}`, label: t('step.onVerdict', 'Verdict: {{o}}', { o }) })),
         ]}
       />
     </div>

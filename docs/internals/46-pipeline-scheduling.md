@@ -339,6 +339,19 @@ success nor failure). `defaults.onStepFailure: abort` (default) cancels
 still-pending steps on the first failure and seals `failed`; `continue`
 lets independent branches finish and seals `partial` on mixed outcomes.
 
+**Verdict routing** (`on: verdict:<name>`): the decision vocabulary is
+declared on the INTENT (`infer.md` frontmatter `outcomes: [..]` — the
+business knowledge lives in the agent definition, never per-pipeline). The
+universal runtime injects a verdict band into outcome-declaring turns and the
+respond seal lifts the final reply's `<verdict>` tag (registered in the
+output-tag matrix); `captureStepOutput` validates it against the declared
+vocabulary and stamps `StepRecord.verdict`. No valid verdict = the step FAILS
+(`missing-verdict`, retryable) unless the step's `onMissingVerdict` names a
+fallback outcome. The executor's `verdict:` predicate matches a need that
+SUCCEEDED with that verdict — non-matching branches skip and skips cascade,
+which is the whole switch semantics ("new chain edge predicates = executor-
+only changes", §8 Correct).
+
 **At most ONE job step is in flight per run** (dispatched / running /
 awaiting_clarify). Every step dispatches into the same project, so the
 project-level duplicate gate would serialize ready siblings through bounded

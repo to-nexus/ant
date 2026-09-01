@@ -29,6 +29,8 @@ import {
   INTENT_INFER_FILE_NAME,
   INTENT_PROMPT_FILE_NAME,
   INTENT_HOOKS_FILE_NAME,
+  INTENT_OUTCOMES_MAX,
+  INTENT_OUTCOMES_MIN,
   CUSTOM_ID_HINT,
   isValidCustomId,
   splitFrontmatter,
@@ -100,7 +102,7 @@ export function validateInferFile(
   intentId: string,
   agentId: string,
   jobId?: string,
-): { infer: string; clarify?: boolean } {
+): { infer: string; clarify?: boolean; outcomes?: string[] } {
   assertNotGeneral(intentId, agentId, jobId);
   const label = inferFileLabel(intentId);
   const { frontmatter, body, unterminated } = splitFrontmatter(raw);
@@ -113,6 +115,7 @@ export function validateInferFile(
   }
 
   let clarify: boolean | undefined;
+  let outcomes: string[] | undefined;
   if (frontmatter !== null) {
     let doc: unknown;
     try {
@@ -139,10 +142,10 @@ export function validateInferFile(
           throw new CustomAgentValidationError(`${label}: ${banned(intentId)}`, agentId, jobId);
         }
       }
-      const extras = keys.filter((k) => k !== 'clarify');
+      const extras = keys.filter((k) => k !== 'clarify' && k !== 'outcomes');
       if (extras.length > 0) {
         throw new CustomAgentValidationError(
-          `${label} frontmatter allows only "clarify" (got: ${keys.join(', ')})`,
+          `${label} frontmatter allows only "clarify" and "outcomes" (got: ${keys.join(', ')})`,
           agentId,
           jobId,
         );
@@ -157,6 +160,26 @@ export function validateInferFile(
         );
       }
       clarify = value as boolean | undefined;
+      const rawOutcomes = (doc as Record<string, unknown>).outcomes;
+      if (rawOutcomes !== undefined) {
+        if (
+          !Array.isArray(rawOutcomes) ||
+          rawOutcomes.length < INTENT_OUTCOMES_MIN ||
+          rawOutcomes.length > INTENT_OUTCOMES_MAX ||
+          rawOutcomes.some((o) => typeof o !== 'string' || !isValidCustomId(o))
+        ) {
+          throw new CustomAgentValidationError(
+            `${label}: outcomes must be ${INTENT_OUTCOMES_MIN}–${INTENT_OUTCOMES_MAX} kebab-case ids ` +
+            `(the decision vocabulary a turn ends with as <verdict>…</verdict>; got: ${JSON.stringify(rawOutcomes)})`,
+            agentId,
+            jobId,
+          );
+        }
+        if (new Set(rawOutcomes).size !== rawOutcomes.length) {
+          throw new CustomAgentValidationError(`${label}: outcomes must be unique`, agentId, jobId);
+        }
+        outcomes = rawOutcomes as string[];
+      }
     }
   }
 
@@ -175,7 +198,7 @@ export function validateInferFile(
       jobId,
     );
   }
-  return { infer, ...(clarify !== undefined ? { clarify } : {}) };
+  return { infer, ...(clarify !== undefined ? { clarify } : {}), ...(outcomes ? { outcomes } : {}) };
 }
 
 /**
@@ -274,7 +297,7 @@ export function readIntentDir(
   }
 
   const inferRaw = fs.readFileSync(path.join(intentDirPath, INTENT_INFER_FILE_NAME), 'utf-8');
-  const { infer, clarify } = validateInferFile(inferRaw, intentId, agentId, jobId);
+  const { infer, clarify, outcomes } = validateInferFile(inferRaw, intentId, agentId, jobId);
 
   let hooks: IntentHooks | undefined;
   if (entries.includes(INTENT_HOOKS_FILE_NAME)) {
@@ -296,6 +319,7 @@ export function readIntentDir(
     id: intentId,
     infer,
     ...(clarify !== undefined ? { clarify } : {}),
+    ...(outcomes ? { outcomes } : {}),
     ...(hooks ? { hooks } : {}),
     ...(promptBody !== undefined ? { hasPrompt: true } : {}),
   };

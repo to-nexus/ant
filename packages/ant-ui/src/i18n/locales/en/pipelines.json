@@ -186,6 +186,7 @@
     "onSuccess": "Succeeded (default)",
     "onFailure": "Failed (failure branch)",
     "onAlways": "Finished either way",
+    "onVerdict": "Verdict: {{o}}",
     "retry": "Retry on failure",
     "retryOff": "Off (fail immediately)",
     "retryN": "Up to {{n}} retries",

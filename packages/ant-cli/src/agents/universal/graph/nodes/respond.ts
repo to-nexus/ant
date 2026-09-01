@@ -179,8 +179,20 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   const session = state.deps?.session;
   if (session && state.projectId) {
     try {
+      // Verdict lift — the LAST <verdict> tag of the final assistant reply.
+      // Parsed unconditionally (respond stays catalog-blind); the prompt band
+      // makes outcome-declaring intents emit it, and consumers (the pipeline
+      // coordinator) validate the value against the declared vocabulary.
+      // Omitted on non-verdict seals, so a stale verdict self-clears.
+      const mainConv = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
+      const finalAssistant = [...mainConv].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
+      const verdictMatches = typeof finalAssistant?.content === 'string'
+        ? [...finalAssistant.content.matchAll(/<verdict>\s*([a-z0-9-]+)\s*<\/verdict>/g)]
+        : [];
+      const verdict = verdictMatches.length > 0 ? verdictMatches[verdictMatches.length - 1][1] : undefined;
       const sessionState = {
         conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(getConv(state.conversations, CONV_KEYS.SESSION_MAIN)) },
+        ...(verdict && !state._clarifyPause && { verdict }),
         tokenUsage: state.tokenUsage,
         tokenUsageByModel: state.tokenUsageByModel,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,

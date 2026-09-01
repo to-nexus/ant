@@ -82,6 +82,14 @@ async function buildSystemPrompt(
     state.turnContext?.planTurn === true
       ? []
       : formatStopHookContractLines(activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? []));
+  // Declared decision vocabulary of the pinned intent (≤1 by contract) — the
+  // agent must end its final reply with one of these as a <verdict> tag; the
+  // seal lifts it and pipeline verdict edges route on it.
+  const activeIntentIds = new Set(state.turnContext?.intents ?? []);
+  const turnOutcomes =
+    state.turnContext?.planTurn === true
+      ? undefined
+      : resolved.intents.find((i) => activeIntentIds.has(i.id) && i.outcomes?.length)?.outcomes;
   const result = await promptBuilder.build({
     templates: TEMPLATE_PATHS.universalAgent,
     vars: {
@@ -106,6 +114,8 @@ async function buildSystemPrompt(
       // Turn Completion Contract band — the runtime verifies these from
       // actual tool results at the turn's stop point.
       turnStopHooks: turnStopHooks.length > 0 ? turnStopHooks : undefined,
+      // Verdict band — rendered only when the pinned intent declares outcomes.
+      turnOutcomes,
     },
     // Custom definition rides as an inert system-suffix — after template injections,
     // before policy (guardrail-first / policy-last invariants intact).

@@ -181,9 +181,19 @@ tokens.
 `infer.md` is a trigger criterion, at most 1000 characters, written as a
 condition rather than a summary. A calendar is not a condition — "runs
 monthly" describes a schedule, which belongs to pipeline authoring outside
-the agent definition, never to `infer.md`. Its frontmatter accepts exactly
-one optional key, `clarify: <bool>`; `default`, `injections`, `description`,
-`id`, and `hooks` are rejected.
+the agent definition, never to `infer.md`. Its frontmatter accepts two
+optional keys — `clarify: <bool>` and `outcomes: [..]`; `default`,
+`injections`, `description`, `id`, and `hooks` are rejected.
+
+`outcomes` (2–5 kebab-case ids, e.g. `outcomes: [ok, anomaly, needs-review]`)
+declares the intent's DECISION vocabulary: a turn under this intent must end
+its final reply with exactly one `<verdict>one-of-these</verdict>`, the
+runtime seals the parsed verdict, and pipeline `on: verdict:<name>` edges
+route on it. Declare it on JUDGMENT intents — ones whose job is to look at
+evidence and reach a named conclusion — and make `prompt.md` state what each
+outcome means and what evidence supports it. The vocabulary lives here, on
+the intent, because the business knowledge lives here; pipelines only
+reference it.
 
 `prompt.md` has no size limit and is inlined only while its intent is active —
 it is where a task's procedure lives; `infer.md` only decides when it applies.

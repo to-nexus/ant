@@ -205,6 +205,22 @@ describe('clarify funnel', () => {
   });
 });
 
+describe('verdict routing', () => {
+  it('the vocabulary lives on the INTENT; the coordinator validates + stamps the sealed verdict', () => {
+    const gate = read('core/scheduling/UniversalDispatchGate.ts');
+    expect(gate).toMatch(/intentOutcomes/);
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/declaredOutcomes\.includes\(sealVerdict\)/);
+    // Missing verdict fails loudly and RETRYABLY (a re-run can decide).
+    expect(coordinator).toMatch(/missing-verdict/);
+    // The runtime seals it; the tag is a registered canonical tag.
+    const respond = read('agents/universal/graph/nodes/respond.ts');
+    expect(respond).toMatch(/<verdict>/);
+    const registry = read('core/streaming/OutputTagRegistry.ts');
+    expect(registry).toMatch(/name: 'verdict'/);
+  });
+});
+
 describe('runCompleted chaining', () => {
   it('chained fires ride the SAME fire path, scoped to the activator, depth-bounded at fire', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');

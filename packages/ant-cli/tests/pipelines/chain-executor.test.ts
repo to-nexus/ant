@@ -184,6 +184,28 @@ describe('planAdvance — advance, skip cascade, gates', () => {
     expect(after.dispatches.map((x) => x.stepId)).toEqual(['b']);
   });
 
+  it('verdict edges are a switch: the matching branch runs, the others skip and cascade', () => {
+    const d = def([
+      job('judge'),
+      job('handle-ok', { needs: ['judge'], on: 'verdict:ok' }),
+      job('handle-anomaly', { needs: ['judge'], on: 'verdict:anomaly' }),
+      job('after-anomaly', { needs: ['handle-anomaly'] }),
+    ], 'continue');
+    const s1 = planAdvance(d, freshRun(d));
+    const s2 = applyStepOutcome(d, s1.run, 'judge', 'succeeded', { verdict: 'anomaly' });
+    expect(s2.dispatches.map((x) => x.stepId)).toEqual(['handle-anomaly']);
+    expect(s2.run.steps.find((s) => s.stepId === 'handle-ok')?.status).toBe('skipped');
+    const s3 = applyStepOutcome(d, s2.run, 'handle-anomaly', 'succeeded');
+    expect(s3.dispatches.map((x) => x.stepId)).toEqual(['after-anomaly']);
+  });
+
+  it('a verdict edge never matches a FAILED need (no verdict survives failure)', () => {
+    const d = def([job('judge'), job('handle-ok', { needs: ['judge'], on: 'verdict:ok' })], 'continue');
+    const s1 = planAdvance(d, freshRun(d));
+    const s2 = applyStepOutcome(d, s1.run, 'judge', 'failed');
+    expect(s2.run.steps.find((s) => s.stepId === 'handle-ok')?.status).toBe('skipped');
+  });
+
   it('a skipped need is neither success nor failure — downstream skips cascade', () => {
     const d = def([job('a'), job('b', { needs: ['a'] }), job('c', { needs: ['b'] })], 'continue');
     const s1 = planAdvance(d, freshRun(d));

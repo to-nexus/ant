@@ -65,6 +65,8 @@ export async function resolveUniversalExecuteContext(
        * where the definition is already loaded.
        */
       intentStopGlobs: Record<string, string[]>;
+      /** intentId → declared outcomes vocabulary — the verdict contract the coordinator enforces. */
+      intentOutcomes: Record<string, string[]>;
     }
   | { ok: false; status: number; error: string; code: string }
 > {
@@ -89,6 +91,7 @@ export async function resolveUniversalExecuteContext(
   let builtinTools: string[] = [];
   let scopeRoots: CustomAgentScopeRoot[] = [];
   let intentStopGlobs: Record<string, string[]> = {};
+  let intentOutcomes: Record<string, string[]> = {};
   try {
     const { deriveCustomAgentScopeRootsForTenant } = await import('../customAgents/scopeRoots');
     const { loadCustomJob } = await import('../customAgents/CustomAgentLoader');
@@ -107,6 +110,7 @@ export async function resolveUniversalExecuteContext(
         (i.hooks?.stop ?? []).flatMap((h) => ('artifact' in h && typeof h.artifact === 'string' ? [h.artifact] : [])),
       ]),
     );
+    intentOutcomes = Object.fromEntries(loaded.intents.filter((i) => i.outcomes?.length).map((i) => [i.id, i.outcomes!]));
     const { isSelfApiConfig } = await import('@ant/shared');
     declaresSelfApi = Object.values(loaded.apiServers).some((cfg) => isSelfApiConfig(cfg));
   } catch (e) {
@@ -115,7 +119,7 @@ export async function resolveUniversalExecuteContext(
   const { ensureUniversalContainer } = await import('../customAgents/universalContainer');
   ensureUniversalContainer(projectPath);
   const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
-  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots, intentStopGlobs };
+  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots, intentStopGlobs, intentOutcomes };
 }
 
 /**

@@ -44,6 +44,24 @@ export function transformDone(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// <verdict>
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `<verdict>name</verdict>` — an outcome-declaring intent's sealed decision
+ * (universal runtime lifts it into the session seal; pipeline verdict edges
+ * route on it). Rendered as a compact decision line.
+ */
+export function transformVerdict(
+  match: RegExpMatchArray,
+  ctx: TransformContext,
+): TransformResult {
+  const name = (match[1] ?? '').trim();
+  if (!name) return { consumed: true };
+  return { text: ctx.language === 'ko' ? `\n🧭 판정: **${name}**` : `\n🧭 Verdict: **${name}**`, consumed: true };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // <reply>
 // ────────────────────────────────────────────────────────────────────────────
 

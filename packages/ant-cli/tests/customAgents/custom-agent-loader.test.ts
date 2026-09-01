@@ -596,6 +596,11 @@ describe('loadCustomJob — intents catalog validation table', () => {
     ['frontmatter hooks (moved to hooks.yaml)', { a: { infer: '---\nhooks: {}\n---\nx\n' } }, /"hooks" moved to/],
     ['frontmatter unknown key', { a: { infer: '---\nfoo: 1\n---\nx\n' } }, /allows only "clarify"/],
     ['frontmatter non-boolean clarify', { a: { infer: '---\nclarify: maybe\n---\nx\n' } }, /clarify must be true or false/],
+    // ── outcomes (decision vocabulary — verdict routing) ──
+    ['outcomes with one entry (not a decision)', { a: { infer: '---\noutcomes: [ok]\n---\nx\n' } }, /outcomes must be 2–5 kebab-case ids/],
+    ['outcomes over the cap', { a: { infer: '---\noutcomes: [a1, a2, a3, a4, a5, a6]\n---\nx\n' } }, /outcomes must be 2–5 kebab-case ids/],
+    ['outcomes with a bad id', { a: { infer: '---\noutcomes: [ok, "Not Valid!"]\n---\nx\n' } }, /outcomes must be 2–5 kebab-case ids/],
+    ['duplicate outcomes', { a: { infer: '---\noutcomes: [ok, ok]\n---\nx\n' } }, /outcomes must be unique/],
     // ── hooks.yaml (H1–H6 intra-file + file shape) ──
     ['hooks.yaml without the hooks wrapper key', { a: { hooks: { stop: [{ artifact: 'r.md' }] } } }, /exactly one top-level "hooks" key/],
     ['hooks.yaml with an extra top-level key', { a: { hooks: { hooks: { stop: [{ artifact: 'r.md' }] }, extra: 1 } } }, /exactly one top-level "hooks" key/],
@@ -643,6 +648,12 @@ describe('loadCustomJob — intents catalog validation table', () => {
     const agentDir = setup({ a: {} });
     mutate(agentDir);
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
+  });
+
+  it('outcomes frontmatter loads onto the intent def (verdict vocabulary)', () => {
+    setup({ a: { infer: '---\noutcomes: [ok, anomaly, needs-review]\n---\napplies when judging\n' } });
+    const { intents } = loadCustomJob(roots(), 'ops', 'weekly');
+    expect(intents[0].outcomes).toEqual(['ok', 'anomaly', 'needs-review']);
   });
 
   it('comments-only hooks.yaml → intent loads with no hooks (delete-equivalent)', () => {

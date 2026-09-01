@@ -186,6 +186,7 @@
     "onSuccess": "성공했을 때 (기본)",
     "onFailure": "실패했을 때 (실패 브랜치)",
     "onAlways": "성공/실패 무관",
+    "onVerdict": "판정: {{o}}",
     "retry": "실패 시 재시도",
     "retryOff": "끔 (즉시 실패)",
     "retryN": "최대 {{n}}회 재시도",

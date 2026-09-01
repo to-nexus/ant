@@ -53,8 +53,15 @@ export type PipelineOnMissed = 'skip' | 'runOnce';
  */
 export type PipelineOverlap = 'skip' | 'queue';
 export type StepFailurePolicy = 'abort' | 'continue';
-/** Edge condition against the closest `needs` ancestor's outcome. */
-export type StepEdgeCondition = 'success' | 'failure' | 'always';
+/**
+ * Edge condition against the `needs` outcomes. `verdict:<name>` matches when
+ * a need SUCCEEDED with that sealed verdict (an outcome-declaring intent's
+ * decision) — the switch semantics: non-matching branches skip and skips
+ * cascade.
+ */
+export type StepEdgeCondition = 'success' | 'failure' | 'always' | `verdict:${string}`;
+
+export const VERDICT_EDGE_PATTERN = /^verdict:[a-z0-9][a-z0-9-]*$/;
 export type GateTimeoutAction = 'reject' | 'approve';
 /** v1 ships in-app only; `slack` / `email` are reserved channel kinds. */
 export type PipelineApprovalChannel = 'inApp';
@@ -118,6 +125,12 @@ export interface JobStepDef {
    * open-ended by doctrine.
    */
   timeout?: { after: string };
+  /**
+   * When the pinned intent declares an outcomes vocabulary but the job sealed
+   * no valid verdict: `'fail'` (default — loud, retryable) or the outcome
+   * name to assume. Meaningless without an outcome-declaring intent.
+   */
+  onMissingVerdict?: string;
 }
 
 export interface ApprovalStepDef {
@@ -459,6 +472,8 @@ export interface StepRecord {
   gate?: GateRecord;
   clarify?: ClarifyRecord;
   output?: StepOutputRecord;
+  /** Sealed decision of an outcome-declaring intent — `on: verdict:<name>` routes on it. */
+  verdict?: string;
   /** Retry rounds already consumed (`retry.max` bound). */
   retriesUsed?: number;
   /** Failed rounds that were retried — the terminal failure stays on `error`. */
@@ -601,7 +616,7 @@ const RESERVED_DEF_KEYS: Record<string, string> = {
   projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
-const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout'];
+const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout', 'onMissingVerdict'];
 const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', 'timeout', 'remindAfter'];
 /** Author-visible knobs that exist in the design but not in v1 — reject loudly, never ignore. */
 const RESERVED_STEP_KEYS: Record<string, string> = {
@@ -858,8 +873,14 @@ export function validatePipelineDef(
         errors.push(`step "${stepId}": needs must not reference itself`);
       }
     }
-    if (rawStep.on !== undefined && rawStep.on !== 'success' && rawStep.on !== 'failure' && rawStep.on !== 'always') {
-      errors.push(`step "${stepId}": on must be "success", "failure" or "always" (got: ${String(rawStep.on)})`);
+    if (
+      rawStep.on !== undefined &&
+      rawStep.on !== 'success' &&
+      rawStep.on !== 'failure' &&
+      rawStep.on !== 'always' &&
+      !(typeof rawStep.on === 'string' && VERDICT_EDGE_PATTERN.test(rawStep.on))
+    ) {
+      errors.push(`step "${stepId}": on must be "success", "failure", "always" or "verdict:<outcome>" (got: ${String(rawStep.on)})`);
     }
 
     if (rawStep.type === 'approval') {
@@ -920,6 +941,17 @@ export function validatePipelineDef(
       if (rawStep.intent !== undefined) {
         if (typeof rawStep.intent !== 'string' || (!isValidCustomId(rawStep.intent) && rawStep.intent !== GENERAL_INTENT)) {
           errors.push(`step "${stepId}": intent must be a catalog intent id (${STEP_ID_HINT})`);
+        }
+      }
+      if (rawStep.onMissingVerdict !== undefined) {
+        if (
+          typeof rawStep.onMissingVerdict !== 'string' ||
+          (rawStep.onMissingVerdict !== 'fail' && !isValidCustomId(rawStep.onMissingVerdict))
+        ) {
+          errors.push(`step "${stepId}": onMissingVerdict must be "fail" or an outcome id (${STEP_ID_HINT})`);
+        }
+        if (rawStep.intent === undefined) {
+          errors.push(`step "${stepId}": onMissingVerdict needs a pinned intent (the outcomes vocabulary lives on the intent)`);
         }
       }
       if (rawStep.retry !== undefined) {

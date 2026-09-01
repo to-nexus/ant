@@ -48,6 +48,7 @@ import { parseExecutionTierTag } from '../executionTier/parseExecutionTierTag';
 import { parseChecklistTag } from '../customAgents/universalChecklist';
 import {
   transformDone,
+  transformVerdict,
   transformReply,
   transformLearnCommand,
   transformReferences,
@@ -507,6 +508,21 @@ register({
   transform: transformDone,
   promptContract:
     'Emit `<done>true</done>` exactly once when the current task is complete. Until then, omit it. Output nothing after `<done>true</done>` — the system terminates the turn at that boundary.',
+});
+
+register({
+  name: 'verdict',
+  pattern: /<verdict>\s*([a-z0-9-]+)\s*<\/verdict>/,
+  axis: {
+    intent: 'control',
+    processing: ['consumed-formatted'],
+    persistence: ['chat-line'],
+    blocking: 'non-blocking',
+  },
+  chatLineKind: 'completion',
+  transform: transformVerdict,
+  promptContract:
+    'When the active intent declares an outcomes vocabulary, end the turn\'s FINAL reply with exactly one `<verdict>one-of-the-declared-outcomes</verdict>` naming your conclusion — downstream automation (pipeline verdict edges) routes on it.',
 });
 
 register({

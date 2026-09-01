@@ -107,7 +107,11 @@ export function planAdvance(def: PipelineDef, run: RunRecord): ChainPlan {
           ? true
           : condition === 'failure'
             ? needs.some((s) => s.status === 'failed')
-            : needs.length === 0 || needs.every((s) => s.status === 'succeeded');
+            : condition.startsWith('verdict:')
+              // Switch semantics: a need SUCCEEDED with that sealed verdict.
+              // Non-matching branches skip; skips cascade (doc 46 §4).
+              ? needs.some((s) => s.status === 'succeeded' && s.verdict === condition.slice('verdict:'.length))
+              : needs.length === 0 || needs.every((s) => s.status === 'succeeded');
 
       if (!matches) {
         record.status = 'skipped';

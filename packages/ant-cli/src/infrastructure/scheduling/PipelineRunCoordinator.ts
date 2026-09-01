@@ -873,16 +873,11 @@ export class PipelineRunCoordinator {
       outcome = 'failed';
       error = `interrupted: ${interruption.reason ?? 'unknown'}`;
     }
-    // Plain job failures and infra interruptions are RETRYABLE; a human
-    // stop/pause is not (nobody asked the scheduler to redo what they stopped).
-    const retryable =
-      outcome === 'failed' &&
-      (!interruption || INFRA_INTERRUPTION_REASONS.has(String(interruption.reason ?? '')));
-
     // Clarify seal: the job ended awaiting a human answer (universal
     // end-and-resume). Not an outcome — the step parks `awaiting_clarify`
     // until the answer funnels through `applyClarifyAnswer`.
     let output: StepOutputRecord | undefined;
+    let verdict: string | undefined;
     if (outcome === 'succeeded') {
       const clarify = await this.detectClarifySeal(owner, runId, stepId, data.jobId);
       if (clarify) {
@@ -900,10 +895,25 @@ export class PipelineRunCoordinator {
         });
         return;
       }
-      // Step output capture ({{steps.*}} source + run-report summary) — reads
-      // the same seal the clarify check just did; best-effort by contract.
-      output = await this.captureStepOutput(owner, runId, stepId, data.jobId);
+      // Step output + verdict capture ({{steps.*}} source, run-report summary,
+      // verdict routing) — reads the same seal the clarify check just did.
+      const captured = await this.captureStepOutput(owner, runId, stepId, data.jobId);
+      output = captured.output;
+      verdict = captured.verdict;
+      // An outcome-declaring intent that sealed no valid verdict fails loudly
+      // (retryable — a re-run can decide) unless onMissingVerdict fell back.
+      if (captured.missingVerdict) {
+        outcome = 'failed';
+        error = 'missing-verdict: the intent declares outcomes but the run sealed no valid verdict';
+      }
     }
+
+    // Plain job failures, infra interruptions and missing verdicts are
+    // RETRYABLE; a human stop/pause is not (nobody asked the scheduler to
+    // redo what they stopped).
+    const retryable =
+      outcome === 'failed' &&
+      (!interruption || INFRA_INTERRUPTION_REASONS.has(String(interruption.reason ?? '')));
 
     // A retryable failure consumes a retry round when the step declares one
     // (step_retry event + re-dispatch arm); otherwise it falls through to the
@@ -939,7 +949,7 @@ export class PipelineRunCoordinator {
       jobId: data.jobId,
       detail: { outcome, ...(error && { error }), ...(output && { outputCaptured: true }) },
     });
-    const patch = { ...(error && { error }), ...(output && { output }) };
+    const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }) };
     const applied = await this.applyOutcome(owner, runId, stepId, outcome, Object.keys(patch).length > 0 ? patch : undefined, undefined, data.jobId);
     if (applied) {
       await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
@@ -1206,29 +1216,35 @@ export class PipelineRunCoordinator {
   }
 
   /**
-   * Capture a completed step's output — the `{{steps.*}}` substitution source
-   * and the run history's business-readable summary. `.answer` = the final
-   * assistant text of the seal's `session:main` (jobId-guarded, same read
-   * channel as the clarify detection); `.artifacts` = files matching the
-   * pinned intent's `hooks.stop` globs at completion. Best-effort: any failure
-   * returns undefined and the step still succeeds.
+   * Capture a completed step's output and verdict.
+   * - `output` — the `{{steps.*}}` substitution source and the run history's
+   *   business-readable summary: `.answer` = the final assistant text of the
+   *   seal's `session:main` (jobId-guarded, same read channel as the clarify
+   *   detection); `.artifacts` = files matching the pinned intent's
+   *   `hooks.stop` globs at completion. Best-effort — failure is an absent
+   *   record, never a step failure.
+   * - `verdict` — the sealed decision, VALIDATED against the pinned intent's
+   *   declared outcomes with the step's `onMissingVerdict` fallback applied.
+   *   `missingVerdict` = the intent declares outcomes but no valid verdict
+   *   resolved — the caller fails the step (retryable: a re-run can decide).
    */
   private async captureStepOutput(
     owner: PipelineOwner,
     runId: string,
     stepId: string,
     jobId: string,
-  ): Promise<StepOutputRecord | undefined> {
-    try {
-      const run = await this.getRun(runId);
-      const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
-      if (!run || !stepDef || isApprovalStep(stepDef)) return undefined;
-      const ref = parseCustomJobRef(stepDef.customJobRef);
-      if (!ref) return undefined;
-      const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
+  ): Promise<{ output?: StepOutputRecord; verdict?: string; missingVerdict?: boolean }> {
+    const run = await this.getRun(runId).catch(() => null);
+    const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
+    if (!run || !stepDef || isApprovalStep(stepDef)) return {};
+    const ref = parseCustomJobRef(stepDef.customJobRef);
+    if (!ref) return {};
+    const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
 
-      let answer: string | undefined;
-      let answerTruncated = false;
+    let answer: string | undefined;
+    let answerTruncated = false;
+    let sealVerdict: string | undefined;
+    try {
       const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
       if (raw !== null) {
         const session = JSON.parse(raw);
@@ -1236,6 +1252,7 @@ export class PipelineRunCoordinator {
         // The seal must belong to THIS step's job — the session is shared by
         // every step of the same customJobRef.
         if (state?.jobId === jobId) {
+          if (typeof state.verdict === 'string') sealVerdict = state.verdict;
           const main = state?.conversations?.['session:main'];
           if (Array.isArray(main)) {
             for (let i = main.length - 1; i >= 0; i -= 1) {
@@ -1259,27 +1276,44 @@ export class PipelineRunCoordinator {
           }
         }
       }
+    } catch {
+      /* best-effort seal read */
+    }
 
-      let artifacts: string[] | undefined;
-      if (stepDef.intent) {
+    let artifacts: string[] | undefined;
+    let declaredOutcomes: string[] = [];
+    if (stepDef.intent) {
+      try {
         const resolved = await resolveUniversalExecuteContext(this.deps.workspaceResolver, owner, run.projectId, stepDef.customJobRef);
         if (resolved.ok) {
+          declaredOutcomes = resolved.intentOutcomes[stepDef.intent] ?? [];
           const globs = resolved.intentStopGlobs[stepDef.intent] ?? [];
           const expanded = await expandArtifactGlobsBounded(containerPath, globs);
           if (expanded.length > 0) artifacts = expanded;
         }
+      } catch {
+        /* best-effort */
       }
-
-      if (!answer && !artifacts) return undefined;
-      return {
-        ...(answer && { answer }),
-        ...(answerTruncated && { answerTruncated: true }),
-        ...(artifacts && { artifacts }),
-        capturedAt: new Date().toISOString(),
-      };
-    } catch {
-      return undefined;
     }
+
+    const output =
+      !answer && !artifacts
+        ? undefined
+        : {
+            ...(answer && { answer }),
+            ...(answerTruncated && { answerTruncated: true }),
+            ...(artifacts && { artifacts }),
+            capturedAt: new Date().toISOString(),
+          };
+
+    // Verdict contract — only when the pinned intent declares a vocabulary.
+    if (declaredOutcomes.length === 0) return { ...(output && { output }) };
+    let verdict = sealVerdict && declaredOutcomes.includes(sealVerdict) ? sealVerdict : undefined;
+    if (!verdict) {
+      const fallback = stepDef.onMissingVerdict;
+      if (fallback && fallback !== 'fail' && declaredOutcomes.includes(fallback)) verdict = fallback;
+    }
+    return { ...(output && { output }), ...(verdict ? { verdict } : { missingVerdict: true }) };
   }
 
   // ============================================

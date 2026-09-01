@@ -105,6 +105,14 @@ describe('validatePipelineDef — structural rules', () => {
         runCompleted: { pipelineId: 'weekly-ops', statuses: ['failed', 'partial'] },
       },
     })],
+    // Verdict routing — on: verdict:<outcome> edges + onMissingVerdict.
+    ['verdict switch with onMissingVerdict fallback', baseDef({
+      steps: [
+        { id: 'judge', customJobRef: 'x/judge', intent: 'triage', onMissingVerdict: 'needs-review' },
+        { id: 'ok', customJobRef: 'x/ok', needs: ['judge'], on: 'verdict:ok' },
+        { id: 'review', customJobRef: 'x/review', needs: ['judge'], on: 'verdict:needs-review' },
+      ],
+    })],
     // Retry / timeout / remindAfter on their legal step kinds.
     ['job step with retry + timeout, gate with remindAfter', baseDef({
       steps: [
@@ -165,6 +173,16 @@ describe('validatePipelineDef — structural rules', () => {
     ['bad retry.backoff', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 1, backoff: 'soon' } }] }), /retry\.backoff must be a duration/],
     ['job timeout with onTimeout key', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', timeout: { after: '1h', onTimeout: 'reject' } }] }), /unknown key "onTimeout"/],
     ['bad job timeout duration', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', timeout: { after: 'later' } }] }), /timeout\.after must be a duration/],
+    ['malformed verdict edge', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'b', customJobRef: 'x/b', needs: ['a'], on: 'verdict:' },
+    ] }), /on must be "success", "failure", "always" or "verdict:<outcome>"/],
+    ['onMissingVerdict without a pinned intent', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a', onMissingVerdict: 'ok' },
+    ] }), /onMissingVerdict needs a pinned intent/],
+    ['onMissingVerdict with a bad value', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', intent: 'triage', onMissingVerdict: 'Not Valid!' },
+    ] }), /onMissingVerdict must be "fail" or an outcome id/],
     ['bad gate remindAfter', baseDef({ steps: [
       { id: 'a', customJobRef: 'x/a', directive: 'a' },
       { id: 'g', type: 'approval', prompt: 'p', remindAfter: 'often' },

@@ -75,6 +75,18 @@ This turn is complete ONLY when every item below holds. The runtime verifies eac
 If an item cannot be satisfied, state the reason explicitly instead of stopping silently — do NOT claim completion.
 {{/if}}
 
+{{#if turnOutcomes}}
+## 🧭 Verdict
+
+This intent declares a decision vocabulary. End your FINAL reply of the turn with exactly one verdict tag naming your conclusion:
+
+{{#each turnOutcomes}}
+- `<verdict>{{this}}</verdict>`
+{{/each}}
+
+Pick the single verdict the observed evidence supports. The tag must appear exactly once, at the end of the final reply — downstream automation routes on it, so a missing or made-up verdict fails the run's routing.
+{{/if}}
+
 ## Definition Files (read-only)
 
 Your definition — including each intent's prompt file (`intents/{id}/prompt.md`) — is mounted read-only under `{{definitionMount}}`.
