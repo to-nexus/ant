@@ -11,6 +11,15 @@
  * containers (SVG) have no binary signature; callers must fall back to
  * the file extension when this helper returns `null` AND they explicitly
  * want to attach SVG.
+ *
+ * This module owns everything the vision consumers SHARE — the MIME verdict
+ * and the attach budgets. Block ASSEMBLY is deliberately not unified: the
+ * code job's builder (`code/nodes/execute/buildMessages.ts`) binds its size
+ * gate and read to one contained descriptor because its paths are
+ * LLM/artifact-derived (H-017), while the universal band
+ * (`universal/graph/nodes/attachedContext.ts`) computes each pin's prompt
+ * line and its block in one pass so they cannot disagree. Folding the two
+ * loops into one helper would weaken one invariant to serve the other.
  */
 
 export type AnthropicImageMime =
