@@ -274,6 +274,29 @@ describe('GET /admin/users — scope axis', () => {
     );
   });
 
+  it('leads with the personal scope even when a team is the active org', async () => {
+    await seedUser();
+    ledger.seed('individual', USER.id, 10);
+    ledger.seed('team-a', USER.id, 5);
+    // The operator's target is working inside a team — the ordering must not
+    // follow them there, or a fresh account's only row moves once they join one.
+    await repo.upsertUser({
+      id: USER.id,
+      email: USER.email,
+      currentOrganizationId: 'team-a',
+    });
+    await startApp(ledger);
+
+    const rows = (await api('GET', '/admin/users')).json.rows.filter(
+      (r: any) => r.userId === USER.id,
+    );
+    expect(rows.map((r: any) => r.organizationId)).toEqual(['individual', 'team-a']);
+    expect(rows[0].active).toBe(false);
+
+    const detail = (await api('GET', `/admin/users/${encodeURIComponent(USER.id)}`)).json;
+    expect(detail.scopes[0].organizationId).toBe('individual');
+  });
+
   it('surfaces an account whose membership is gone as orphaned', async () => {
     await seedUser();
     ledger.seed('team-a', USER.id, 7);

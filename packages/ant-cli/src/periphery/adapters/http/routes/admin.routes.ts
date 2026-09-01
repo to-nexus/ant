@@ -200,8 +200,14 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       return [(await build(fallback, true))!];
     }
 
+    // The personal scope leads: it is the one every account has from
+    // signup, and teams accrue on top of it. Keying off `active` alone put a
+    // team above the personal row the moment the operator's target was
+    // working in that team.
     return rows.sort(
       (a, b) =>
+        Number(b.organizationKind === 'individual') -
+          Number(a.organizationKind === 'individual') ||
         Number(b.active) - Number(a.active) ||
         a.organizationId.localeCompare(b.organizationId),
     );
