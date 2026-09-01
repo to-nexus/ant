@@ -374,5 +374,8 @@
       "resolvedKeepPlanning": "Continuing planning",
       "dismissed": "Dismissed"
     }
+  },
+  "toolAction": {
+    "openAgentSettings": "Open agent settings"
   }
 }

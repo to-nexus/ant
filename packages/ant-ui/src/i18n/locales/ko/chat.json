@@ -374,5 +374,8 @@
       "resolvedKeepPlanning": "계획 다듬는 중",
       "dismissed": "닫음"
     }
+  },
+  "toolAction": {
+    "openAgentSettings": "에이전트 설정 열기"
   }
 }

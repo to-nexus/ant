@@ -47,8 +47,13 @@ export interface ToolNodeConfig<TState> {
    * Optional per-call gate. When provided, each pending call is checked before
    * dispatch; a denied call yields an error tool_result instead of executing.
    * RAC-agnostic at this layer — the code tool node binds an RAC-scope policy.
+   * A rejection may carry a `notice` for user-visible surfacing (see
+   * `GateRejectionNotice` in orchestrator.ts).
    */
-  gateCall?(state: TState, call: ToolCall): { allowed: true } | { allowed: false; error: string };
+  gateCall?(
+    state: TState,
+    call: ToolCall,
+  ): { allowed: true } | { allowed: false; error: string; notice?: import('./orchestrator').GateRejectionNotice };
 
   /** Pre-configured ToolRegistry (from presets + runtime registrations) */
   registry: ToolRegistry;

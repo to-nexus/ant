@@ -202,6 +202,22 @@ Each entry carries exactly one of `artifact` or `action`. An `action` must name
 a tool the job actually has — a builtin in its allowlist, or a tool from a
 connection it declares — or the job will not load.
 
+`artifact:` globs resolve against the job's artifact root — `*` matches within
+one path segment, `**` matches any depth; `sessions/` is reserved and refused.
+Entries are conjunctive (all must be met, at most 8 per intent), so one
+contract can require both a working file and a system call. Artifact evidence
+comes only from the file tools (`create_file`, `edit_file`, `append_file`,
+`copy_file`): a file produced by `run_command`, and a large tool result the
+runtime spooled to disk, satisfy no `artifact:` hook — hold such an intent to
+an `action:` instead. A write into an external system is declared as its tool:
+`action: api__{name}__request` or `action: mcp__{server}__{tool}`.
+
+An intent's stop globs are its output contract: pipeline authoring pins
+exactly these globs as a downstream step's context, so keep them stable and
+specific. The plane's file tools are text-only — `read_file` refuses binary
+and `create_file` cannot author it — so an artifact another intent or step
+will consume must be a text format.
+
 A hook is for observable completion. When an intent's "done" is evidence the
 runtime can see — a produced file, a successful call — declare it here rather
 than leaving it as prose alone; when done is a judgment only a reader can

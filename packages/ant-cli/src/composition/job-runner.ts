@@ -275,10 +275,23 @@ async function runJob(params: JobParams): Promise<void> {
     // turn context + hook ledger the resumed turn re-arms with).
     const hooksUnmet = params.jobType === 'universal' ? (result as any)?.hooksUnmet : undefined;
     if (Array.isArray(hooksUnmet) && hooksUnmet.length > 0) {
+      // Name the unmet contract in the message — it is the only field the
+      // cancelled-card path surfaces (metadata is dropped before the FE).
+      const unmetLabels = hooksUnmet
+        .map((c: any) =>
+          c?.hook && 'artifact' in c.hook
+            ? `artifact: ${c.hook.artifact}`
+            : c?.hook?.action
+              ? `action: ${c.hook.action}`
+              : null,
+        )
+        .filter(Boolean)
+        .join(', ');
       const interruption: InterruptionDetails = {
         reason: 'universal_stop_hook_unmet' as InterruptionReason,
         message:
-          'The turn ended with its stop-hook contract unmet (verified from actual tool results). ' +
+          `The turn ended with its stop-hook contract unmet (verified from actual tool results)` +
+          `${unmetLabels ? ` — unmet: ${unmetLabels}` : ''}. ` +
           'Resume to continue — hooks already met are not re-demanded.',
         timestamp: new Date().toISOString(),
         canResume: true,

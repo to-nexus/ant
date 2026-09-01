@@ -264,6 +264,11 @@ tools:
     "mcp__ops-db__push": always   # always | never; mutating tools default to always
 ```
 
+An approval-gated call is **refused, not queued** — there is no interactive
+approve flow yet — so a job meant to run unattended must declare `never` for
+the tools it actually uses. A blocked call surfaces as a chat card naming the
+tool, with a link to this file in Agent Settings.
+
 There is no job `description` (the loader rejects it — mirrors `agent.yaml`):
 the job shows its `name` on the composer chip, and what the job is plus how it
 works belongs in `base/*.md` prose, which is what the model actually reads.
@@ -398,10 +403,56 @@ hooks:
 - `action` names a tool from this job's `tools.builtin` or a full
   `mcp__{server}__{tool}` whose server is declared on the job or agent —
   otherwise the definition fails to load (the hook could never be met).
+- `artifact` evidence comes only from the file tools (`create_file`,
+  `edit_file`, `append_file`, `copy_file`). A file produced by `run_command`,
+  and a large tool result the runtime spooled to disk, satisfy no `artifact:`
+  hook — hold such an intent to an `action:` instead.
+- An intent's stop globs are its **output contract**: when the job later runs
+  as a pipeline step, downstream steps pin exactly these globs as `context`.
+  Keep them stable and specific.
 - Deleting `hooks.yaml` (or emptying the list in the settings UI) removes the
   contract; a job without hooks simply ends the turn when the agent stops.
   Hooks arm only on pinned/inherited turns — unpinned (`general`) turns are
   never gated.
+
+## 4.8 Deliverable contracts — outputs another step will consume
+
+A deliverable's contract has three parts — where it lives (**home**), what it
+is (**form**), and how the runtime knows it happened (**evidence**):
+
+| Home | When | Evidence (`hooks.stop`) |
+|---|---|---|
+| Artifacts | intermediate work another intent reads | `artifact:` glob |
+| External system (declared connection) | the system is the record of truth | `action: api__{name}__request` / `mcp__{server}__{tool}` |
+| Both | working copy in artifacts, then pushed | both entries (all hooks are AND-ed) |
+
+Patterns that keep unattended pipelines from failing on normal days:
+
+- **Consumer-first form.** An artifact another intent or pipeline step
+  consumes must be text (`read_file` refuses binary) — Markdown, JSON, CSV. A
+  binary format a person needs (a spreadsheet, a document) is a terminal
+  conversion step at the end of the chain, held to an `action:` hook.
+- **Run manifest.** Have a producing intent write a small manifest file at a
+  stable path on every run — what it produced, ids, counts, an empty list when
+  there was nothing to do. Pin the manifest downstream: an empty day stays a
+  normal result instead of a failed `context` glob, and the manifest carries
+  the scalar values (`record ids, totals`) that directive templates cannot.
+- **Business-key paths.** Partition output paths by the work's own key (a
+  period, an account) so a re-run overwrites its own slice instead of
+  duplicating it.
+- **Materialize shared loads.** When several intents work from the same
+  external data, one intent saves a normalized extract with `create_file` and
+  the others read that snapshot. A tool-result echo — including a result the
+  runtime spooled to disk — persists nothing and satisfies no hook.
+- **Idempotent system writes.** An `action:` hook proves a call happened, not
+  that it happened exactly once. A procedure that writes into an external
+  system states its duplicate guard (query before write, or key the write on
+  the business key) — retries and re-runs are normal in scheduled operation.
+- **Approval posture.** Approval-gated calls are refused when no one can
+  approve (see §3), so an intent that exists to perform a gated write must
+  declare `tools.approval` for that tool or it can never complete unattended.
+  When a gated call is blocked, a chat card names the tool and links to the
+  owning `job.yaml` in Agent Settings, where the knob can be changed.
 
 ## 5. Validate and run
 

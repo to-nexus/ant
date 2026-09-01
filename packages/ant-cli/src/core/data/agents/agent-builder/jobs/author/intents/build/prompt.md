@@ -29,6 +29,51 @@
   no intent, no prose, no reference copy. Drop it and record the drop in the
   mapping.
 
+**Design each deliverable's contract with the partition.**
+
+- The material's deliverables — their formats, filenames, and bundle sizes —
+  record how people did the work; they bind you only where the user explicitly
+  asks to keep one. Otherwise design each deliverable consumer-first: decide
+  who reads it before deciding what it is.
+- An output another intent will consume lives in artifacts, as text the
+  consumer can `read_file`, under one stable path pattern. Declare that
+  pattern as the producer's `hooks.stop` artifact glob and name the same
+  pattern in the consumer's `prompt.md` inputs — the glob is the interface
+  between the intents, and it is what a pipeline step later pins as context.
+- Give every producing intent a run manifest: a small file at a stable path,
+  written on every run, listing what the run produced — records created,
+  counts, paths — an empty list when there was nothing to do. The manifest is
+  the artifact hook and the downstream pin, so a day with no work is a normal
+  result rather than a missing file; the consumer's procedure states what to
+  do with an empty manifest.
+- Partition output paths by the business key the work carries — a period, an
+  account — so a re-run overwrites its own slice instead of duplicating it,
+  and the consumer knows which slice to read.
+- When the work's record of truth is an external system, the deliverable is
+  the write into that system through a declared connection, and the completion
+  contract is that `action:`. The procedure must state its duplicate guard —
+  check what exists before writing, or key the write on the business key — 
+  because a successful call proves a call happened, not that it happened
+  exactly once, and a confirmed run can still be retried. When several intents
+  work from the same external data, or a run must be auditable, the loading
+  intent saves a normalized extract to artifacts with `create_file` and the
+  others consume that snapshot — a tool result echo, spooled or not, persists
+  nothing and satisfies no hook.
+- A deliverable whose final consumer is a person and must be a binary format
+  is a terminal conversion step, never the shape of the chain: the plane's
+  file tools do not read or write binary, so intermediate deliverables stay
+  text and the converting intent's contract is an `action:`.
+- An intent that exists to perform a gated write declares
+  `tools.approval` for that tool: a gated call is refused when no one is
+  present, so an unattended intent that leaves its own write gated can never
+  complete. Declare `never` only for the write the intent exists to perform,
+  keep the duplicate guard beside it, and note in the operating-context
+  section when the write presumes a person confirmed upstream — pipeline
+  authoring places the confirmation step from that note.
+- Clarify is the sanctioned confirmation channel, not an exit from ambiguity:
+  reserve it for decisions that are irreversible or wrong-by-default, and
+  resolve foreseeable small ambiguities with stated defaults in the procedure.
+
 **State the design, then author.**
 
 - Before the first write, state the design: which agents, jobs, and intents,
@@ -136,3 +181,10 @@ is observable.**
   completion contract, or that none do and why (e.g. no observable done in
   the material). A correct "no hooks" is invisible without this line, and an
   auditor cannot tell it from a forgotten one.
+- The report states each deliverable contract: where it lives (an artifact
+  path pattern or a named system), which intent produces it and which consume
+  it, and whether its form was kept at the user's explicit ask or redesigned —
+  from what, to what.
+- The report lists what must be in place before a first run: every
+  `${secret:}` key to register, every connection to verify, and each
+  `tools.approval` decision with its reason.

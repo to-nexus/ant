@@ -961,6 +961,40 @@ lines are GET-only — both lanes asserted in
 resolves through the guard is asserted in
 `tests/http/account-agent-routes.test.ts`).
 
+**Extension — deliverables are design space too** (2026-09-01). The
+no-authority principle originally covered only structure (partition) and
+scheduling (quarantine); the material's *deliverable shapes* — file formats,
+names, bundle sizes — went unnamed, so a builder given "the weekly report is
+a spreadsheet" would faithfully author an intent that cannot work: the
+universal plane is text-only in both directions (`readFile.ts` refuses
+binary, `create_file` refuses binary targets), inter-step handoff has exactly
+one data channel (artifact `context` pins — `{{steps.*}}` is reserved,
+unimplemented), and an `artifact:` stop hook is satisfiable only by the four
+write-evidence tools (`ARTIFACT_WRITE_EVIDENCE_TOOLS`; `run_command` output
+and spooled MCP results leave no write evidence — `graph/runtime.ts` spool
+header). The corrected text extends the same principle: a deliverable's
+contract is (home, form, evidence) — home is the artifacts plane, an external
+system of record through a declared connection, or both (a normalized
+snapshot materialized with `create_file` when several intents share one
+external load); the precedence ladder is the user's explicit ask (binding,
+kept verbatim) over redesign-for-the-agent (the default); systems the
+material names are real dependencies, unlike its file shapes. Confirmation is
+layered — a pipeline approval step gates dispatch, clarify gates questions,
+and neither substitutes for tool approval, which is fail-closed with no
+interactive flow (`universal/graph/nodes/tool.ts` Phase 1) — so an intent
+that exists to perform a gated write must declare `tools.approval` for that
+tool or it can never complete unattended, and its procedure must carry its
+own duplicate guard because an `action:` hook proves a call happened, not
+that it happened exactly once. Two platform limits are mitigated by authored
+patterns rather than runtime changes: no per-run pin scoping (static globs,
+newest-mtime-first) → business-key path partitioning; empty-match pins fail
+the step → the always-written run manifest, which doubles as the scalar
+handoff channel `{{steps.*}}` would otherwise be. Homes as before: design
+principle in `base/system.md` step 2, operating rules in
+`intents/build/prompt.md` ("Design each deliverable's contract with the
+partition"), contract facts in `on-demand/definition-format.md`'s hooks
+section.
+
 ## Streaming & turn identity (A14/A15)
 
 Two defects the WS-D end-to-end surfaced, both structural rather than cosmetic:

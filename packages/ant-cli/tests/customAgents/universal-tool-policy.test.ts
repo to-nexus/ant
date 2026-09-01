@@ -8,7 +8,7 @@
  * is registered and dispatchable but invisible to the LLM.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   UNIVERSAL_BUILTIN_TOOLS,
   MUTATING_BUILTIN_TOOLS,
@@ -364,5 +364,76 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
 
   it('getRootPath stays the artifacts root (ripgrep cwd — mounts are not searchable)', () => {
     expect(build().getRootPath()).toBe('/root/artifacts');
+  });
+});
+
+// ── gateCall — approval rejection carries the user-visible notice ────────────
+//
+// The error string steers the model; the notice is what the orchestrator
+// surfaces as a persistent chat card (the block is otherwise invisible
+// outside narration). Shape only — no wording pinned beyond the knob name.
+
+describe('gateCall — approval rejection notice shape', () => {
+  const call = (name: string) => ({ id: 't1', name, args: {} });
+
+  async function gateWith(resolvedOverrides: Partial<import('../../src/core/customAgents/types').ResolvedCustomJob>) {
+    const { activateCustomJob, _resetActiveCustomJobForTests } = await import(
+      '../../src/core/customAgents/activeCustomJob'
+    );
+    const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+    _resetActiveCustomJobForTests();
+    activateCustomJob({
+      agentId: 'ops',
+      jobId: 'weekly',
+      scope: 'user',
+      agentName: 'Ops',
+      jobName: 'Weekly',
+      prose: 'p',
+      intents: [],
+      intentPrompts: {},
+      mcpServers: {},
+      apiServers: {},
+      onDemandDocs: [],
+      builtinTools: ['read_file', 'run_command'],
+      approval: {},
+      clarifyDefault: true,
+      agentDir: '/tmp/x',
+      jobDir: '/tmp/x/jobs/weekly',
+      ...resolvedOverrides,
+    } as import('../../src/core/customAgents/types').ResolvedCustomJob);
+    return (name: string) => universalToolNodeConfig.gateCall!({} as any, call(name));
+  }
+
+  afterEach(async () => {
+    const { _resetActiveCustomJobForTests } = await import('../../src/core/customAgents/activeCustomJob');
+    _resetActiveCustomJobForTests();
+  });
+
+  it('a default-gated builtin is rejected WITH a notice that deep-links the owning job.yaml', async () => {
+    const gate = await gateWith({});
+    const result = gate('run_command') as { allowed: false; error: string; notice?: any };
+    expect(result.allowed).toBe(false);
+    expect(result.error).toContain('tools.approval["run_command"]');
+    expect(result.notice).toBeTruthy();
+    expect(result.notice.content).toContain('run_command');
+    expect(result.notice.agentId).toBe('ops');
+    expect(result.notice.definitionPath).toBe('jobs/weekly/job.yaml');
+  });
+
+  it('a declared-never tool passes the gate (no notice, no rejection)', async () => {
+    const gate = await gateWith({ approval: { run_command: 'never' } });
+    expect(gate('run_command')).toEqual({ allowed: true });
+  });
+
+  it('a non-gated read tool passes untouched', async () => {
+    const gate = await gateWith({});
+    expect(gate('read_file')).toEqual({ allowed: true });
+  });
+
+  it('an allowlist rejection carries NO notice — model steering stays invisible to the user', async () => {
+    const gate = await gateWith({ builtinTools: ['read_file'] });
+    const result = gate('create_file') as { allowed: false; notice?: unknown };
+    expect(result.allowed).toBe(false);
+    expect(result.notice).toBeUndefined();
   });
 });

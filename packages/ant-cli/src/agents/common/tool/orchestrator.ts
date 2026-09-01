@@ -77,8 +77,26 @@ export interface OrchestratorBatchOptions {
    * tool_result for that call (preserving tool_use/tool_result pairing) and
    * skips execution. RAC-agnostic by design — the caller supplies whatever
    * policy it wants (the code tool node binds an RAC-scope check here).
+   *
+   * `notice` opts a rejection into user-visible surfacing: only a denial a
+   * person must act on (an approval-gated call, not model steering like a
+   * plan-turn or allowlist refusal) should carry one.
    */
-  gateCall?(call: ToolCall): { allowed: true } | { allowed: false; error: string };
+  gateCall?(call: ToolCall): { allowed: true } | { allowed: false; error: string; notice?: GateRejectionNotice };
+}
+
+/**
+ * Persistent chat surfacing for a gate rejection the user must resolve.
+ * Rendered as a `tool_action` chat card in addition to the error tool_result
+ * the model receives — without it a denial is invisible outside the LLM's
+ * own narration. `agentId` + `definitionPath` add a deep link into the
+ * agent-definition settings screen.
+ */
+export interface GateRejectionNotice {
+  content: string;
+  icon?: string;
+  agentId?: string;
+  definitionPath?: string;
 }
 
 // Display names come from TOOL_DISPLAY_NAMES in toolCatalog.ts (single source of truth)
@@ -140,6 +158,18 @@ export class ToolOrchestrator {
         const gate = opts.gateCall(tc);
         if (!gate.allowed) {
           console.warn(`🚫 [Tool] ${name} blocked: ${gate.error}`);
+          if (gate.notice) {
+            try {
+              await ctx.chatStatus.showStatus('tool_action', {
+                actionIcon: gate.notice.icon ?? '🚫',
+                content: gate.notice.content,
+                ...(gate.notice.agentId && { agentId: gate.notice.agentId }),
+                ...(gate.notice.definitionPath && { definitionPath: gate.notice.definitionPath }),
+              });
+            } catch (e) {
+              console.warn(`⚠️ [Tool] gate notice emit failed for ${name}:`, (e as Error)?.message);
+            }
+          }
           events.push({
             toolCallId: id,
             toolName: name,

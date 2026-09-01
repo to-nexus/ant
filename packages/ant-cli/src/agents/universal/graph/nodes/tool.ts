@@ -51,6 +51,33 @@ const PLAN_TURN_EXECUTION_ERROR = (name: string): string =>
 
 const universalResultManager = new ToolResultManager(new TokenBudgetManager(), UNIVERSAL_RESULT_LIMITS);
 
+/**
+ * Approval rejection (fail-closed, both builtin and extension tools). The
+ * error steers the model; the notice is the user-visible half — without it
+ * the block surfaces only as narration, and an unattended run that needs the
+ * call parks on its stop hooks with no visible cause. The deep link lands on
+ * the job.yaml whose `tools.approval` is the one knob that unblocks it.
+ */
+function approvalRejection(
+  toolName: string,
+  resolved: { agentId: string; jobId: string },
+): { allowed: false; error: string; notice: import('../../../common/tool/orchestrator').GateRejectionNotice } {
+  return {
+    allowed: false,
+    error:
+      `"${toolName}" requires user approval and the interactive approval flow is not available yet (fail-closed). ` +
+      `Do NOT retry this call. Tell the user what you intended to do and ask them to either perform it themselves ` +
+      `or have the job author declare \`tools.approval["${toolName}"]: never\` in job.yaml if it is safe to run unattended.`,
+    notice: {
+      content:
+        `Approval required: "${toolName}" was not executed (approval-gated calls are refused when no one can approve). ` +
+        `To let this job run it unattended, set tools.approval["${toolName}"]: never in job.yaml — or perform the action yourself.`,
+      agentId: resolved.agentId,
+      definitionPath: `jobs/${resolved.jobId}/job.yaml`,
+    },
+  };
+}
+
 /** Tool rounds without a `<checklist>` re-emit before the nudge fires (and its re-fire period). */
 const CHECKLIST_NUDGE_STALE_ROUNDS = 3;
 
@@ -113,13 +140,7 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
         return { allowed: false, error: PLAN_TURN_EXECUTION_ERROR(call.name) };
       }
       if (requiresApproval(call.name, resolved.approval, { mcpReadOnlyHint: info.readOnlyHint })) {
-        return {
-          allowed: false,
-          error:
-            `"${call.name}" requires user approval and the interactive approval flow is not available yet (fail-closed). ` +
-            `Do NOT retry this call. Tell the user what you intended to do and ask them to either perform it themselves ` +
-            `or have the job author declare \`tools.approval["${call.name}"]: never\` in job.yaml if it is safe to run unattended.`,
-        };
+        return approvalRejection(call.name, resolved);
       }
       return { allowed: true };
     }
@@ -142,13 +163,7 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
     }
 
     if (requiresApproval(call.name, resolved.approval)) {
-      return {
-        allowed: false,
-        error:
-          `"${call.name}" requires user approval and the interactive approval flow is not available yet (fail-closed). ` +
-          `Do NOT retry this call. Tell the user what you intended to do so they can act on it, ` +
-          `or the job author can declare \`tools.approval["${call.name}"]: never\` in job.yaml if it is safe to run unattended.`,
-      };
+      return approvalRejection(call.name, resolved);
     }
 
     return { allowed: true };
