@@ -79,6 +79,18 @@ steps:
   exactly this run's partition, which is how a business-key-partitioned
   manifest gets run-scoped isolation. `{{steps.*}}` is directive-only and
   rejected in pins.
+- `retry: { max: 1..3, backoff?: "{n}m|h|d" }` re-dispatches the step on a
+  RETRYABLE failure (job failure, infra interruption, enqueue failure, step
+  timeout) — never on standing failures (approval/membership/credits/
+  definition), and never on a human stop. Each round is a fresh job carrying a
+  retry preamble that tells the agent what failed. **Declare retry only on
+  re-entrant intents**: a failed attempt may already have completed side
+  effects (an API write, a posted record), so the intent's prompt must say to
+  check current state before acting. Default backoff is 1m.
+- `timeout: { after: "{n}m|h|d" }` bounds one run's wall clock; on expiry the
+  job is killed and the step FAILS (an `on: failure` branch consumes it, and
+  `retry` composes — a timed-out round can retry). The bound stands down while
+  the step awaits a clarify answer (human waits are open-ended).
 
 ## Approval gates
 
@@ -91,6 +103,9 @@ steps:
 - `channels` supports only `inApp` today. `timeout.after` is `{n}m|h|d`;
   `timeout.onTimeout` is `reject` or `approve`. No timeout means the gate
   waits indefinitely.
+- `remindAfter: "{n}m|h|d"` re-surfaces an unresolved gate on that cadence
+  (inbox refresh + a reminder line in chat, bounded rounds) — use it on gates
+  whose timeout is long or absent, so a waiting run is never forgotten.
 
 ## The graph
 
@@ -115,7 +130,7 @@ never concludes a silently ignored knob works:
 |---|---|
 | `enabled` | availability is a sidecar — a person enables in the Pipelines tab |
 | `projectId` | the project binding is set when a person activates, not in the definition |
-| `retry`, `remindAfter` | reserved — not supported yet |
+| `retry` on a gate / `remindAfter` on a job step | each belongs to the other step kind |
 | `jobType`, `feature` | reserved for a future step kind |
 | `overlap: cancelPrevious` | reserved — use `skip` or `queue` |
 | `{{steps.<id>.verdict}}` in a directive | reserved — verdict routing does not exist yet |

@@ -177,6 +177,13 @@
     "onSuccess": "Succeeded (default)",
     "onFailure": "Failed (failure branch)",
     "onAlways": "Finished either way",
+    "retry": "Retry on failure",
+    "retryOff": "Off (fail immediately)",
+    "retryN": "Up to {{n}} retries",
+    "retryBackoffPlaceholder": "1m (backoff, {n}m|h|d)",
+    "retryIdempotency": "A retried run may repeat side effects — this intent must check what already completed before acting.",
+    "timeout": "Time limit per run",
+    "timeoutPlaceholder": "none — e.g. 30m, 2h",
     "needs": "Depends on",
     "needsHint": "This step runs after every selected step finished. Pick several for a fan-in; several steps depending on one make a fan-out. No selection makes it a root.",
     "needsReset": "Default (previous step)",
@@ -193,7 +200,9 @@
     "timeoutApprove": "Auto-approve",
     "channels": "Channels",
     "inApp": "In-app",
-    "comingSoon": "Coming soon"
+    "comingSoon": "Coming soon",
+    "remindAfter": "Remind while unresolved",
+    "remindAfterPlaceholder": "none — e.g. 4h, 24h"
   },
   "runs": {
     "empty": "No runs yet — press Run now to test this pipeline.",

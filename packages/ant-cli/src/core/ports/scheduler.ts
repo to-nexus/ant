@@ -6,7 +6,7 @@
  * per next fire lives in Redis, any replica's worker collects it).
  */
 
-import type { OrganizationKind, PipelineScope } from '@ant/shared';
+import type { OrganizationKind, PipelineScope, StepOutputRecord } from '@ant/shared';
 
 /**
  * ACTIVATOR coordinates stored at registration — never a token (owner
@@ -90,7 +90,41 @@ export interface PipelineOutcomeRetryJobData {
   stepId: string;
   outcome: 'succeeded' | 'failed';
   error?: string;
+  /** Captured step output riding the re-apply (landed with the outcome). */
+  output?: StepOutputRecord;
+  /** The sealing job — the outcome applies only while the step still points at it. */
+  jobId?: string;
+  /** Failed outcome that may still consume a retry round — the re-apply re-judges. */
+  retryable?: boolean;
   retries: number;
+}
+
+/**
+ * Wall-clock bound for one job-step round. Armed after enqueue, re-armed on
+ * every re-dispatch (same arm id), cancelled on outcome/clarify-park/cancel.
+ * Expiry kills the job (stop legs) and fails the step — retryable.
+ */
+export interface PipelineStepTimeoutJobData {
+  kind: 'step-timeout';
+  owner: PipelineOwner;
+  pipelineId: string;
+  projectId: string;
+  runId: string;
+  stepId: string;
+  /** The round this arm bounds — a newer round's jobId makes the arm stale. */
+  jobId: string;
+}
+
+/** Reminder re-arm for an unresolved gate (bounded; resolve cancels it). */
+export interface PipelineGateRemindJobData {
+  kind: 'gate-remind';
+  owner: PipelineOwner;
+  pipelineId: string;
+  projectId: string;
+  runId: string;
+  stepId: string;
+  gateId: string;
+  reminders: number;
 }
 
 export type PipelineControlJobData =
@@ -98,7 +132,9 @@ export type PipelineControlJobData =
   | PipelineGateTimeoutJobData
   | PipelineStepRetryJobData
   | PipelineOutcomeRetryJobData
-  | PipelineClarifyEnterJobData;
+  | PipelineClarifyEnterJobData
+  | PipelineStepTimeoutJobData
+  | PipelineGateRemindJobData;
 
 export interface ScheduleQueuePort {
   /** Idempotent upsert of a cron scheduler (`schedulerId` = owner-scoped pipeline key). */

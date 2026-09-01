@@ -95,6 +95,13 @@ describe('validatePipelineDef — structural rules', () => {
     ['context glob pin', baseDef({
       steps: [{ id: 'collect', customJobRef: 'research/collect', directive: 'x', context: ['reports/**', 'plan/spec.md'] }],
     })],
+    // Retry / timeout / remindAfter on their legal step kinds.
+    ['job step with retry + timeout, gate with remindAfter', baseDef({
+      steps: [
+        { id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 2, backoff: '5m' }, timeout: { after: '2h' } },
+        { id: 'g', type: 'approval', prompt: 'p', remindAfter: '24h' },
+      ],
+    })],
     // Static template vars — directives and pins; prevSuccess watermark pair.
     ['prevSuccess watermark vars in a directive', baseDef({
       steps: [{ id: 'a', customJobRef: 'x/a', directive: 'Since {{run.prevSuccess.fireDate}} ({{run.prevSuccess.fireEpoch}})' }],
@@ -134,8 +141,21 @@ describe('validatePipelineDef — structural rules', () => {
     ['4-field cron', baseDef({ on: { schedule: { cron: '0 9 * *' } } }), /5 fields/],
     ['cancelPrevious overlap', baseDef({ on: { schedule: { cron: '0 9 * * 1', overlap: 'cancelPrevious' } } }), /not supported yet/],
     ['unknown top-level key', baseDef({ webhookToken: 'x' }), /unknown key "webhookToken"/],
-    ['reserved step key retry', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 1 } }] }), /"retry" is not supported yet/],
-    ['reserved step key remindAfter', baseDef({ steps: [{ id: 'a', type: 'approval', prompt: 'p', needs: [], remindAfter: '4h' }] }), /"remindAfter" is not supported yet/],
+    // retry / remindAfter are real on their own step kind — cross-kind use is named.
+    ['retry on an approval gate', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'g', type: 'approval', prompt: 'p', retry: { max: 1 } },
+    ] }), /"retry" belongs to job steps/],
+    ['remindAfter on a job step', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', remindAfter: '4h' }] }), /"remindAfter" belongs to approval steps/],
+    ['retry.max over the cap', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 4 } }] }), /retry\.max must be an integer between 1 and 3/],
+    ['retry.max zero', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 0 } }] }), /retry\.max must be an integer between 1 and 3/],
+    ['bad retry.backoff', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 1, backoff: 'soon' } }] }), /retry\.backoff must be a duration/],
+    ['job timeout with onTimeout key', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', timeout: { after: '1h', onTimeout: 'reject' } }] }), /unknown key "onTimeout"/],
+    ['bad job timeout duration', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', timeout: { after: 'later' } }] }), /timeout\.after must be a duration/],
+    ['bad gate remindAfter', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'g', type: 'approval', prompt: 'p', remindAfter: 'often' },
+    ] }), /remindAfter must be a duration/],
     // {{steps.*}} grammar — answer/artifacts against the needs closure only.
     ['steps.* unknown output field', baseDef({ steps: [
       { id: 'a', customJobRef: 'x/a', directive: 'a' },

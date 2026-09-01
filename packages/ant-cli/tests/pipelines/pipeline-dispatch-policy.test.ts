@@ -264,6 +264,41 @@ describe('step output capture ({{steps.*}} source)', () => {
   });
 });
 
+describe('retry / timeout / remind arms', () => {
+  it('failStepOrRetry is the ONE retryable-failure funnel; ant-jobs attempts stay 1', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    // Retryable call sites route through the funnel, never a second inline copy.
+    expect(coordinator.match(/failStepOrRetry\(/g)?.length ?? 0).toBeGreaterThanOrEqual(4); // def + enqueue + status + timeout (+outcome-retry)
+    // Standing failures stay non-retryable: the fail() closure defaults to false.
+    expect(coordinator).toMatch(/retryableFailure = false/);
+    // Human stops never retry — only infra interruption reasons are eligible.
+    expect(coordinator).toMatch(/INFRA_INTERRUPTION_REASONS/);
+  });
+
+  it('a superseded round cannot be clobbered: applyOutcome guards on expectedJobId', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/expectedJobId !== undefined && already\.jobId !== expectedJobId/);
+  });
+
+  it('step timeout arms per round and stands down for clarify waits; expiry kills then fails', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator.match(/`sto-\$\{run\.runId\}-\$\{step\.id\}`/g)?.length ?? 0).toBe(1); // one arm site
+    expect(coordinator).toMatch(/handleStepTimeout/);
+    // Expiry uses the ONE kill authority, then the retry funnel.
+    expect(coordinator).toMatch(/killStepJob\(data\.jobId, run\.projectId\);\s*\n\s*await this\.failStepOrRetry/);
+    // Clarify park cancels the arm (human waits are open-ended).
+    const clarifySection = coordinator.slice(coordinator.indexOf('private async enterAwaitingClarify'));
+    expect(clarifySection.slice(0, clarifySection.indexOf('appendEvent'))).toMatch(/cancelDelayed\(`sto-/);
+  });
+
+  it('gate reminders are bounded and disarmed with the gate', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/MAX_GATE_REMINDERS/);
+    // Resolve and run-cancel both remove the arm.
+    expect(coordinator.match(/cancelDelayed\(`gre-/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('pipeline run-log graft (read-only)', () => {
   it('the merged view resolves and grafts the pipeline-runs node from the paths SSOT', () => {
     const container = read('core/customAgents/universalContainer.ts');

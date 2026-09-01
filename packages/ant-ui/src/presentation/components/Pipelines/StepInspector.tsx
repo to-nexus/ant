@@ -454,6 +454,46 @@ function JobStepPanel({
           />
         )}
       </div>
+      <div>
+        <FieldLabel optional>{t('step.retry', 'Retry on failure')}</FieldLabel>
+        <AuroraSelect
+          value={String(step.retry?.max ?? 0)}
+          onChange={(v) => {
+            const max = Number(v);
+            patch({ retry: max > 0 ? { max, ...(step.retry?.backoff && { backoff: step.retry.backoff }) } : undefined });
+          }}
+          options={[
+            { value: '0', label: t('step.retryOff', 'Off (fail immediately)') },
+            { value: '1', label: t('step.retryN', 'Up to {{n}} retry', { n: 1 }) },
+            { value: '2', label: t('step.retryN', 'Up to {{n}} retries', { n: 2 }) },
+            { value: '3', label: t('step.retryN', 'Up to {{n}} retries', { n: 3 }) },
+          ]}
+        />
+        {step.retry && (
+          <>
+            <div style={{ marginTop: 6 }}>
+              <AuroraInput
+                mono
+                value={step.retry.backoff ?? ''}
+                placeholder={t('step.retryBackoffPlaceholder', '1m (backoff, {n}m|h|d)')}
+                onChange={(v) => patch({ retry: { max: step.retry!.max, ...(v.trim() && { backoff: v.trim() }) } })}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--amber-500, #f59e0b)', marginTop: 6 }}>
+              {t('step.retryIdempotency', 'A retried run may repeat side effects — this intent must check what already completed before acting.')}
+            </div>
+          </>
+        )}
+      </div>
+      <div>
+        <FieldLabel optional>{t('step.timeout', 'Time limit per run')}</FieldLabel>
+        <AuroraInput
+          mono
+          value={step.timeout?.after ?? ''}
+          placeholder={t('step.timeoutPlaceholder', 'none — e.g. 30m, 2h')}
+          onChange={(v) => patch({ timeout: v.trim() ? { after: v.trim() } : undefined })}
+        />
+      </div>
       <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} />
       {effectiveNeedsOf(def, stepIndex).length > 0 && <EdgeConditionField step={step} def={def} onChange={onChange} />}
     </>
@@ -515,6 +555,15 @@ function GatePanel({ def, step, stepIndex, onChange }: { def: PipelineDef; step:
           />
         </div>
       )}
+      <div>
+        <FieldLabel optional>{t('gate.remindAfter', 'Remind while unresolved')}</FieldLabel>
+        <AuroraInput
+          mono
+          value={step.remindAfter ?? ''}
+          placeholder={t('gate.remindAfterPlaceholder', 'none — e.g. 4h, 24h')}
+          onChange={(v) => patch({ remindAfter: v.trim() || undefined })}
+        />
+      </div>
       <div>
         <FieldLabel>{t('gate.channels', 'Channels')}</FieldLabel>
         <div style={{ display: 'flex', gap: 6 }}>

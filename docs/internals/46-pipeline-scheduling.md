@@ -179,7 +179,8 @@ cluster-safe — the next fire exists as ONE delayed job in Redis and any
 replica's worker collects it.
 
 The `ant-pipelines` queue (`infrastructure/scheduling/PipelineQueue.ts`)
-carries **control jobs only** — `fire`, `gate-timeout`, `step-retry` — never
+carries **control jobs only** — `fire`, `gate-timeout`, `gate-remind`,
+`step-retry`, `step-timeout`, `outcome-retry`, `clarify-enter` — never
 LLM work. Control jobs are idempotent (fire NX / gate NX downstream), so this
 queue runs `attempts: 3` + backoff. **`ant-jobs` keeps `attempts: 1`** — that
 invariant belongs to a different queue and is untouched (a BullMQ retry would
@@ -699,11 +700,17 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
 - **Phase 1.7 (shipped)**: clarify-await (§5b — `awaiting_clarify` step
   state, jobId re-pointing, open-ended wait, two-channel answer funnel) and
   the read-only `pipeline-runs` artifacts-tree graft.
-- **Phase 2 (in progress)**: `{{steps.*}}` output substitution (SHIPPED — §1
-  step-output capture; `steps.<id>.verdict` stays reserved). Remaining: A3
+- **Phase 2 (in progress)**: SHIPPED — `{{steps.*}}` output substitution (§1
+  step-output capture; `steps.<id>.verdict` stays reserved), per-step `retry`
+  (coordinator re-dispatch, NEW jobId per round with an idempotency preamble —
+  `ant-jobs` stays attempts:1; standing failures and human stops never retry;
+  `failStepOrRetry` is the one funnel and `applyOutcome` gained an
+  expectedJobId guard so a superseded round's late outcome cannot clobber the
+  current one), job-step `timeout` (delayed `sto-` arm, kill legs + retryable
+  failure on expiry; stands down during clarify waits), and gate `remindAfter`
+  re-arms (`gre-`, bounded by MAX_GATE_REMINDERS). Remaining: A3
   approval-await integration (consumes the runner-axis `pendingApproval`
-  seal), per-step `retry`, `remindAfter` re-arms, event triggers
-  (`runCompleted` — pipeline→pipeline chaining).
+  seal), event triggers (`runCompleted` — pipeline→pipeline chaining).
 - **Phase 3**: per-(project, customJobRef) duplicate-gate relaxation +
   tenant concurrency slots, parallel branches/fan-in + FE turn grouping,
   free-DAG canvas editing, `cancelPrevious`, caps admin surface.

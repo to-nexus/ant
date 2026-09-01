@@ -177,6 +177,13 @@
     "onSuccess": "성공했을 때 (기본)",
     "onFailure": "실패했을 때 (실패 브랜치)",
     "onAlways": "성공/실패 무관",
+    "retry": "실패 시 재시도",
+    "retryOff": "끔 (즉시 실패)",
+    "retryN": "최대 {{n}}회 재시도",
+    "retryBackoffPlaceholder": "1m (대기 간격, {n}m|h|d)",
+    "retryIdempotency": "재시도는 부수효과를 반복할 수 있습니다 — 이 인텐트는 이미 완료된 작업을 확인한 뒤 수행해야 합니다.",
+    "timeout": "1회 실행 시간 제한",
+    "timeoutPlaceholder": "없음 — 예: 30m, 2h",
     "needs": "의존 스텝",
     "needsHint": "선택한 스텝이 전부 끝난 뒤 이 스텝이 실행됩니다. 여러 개를 고르면 합류(fan-in), 여러 스텝이 한 스텝에 의존하면 분기(fan-out)가 됩니다. 아무것도 선택하지 않으면 루트가 됩니다.",
     "needsReset": "기본값 (직전 스텝)",
@@ -193,7 +200,9 @@
     "timeoutApprove": "자동 승인",
     "channels": "채널",
     "inApp": "인앱",
-    "comingSoon": "곧 제공됩니다"
+    "comingSoon": "곧 제공됩니다",
+    "remindAfter": "미결 시 리마인드",
+    "remindAfterPlaceholder": "없음 — 예: 4h, 24h"
   },
   "runs": {
     "empty": "아직 실행 이력이 없습니다 — 지금 실행으로 테스트해 보세요.",

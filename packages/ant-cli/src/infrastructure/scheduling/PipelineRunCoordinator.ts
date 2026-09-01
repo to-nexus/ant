@@ -32,6 +32,8 @@ import {
   parsePipelineDuration,
   DEFAULT_PIPELINE_CAPS,
   DIRECTIVE_MAX_CHARS,
+  MAX_GATE_REMINDERS,
+  MAX_STEP_RETRY,
   PIPELINE_STEP_OUTPUT_MAX_CHARS,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
@@ -53,7 +55,9 @@ import type {
   PipelineClarifyEnterJobData,
   PipelineControlJobData,
   PipelineFireJobData,
+  PipelineGateRemindJobData,
   PipelineOwner,
+  PipelineStepTimeoutJobData,
 } from '../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL, getRealtimeBroadcastChannel, REDIS_CHANNELS } from '../../core/constants/redis';
 import { generateHumanId } from '../../utils/humanId';
@@ -92,6 +96,8 @@ const MAX_OUTCOME_RETRIES = 5; // × 30s — lock-starved outcome re-applies
 const OUTCOME_RETRY_DELAY_MS = 30_000;
 const RUN_LOCK_RETRIES = 20;
 const RUN_LOCK_RETRY_DELAY_MS = 250;
+/** Interruption reasons that are infrastructure's fault — retry-eligible. A human stop/pause is not. */
+const INFRA_INTERRUPTION_REASONS: ReadonlySet<string> = new Set(['worker_stalled', 'server_shutdown']);
 
 export interface PipelineCoordinatorDeps {
   stateStore: StateStorePort;
@@ -176,8 +182,12 @@ export class PipelineRunCoordinator {
         return this.handleFire(data, intendedFireAt);
       case 'gate-timeout':
         return this.handleGateTimeout(data.gateId);
+      case 'gate-remind':
+        return this.handleGateRemind(data);
       case 'step-retry':
         return this.handleStepRetry(data.owner, data.runId, data.stepId, data.retries, data.directiveOverride);
+      case 'step-timeout':
+        return this.handleStepTimeout(data);
       case 'outcome-retry':
         return this.handleOutcomeRetry(data);
       case 'clarify-enter':
@@ -395,8 +405,12 @@ export class PipelineRunCoordinator {
     directiveOverride?: string,
   ): Promise<void> {
     const pipelineId = run.pipelineId;
-    const fail = (reason: string) =>
-      this.applyOutcome(owner, run.runId, step.id, 'failed', { error: reason });
+    // Standing failures (approval/membership/credits/definition/meta) never
+    // retry — they are deterministic until a person changes something.
+    const fail = (reason: string, retryableFailure = false) =>
+      retryableFailure
+        ? this.failStepOrRetry(owner, run.runId, step.id, reason)
+        : this.applyOutcome(owner, run.runId, step.id, 'failed', { error: reason });
 
     // Owner-standing gates — re-judged at EVERY step dispatch, never once at
     // registration (revocation/credit-drain take effect mid-chain).
@@ -505,7 +519,7 @@ export class PipelineRunCoordinator {
       });
       jobId = result.jobId;
     } catch (e) {
-      return void (await fail(`enqueue-failed: ${e instanceof Error ? e.message : String(e)}`));
+      return void (await fail(`enqueue-failed: ${e instanceof Error ? e.message : String(e)}`, true));
     }
 
     if (isFirstTurn && this.deps.chatService) {
@@ -534,6 +548,22 @@ export class PipelineRunCoordinator {
       );
       return { run: { ...live, steps }, dispatches: [] };
     });
+    // Wall-clock bound for THIS round — re-armed (same id) on every
+    // re-dispatch, cancelled on outcome / clarify park / run cancel.
+    if (step.timeout) {
+      const timeoutMs = parsePipelineDuration(step.timeout.after);
+      if (timeoutMs) {
+        await this.deps.scheduleQueue.armDelayed(`sto-${run.runId}-${step.id}`, timeoutMs, {
+          kind: 'step-timeout',
+          owner,
+          pipelineId,
+          projectId: run.projectId,
+          runId: run.runId,
+          stepId: step.id,
+          jobId,
+        });
+      }
+    }
     const unresolvedTemplates = directiveOverride ? [] : this.unresolvedStepRefs(template, run);
     await this.appendEvent(owner, run.projectId, {
       ts: new Date().toISOString(),
@@ -653,6 +683,19 @@ export class PipelineRunCoordinator {
         gateId,
       });
     }
+    const remindMs = parsePipelineDuration(step.remindAfter);
+    if (remindMs) {
+      await this.deps.scheduleQueue.armDelayed(`gre-${gateId}`, remindMs, {
+        kind: 'gate-remind',
+        owner,
+        pipelineId,
+        projectId: run.projectId,
+        runId: run.runId,
+        stepId: step.id,
+        gateId,
+        reminders: 0,
+      });
+    }
 
     await this.appendEvent(owner, run.projectId, {
       ts: new Date().toISOString(),
@@ -722,6 +765,7 @@ export class PipelineRunCoordinator {
     // apply keeps the HITL record recoverable (the timeout arm re-funnels).
     if (!applied) return false;
     await this.deps.scheduleQueue.cancelDelayed(`gto-${gateId}`);
+    await this.deps.scheduleQueue.cancelDelayed(`gre-${gateId}`);
     await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gateId));
     await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(cardId));
 
@@ -816,6 +860,11 @@ export class PipelineRunCoordinator {
       outcome = 'failed';
       error = `interrupted: ${interruption.reason ?? 'unknown'}`;
     }
+    // Plain job failures and infra interruptions are RETRYABLE; a human
+    // stop/pause is not (nobody asked the scheduler to redo what they stopped).
+    const retryable =
+      outcome === 'failed' &&
+      (!interruption || INFRA_INTERRUPTION_REASONS.has(String(interruption.reason ?? '')));
 
     // Clarify seal: the job ended awaiting a human answer (universal
     // end-and-resume). Not an outcome — the step parks `awaiting_clarify`
@@ -843,6 +892,32 @@ export class PipelineRunCoordinator {
       output = await this.captureStepOutput(owner, runId, stepId, data.jobId);
     }
 
+    // A retryable failure consumes a retry round when the step declares one
+    // (step_retry event + re-dispatch arm); otherwise it falls through to the
+    // normal failed outcome inside the funnel.
+    if (retryable) {
+      const handled = await this.failStepOrRetry(owner, runId, stepId, error ?? 'job-failed', data.jobId);
+      if (handled) {
+        await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
+        return;
+      }
+      // Lock starvation — re-arm; the retry judgment re-runs on the re-apply.
+      await this.deps.scheduleQueue.armDelayed(`outcome-retry-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
+        kind: 'outcome-retry',
+        owner,
+        pipelineId,
+        projectId,
+        runId,
+        stepId,
+        outcome: 'failed',
+        ...(error && { error }),
+        jobId: data.jobId,
+        retryable: true,
+        retries: 0,
+      });
+      return;
+    }
+
     await this.appendEvent(owner, projectId, {
       ts: new Date().toISOString(),
       event: 'step_completed',
@@ -852,8 +927,10 @@ export class PipelineRunCoordinator {
       detail: { outcome, ...(error && { error }), ...(output && { outputCaptured: true }) },
     });
     const patch = { ...(error && { error }), ...(output && { output }) };
-    const applied = await this.applyOutcome(owner, runId, stepId, outcome, Object.keys(patch).length > 0 ? patch : undefined);
-    if (!applied) {
+    const applied = await this.applyOutcome(owner, runId, stepId, outcome, Object.keys(patch).length > 0 ? patch : undefined, undefined, data.jobId);
+    if (applied) {
+      await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
+    } else {
       // Lock starvation would otherwise DROP the outcome and hang the run
       // `running` until the overlap TTL — re-arm a bounded re-apply instead.
       await this.deps.scheduleQueue.armDelayed(`outcome-retry-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
@@ -866,6 +943,7 @@ export class PipelineRunCoordinator {
         outcome,
         ...(error && { error }),
         ...(output && { output }),
+        jobId: data.jobId,
         retries: 0,
       });
     }
@@ -880,13 +958,23 @@ export class PipelineRunCoordinator {
     outcome: 'succeeded' | 'failed';
     error?: string;
     output?: StepOutputRecord;
+    jobId?: string;
+    retryable?: boolean;
     retries: number;
   }): Promise<void> {
     const patch = { ...(data.error && { error: data.error }), ...(data.output && { output: data.output }) };
-    const applied = await this.applyOutcome(
-      data.owner, data.runId, data.stepId, data.outcome,
-      Object.keys(patch).length > 0 ? patch : undefined,
-    );
+    const applied =
+      data.outcome === 'failed' && data.retryable
+        ? await this.failStepOrRetry(data.owner, data.runId, data.stepId, data.error ?? 'job-failed', data.jobId)
+        : await this.applyOutcome(
+            data.owner, data.runId, data.stepId, data.outcome,
+            Object.keys(patch).length > 0 ? patch : undefined,
+            undefined,
+            data.jobId,
+          );
+    if (applied) {
+      await this.deps.scheduleQueue.cancelDelayed(`sto-${data.runId}-${data.stepId}`);
+    }
     if (!applied && data.retries < MAX_OUTCOME_RETRIES) {
       await this.deps.scheduleQueue.armDelayed(
         `outcome-retry-${data.runId}-${data.stepId}`,
@@ -926,6 +1014,181 @@ export class PipelineRunCoordinator {
       };
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Retryable-failure funnel. When the step declares `retry` and rounds
+   * remain, the round is consumed: the step flips back to `dispatched`
+   * (attempts audited, jobId cleared, funnel key deleted) and a `step-retry`
+   * arm re-dispatches it after the backoff with a retry preamble — a NEW
+   * jobId, directive-level idempotency contract (J: the agent checks completed
+   * side effects first). No budget → the normal failed outcome (with its
+   * step_completed event) applies inside this funnel. Returns false only on
+   * lock starvation — the caller re-arms, never drops.
+   */
+  private async failStepOrRetry(
+    owner: PipelineOwner,
+    runId: string,
+    stepId: string,
+    error: string,
+    expectedJobId?: string,
+  ): Promise<boolean> {
+    interface RetryArm {
+      delayMs: number;
+      round: number;
+      max: number;
+      directiveOverride: string;
+      pipelineId: string;
+      projectId: string;
+      oldJobId?: string;
+    }
+    let armed: RetryArm | null = null;
+    let stale = false;
+    const result = await this.mutateRun(owner, runId, async (live, def) => {
+      if (!def) return { run: live, dispatches: [] };
+      const record = live.steps.find((s) => s.stepId === stepId);
+      const stepDef = def.steps.find((s) => s.id === stepId);
+      if (!record || !stepDef || isApprovalStep(stepDef) || this.isTerminal(live.status)) {
+        stale = true;
+        return { run: live, dispatches: [] };
+      }
+      if (record.status !== 'running' && record.status !== 'dispatched') {
+        stale = true;
+        return { run: live, dispatches: [] };
+      }
+      if (expectedJobId !== undefined && record.jobId !== undefined && record.jobId !== expectedJobId) {
+        stale = true;
+        return { run: live, dispatches: [] };
+      }
+      const used = record.retriesUsed ?? 0;
+      const max = Math.min(stepDef.retry?.max ?? 0, MAX_STEP_RETRY);
+      if (used >= max) return { run: live, dispatches: [] }; // no budget — fall through below
+      const round = used + 1;
+      const attempts = [
+        ...(record.attempts ?? []),
+        { ...(record.jobId && { jobId: record.jobId }), error, endedAt: new Date().toISOString() },
+      ].slice(-MAX_STEP_RETRY);
+      const template = stepDef.directive?.trim() ? stepDef.directive : defaultStepDirective(stepDef.intent);
+      const directiveOverride =
+        `[Retry ${round}/${max}] The previous attempt failed: "${error}". ` +
+        `Before doing anything else, check which side effects the failed attempt already completed, then perform ONLY the remaining work.\n\n` +
+        this.renderDirective(template, live);
+      armed = {
+        delayMs: parsePipelineDuration(stepDef.retry?.backoff) ?? 60_000,
+        round,
+        max,
+        directiveOverride,
+        pipelineId: live.pipelineId,
+        projectId: live.projectId,
+        oldJobId: record.jobId,
+      };
+      const steps = live.steps.map((s): StepRecord =>
+        s.stepId === stepId ? { ...s, status: 'dispatched', retriesUsed: round, attempts, jobId: undefined } : s,
+      );
+      return { run: { ...live, steps, status: deriveRunStatus(steps, def.defaults?.onStepFailure ?? 'abort') }, dispatches: [] };
+    });
+    if (!result) return false; // lock starvation — caller re-arms
+    if (stale) return true; // superseded round / terminal — drop, never re-arm
+    // TS cannot see the closure assignment — re-widen explicitly.
+    const held = armed as RetryArm | null;
+    if (!held) {
+      // Budget exhausted (or no retry declared): the normal failure path,
+      // with its step_completed audit line.
+      await this.appendEvent(owner, result.run.projectId, {
+        ts: new Date().toISOString(),
+        event: 'step_completed',
+        runId,
+        stepId,
+        detail: { outcome: 'failed', error },
+      });
+      return this.applyOutcome(owner, runId, stepId, 'failed', { error }, undefined, expectedJobId);
+    }
+    if (held.oldJobId) {
+      await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(held.oldJobId)).catch(() => {});
+    }
+    await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
+    await this.appendEvent(owner, held.projectId, {
+      ts: new Date().toISOString(),
+      event: 'step_retry',
+      runId,
+      stepId,
+      detail: { round: held.round, max: held.max, error, delayMs: held.delayMs },
+    });
+    await this.deps.scheduleQueue.armDelayed(`step-retry-${runId}-${stepId}`, held.delayMs, {
+      kind: 'step-retry',
+      owner,
+      pipelineId: held.pipelineId,
+      projectId: held.projectId,
+      runId,
+      stepId,
+      retries: 0,
+      directiveOverride: held.directiveOverride,
+    });
+    await this.publish(owner, { cause: 'runUpdate', projectId: held.projectId, pipelineId: held.pipelineId, run: this.publicRun(result.run) });
+    return true;
+  }
+
+  /**
+   * Step-timeout expiry: kill the round's job (stop legs) and fail the step —
+   * retryable, so `timeout` and `retry` compose. Stale arms (a newer round's
+   * jobId, a parked/terminal step) no-op.
+   */
+  private async handleStepTimeout(data: PipelineStepTimeoutJobData): Promise<void> {
+    const run = await this.getRun(data.runId);
+    if (!run || this.isTerminal(run.status)) return;
+    const record = run.steps.find((s) => s.stepId === data.stepId);
+    if (!record || record.status !== 'running' || record.jobId !== data.jobId) return;
+    const stepDef = run.defSnapshot?.steps.find((s) => s.id === data.stepId);
+    const after = stepDef && !isApprovalStep(stepDef) ? stepDef.timeout?.after : undefined;
+    await this.killStepJob(data.jobId, run.projectId);
+    await this.failStepOrRetry(data.owner, data.runId, data.stepId, `step-timeout: exceeded ${after ?? 'the configured bound'}`, data.jobId);
+  }
+
+  /**
+   * Gate reminder: the gate is still unresolved — re-fire the SSE row and drop
+   * a reminder notice on the anchor turn, then re-arm (bounded). Resolve and
+   * cancel paths remove the arm (`gre-{gateId}`).
+   */
+  private async handleGateRemind(data: PipelineGateRemindJobData): Promise<void> {
+    const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.HITL(data.gateId));
+    if (!raw) return; // resolved or swept
+    const run = await this.getRun(data.runId);
+    const record = run?.steps.find((s) => s.stepId === data.stepId);
+    if (!run || !record || record.status !== 'awaiting_gate' || !record.gate || record.gate.decision) return;
+    const stepDef = run.defSnapshot?.steps.find((s) => s.id === data.stepId);
+    const remindAfter = stepDef && isApprovalStep(stepDef) ? stepDef.remindAfter : undefined;
+    await this.publish(data.owner, {
+      cause: 'approvalRequested',
+      projectId: run.projectId,
+      approval: {
+        gateId: record.gate.gateId,
+        cardId: record.gate.cardId,
+        runId: run.runId,
+        pipelineId: run.pipelineId,
+        pipelineName: run.defSnapshot?.name ?? run.pipelineId,
+        projectId: run.projectId,
+        stepId: data.stepId,
+        prompt: record.gate.prompt,
+        armedAt: record.gate.armedAt,
+        ...(record.gate.timeoutAt && { timeoutAt: record.gate.timeoutAt }),
+      },
+    });
+    const anchor = [...run.steps].reverse().find((s) => s.turnId && s.jobId);
+    if (this.deps.chatService && anchor) {
+      this.deps.chatService
+        .appendAssistantMessage(run.projectId, UNIVERSAL_FEATURE, `⏰ 승인 대기 중입니다: "${record.gate.prompt}" (run: ${run.runId})`, {
+          jobId: anchor.jobId!,
+          turnId: anchor.turnId,
+          jobType: 'universal',
+          userContext: data.owner,
+          kind: 'system_notice',
+        })
+        .catch((e) => logger.warn('[Pipeline] gate reminder notice failed', { component: COMPONENT }, e));
+    }
+    const ms = parsePipelineDuration(remindAfter);
+    if (ms && data.reminders + 1 < MAX_GATE_REMINDERS) {
+      await this.deps.scheduleQueue.armDelayed(`gre-${data.gateId}`, ms, { ...data, reminders: data.reminders + 1 });
     }
   }
 
@@ -1054,6 +1317,10 @@ export class PipelineRunCoordinator {
       return;
     }
     if (!record) return; // guard rejected — stale/duplicate event
+
+    // A human wait is open-ended by doctrine — the round's wall-clock bound
+    // stands down; the answer re-dispatch re-arms it.
+    await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
 
     // The funnel key must outlive the open-ended wait (PIPE.JOB is 7d) —
     // align with the ACTIVE overlap bound.
@@ -1193,6 +1460,7 @@ export class PipelineRunCoordinator {
     outcome: 'succeeded' | 'failed',
     patch?: Partial<StepRecord>,
     decorate?: (record: StepRecord) => StepRecord,
+    expectedJobId?: string,
   ): Promise<boolean> {
     const result = await this.mutateRun(owner, runId, async (live, def) => {
       if (!def) return { run: live, dispatches: [] };
@@ -1200,6 +1468,12 @@ export class PipelineRunCoordinator {
       // `awaiting_clarify` refuses outcomes too: a stale outcome-retry must
       // never clobber a step parked on a human answer.
       if (!already || this.isTerminal(live.status) || ['succeeded', 'failed', 'skipped', 'cancelled', 'awaiting_clarify'].includes(already.status)) {
+        return { run: live, dispatches: [] };
+      }
+      // A step can hold several sequential jobIds (clarify resume, retry
+      // rounds) — an outcome for a SUPERSEDED jobId must not clobber the
+      // current round. Gate resolutions carry no jobId and skip the guard.
+      if (expectedJobId !== undefined && already.jobId !== expectedJobId) {
         return { run: live, dispatches: [] };
       }
       const endedPatch = { ...patch, endedAt: new Date().toISOString() };
@@ -1246,39 +1520,49 @@ export class PipelineRunCoordinator {
     // Already-terminal runs must not re-run the disarm/finalize block — a
     // second cancel used to append a duplicate run_finished + index line.
     if (!result || !mutated) return false;
-    // Kill legs for live step jobs — the `/jobs/:jobId/stop` mirror
-    // (mark-user-stopped + poison + STOP pub/sub). markUserStopped doubles as
-    // the pre-spawn guard, so 'dispatched' (enqueued, not yet picked up) jobs
-    // are cancelled at dequeue instead of running as unbilled-for ghosts. The
-    // killed job's late seal no-ops against the terminal run (applyOutcome).
+    // Kill legs for live step jobs — the `/jobs/:jobId/stop` mirror.
+    // markUserStopped doubles as the pre-spawn guard, so 'dispatched'
+    // (enqueued, not yet picked up) jobs are cancelled at dequeue instead of
+    // running as unbilled-for ghosts. The killed job's late seal no-ops
+    // against the terminal run (applyOutcome).
     for (const target of killTargets) {
-      try {
-        await this.deps.stateStore.markUserStopped(target.jobId);
-        await this.deps.stateStore.acquireLock(`ant:job-poisoned:${target.jobId}`, 600).catch(() => false);
-        await this.deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, {
-          jobId: target.jobId,
-          projectId: target.projectId,
-          featureName: UNIVERSAL_FEATURE,
-          timestamp: new Date().toISOString(),
-        });
-      } catch (e) {
-        logger.warn(`[Pipeline] failed to stop step job ${target.jobId}`, { component: COMPONENT }, e);
-      }
+      await this.killStepJob(target.jobId, target.projectId);
     }
-    // Disarm any gates and clarify funnel keys the cancel just swept.
+    // Disarm any gates, timeout/remind arms and clarify funnel keys swept.
     for (const s of result.run.steps) {
       if (s.gate && !s.gate.decision) {
         await this.deps.scheduleQueue.cancelDelayed(`gto-${s.gate.gateId}`);
+        await this.deps.scheduleQueue.cancelDelayed(`gre-${s.gate.gateId}`);
         await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(s.gate.gateId)).catch(() => {});
         await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(s.gate.cardId)).catch(() => {});
       }
       if (s.clarify && !s.clarify.answeredAt) {
         await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(s.clarify.jobId)).catch(() => {});
       }
+      await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${s.stepId}`);
     }
     await this.finalizeRun(owner, result.run);
     await this.publish(owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId: result.run.pipelineId, run: this.publicRun(result.run) });
     return true;
+  }
+
+  /**
+   * The `/jobs/:jobId/stop` mirror (mark-user-stopped + poison + STOP
+   * pub/sub) — ONE kill authority, shared by run cancel and step timeout.
+   */
+  private async killStepJob(jobId: string, projectId: string): Promise<void> {
+    try {
+      await this.deps.stateStore.markUserStopped(jobId);
+      await this.deps.stateStore.acquireLock(`ant:job-poisoned:${jobId}`, 600).catch(() => false);
+      await this.deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, {
+        jobId,
+        projectId,
+        featureName: UNIVERSAL_FEATURE,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      logger.warn(`[Pipeline] failed to stop step job ${jobId}`, { component: COMPONENT }, e);
+    }
   }
 
   /**

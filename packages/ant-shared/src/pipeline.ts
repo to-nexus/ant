@@ -90,6 +90,22 @@ export interface JobStepDef {
   /** Upstream step ids. Omitted = the previous step in file order. */
   needs?: string[];
   on?: StepEdgeCondition;
+  /**
+   * Coordinator-level re-dispatch on a RETRYABLE failure (job failure, infra
+   * interruption, enqueue failure, step timeout) — never on standing failures
+   * (approval/membership/credits/definition). BullMQ `ant-jobs` stays
+   * `attempts: 1`; each round is a NEW jobId dispatched with a retry preamble.
+   * A retried step's intent must be re-entrant (check state before acting) —
+   * the runs may have completed side effects before failing.
+   */
+  retry?: { max: number; backoff?: string };
+  /**
+   * Wall-clock bound for one job round (`{n}m|h|d`). On expiry the job is
+   * killed and the step FAILS (`on: failure` consumes it; retry composes).
+   * Cleared while the step awaits a clarify answer — human waits stay
+   * open-ended by doctrine.
+   */
+  timeout?: { after: string };
 }
 
 export interface ApprovalStepDef {
@@ -104,6 +120,11 @@ export interface ApprovalStepDef {
     after: string;
     onTimeout: GateTimeoutAction;
   };
+  /**
+   * Re-surface an unresolved gate every `{n}m|h|d`: the approvalRequested SSE
+   * re-fires and a reminder notice lands on the anchor turn (bounded rounds).
+   */
+  remindAfter?: string;
 }
 
 export type PipelineStepDef = JobStepDef | ApprovalStepDef;
@@ -273,6 +294,11 @@ export type PipelineStepOutputField = (typeof PIPELINE_STEP_OUTPUT_FIELDS)[numbe
 /** Ceiling for a captured step answer — keeps run records and rendered directives bounded. */
 export const PIPELINE_STEP_OUTPUT_MAX_CHARS = 16_000;
 
+/** Hard ceiling on `retry.max` — coordinator re-dispatch rounds per step. */
+export const MAX_STEP_RETRY = 3;
+/** Reminder re-arms per gate — a nag, not a poll; resolve cancels it. */
+export const MAX_GATE_REMINDERS = 10;
+
 /**
  * Work statement synthesized when a job step declares no directive. English
  * by doctrine (universal directives are English-form; the FE only hints that
@@ -395,10 +421,17 @@ export interface StepOutputRecord {
   capturedAt: string;
 }
 
+/** One exhausted retry round's audit line (bounded at MAX_STEP_RETRY). */
+export interface StepAttemptRecord {
+  jobId?: string;
+  error: string;
+  endedAt: string;
+}
+
 export interface StepRecord {
   stepId: string;
   status: PipelineStepStatus;
-  /** Current jobId (clarify end-and-resume can repoint it — 1 step = 1..n jobIds). */
+  /** Current jobId (clarify end-and-resume / retry rounds can repoint it — 1 step = 1..n jobIds). */
   jobId?: string;
   startedAt?: string;
   endedAt?: string;
@@ -406,6 +439,10 @@ export interface StepRecord {
   gate?: GateRecord;
   clarify?: ClarifyRecord;
   output?: StepOutputRecord;
+  /** Retry rounds already consumed (`retry.max` bound). */
+  retriesUsed?: number;
+  /** Failed rounds that were retried — the terminal failure stays on `error`. */
+  attempts?: StepAttemptRecord[];
   /** Chat turn the step's user-turn line was minted under (coordinator-owned). */
   turnId?: string;
 }
@@ -450,6 +487,7 @@ export interface PipelineRunEvent {
     | 'fired'
     | 'step_dispatched'
     | 'step_completed'
+    | 'step_retry'
     | 'awaiting_human'
     | 'human_resolved'
     | 'gate_expired'
@@ -540,14 +578,21 @@ const RESERVED_DEF_KEYS: Record<string, string> = {
   projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
-const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on'];
-const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', 'timeout'];
+const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout'];
+const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', 'timeout', 'remindAfter'];
 /** Author-visible knobs that exist in the design but not in v1 — reject loudly, never ignore. */
 const RESERVED_STEP_KEYS: Record<string, string> = {
-  retry: 'step "retry" is not supported yet (scheduler-level retry is a v2 knob)',
-  remindAfter: 'step "remindAfter" is not supported yet (reminder arms are a v2 knob)',
   jobType: 'step "jobType" is not supported yet (canonical pipeline steps are a future axis)',
   feature: 'step "feature" is not supported yet (canonical pipeline steps are a future axis)',
+};
+/** `retry`/`remindAfter` are real on the OTHER step kind — keep the loud reject with a pointer. */
+const JOB_ONLY_RESERVED: Record<string, string> = {
+  ...RESERVED_STEP_KEYS,
+  remindAfter: '"remindAfter" belongs to approval steps (a job step has no gate to remind about)',
+};
+const APPROVAL_ONLY_RESERVED: Record<string, string> = {
+  ...RESERVED_STEP_KEYS,
+  retry: '"retry" belongs to job steps (a gate is resolved by a person, not re-run)',
 };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -763,7 +808,7 @@ export function validatePipelineDef(
     }
 
     if (rawStep.type === 'approval') {
-      errors.push(...unknownKeyErrors(rawStep, APPROVAL_STEP_KEYS, `step "${stepId}"`, RESERVED_STEP_KEYS));
+      errors.push(...unknownKeyErrors(rawStep, APPROVAL_STEP_KEYS, `step "${stepId}"`, APPROVAL_ONLY_RESERVED));
       if (typeof rawStep.prompt !== 'string' || rawStep.prompt.trim().length === 0) {
         errors.push(`step "${stepId}": approval steps need a non-empty prompt`);
       } else if (rawStep.prompt.length > DIRECTIVE_MAX_CHARS) {
@@ -794,10 +839,13 @@ export function validatePipelineDef(
           }
         }
       }
+      if (rawStep.remindAfter !== undefined && parsePipelineDuration(rawStep.remindAfter as string) === null) {
+        errors.push(`step "${stepId}": remindAfter must be a duration like "4h", "24h"`);
+      }
     } else if (rawStep.type !== undefined) {
       errors.push(`step "${stepId}": unknown step type "${String(rawStep.type)}" (job steps omit type; gates use type: approval)`);
     } else {
-      errors.push(...unknownKeyErrors(rawStep, JOB_STEP_KEYS, `step "${stepId}"`, RESERVED_STEP_KEYS));
+      errors.push(...unknownKeyErrors(rawStep, JOB_STEP_KEYS, `step "${stepId}"`, JOB_ONLY_RESERVED));
       if (typeof rawStep.customJobRef !== 'string' || parseCustomJobRef(rawStep.customJobRef) === null) {
         errors.push(`step "${stepId}": customJobRef must be "{agentId}/{jobId}" (got: ${String(rawStep.customJobRef)})`);
       }
@@ -817,6 +865,30 @@ export function validatePipelineDef(
       if (rawStep.intent !== undefined) {
         if (typeof rawStep.intent !== 'string' || (!isValidCustomId(rawStep.intent) && rawStep.intent !== GENERAL_INTENT)) {
           errors.push(`step "${stepId}": intent must be a catalog intent id (${STEP_ID_HINT})`);
+        }
+      }
+      if (rawStep.retry !== undefined) {
+        if (!isPlainObject(rawStep.retry)) {
+          errors.push(`step "${stepId}": retry must be a mapping { max, backoff? }`);
+        } else {
+          errors.push(...unknownKeyErrors(rawStep.retry, ['max', 'backoff'], `step "${stepId}".retry`));
+          const max = rawStep.retry.max;
+          if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > MAX_STEP_RETRY) {
+            errors.push(`step "${stepId}": retry.max must be an integer between 1 and ${MAX_STEP_RETRY}`);
+          }
+          if (rawStep.retry.backoff !== undefined && parsePipelineDuration(rawStep.retry.backoff as string) === null) {
+            errors.push(`step "${stepId}": retry.backoff must be a duration like "1m", "10m", "1h"`);
+          }
+        }
+      }
+      if (rawStep.timeout !== undefined) {
+        if (!isPlainObject(rawStep.timeout)) {
+          errors.push(`step "${stepId}": timeout must be a mapping { after } (job steps always fail on expiry)`);
+        } else {
+          errors.push(...unknownKeyErrors(rawStep.timeout, ['after'], `step "${stepId}".timeout`));
+          if (parsePipelineDuration(rawStep.timeout.after as string) === null) {
+            errors.push(`step "${stepId}": timeout.after must be a duration like "30m", "2h"`);
+          }
         }
       }
       if (rawStep.context !== undefined) {
