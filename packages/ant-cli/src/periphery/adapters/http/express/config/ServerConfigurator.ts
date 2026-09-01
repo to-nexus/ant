@@ -15,6 +15,7 @@ import {
 } from '../../middleware/ideNavTicket';
 import { createSelfApiScopeGuard } from '../../middleware/selfApiScopeGuard';
 import { createRequireApprovedAccount, ADMIN_SURFACE_PREFIX } from '../../middleware/requireApprovedAccount';
+import { createNoStoreForAuthenticated } from '../../middleware/noStoreForAuthenticated';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
 import { parseIDEKey } from '../../../../../infrastructure/state/redisKeyUtils';
@@ -323,6 +324,11 @@ export class ServerConfigurator {
       publicPaths: PUBLIC_PATHS,
       publicPrefixes: [],
     }));
+
+    // An authenticated response is per-identity, so no shared cache may hold
+    // it. Mounted right behind verification so every router inherits it — a
+    // per-route header list is what left `/api/admin/*` cacheable at the edge.
+    app.use(createNoStoreForAuthenticated());
 
     // Cookie-authenticated state changes must originate same-origin (or from the
     // registered frontend). ant-preview publishes user-authored content — a public

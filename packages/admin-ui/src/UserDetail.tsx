@@ -121,6 +121,12 @@ export function UserDetail({
   /** Typed-email confirmation for the purge — the button stays disabled until it matches. */
   const [purgeConfirm, setPurgeConfirm] = useState('');
   const [purgeReport, setPurgeReport] = useState<AdminPurgeReport | null>(null);
+  /**
+   * The record is gone, so `load()` would 404 — but leaving the card as it was
+   * made a successful purge look like nothing happened. The card collapses to
+   * the report instead.
+   */
+  const [purged, setPurged] = useState(false);
 
   useEffect(() => {
     getSystemConfig()
@@ -165,6 +171,7 @@ export function UserDetail({
     try {
       setPurgeReport(await adminApi.purgeUser(userId, purgeConfirm.trim()));
       setPurgeConfirm('');
+      setPurged(true);
       onChanged();
     } catch (e) {
       setError((e as Error).message);
@@ -201,7 +208,11 @@ export function UserDetail({
     <div className="card">
       <div className="row" style={{ marginBottom: 12 }}>
         <strong>{detail.email}</strong>
-        <span className={`badge ${detail.approvalStatus}`}>{detail.approvalStatus}</span>
+        {purged ? (
+          <span className="badge denied">삭제됨</span>
+        ) : (
+          <span className={`badge ${detail.approvalStatus}`}>{detail.approvalStatus}</span>
+        )}
         {detail.isSuperAdmin && <span className="muted">super-admin</span>}
         <div className="spacer" />
         <button onClick={onClose}>닫기</button>
@@ -209,6 +220,9 @@ export function UserDetail({
 
       {error && <div className="error" style={{ marginBottom: 12 }}>{error}</div>}
 
+      {/* Nothing below acts on an identity that no longer exists. */}
+      {!purged && (
+      <>
       <div className="row" style={{ marginBottom: 16 }}>
         <button className="ok" disabled={busy} onClick={() => setApproval('approved')}>
           승인
@@ -238,6 +252,8 @@ export function UserDetail({
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Purge destroys DATA. Refusing the person is 차단 above — that keeps the
           record and is reversible; this leaves no blocklist behind. */}
@@ -246,29 +262,37 @@ export function UserDetail({
           className="card"
           style={{ background: 'var(--surface-2)', marginBottom: 16, borderColor: 'var(--danger, #b91c1c)' }}
         >
-          <strong>계정 완전 삭제</strong>
-          <div className="muted" style={{ marginBottom: 8 }}>
-            프로젝트·정의·자격증명·소속과 신원 레코드를 모두 제거합니다. 보유 중인 세션
-            쿠키와 데스크톱 토큰은 즉시 무효화됩니다. 데이터는 복구할 수 없지만
-            <strong> 같은 계정으로 다시 가입할 수 있습니다</strong> — 계속 막으려면
-            삭제가 아니라 위의 <strong>차단</strong>을 쓰세요. 결제 원장은 회계 기록이므로
-            보존됩니다.
-          </div>
-          <div className="row">
-            <input
-              value={purgeConfirm}
-              onChange={(e) => setPurgeConfirm(e.target.value)}
-              placeholder={`확인을 위해 ${detail.email} 입력`}
-              style={{ minWidth: 280 }}
-            />
-            <button
-              className="danger"
-              disabled={busy || purgeConfirm.trim().toLowerCase() !== detail.email.toLowerCase()}
-              onClick={() => void purge()}
-            >
-              영구 삭제
-            </button>
-          </div>
+          <strong>{purged ? '계정 삭제 완료' : '계정 완전 삭제'}</strong>
+          {purged ? (
+            <div className="muted" style={{ marginBottom: 8 }}>
+              {detail.email} 의 데이터가 제거되었습니다. 아래는 단계별 결과입니다.
+            </div>
+          ) : (
+            <>
+              <div className="muted" style={{ marginBottom: 8 }}>
+                프로젝트·정의·자격증명·소속과 신원 레코드를 모두 제거합니다. 보유 중인 세션
+                쿠키와 데스크톱 토큰은 즉시 무효화됩니다. 데이터는 복구할 수 없지만
+                <strong> 같은 계정으로 다시 가입할 수 있습니다</strong> — 계속 막으려면
+                삭제가 아니라 위의 <strong>차단</strong>을 쓰세요. 결제 원장은 회계 기록이므로
+                보존됩니다.
+              </div>
+              <div className="row">
+                <input
+                  value={purgeConfirm}
+                  onChange={(e) => setPurgeConfirm(e.target.value)}
+                  placeholder={`확인을 위해 ${detail.email} 입력`}
+                  style={{ minWidth: 280 }}
+                />
+                <button
+                  className="danger"
+                  disabled={busy || purgeConfirm.trim().toLowerCase() !== detail.email.toLowerCase()}
+                  onClick={() => void purge()}
+                >
+                  영구 삭제
+                </button>
+              </div>
+            </>
+          )}
           {purgeReport && (
             <table style={{ marginTop: 10 }}>
               <tbody>
@@ -285,17 +309,21 @@ export function UserDetail({
         </div>
       )}
 
-      <strong>소속별 결제 ({detail.scopes.length})</strong>
-      {detail.scopes.map((s) => (
-        <ScopeCard
-          key={s.organizationId}
-          scope={s}
-          userId={userId}
-          busy={busy}
-          billingEnabled={billingEnabled}
-          onRefund={applyRefund}
-        />
-      ))}
+      {!purged && (
+        <>
+          <strong>소속별 결제 ({detail.scopes.length})</strong>
+          {detail.scopes.map((s) => (
+            <ScopeCard
+              key={s.organizationId}
+              scope={s}
+              userId={userId}
+              busy={busy}
+              billingEnabled={billingEnabled}
+              onRefund={applyRefund}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middlewar
 import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
 import { createSelfApiScopeGuard } from '../../periphery/adapters/http/middleware/selfApiScopeGuard';
 import { createRequireApprovedAccount } from '../../periphery/adapters/http/middleware/requireApprovedAccount';
+import { createNoStoreForAuthenticated } from '../../periphery/adapters/http/middleware/noStoreForAuthenticated';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { createSSERoutes } from '../../periphery/adapters/http/routes';
 import { 
@@ -161,6 +162,8 @@ export class RealtimeServer {
         ],
         publicPrefixes: [],
       }));
+      // Per-identity responses must not be held by a shared cache.
+      this.app.use(createNoStoreForAuthenticated());
       // `self-api` capability pin. A job-minted token is bounded to the
       // account-agents surface, which does not exist on this server — so every
       // realtime route is out of scope and the guard refuses the claim

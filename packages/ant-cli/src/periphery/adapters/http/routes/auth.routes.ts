@@ -567,6 +567,9 @@ export function createAuthRoutes(deps: {
    *   memberships) and the join surface on top.
    */
   router.get('/auth/me', async (req: Request, res: Response) => {
+    // Set here, not by `createNoStoreForAuthenticated`: this route answers on
+    // the JWT gate's PUBLIC branch, so it carries no `req.user` for that
+    // middleware to key on — and its body is the most session-specific one there is.
     res.set('Cache-Control', 'private, no-store');
 
     if (isLocalServerMode()) {
@@ -798,6 +801,7 @@ export function createAuthRoutes(deps: {
    * commentary for the legacy host-only drain rationale.
    */
   router.post('/auth/signout', (req: Request, res: Response) => {
+    // Public branch — see `/auth/me` above.
     res.set('Cache-Control', 'private, no-store');
 
     if (jwtService) {

@@ -531,3 +531,64 @@ describe('force=true tree refresh is single-flight (M-009)', () => {
     expect(scans).toBe(1);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Cache-Control on authenticated responses
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * An authenticated body belongs to one identity, so a shared cache holding it
+ * is either a stale read or a cross-account one. The exemption for public paths
+ * is derived from `req.user` — the JWT gate sets it only on the non-public
+ * branch — rather than from a second copy of PUBLIC_PATHS.
+ */
+describe('authenticated responses carry private, no-store', () => {
+  let server: http.Server;
+  let baseUrl: string;
+
+  beforeEach(async () => {
+    const { createNoStoreForAuthenticated } = await import(
+      '../../src/periphery/adapters/http/middleware/noStoreForAuthenticated'
+    );
+    const app = express();
+    // Stands in for the JWT gate: an identity on everything but /public.
+    app.use((req, _res, next) => {
+      if (req.path !== '/public') (req as any).user = { id: 'kim@acme.com' };
+      next();
+    });
+    app.use(createNoStoreForAuthenticated());
+    app.get('/public', (_req, res) => { res.json({ ok: true }); });
+    app.get('/admin/users', (_req, res) => { res.json({ rows: [] }); });
+    app.get('/stream', (_req, res) => {
+      // A handler with a stronger opinion still wins — it writes last.
+      res.set('Cache-Control', 'no-cache');
+      res.json({ ok: true });
+    });
+    server = await new Promise<http.Server>((resolve) => {
+      const s = app.listen(0, () => resolve(s));
+    });
+    baseUrl = `http://127.0.0.1:${(server.address() as any).port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('an authenticated GET is not cacheable and varies by credential', async () => {
+    const res = await fetch(`${baseUrl}/admin/users`);
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    const vary = res.headers.get('vary') ?? '';
+    expect(vary).toMatch(/Cookie/);
+    expect(vary).toMatch(/Authorization/);
+  });
+
+  it('a public GET is left alone — the exemption is derived, not re-listed', async () => {
+    const res = await fetch(`${baseUrl}/public`);
+    expect(res.headers.get('cache-control')).toBeNull();
+  });
+
+  it('a handler that sets its own directive still wins', async () => {
+    const res = await fetch(`${baseUrl}/stream`);
+    expect(res.headers.get('cache-control')).toBe('no-cache');
+  });
+});

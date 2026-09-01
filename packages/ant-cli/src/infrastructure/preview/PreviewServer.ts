@@ -44,6 +44,7 @@ import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middlewar
 import { previewRateLimiter, healthRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
 import { createRequireApprovedAccount } from '../../periphery/adapters/http/middleware/requireApprovedAccount';
+import { createNoStoreForAuthenticated } from '../../periphery/adapters/http/middleware/noStoreForAuthenticated';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import {
   extractForwardingContext,
@@ -1098,6 +1099,8 @@ export class PreviewServer {
         ],
         publicPrefixes: [],
       }));
+      // Per-identity responses must not be held by a shared cache.
+      this.app.use(createNoStoreForAuthenticated());
       // Cookie-authenticated state changes must originate from an allowed origin.
       // The content listener is a different origin, so a document served there
       // cannot drive this API with the viewer's session (H-NEW-001).

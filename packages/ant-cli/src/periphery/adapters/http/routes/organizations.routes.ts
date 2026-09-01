@@ -37,8 +37,6 @@ export function createOrganizationsRoutes(deps: OrganizationsRoutesDeps): Router
   const { organizationRepository } = deps;
 
   router.get('/organizations', organizationsRateLimiter, async (req: Request, res: Response) => {
-    res.set('Cache-Control', 'private, no-store');
-
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     if (q.length < MIN_QUERY_LENGTH) {
       return res.json({ organizations: [] });

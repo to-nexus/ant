@@ -61,6 +61,13 @@ vi.mock('../../src/periphery/adapters/http/middleware/requireApprovedAccount', (
   ADMIN_SURFACE_PREFIX: '/admin',
 }));
 
+vi.mock('../../src/periphery/adapters/http/middleware/noStoreForAuthenticated', () => ({
+  createNoStoreForAuthenticated: () => {
+    order.push('no-store');
+    return (_req: unknown, _res: unknown, next: () => void) => next();
+  },
+}));
+
 describe('unauthenticated requests cannot spend the full body budget (M-010)', () => {
   beforeEach(() => {
     order.length = 0;
@@ -565,5 +572,76 @@ describe('an unapproved account reaches no router', () => {
       'utf8',
     );
     expect(src).toMatch(/checkApproval\s*\(/);
+  });
+});
+
+/**
+ * A per-identity response held by a shared cache is a stale read at best and a
+ * cross-account read at worst. The header used to be hand-placed on three
+ * routes, and the one that mattered — `/api/admin/*` — was not among them: a
+ * CDN served an operator the pre-mutation account list right after they had
+ * approved or purged someone.
+ */
+describe('authenticated responses are never held by a shared cache', () => {
+  beforeEach(() => {
+    order.length = 0;
+    invoked.length = 0;
+  });
+
+  it('mounts the cache guard immediately behind authentication', async () => {
+    const { ServerConfigurator } = await import(
+      '../../src/periphery/adapters/http/express/config/ServerConfigurator.js'
+    );
+    const app: any = { use: vi.fn(), set: vi.fn(), get: vi.fn() };
+    new ServerConfigurator(
+      { mode: 'cloud' } as any,
+      {
+        authService: {} as any,
+        jwtService: { verify: () => ({}) } as any,
+        previewService: undefined,
+        ideOrchestrator: undefined,
+      } as any,
+    ).configure(app);
+
+    // Behind the JWT gate (it keys on `req.user`) and ahead of every router.
+    expect(order.indexOf('no-store')).toBeGreaterThan(order.indexOf('jwt-auth'));
+    expect(order.indexOf('no-store')).toBeLessThan(order.indexOf('json:50mb'));
+  });
+
+  it('every server that verifies a JWT also mounts it (the SET, not a remembered list)', () => {
+    const srcRoot = path.resolve(__dirname, '../../src');
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts')) files.push(full);
+      }
+    };
+    walk(srcRoot);
+
+    const MOUNTS_AUTH = /\.use\(\s*(?:'[^']*',\s*)?createJwtAuthMiddleware\s*\(/;
+    const MOUNTS_GUARD = /\.use\(\s*(?:'[^']*',\s*)?createNoStoreForAuthenticated\s*\(/;
+
+    const verifiers = files.filter((f) => MOUNTS_AUTH.test(readFileSync(f, 'utf8')));
+    expect(verifiers.length).toBeGreaterThanOrEqual(3);
+
+    const missing = verifiers.filter((f) => !MOUNTS_GUARD.test(readFileSync(f, 'utf8')));
+    expect(missing.map((f) => path.relative(srcRoot, f))).toEqual([]);
+  });
+
+  it('no route sets the header by hand except the two public-branch auth reads', () => {
+    const routesDir = path.resolve(__dirname, '../../src/periphery/adapters/http/routes');
+    const offenders: string[] = [];
+    for (const entry of readdirSync(routesDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.routes.ts')) continue;
+      // `/auth/me` and `/auth/signout` answer on the JWT gate's PUBLIC branch,
+      // so they carry no `req.user` for the middleware to key on and must keep
+      // their own header.
+      if (entry.name === 'auth.routes.ts') continue;
+      const src = readFileSync(path.join(routesDir, entry.name), 'utf8');
+      if (/'Cache-Control',\s*'private, no-store'/.test(src)) offenders.push(entry.name);
+    }
+    expect(offenders).toEqual([]);
   });
 });
