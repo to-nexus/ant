@@ -87,10 +87,12 @@ and rolls back if the pipeline was disabled concurrently.
 The definition contract is `@ant/shared/pipeline.ts`. `validatePipelineDef`
 follows the `validateMcpServers` precedent — plain messages, empty = valid;
 callers pick the failure shape (store throws `PipelineValidationError`, HTTP
-answers 400, the editor form-disables). Server-side rules that need I/O live
-in `validatePipelineDefServer` (`core/pipelines/store.ts`): the cron
-minimum-interval cap and the gate-anchor rule (an approval step must have an
-upstream step — its chat card anchors to the producing job's turn).
+answers 400, the editor form-disables). The gate-anchor rule (an approval step
+must have an upstream step — its chat card anchors to the producing job's
+turn) is pure structure and lives in the SHARED validator, so the FE save gate
+catches it too. The one server-side rule that needs I/O lives in
+`validatePipelineDefServer` (`core/pipelines/store.ts`): the cron
+minimum-interval cap.
 
 **Unknown and reserved YAML keys are rejected loudly** (`retry`,
 `remindAfter`, `overlap: cancelPrevious`, `{{steps.*}}` templates each get a

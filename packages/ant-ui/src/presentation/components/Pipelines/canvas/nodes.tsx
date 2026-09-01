@@ -10,6 +10,7 @@ import { Handle, Position, type NodeProps } from 'reactflow';
 import { Clock, Bot, ShieldCheck, Plus, Zap, Ban } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { PipelineStepStatus } from '@ant/shared';
+import { TRIGGER_NODE_ID } from '../draft';
 
 /** Card width — PipelineCanvas feeds it to dagre alongside the height estimate. */
 export const NODE_WIDTH = 230;
@@ -95,15 +96,19 @@ function AddButton({ data }: { data: PipelineNodeData }) {
           >
             <Zap size={12} /> {t('canvas.addJobStep', 'Job step')}
           </button>
-          <button
-            onClick={() => {
-              setOpen(false);
-              data.onAdd?.(data.nodeId, 'gate');
-            }}
-            style={menuItemStyle}
-          >
-            <ShieldCheck size={12} /> {t('canvas.addGate', 'Approval gate')}
-          </button>
+          {/* Gate-anchor rule: an approval gate cannot be the entry step —
+              its chat card anchors to the producing job's turn. */}
+          {data.nodeId !== TRIGGER_NODE_ID && (
+            <button
+              onClick={() => {
+                setOpen(false);
+                data.onAdd?.(data.nodeId, 'gate');
+              }}
+              style={menuItemStyle}
+            >
+              <ShieldCheck size={12} /> {t('canvas.addGate', 'Approval gate')}
+            </button>
+          )}
         </div>
       )}
     </div>

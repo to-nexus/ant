@@ -661,7 +661,7 @@ export function validatePipelineDef(
   }
 
   const ids = new Set<string>();
-  const shapedSteps: Array<{ id: string; needs?: string[] }> = [];
+  const shapedSteps: Array<{ id: string; needs?: string[]; isApproval: boolean }> = [];
   raw.steps.forEach((rawStep, index) => {
     const where = `steps[${index}]`;
     if (!isPlainObject(rawStep)) {
@@ -769,6 +769,7 @@ export function validatePipelineDef(
     shapedSteps.push({
       id: stepId,
       needs: Array.isArray(rawStep.needs) ? (rawStep.needs as unknown[]).filter((n): n is string => typeof n === 'string') : undefined,
+      isApproval: rawStep.type === 'approval',
     });
   });
 
@@ -778,6 +779,15 @@ export function validatePipelineDef(
       if (!ids.has(dep)) errors.push(`step "${step.id}": needs references unknown step "${dep}"`);
     }
   }
+  // Gate-anchor rule (pure structure — file order): an approval step's chat
+  // card anchors to the producing job's turn, so a rootless gate has no home.
+  shapedSteps.forEach((step, index) => {
+    if (!step.isApproval) return;
+    const effective = step.needs ?? (index > 0 ? [shapedSteps[index - 1].id] : []);
+    if (effective.length === 0) {
+      errors.push(`step "${step.id}": an approval gate needs an upstream step (it cannot be the entry step)`);
+    }
+  });
   if (errors.length === 0 && !isAcyclic(shapedSteps)) {
     errors.push('steps: the needs graph must be acyclic');
   }

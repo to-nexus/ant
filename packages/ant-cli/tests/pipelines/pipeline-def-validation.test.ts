@@ -136,6 +136,16 @@ describe('validatePipelineDef — structural rules', () => {
       { id: 'a', customJobRef: 'x/a', directive: 'a' },
       { id: 'g', type: 'approval', prompt: 'p', timeout: { after: 'tomorrow', onTimeout: 'reject' } },
     ] }), /duration like/],
+    // Gate-anchor rule — pure structure, so it lives in the SHARED validator
+    // (the FE save gate must catch it, not a server 400 after the fact).
+    ['approval gate as the entry step', baseDef({ steps: [
+      { id: 'g', type: 'approval', prompt: 'p' },
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+    ] }), /cannot be the entry step/],
+    ['approval gate with explicit empty needs', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'g', type: 'approval', prompt: 'p', needs: [] },
+    ] }), /cannot be the entry step/],
     ['zero steps', baseDef({ steps: [] }), /non-empty array/],
     ['non-string directive', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 42 }] }), /directive must be a string/],
     ['context glob with .. segment', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', context: ['../*.md'] }] }), /empty, "\." or "\.\." path segment/],
@@ -175,6 +185,8 @@ describe('defaultStepDirective — the empty-directive dispatch fallback', () =>
   });
 });
 
+// The gate-anchor rows below exercise the SERVER wrapper on purpose: the rule
+// moved into the shared validator, and the wrapper must keep surfacing it.
 describe('validatePipelineDefServer — cron interval + gate anchor', () => {
   it('rejects a sub-5-minute cron (every minute)', () => {
     const errors = validatePipelineDefServer(baseDef({ on: { schedule: { cron: '* * * * *' } } }));

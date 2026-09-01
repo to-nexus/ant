@@ -21,7 +21,6 @@ import {
   validatePipelineDef,
   validatePipelineActivation,
   validatePipelineAvailability,
-  isApprovalStep,
   type PipelineActivation,
   type PipelineAvailability,
   type PipelineDef,
@@ -57,10 +56,10 @@ export interface PipelineListItem {
 }
 
 /**
- * Every rule a saved definition must satisfy: shared structural rules, the
- * server-side cron minimum-interval cap, and the gate-anchor rule (an
- * approval step needs an upstream step — its chat card anchors to the
- * producing job's turn, and a rootless gate has none).
+ * Every rule a saved definition must satisfy: shared structural rules (the
+ * gate-anchor rule lives there — it is pure structure, so the FE save gate
+ * sees it too) plus the server-side cron minimum-interval cap, which needs
+ * the cron parser.
  */
 export function validatePipelineDefServer(raw: unknown): string[] {
   const errors = validatePipelineDef(raw);
@@ -68,13 +67,6 @@ export function validatePipelineDefServer(raw: unknown): string[] {
   const def = raw as PipelineDef;
   const intervalError = checkMinInterval(def.on.schedule.cron, def.on.schedule.tz);
   if (intervalError) errors.push(`on.schedule.cron: ${intervalError}`);
-  def.steps.forEach((step, index) => {
-    if (!isApprovalStep(step)) return;
-    const effectiveNeeds = step.needs ?? (index > 0 ? [def.steps[index - 1].id] : []);
-    if (effectiveNeeds.length === 0) {
-      errors.push(`step "${step.id}": an approval gate needs an upstream step (it cannot be the entry step)`);
-    }
-  });
   return errors;
 }
 
