@@ -171,10 +171,14 @@
     "upstreamOutputsHint": "Each glob is that step intent's stop-hook output contract — needs-ordering and stop-hook enforcement guarantee it exists before this step runs; it expands to the actual files at fire time.",
     "addContext": "Add",
     "removeContext": "Remove pin",
-    "on": "Run when the previous step…",
+    "on": "Run when its dependencies…",
     "onSuccess": "Succeeded (default)",
     "onFailure": "Failed (failure branch)",
-    "onAlways": "Finished either way"
+    "onAlways": "Finished either way",
+    "needs": "Depends on",
+    "needsHint": "This step runs after every selected step finished. Pick several for a fan-in; several steps depending on one make a fan-out. No selection makes it a root.",
+    "needsReset": "Default (previous step)",
+    "gateNeedsUpstream": "An approval gate needs an upstream step — pick at least one."
   },
   "gate": {
     "prompt": "Approval prompt",

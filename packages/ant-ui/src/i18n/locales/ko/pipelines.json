@@ -171,10 +171,14 @@
     "upstreamOutputsHint": "이 글롭은 해당 스텝 인텐트의 stop-hook 산출물 계약입니다 — needs 순서와 stop-hook 강제로 이 스텝 실행 전 존재가 보장되며, 발화 시점에 실제 파일 경로로 확장됩니다.",
     "addContext": "추가",
     "removeContext": "핀 제거",
-    "on": "이전 스텝이 …일 때 실행",
+    "on": "의존 스텝이 …일 때 실행",
     "onSuccess": "성공했을 때 (기본)",
     "onFailure": "실패했을 때 (실패 브랜치)",
-    "onAlways": "성공/실패 무관"
+    "onAlways": "성공/실패 무관",
+    "needs": "의존 스텝",
+    "needsHint": "선택한 스텝이 전부 끝난 뒤 이 스텝이 실행됩니다. 여러 개를 고르면 합류(fan-in), 여러 스텝이 한 스텝에 의존하면 분기(fan-out)가 됩니다. 아무것도 선택하지 않으면 루트가 됩니다.",
+    "needsReset": "기본값 (직전 스텝)",
+    "gateNeedsUpstream": "승인 게이트는 선행 스텝이 필요합니다 — 하나 이상 선택하세요."
   },
   "gate": {
     "prompt": "승인 문구",

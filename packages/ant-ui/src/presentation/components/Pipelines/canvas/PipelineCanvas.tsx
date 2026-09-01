@@ -1,7 +1,8 @@
 /**
  * PipelineCanvas — the n8n-style DAG surface. Node click = inspector focus,
- * "+" on a node = insert-after (linear defs), live-run statuses overlay the
- * nodes so the canvas doubles as the run monitor. Dagre LR layout
+ * "+" on a node = insert-after (linear defs splice positionally; DAG defs
+ * splice-through via draft.ts), live-run statuses overlay the nodes so the
+ * canvas doubles as the run monitor. Dagre LR layout
  * (components/workflow precedent — no new graph deps).
  */
 
@@ -13,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { isApprovalStep, parseCustomJobRef, type PipelineDef, type PipelineStepStatus } from '@ant/shared';
 import type { PipelineRunPublic } from '@/domain/store/slices/pipelineSlice';
 import { TriggerNode, StepNode, GateNode, NODE_WIDTH, type PipelineNodeData } from './nodes';
-import { TRIGGER_NODE_ID, effectiveNeedsOf, stepsAreLinear } from '../draft';
+import { TRIGGER_NODE_ID, effectiveNeedsOf } from '../draft';
 
 const nodeTypes: NodeTypes = {
   pipelineTrigger: TriggerNode,
@@ -53,15 +54,10 @@ export interface PipelineCanvasProps {
 
 export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
   const { t } = useTranslation('pipelines');
-  const linear = stepsAreLinear(def);
 
   const { nodes, edges } = useMemo(() => {
     const statusOf = new Map<string, PipelineStepStatus>();
-    if (run && (run.status === 'running' || run.status === 'awaiting_human')) {
-      for (const s of run.steps) statusOf.set(s.stepId, s.status);
-    } else if (run) {
-      for (const s of run.steps) statusOf.set(s.stepId, s.status);
-    }
+    for (const s of run?.steps ?? []) statusOf.set(s.stepId, s.status);
 
     const rfNodes: Node<PipelineNodeData>[] = [
       {
@@ -73,7 +69,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNo
           title: t('canvas.trigger', 'Schedule'),
           subtitle: cronSummary,
           selected: selectedNodeId === TRIGGER_NODE_ID,
-          onAdd: onAddAfter && linear ? onAddAfter : undefined,
+          onAdd: onAddAfter,
         },
       },
     ];
@@ -113,7 +109,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNo
           status: statusOf.get(step.id),
           selected: selectedNodeId === step.id,
           invalid,
-          onAdd: onAddAfter && linear ? onAddAfter : undefined,
+          onAdd: onAddAfter,
         },
       });
     });
@@ -155,7 +151,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNo
     }
 
     return { nodes: rfNodes, edges: rfEdges };
-  }, [def, run, selectedNodeId, cronSummary, customAgents, onAddAfter, linear, t]);
+  }, [def, run, selectedNodeId, cronSummary, customAgents, onAddAfter, t]);
 
   return (
     <ReactFlow

@@ -30,7 +30,7 @@ import { HintBadge } from '../common/HintBadge';
 import { Tooltip } from '../common/Tooltip';
 import { FileTreePicker } from '../common/FileTreePicker';
 import { CronBuilder } from './CronBuilder';
-import { TRIGGER_NODE_ID, removeStep, updateSchedule, updateStep } from './draft';
+import { TRIGGER_NODE_ID, descendantsOf, effectiveNeedsOf, removeStep, setStepNeeds, updateSchedule, updateStep } from './draft';
 import { upstreamOutputSuggestions } from './upstreamOutputs';
 
 export interface StepInspectorProps {
@@ -421,7 +421,8 @@ function JobStepPanel({
           />
         )}
       </div>
-      {stepIndex > 0 && <EdgeConditionField step={step} def={def} onChange={onChange} />}
+      <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} />
+      {effectiveNeedsOf(def, stepIndex).length > 0 && <EdgeConditionField step={step} def={def} onChange={onChange} />}
     </>
   );
 }
@@ -489,8 +490,70 @@ function GatePanel({ def, step, stepIndex, onChange }: { def: PipelineDef; step:
           <span style={chipStyle(false)} title={t('gate.comingSoon', 'Coming soon')}>Email</span>
         </div>
       </div>
-      {stepIndex > 0 && <EdgeConditionField step={step} def={def} onChange={onChange} />}
+      <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} />
+      {effectiveNeedsOf(def, stepIndex).length > 0 && <EdgeConditionField step={step} def={def} onChange={onChange} />}
     </>
+  );
+}
+
+/**
+ * Multi-select over the step's upstream edges (`needs`). Toggling any chip
+ * materializes explicit needs for THIS step; "Default" resets to the implicit
+ * previous-in-file-order edge. Descendants are excluded so a cycle cannot be
+ * authored (the shared validator stays the backstop).
+ */
+function DependsOnField({ def, step, stepIndex, onChange }: { def: PipelineDef; step: JobStepDef | ApprovalStepDef; stepIndex: number; onChange: (d: PipelineDef) => void }) {
+  const { t } = useTranslation('pipelines');
+  const excluded = useMemo(() => descendantsOf(def, step.id), [def, step.id]);
+  const candidates = def.steps.filter((s) => s.id !== step.id && !excluded.has(s.id));
+  const effective = effectiveNeedsOf(def, stepIndex);
+  const explicit = step.needs !== undefined;
+  const isGate = isApprovalStep(step);
+
+  const toggle = (id: string) => {
+    const current = new Set(effective);
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    onChange(setStepNeeds(def, step.id, [...current]));
+  };
+
+  if (candidates.length === 0) return null;
+  return (
+    <div>
+      <FieldLabel
+        action={
+          explicit ? (
+            <button
+              onClick={() => onChange(setStepNeeds(def, step.id, undefined))}
+              style={{ background: 'none', border: 'none', color: 'var(--violet-500)', cursor: 'pointer', fontSize: 11 }}
+            >
+              {t('step.needsReset', 'Default (previous step)')}
+            </button>
+          ) : undefined
+        }
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          {t('step.needs', 'Depends on')}
+          <HintBadge
+            isCompact
+            label={t('step.needs', 'Depends on')}
+            tooltip={t('step.needsHint', 'This step runs after every selected step finished. Pick several for a fan-in; several steps depending on one make a fan-out. No selection makes it a root.')}
+          />
+        </span>
+      </FieldLabel>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {candidates.map((s) => (
+          <button key={s.id} onClick={() => toggle(s.id)} style={{ ...chipStyle(effective.includes(s.id)), cursor: 'pointer' }}>
+            {s.id}
+          </button>
+        ))}
+      </div>
+      {isGate && effective.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--amber-500, #f59e0b)', marginTop: 6 }}>
+          {t('step.gateNeedsUpstream', 'An approval gate needs an upstream step — pick at least one.')}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -498,7 +561,7 @@ function EdgeConditionField({ def, step, onChange }: { def: PipelineDef; step: J
   const { t } = useTranslation('pipelines');
   return (
     <div>
-      <FieldLabel>{t('step.on', 'Run when the previous step…')}</FieldLabel>
+      <FieldLabel>{t('step.on', 'Run when its dependencies…')}</FieldLabel>
       <AuroraSelect
         value={step.on ?? 'success'}
         onChange={(v) => onChange(updateStep(def, step.id, { on: v === 'success' ? undefined : (v as StepEdgeCondition) }))}
