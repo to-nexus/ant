@@ -49,7 +49,7 @@ import {
 import { sendErrorResponse } from './helpers/errorResponse';
 import { hasMinRole, resolveLiveTeamMembership } from './helpers/teamRole';
 import { logger } from '../../../../utils/logger';
-import { emailHost, resolveDomainJoin } from '../../../../core/auth/domainJoin';
+import { emailHost, resolveDomainJoin, grantsAtLogin } from '../../../../core/auth/domainJoin';
 import {
   ORG_INVITE_TTL_DAYS,
   JOIN_REQUEST_TTL_DAYS,
@@ -153,7 +153,7 @@ export function toDomainClaimView(claim: OrgDomainClaim): OrgDomainClaimView {
     organizationId: claim.organizationId,
     status: claim.status,
     // `undefined` means ON — claims predate the toggle.
-    autoJoin: claim.autoJoin !== false,
+    autoJoin: grantsAtLogin(claim),
     autoJoinRole: claim.autoJoinRole,
     claimedBy: claim.claimedBy,
     createdAt: claim.createdAt,

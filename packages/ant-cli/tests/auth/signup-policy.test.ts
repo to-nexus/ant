@@ -226,8 +226,14 @@ describe('login-time domain auto-join', () => {
     return repo.getUser(email.toLowerCase());
   }
 
-  /** An 'acme' team owning a VERIFIED claim on acme.com. */
-  async function seedTeamWithVerifiedDomain(autoJoin?: boolean): Promise<void> {
+  /**
+   * An 'acme' team owning a VERIFIED claim on acme.com.
+   *
+   * `autoJoin` defaults to `true` here because most rows below exercise the
+   * GRANT path. The STORED default is the opposite — a claim with no explicit
+   * toggle grants nothing at login — which `'unset'` pins in its own row.
+   */
+  async function seedTeamWithVerifiedDomain(autoJoin: boolean | 'unset' = true): Promise<void> {
     await repo.createOrganization({
       id: 'acme',
       name: 'Acme',
@@ -241,7 +247,7 @@ describe('login-time domain auto-join', () => {
       claimedBy: 'kim@acme.com',
       verificationToken: 't',
       status: 'verified',
-      ...(autoJoin === undefined ? {} : { autoJoin }),
+      ...(autoJoin === 'unset' ? {} : { autoJoin }),
       autoJoinRole: 'member',
       createdAt: new Date().toISOString(),
     });
@@ -302,6 +308,17 @@ describe('login-time domain auto-join', () => {
     const user = await login('bob@acme.com');
     expect(await repo.getMembership('bob@acme.com', 'acme')).toBeNull();
     expect(user?.currentOrganizationId).toBe('individual');
+  });
+
+  // The default is what produced "I searched for the team and was already in
+  // it": a claim verified by the email fast-path absorbed every account on the
+  // domain, with no gesture to make and no button to find.
+  it('a claim with no explicit toggle grants nothing — the grant is opt-in', async () => {
+    await seedTeamWithVerifiedDomain('unset');
+    const user = await login('bob@acme.com');
+    expect(await repo.getMembership('bob@acme.com', 'acme')).toBeNull();
+    expect(user?.currentOrganizationId).toBe('individual');
+    expect(user?.lastDomainAutoJoin).toBeUndefined();
   });
 
   it('an unverified claim grants nothing', async () => {

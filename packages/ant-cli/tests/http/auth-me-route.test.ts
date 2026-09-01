@@ -219,8 +219,8 @@ describe('GET /api/auth/me — cloud mode', () => {
               claimedBy: 'kim@acme.com',
               verificationToken: 't',
               status: 'verified',
-              // auto-join OFF, so the banner is the offer that remains.
-              autoJoin: false,
+              // No explicit toggle — the default, and OFF. The login grants
+              // nothing, so the banner is what the account gets instead.
               autoJoinRole: 'member',
               createdAt: future,
             }

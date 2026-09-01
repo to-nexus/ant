@@ -154,7 +154,7 @@ non-team or non-member org is one indistinguishable **404**. Full model:
 | POST | `/api/organizations/invites/accept` | any account | Accept by token; clears the removal row |
 | POST/GET | `/api/organizations/:orgId/domains` | admin | Claim / list email domains |
 | POST | `/api/organizations/:orgId/domains/:domain/verify` | admin | Explicit DNS TXT check (`verified:false` is a 200) |
-| PUT | `/api/organizations/:orgId/domains/:domain` | admin (owner for `autoJoinRole: 'admin'`) | Join policy — `autoJoin`, `autoJoinRole` |
+| PUT | `/api/organizations/:orgId/domains/:domain` | admin (owner for `autoJoinRole: 'admin'`) | Join policy — `autoJoin` (**opt-in, default off**), `autoJoinRole` |
 | DELETE | `/api/organizations/:orgId/domains/:domain` | owner | Release the claim |
 | POST | `/api/organizations/join-by-domain` | any account | Explicit one-click domain join |
 | POST | `/api/organizations/:orgId/join-requests` | any account | Ask to join a discoverable team (optional message, ≤ 500 B) |
@@ -166,7 +166,10 @@ non-team or non-member org is one indistinguishable **404**. Full model:
 | DELETE | `/api/organizations/:orgId/removed-members/:userId` | admin | "Allow again" — re-opens the shortcut, does not re-add |
 
 **Three ways in, and no others**: an admin-issued invite, a verified email
-domain, an admin-approved join request. Search finds a team; it never joins one.
+domain, an admin-approved join request. Search finds a team; it never joins one
+— and every one of the three needs an explicit gesture from someone: the
+invitee accepts, the domain-entitled account presses Join (or its org has
+deliberately turned `autoJoin` on), the requester asks and an admin approves.
 
 `GET /api/auth/me` carries the join surface — `pendingInvites`,
 `domainJoinableOrgs`, `myJoinRequests`, `autoJoinedOrg`. It is a pure read: the

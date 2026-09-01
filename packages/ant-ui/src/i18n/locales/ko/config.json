@@ -472,11 +472,11 @@
     },
     "domains": {
       "title": "이메일 도메인",
-      "description": "검증된 도메인으로 로그인하는 사람은 원클릭으로 이 팀에 가입할 수 있습니다.",
+      "description": "검증된 도메인은 그 도메인으로 로그인하는 모든 사람에게 원클릭 가입을 제안합니다. 자동 가입은 기본으로 꺼져 있으며, 켜면 다음 로그인에 승인 절차 없이 멤버가 됩니다.",
       "claimLabel": "도메인",
       "claim": "도메인 등록",
       "suggestChip": "{{domain}} 등록 — 로그인 이메일과 일치해 즉시 검증됩니다",
-      "verifiedInstant": "도메인이 검증되었습니다 — 로그인 이메일과 일치합니다.",
+      "verifiedInstant": "도메인이 검증되었습니다 — 로그인 이메일과 일치합니다. 자동 가입은 꺼져 있어, 해당 도메인 사용자에게는 가입 버튼만 제안됩니다.",
       "verified": "도메인이 검증되었습니다.",
       "txtNotVisible": "TXT 레코드가 아직 보이지 않습니다 — DNS 전파에는 시간이 걸릴 수 있습니다.",
       "txtInstructions": "다음 DNS TXT 레코드를 추가한 뒤 검증하세요:",
@@ -497,8 +497,8 @@
       "autoJoinOff": "제안만",
       "autoJoinRoleLabel": "부여 역할",
       "autoJoinHint": "자동 참여는 매 로그인마다 다시 확인되므로, 이 도메인 등록 이전에 만들어진 계정도 다음 로그인에 반영됩니다. 제거한 멤버는 다시 허용할 때까지 제외됩니다.",
-      "joinHintAuto": "@{{domain}} 로 로그인하면 이 팀에 자동으로 추가됩니다.",
-      "joinHintOffer": "@{{domain}} 로그인에게 원클릭 참여를 제안합니다.",
+      "joinHintAuto": "@{{domain}} 계정은 다음 로그인에 승인 없이 멤버가 됩니다.",
+      "joinHintOffer": "@{{domain}} 계정에게 가입 버튼이 보이며, 본인이 눌러야 가입됩니다.",
       "savingPolicy": "저장 중…"
     },
     "danger": {

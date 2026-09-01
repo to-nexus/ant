@@ -51,7 +51,7 @@ export type DomainJoinResolution =
  * removal is undone by the very shortcut that put them there).
  *
  * Callers layer their own condition on top of `ok`:
- *   - login auto-join additionally requires `claim.autoJoin !== false`;
+ *   - login auto-join additionally requires `grantsAtLogin(claim)`;
  *   - the `/auth/me` banner is the offer for claims whose auto-join is off;
  *   - `join-by-domain` needs no toggle — an explicit gesture outranks the
  *     org's default.
@@ -81,4 +81,23 @@ export async function resolveDomainJoin(
   }
 
   return { ok: true, org, claim, domain };
+}
+
+/**
+ * May a LOGIN alone grant this claim's membership?
+ *
+ * Opt-in, so `undefined` is off. It defaulted on once, and the result was a
+ * team whose admin had claimed their own email host — instantly verified by
+ * the fast path — silently absorbing every account on that domain at their
+ * next login. From the member's side there was no gesture to make and no
+ * button to find: they searched for the team and were already in it. Finding a
+ * team must not be the same act as joining one, so the grant now waits for
+ * either an explicit `join-by-domain` click or an admin turning this on.
+ *
+ * The predicate lives here because `resolveDomainJoin` is already the single
+ * owner of "what does this email host grant"; a second reading of the toggle
+ * at a call site is how the question splits in two.
+ */
+export function grantsAtLogin(claim: OrgDomainClaim): boolean {
+  return claim.autoJoin === true;
 }

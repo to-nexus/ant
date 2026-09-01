@@ -410,7 +410,12 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
       setDomainDraft('');
       await loadOrgDomains(orgId);
       if (claim.status === 'verified') {
-        showSuccess(t('org.domains.verifiedInstant', 'Domain verified — it matches your sign-in email.'));
+        showSuccess(
+          t(
+            'org.domains.verifiedInstant',
+            'Domain verified — it matches your sign-in email. Auto-join is off: people on it are offered the join, not added.',
+          ),
+        );
       }
     } catch (err) {
       setDomainError(orgErrorMessage(err, t));
@@ -1133,7 +1138,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
               id="c3o-domains"
               icon="Globe"
               title={t('org.domains.title', 'Email domains')}
-              description={t('org.domains.description', 'A verified domain puts every sign-in on it into this team. Turn auto-join off to offer the join instead of granting it.')}
+              description={t('org.domains.description', 'A verified domain offers everyone signing in on it a one-click join. Auto-join is off by default — turning it on grants membership at their next sign-in, with no approval step.')}
               accent="cool"
             >
               <div className="space-y-4">
@@ -1223,8 +1228,8 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
                               : t('org.domains.verifiedByOperator', 'Verified by operator')}
                           {' · '}
                           {d.autoJoin
-                            ? t('org.domains.joinHintAuto', 'Sign-ins @{{domain}} are added to this team automatically.', { domain: d.domain })
-                            : t('org.domains.joinHintOffer', 'Sign-ins @{{domain}} are offered a one-click join.', { domain: d.domain })}
+                            ? t('org.domains.joinHintAuto', 'Anyone @{{domain}} becomes a member at their next sign-in — no approval step.', { domain: d.domain })
+                            : t('org.domains.joinHintOffer', 'Anyone @{{domain}} sees a join button and joins by pressing it.', { domain: d.domain })}
                         </div>
                         <div
                           className="flex items-end gap-2 flex-wrap"

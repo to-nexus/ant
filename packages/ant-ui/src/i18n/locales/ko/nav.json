@@ -84,6 +84,7 @@
     "joinTeamPending": "요청됨",
     "joinTeamWithdraw": "요청 취소",
     "joinTeamRequest": "참여 요청",
+    "joinTeamDomainHint": "회사 이메일 도메인({{domain}})으로 승인 없이 바로 가입할 수 있습니다.",
     "joinTeamSend": "요청 보내기",
     "joinTeamMessagePlaceholder": "선택 — 관리자에게 본인을 소개하세요",
     "joinTeamApprovalNote": "팀 관리자가 요청을 승인합니다. 승인되면 계정 전환 메뉴에 팀이 나타납니다.",

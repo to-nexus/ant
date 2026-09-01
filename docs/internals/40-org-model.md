@@ -194,14 +194,15 @@ matches the domain (consumer domains blocked) ⇒ instant `verified`
 custom-domain `verification.ts`), explicit verify only, no polling; (c)
 superadmin manual verify/reject via `/admin/organizations/...`.
 
-**A verified claim GRANTS membership at login** (`autoJoin`, default ON —
-`undefined` reads as ON so claims written before the toggle need no migration).
-The check sits in the OAuth callback, after the `individual` attach:
+**A verified claim may grant membership at login** — `autoJoin`, **opt-in**:
+`undefined` reads as OFF, and the predicate has one owner,
+`grantsAtLogin(claim)` in `core/auth/domainJoin.ts`. The check sits in the OAuth
+callback, after the `individual` attach:
 
 - It runs on **every** login, not only the first. That is the whole backfill
-  mechanism — an account that existed before its domain was claimed is picked up
-  on its next login, and `attachMembership`'s NX semantics make the repeat a
-  no-op. There is no batch job and no admin action.
+  mechanism — an account that existed before its org turned the toggle on is
+  picked up at its next login, and `attachMembership`'s NX semantics make the
+  repeat a no-op. There is no batch job and no admin action.
 - It CANNOT live in `/auth/me`: that is a read, and this section's
   ["Reads must not mint"](#reads-must-not-mint) rule forbids side effects there.
   `/auth/me` only reports (`domainJoinableOrgs`, `autoJoinedOrg`).
@@ -212,14 +213,17 @@ The check sits in the OAuth callback, after the `individual` attach:
   under in-flight work.
 - Failure is swallowed and logged: a domain lookup must never cost a login.
 
-With `autoJoin: false` the domain is *offered* instead, via
+With auto-join off — the default — the domain is *offered* instead, via
 `domainJoinableOrgs`. That list is non-empty in two states, not one: auto-join
 off, and auto-join on for a session that predates the claim — a cookie lives
 days, so making that user wait for their next login would be strictly worse than
 letting them take the shortcut now. After a login has granted the membership the
 resolver answers `already-member` and the list is empty.
 `POST /organizations/join-by-domain` stays available in every case: it is the
-explicit gesture, so it needs no toggle.
+explicit gesture, so it needs no toggle. The offer surfaces in two places — the
+`OrgBanners` strip, and every matching row in team discovery, where it renders
+as a **Join** button rather than the request composer (there is nothing for an
+admin to approve that the org has not already granted).
 
 The one owner of "which org does this email host grant?" is
 `resolveDomainJoin(repo, userId, email)` in `core/auth/domainJoin.ts`. It answers
@@ -231,11 +235,25 @@ offers, and the route maps each refusal to its own status. Before this existed,
 fourth caller (login) was never added and domain membership was offered but never
 granted.
 
-**Accepted trade-off**: the email fast-path means the first `@acme.com` account
-to claim `acme.com` is instantly verified, so with auto-join on it absorbs every
-future `@acme.com` signup. Consumer domains are refused, the org can turn the
-toggle off, and superadmin can reject a claim — and `AdminOrgDetail` carries the
-`autoJoin` flag so an operator can see which claims are absorbing signups.
+**Why the default was reversed** (it shipped ON, and this is the second and
+final position). The email fast-path verifies the first `@acme.com` account to
+claim `acme.com` instantly, so ON meant that claim absorbed every future
+`@acme.com` account at their next login — no gesture from the person, no
+decision from an admin. The mitigations on record (consumer domains refused, an
+org-side toggle, superadmin reject, the flag surfaced in `AdminOrgDetail`) all
+bound the blast radius; none of them restored the gesture.
+
+What that cost was visible from the member's side, not the operator's: they
+searched for the team, and the row came back already marked `Member` with no
+control on it. Finding a team and joining one are separate acts, and the product
+had silently merged them. So the grant is opt-in now, and the discovery row
+always carries an action. An org that genuinely wants sign-in-is-membership
+still gets it by turning the toggle on — deliberately, once, with the
+consequence stated at the switch.
+
+Nothing is revoked by the flip: memberships already granted stand, and a claim
+written while the default was ON simply stops granting NEW ones until an admin
+turns it on.
 
 **Removal rows** (`ant:auth:org:removed:{orgId}`, HASH `userId → {reason,
 removedAt, removedBy}`): leaving or being removed records a row, and the row

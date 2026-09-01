@@ -778,13 +778,21 @@ describe('removal rows', () => {
 describe('domain join policy', () => {
   beforeEach(seedTeam);
 
-  it('autoJoin defaults ON in the view (claims predate the toggle)', async () => {
+  // A fresh claim grants nothing at login: it is the one policy that produces a
+  // member with no gesture from the person and no decision from an admin.
+  it('autoJoin defaults OFF in the view — the grant is opt-in', async () => {
     const { json } = await as(OWNER, 'POST', '/organizations/acme/domains', { domain: 'acme.com' });
-    expect(json.domain).toMatchObject({ autoJoin: true, autoJoinRole: 'member' });
+    expect(json.domain).toMatchObject({ autoJoin: false, autoJoinRole: 'member' });
+    expect((await repo.getDomainClaim('acme.com'))?.autoJoin).toBeUndefined();
   });
 
-  it('admin may turn autoJoin off; only the owner may auto-grant admin', async () => {
+  it('admin may turn autoJoin on and back off; only the owner may auto-grant admin', async () => {
     await as(OWNER, 'POST', '/organizations/acme/domains', { domain: 'acme.com' });
+
+    const on = await as(ADMIN, 'PUT', '/organizations/acme/domains/acme.com', { autoJoin: true });
+    expect(on.status).toBe(200);
+    expect(on.json.domain.autoJoin).toBe(true);
+    expect((await repo.getDomainClaim('acme.com'))?.autoJoin).toBe(true);
 
     const off = await as(ADMIN, 'PUT', '/organizations/acme/domains/acme.com', { autoJoin: false });
     expect(off.status).toBe(200);
@@ -808,6 +816,7 @@ describe('domain join policy', () => {
     verifyDomainOwnershipMock.mockResolvedValue(true);
     await as(OWNER, 'POST', '/organizations/acme/domains/other.io/verify', {});
     await as(OWNER, 'PUT', '/organizations/acme/domains/other.io', { autoJoin: false });
+    // The toggle governs the LOGIN grant only — an explicit gesture outranks it.
 
     const joined = await as(OUTSIDER, 'POST', '/organizations/join-by-domain', { organizationId: 'acme' });
     expect(joined.status).toBe(200);

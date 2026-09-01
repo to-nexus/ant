@@ -135,8 +135,10 @@ export interface OrgDomainClaim {
   status: OrgDomainClaimStatus;
   /**
    * Grant membership at login to every account on this domain. `undefined`
-   * ⇒ ON: claims written before the toggle existed keep auto-joining, so no
-   * migration is needed. Read it as `autoJoin !== false`.
+   * ⇒ OFF: this is the strongest policy in the model — it produces a member
+   * with no gesture from the person and no decision from an admin — so it is
+   * opt-in, never a default. Read it through `grantsAtLogin(claim)`, never by
+   * hand.
    */
   autoJoin?: boolean;
   /** Role granted on domain join (auto at login, or the one-click banner). */

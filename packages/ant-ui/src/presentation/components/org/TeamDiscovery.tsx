@@ -1,10 +1,19 @@
 /**
- * TeamDiscovery — search a discoverable team and request to join it.
+ * TeamDiscovery — search a team, then act on the one you picked.
  *
- * Search finds a team; it never joins one. The only outcome is a join REQUEST
- * an org admin has to approve, which is why the retired onboarding screen's
- * free-join autocomplete was not revived: it bypassed the invite and domain
- * gates entirely.
+ * Search finds a team; it never joins one. Finding and joining are separate
+ * acts, and the join is always the user pointing at a row and pressing
+ * something — which is why the retired onboarding screen's free-join
+ * autocomplete was not revived (it bypassed the invite and domain gates), and
+ * why login-time domain auto-join is now opt-in rather than the default.
+ *
+ * Every row therefore carries an action, and which one depends on what this
+ * account may already do with that team:
+ *   member → switch into it · domain-entitled → join outright (no approval to
+ *   wait for) · request already open → withdraw · otherwise → ask to join.
+ * A row with a bare `Member` badge and no control was the shape that read as
+ * "searching joined me": the membership had come from a silent login grant and
+ * the screen offered nothing to explain or undo it.
  *
  * Presentational and chrome-free so the two entry points render the same code:
  * `JoinTeamModal` (navbar shortcut) and the `c3o-discover` section of
@@ -25,8 +34,10 @@ import {
   searchOrganizations,
   createJoinRequest,
   cancelJoinRequest,
+  joinByDomain,
   type OrganizationSummary,
 } from '@/infrastructure/http/api/organizations';
+import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
 import { fetchAuthMeDetailed } from '@/infrastructure/http/api/auth';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { orgErrorMessage } from '@/presentation/components/org/orgErrors';
@@ -52,6 +63,10 @@ export function TeamDiscovery({
   const memberships = useStore((s) => s.memberships);
   const pendingByOrg = useStore(selectMyPendingJoinRequestByOrg);
   const setJoinSurface = useStore((s) => s.setJoinSurface);
+  const activeOrgId = useStore((s) => s.userOrganization);
+  // Raw, not `selectVisibleDomainJoinableOrgs`: that selector subtracts banner
+  // dismissals, and dismissing a banner must not delete the button here.
+  const domainJoinableOrgs = useStore((s) => s.domainJoinableOrgs);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<OrganizationSummary[]>([]);
@@ -66,6 +81,10 @@ export function TeamDiscovery({
   const memberOrgIds = useMemo(
     () => new Set(memberships.map((m) => m.organizationId)),
     [memberships],
+  );
+  const domainByOrg = useMemo(
+    () => new Map(domainJoinableOrgs.map((d) => [d.organizationId, d])),
+    [domainJoinableOrgs],
   );
 
   useEffect(() => {
@@ -130,6 +149,22 @@ export function TeamDiscovery({
     }
   };
 
+  /** The domain shortcut, taken deliberately — the BE re-validates it. */
+  const acceptDomainJoin = async (org: OrganizationSummary) => {
+    if (busyOrgId) return;
+    setBusyOrgId(org.id);
+    setError(null);
+    try {
+      await joinByDomain(org.id);
+      await refreshJoinSurface();
+      toast.success(t('auth.joinedToast', 'Joined {{org}}', { org: org.name }));
+    } catch (err) {
+      setError(orgErrorMessage(err, t));
+    } finally {
+      setBusyOrgId(null);
+    }
+  };
+
   const withdraw = async (requestId: string, orgId: string) => {
     if (busyOrgId) return;
     setBusyOrgId(orgId);
@@ -175,6 +210,7 @@ export function TeamDiscovery({
         >
           {results.map((org) => {
             const isMember = memberOrgIds.has(org.id);
+            const domainEntry = isMember ? undefined : domainByOrg.get(org.id);
             const pending = pendingByOrg.get(org.id);
             const busy = busyOrgId === org.id;
             return (
@@ -204,7 +240,30 @@ export function TeamDiscovery({
                     </span>
                   </span>
                   {isMember ? (
-                    <Badge tone="info">{t('auth.joinTeamMember', 'Member')}</Badge>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <Badge tone="info">{t('auth.joinTeamMember', 'Member')}</Badge>
+                      {org.id !== activeOrgId && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => void switchActiveOrg(org.id)}
+                        >
+                          {t('auth.switchNow', 'Switch')}
+                        </Button>
+                      )}
+                    </span>
+                  ) : domainEntry ? (
+                    // Nothing to approve — this account's verified email domain
+                    // already entitles it. Offering a request instead would ask
+                    // an admin to grant what the org has already granted.
+                    <Button
+                      variant="primary"
+                      size="xs"
+                      loading={busy}
+                      onClick={() => void acceptDomainJoin(org)}
+                    >
+                      {t('auth.joinDomain', 'Join')}
+                    </Button>
                   ) : pending ? (
                     <span className="flex items-center gap-2 shrink-0">
                       <span className="text-xs" style={{ color: 'var(--text-3)' }}>
@@ -230,7 +289,17 @@ export function TeamDiscovery({
                   )}
                 </div>
 
-                {composingFor === org.id && !isMember && !pending && (
+                {domainEntry && (
+                  <div className="pb-2 text-[11px]" style={{ color: 'var(--text-4)' }}>
+                    {t(
+                      'auth.joinTeamDomainHint',
+                      'Your email domain ({{domain}}) lets you join this team without approval.',
+                      { domain: domainEntry.domain },
+                    )}
+                  </div>
+                )}
+
+                {composingFor === org.id && !isMember && !domainEntry && !pending && (
                   <div className="pb-3 space-y-2 spring-in">
                     <textarea
                       value={message}

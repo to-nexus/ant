@@ -13,7 +13,7 @@ import { extractStartOrigin } from '../middleware/originHelper';
 import { logger } from '../../../../utils/logger';
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { isSuperAdminEmail } from '../../../../core/auth/superAdmin';
-import { resolveDomainJoin } from '../../../../core/auth/domainJoin';
+import { resolveDomainJoin, grantsAtLogin } from '../../../../core/auth/domainJoin';
 import {
   INDIVIDUAL_ORG_ID,
   deriveKindFromOrgId,
@@ -435,13 +435,15 @@ export function createAuthRoutes(deps: {
           role: 'member',
         });
 
-        // Domain auto-join, evaluated on EVERY login, not only at signup —
-        // that is what backfills accounts whose org claimed their domain
-        // later. `attachMembership` is idempotent, so a repeat login is a
-        // no-op. A brand-new account also activates the team; an existing
-        // one keeps whatever org it was working in and gets a `/auth/me`
-        // notice instead (a silent active-org swap would move the project
-        // list out from under in-flight work).
+        // Domain auto-join — OPT-IN (`grantsAtLogin`), and evaluated on EVERY
+        // login rather than only at signup, so an org that turns it on
+        // backfills its existing accounts at their next login.
+        // `attachMembership` is idempotent, so a repeat login is a no-op. A
+        // brand-new account also activates the team; an existing one keeps
+        // whatever org it was working in and gets a `/auth/me` notice instead
+        // (a silent active-org swap would move the project list out from
+        // under in-flight work). With the toggle off — the default — nothing
+        // is granted here and `/auth/me` offers the join instead.
         let lastDomainAutoJoin = existing?.lastDomainAutoJoin;
         try {
           const shortcut = await resolveDomainJoin(
@@ -449,7 +451,7 @@ export function createAuthRoutes(deps: {
             userId,
             oidcUser.email,
           );
-          if (shortcut.ok && shortcut.claim.autoJoin !== false) {
+          if (shortcut.ok && grantsAtLogin(shortcut.claim)) {
             await organizationRepository.attachMembership({
               userId,
               organizationId: shortcut.org.id,

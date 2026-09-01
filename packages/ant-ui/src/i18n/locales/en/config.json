@@ -472,11 +472,11 @@
     },
     "domains": {
       "title": "Email domains",
-      "description": "People who sign in with a verified domain can join this team in one click.",
+      "description": "A verified domain offers everyone signing in on it a one-click join. Auto-join is off by default — turning it on grants membership at their next sign-in, with no approval step.",
       "claimLabel": "Domain",
       "claim": "Claim domain",
       "suggestChip": "Claim {{domain}} — matches your sign-in email, verifies instantly",
-      "verifiedInstant": "Domain verified — it matches your sign-in email.",
+      "verifiedInstant": "Domain verified — it matches your sign-in email. Auto-join is off: people on it are offered the join, not added.",
       "verified": "Domain verified.",
       "txtNotVisible": "TXT record not visible yet — DNS changes can take a while to propagate.",
       "txtInstructions": "Add this DNS TXT record, then verify:",
@@ -497,8 +497,8 @@
       "autoJoinOff": "Offer only",
       "autoJoinRoleLabel": "Role granted",
       "autoJoinHint": "Auto-join is re-checked at every sign-in, so accounts that existed before this claim are picked up on their next login. Members you remove stay out until you allow them again.",
-      "joinHintAuto": "Sign-ins @{{domain}} are added to this team automatically.",
-      "joinHintOffer": "Sign-ins @{{domain}} are offered a one-click join.",
+      "joinHintAuto": "Anyone @{{domain}} becomes a member at their next sign-in — no approval step.",
+      "joinHintOffer": "Anyone @{{domain}} sees a join button and joins by pressing it.",
       "savingPolicy": "Saving…"
     },
     "danger": {

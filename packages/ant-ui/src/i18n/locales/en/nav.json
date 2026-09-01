@@ -84,6 +84,7 @@
     "joinTeamPending": "Requested",
     "joinTeamWithdraw": "Withdraw",
     "joinTeamRequest": "Request to join",
+    "joinTeamDomainHint": "Your email domain ({{domain}}) lets you join this team without approval.",
     "joinTeamSend": "Send request",
     "joinTeamMessagePlaceholder": "Optional — tell the admins who you are",
     "joinTeamApprovalNote": "An admin of the team approves requests. You will see the team in your account switcher once approved.",
