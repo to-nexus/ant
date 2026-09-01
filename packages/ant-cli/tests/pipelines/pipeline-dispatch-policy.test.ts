@@ -205,6 +205,33 @@ describe('clarify funnel', () => {
   });
 });
 
+describe('run cancel authority', () => {
+  it('cancelRun owns the stop legs — deactivate delegates, no second kill-loop copy', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    // Exactly one occurrence each: the kill legs live in cancelRun and nowhere
+    // else (a copy in deactivate is how the FE stop button silently stopped
+    // stopping the running job).
+    expect(coordinator.match(/markUserStopped\(/g)?.length ?? 0).toBe(1);
+    expect(coordinator.match(/ant:job-poisoned/g)?.length ?? 0).toBe(1);
+    expect(coordinator.match(/JOB_WORKER\.STOP/g)?.length ?? 0).toBe(1);
+    // deactivate's body is pure delegation.
+    const deactivateBody = coordinator.slice(coordinator.indexOf('async deactivate('));
+    const deactivateEnd = deactivateBody.indexOf('\n  }');
+    expect(deactivateBody.slice(0, deactivateEnd)).toMatch(/this\.cancelRun\(/);
+    expect(deactivateBody.slice(0, deactivateEnd)).not.toMatch(/markUserStopped/);
+  });
+
+  it('a cancelled live step is terminal-cancelled with a named error, never failed', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/error: 'run-cancelled'/);
+  });
+
+  it('a second cancel is a no-op — no duplicate run_finished / index append', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/if \(!result \|\| !mutated\) return false;/);
+  });
+});
+
 describe('pipeline run-log graft (read-only)', () => {
   it('the merged view resolves and grafts the pipeline-runs node from the paths SSOT', () => {
     const container = read('core/customAgents/universalContainer.ts');

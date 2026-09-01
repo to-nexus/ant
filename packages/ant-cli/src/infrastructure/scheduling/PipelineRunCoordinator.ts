@@ -1083,16 +1083,49 @@ export class PipelineRunCoordinator {
   }
 
   async cancelRun(owner: PipelineOwner, runId: string): Promise<boolean> {
+    // Kill targets are captured under the per-run lock so a step sealing
+    // concurrently cannot slip past both the sweep and the kill.
+    const killTargets: Array<{ jobId: string; projectId: string }> = [];
+    let mutated = false;
     const result = await this.mutateRun(owner, runId, async (live) => {
       if (this.isTerminal(live.status)) return { run: live, dispatches: [] };
-      const steps = live.steps.map((s): StepRecord =>
-        s.status === 'pending' || s.status === 'awaiting_gate' || s.status === 'awaiting_clarify' || s.status === 'dispatched'
-          ? { ...s, status: 'cancelled', endedAt: new Date().toISOString() }
-          : s,
-      );
+      mutated = true;
+      const endedAt = new Date().toISOString();
+      const steps = live.steps.map((s): StepRecord => {
+        if ((s.status === 'running' || s.status === 'dispatched') && s.jobId) {
+          killTargets.push({ jobId: s.jobId, projectId: live.projectId });
+          // A human cancel is not a step failure — 'cancelled' keeps it out of
+          // the abort-policy/history failure surfaces; the error names why.
+          return { ...s, status: 'cancelled', error: 'run-cancelled', endedAt };
+        }
+        return s.status === 'pending' || s.status === 'awaiting_gate' || s.status === 'awaiting_clarify' || s.status === 'dispatched'
+          ? { ...s, status: 'cancelled', endedAt }
+          : s;
+      });
       return { run: { ...live, steps, status: 'cancelled' as const }, dispatches: [] };
     });
-    if (!result) return false;
+    // Already-terminal runs must not re-run the disarm/finalize block — a
+    // second cancel used to append a duplicate run_finished + index line.
+    if (!result || !mutated) return false;
+    // Kill legs for live step jobs — the `/jobs/:jobId/stop` mirror
+    // (mark-user-stopped + poison + STOP pub/sub). markUserStopped doubles as
+    // the pre-spawn guard, so 'dispatched' (enqueued, not yet picked up) jobs
+    // are cancelled at dequeue instead of running as unbilled-for ghosts. The
+    // killed job's late seal no-ops against the terminal run (applyOutcome).
+    for (const target of killTargets) {
+      try {
+        await this.deps.stateStore.markUserStopped(target.jobId);
+        await this.deps.stateStore.acquireLock(`ant:job-poisoned:${target.jobId}`, 600).catch(() => false);
+        await this.deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, {
+          jobId: target.jobId,
+          projectId: target.projectId,
+          featureName: UNIVERSAL_FEATURE,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        logger.warn(`[Pipeline] failed to stop step job ${target.jobId}`, { component: COMPONENT }, e);
+      }
+    }
     // Disarm any gates and clarify funnel keys the cancel just swept.
     for (const s of result.run.steps) {
       if (s.gate && !s.gate.decision) {
@@ -1110,33 +1143,17 @@ export class PipelineRunCoordinator {
   }
 
   /**
-   * Deactivation side effects owned by the coordinator: cancel the live run
-   * (gates disarmed inside cancelRun) and KILL any step job still running —
-   * mirrors the `/jobs/:jobId/stop` legs (mark-user-stopped + poison + STOP
-   * pub/sub; the seal arrives via the normal worker-exit path and no-ops
-   * against the already-terminal run). The activation file/keys/cron are the
-   * ROUTE's responsibility — this method never touches activation state.
+   * Deactivation side effect owned by the coordinator: cancel the live run.
+   * The kill legs live in cancelRun — ONE cancel authority, so the FE stop
+   * button and the run-cancel route stop the running job exactly like
+   * deactivation does. The activation file/keys/cron are the ROUTE's
+   * responsibility — this method never touches activation state.
    */
   async deactivate(owner: PipelineOwner, projectId: string): Promise<void> {
     const runId = await this.getActiveRunId(owner, projectId);
     if (!runId) return;
     const run = await this.getRun(runId);
     if (run && !this.isTerminal(run.status)) {
-      for (const step of run.steps) {
-        if (step.status !== 'running' || !step.jobId) continue;
-        try {
-          await this.deps.stateStore.markUserStopped(step.jobId);
-          await this.deps.stateStore.acquireLock(`ant:job-poisoned:${step.jobId}`, 600).catch(() => false);
-          await this.deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, {
-            jobId: step.jobId,
-            projectId: run.projectId,
-            featureName: UNIVERSAL_FEATURE,
-            timestamp: new Date().toISOString(),
-          });
-        } catch (e) {
-          logger.warn(`[Pipeline] failed to stop step job ${step.jobId}`, { component: COMPONENT }, e);
-        }
-      }
       await this.cancelRun(owner, runId);
     }
   }
