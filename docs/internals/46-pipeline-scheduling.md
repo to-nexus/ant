@@ -98,8 +98,15 @@ minimum-interval cap.
 `remindAfter`, `overlap: cancelPrevious`, `{{steps.<id>.verdict}}` templates
 each get a "not supported yet" message) — an author must never conclude a
 silently ignored knob works. Directive templating is a whitelist substitution
-(`{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`, `{{run.id}}`, plus the
-step-output grammar below), never a template engine.
+(`{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`, `{{run.id}}`,
+`{{run.prevSuccess.fireDate|fireEpoch}}` — the previous completed run's
+epoch, frozen onto the RunRecord at fire, empty on the first run — plus the
+step-output grammar below), never a template engine. **Context pins render
+the STATIC vars too**, before glob expansion/existence checks
+(`renderStaticVars` in the coordinator) — `reports/{{trigger.fireDate}}/**`
+gives a business-key-partitioned manifest run-scoped pin isolation;
+`{{steps.*}}` stays directive-only (a pin expands once at dispatch and cannot
+carry another step's output — the validator refuses it).
 
 **Step-output substitution** (`{{steps.<id>.answer}}` /
 `{{steps.<id>.artifacts}}`): on step completion the coordinator captures

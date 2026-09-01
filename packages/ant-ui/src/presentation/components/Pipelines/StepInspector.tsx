@@ -175,6 +175,8 @@ const TEMPLATE_VAR_META: Record<string, { labelKey: string; labelDefault: string
   'trigger.fireDate': { labelKey: 'step.templateVar.fireDate', labelDefault: 'Fire time (ISO)' },
   'trigger.fireEpoch': { labelKey: 'step.templateVar.fireEpoch', labelDefault: 'Fire time (epoch ms)' },
   'run.id': { labelKey: 'step.templateVar.runId', labelDefault: 'Run id' },
+  'run.prevSuccess.fireDate': { labelKey: 'step.templateVar.prevSuccessFireDate', labelDefault: 'Previous successful run (ISO) — empty on the first run' },
+  'run.prevSuccess.fireEpoch': { labelKey: 'step.templateVar.prevSuccessFireEpoch', labelDefault: 'Previous successful run (epoch ms) — empty on the first run' },
 };
 
 const varChipStyle: React.CSSProperties = {

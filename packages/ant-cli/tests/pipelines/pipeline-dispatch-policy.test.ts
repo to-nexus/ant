@@ -254,6 +254,14 @@ describe('step output capture ({{steps.*}} source)', () => {
     expect(coordinator).toMatch(/steps\\\.\(\[a-z0-9-\]\+\)\\\.artifacts/);
     expect(coordinator).toMatch(/unresolvedTemplates/);
   });
+
+  it('context pins render static vars before the turn-meta gate; watermark frozen at fire', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/renderStaticVars\(pin, run\)/);
+    expect(coordinator).toMatch(/prevSuccessFireEpoch/);
+    // Frozen once at fire from the run index — never re-read per step.
+    expect(coordinator.match(/readRunIndex\(/g)?.length ?? 0).toBe(1);
+  });
 });
 
 describe('pipeline run-log graft (read-only)', () => {

@@ -53,7 +53,10 @@ steps:
   out this intent" statement — omit it when the pinned intent's definition
   already is the specification.
 - Template variables: `{{trigger.fireDate}}` (ISO time of the fire),
-  `{{trigger.fireEpoch}}`, `{{run.id}}`, plus step-output references —
+  `{{trigger.fireEpoch}}`, `{{run.id}}`, `{{run.prevSuccess.fireDate}}` /
+  `{{run.prevSuccess.fireEpoch}}` (the previous COMPLETED run of this
+  activation — empty on the first run; the natural "process everything since
+  the last successful run" watermark), plus step-output references —
   `{{steps.<stepId>.answer}}` (the referenced step's final answer text) and
   `{{steps.<stepId>.artifacts}}` (newline-joined paths its intent's stop-hook
   globs matched at completion). A step-output reference must name an upstream
@@ -71,6 +74,11 @@ steps:
   that step's output contract. A glob may not target `sessions/`. Concrete
   paths are existence-checked at dispatch, and a glob matching nothing fails
   the step.
+- Pins accept the STATIC template variables (`{{trigger.*}}` / `{{run.*}}`,
+  substituted before expansion) — `reports/{{trigger.fireDate}}/**` pins
+  exactly this run's partition, which is how a business-key-partitioned
+  manifest gets run-scoped isolation. `{{steps.*}}` is directive-only and
+  rejected in pins.
 
 ## Approval gates
 

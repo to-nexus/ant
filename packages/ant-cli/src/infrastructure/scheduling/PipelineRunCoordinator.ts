@@ -71,6 +71,7 @@ import {
   loadAvailability,
   loadPipeline,
   readRunEvents,
+  readRunIndex,
 } from '../../core/pipelines/store';
 import {
   resolveUniversalExecuteContext,
@@ -295,6 +296,17 @@ export class PipelineRunCoordinator {
       return;
     }
 
+    // Cross-run watermark, frozen at fire so every step of this run sees the
+    // same value ({{run.prevSuccess.*}}): the newest COMPLETED run of this
+    // pipeline on this activation.
+    let prevSuccessFireEpoch: number | undefined;
+    try {
+      prevSuccessFireEpoch = readRunIndex(deriveActivationsRoot(this.tenantCtx(owner)), projectId, 50, pipelineId)
+        .find((e) => e.status === 'completed')?.fireEpoch;
+    } catch {
+      prevSuccessFireEpoch = undefined;
+    }
+
     const run: RunRecord = {
       runId,
       pipelineId,
@@ -306,6 +318,7 @@ export class PipelineRunCoordinator {
       startedAt: new Date().toISOString(),
       defSnapshot: def,
       activationSnapshot: activation,
+      ...(prevSuccessFireEpoch !== undefined && { prevSuccessFireEpoch }),
     };
 
     await this.appendEvent(owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
@@ -338,12 +351,21 @@ export class PipelineRunCoordinator {
     }
   }
 
-  private renderDirective(template: string, run: RunRecord): string {
-    const outputOf = (stepId: string) => run.steps.find((s) => s.stepId === stepId)?.output;
+  /** Static whitelist substitution — shared by directives and context pins. */
+  private renderStaticVars(template: string, run: RunRecord): string {
+    const prev = run.prevSuccessFireEpoch;
     return template
       .replace(/\{\{\s*trigger\.fireDate\s*\}\}/g, new Date(run.fireEpoch).toISOString())
       .replace(/\{\{\s*trigger\.fireEpoch\s*\}\}/g, String(run.fireEpoch))
       .replace(/\{\{\s*run\.id\s*\}\}/g, run.runId)
+      // Cross-run watermark — the first run renders empty.
+      .replace(/\{\{\s*run\.prevSuccess\.fireDate\s*\}\}/g, prev !== undefined ? new Date(prev).toISOString() : '')
+      .replace(/\{\{\s*run\.prevSuccess\.fireEpoch\s*\}\}/g, prev !== undefined ? String(prev) : '');
+  }
+
+  private renderDirective(template: string, run: RunRecord): string {
+    const outputOf = (stepId: string) => run.steps.find((s) => s.stepId === stepId)?.output;
+    return this.renderStaticVars(template, run)
       // Step-output substitution — validated at save time against the needs
       // closure, so the referenced step is terminal here; a skipped/no-output
       // upstream renders empty (recorded as unresolved on the dispatch event).
@@ -386,11 +408,15 @@ export class PipelineRunCoordinator {
     // Definition + turn-meta accept gates (same owners as the HTTP route).
     const resolved = await resolveUniversalExecuteContext(this.deps.workspaceResolver, owner, run.projectId, step.customJobRef);
     if (!resolved.ok) return void (await fail(`${resolved.code}: ${resolved.error}`));
+    // Pins render their STATIC template vars before expansion/existence
+    // checks — `reports/{{trigger.fireDate}}/**` addresses exactly this run's
+    // partition (run-scoped pin isolation; steps.* refs are validator-refused).
+    const renderedContext = (step.context ?? []).map((pin) => this.renderStaticVars(pin, run));
     const meta = await validateUniversalTurnMeta(
       resolved.containerPath,
       resolved.intentIds,
       step.intent ? [step.intent] : [],
-      step.context ?? [],
+      renderedContext,
       undefined,
       resolved.builtinTools,
       resolved.scopeRoots,

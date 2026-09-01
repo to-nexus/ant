@@ -95,6 +95,13 @@ describe('validatePipelineDef — structural rules', () => {
     ['context glob pin', baseDef({
       steps: [{ id: 'collect', customJobRef: 'research/collect', directive: 'x', context: ['reports/**', 'plan/spec.md'] }],
     })],
+    // Static template vars — directives and pins; prevSuccess watermark pair.
+    ['prevSuccess watermark vars in a directive', baseDef({
+      steps: [{ id: 'a', customJobRef: 'x/a', directive: 'Since {{run.prevSuccess.fireDate}} ({{run.prevSuccess.fireEpoch}})' }],
+    })],
+    ['static template vars in a context pin', baseDef({
+      steps: [{ id: 'a', customJobRef: 'x/a', directive: 'x', context: ['reports/{{trigger.fireDate}}/**', 'state/{{run.prevSuccess.fireEpoch}}.json'] }],
+    })],
     // {{steps.*}} output refs against the (implicit + explicit) needs closure.
     ['steps.*.answer of the implicit previous step', baseDef({
       steps: [
@@ -151,6 +158,11 @@ describe('validatePipelineDef — structural rules', () => {
       { id: 'c', customJobRef: 'x/c', directive: '{{steps.b.answer}}', needs: ['a'] },
     ] }), /must reference an upstream dependency/],
     ['unknown template var', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{fireDate}}' }] }), /unknown template variable/],
+    ['steps.* ref in a context pin', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'b', customJobRef: 'x/b', directive: 'b', context: ['{{steps.a.artifacts}}'] },
+    ] }), /step-output references are not allowed in context pins/],
+    ['unknown template var in a context pin', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', context: ['reports/{{today}}/**'] }] }), /unknown template variable .* in context pin/],
     ['malformed customJobRef', baseDef({ steps: [{ id: 'a', customJobRef: 'not-a-ref', directive: 'a' }] }), /customJobRef/],
     ['duplicate step ids', baseDef({ steps: [
       { id: 'a', customJobRef: 'x/a', directive: 'a' },

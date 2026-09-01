@@ -255,7 +255,15 @@ export interface ActivePipelineInfo {
  * terminal at render time by construction); `steps.<id>.verdict` stays a
  * reserved axis the validator rejects explicitly.
  */
-export const PIPELINE_TEMPLATE_VARS = ['trigger.fireDate', 'trigger.fireEpoch', 'run.id'] as const;
+export const PIPELINE_TEMPLATE_VARS = [
+  'trigger.fireDate',
+  'trigger.fireEpoch',
+  'run.id',
+  // Cross-run watermark: the previous COMPLETED run of this activation at
+  // fire time (frozen onto the RunRecord). First run renders empty.
+  'run.prevSuccess.fireDate',
+  'run.prevSuccess.fireEpoch',
+] as const;
 export type PipelineTemplateVar = (typeof PIPELINE_TEMPLATE_VARS)[number];
 
 /** `{{steps.<id>.<field>}}` fields the dispatcher substitutes. */
@@ -417,6 +425,8 @@ export interface RunRecord {
   defSnapshot?: PipelineDef;
   /** Frozen activation at fire time — `projectId` above is sourced from it. */
   activationSnapshot?: PipelineActivation;
+  /** Previous COMPLETED run's fireEpoch, frozen at fire — `{{run.prevSuccess.*}}`. */
+  prevSuccessFireEpoch?: number;
 }
 
 /** One line per TERMINAL run in `runs/index.jsonl`; also the runs-list API row. */
@@ -601,6 +611,27 @@ function templateVarErrors(directive: string, stepId: string, stepRefs?: StepOut
     } else {
       errors.push(`step "${stepId}": unknown template variable "{{${name}}}" (allowed: ${PIPELINE_TEMPLATE_VARS.map((v) => `{{${v}}}`).join(', ')})`);
     }
+  }
+  return errors;
+}
+
+/**
+ * Context-pin template check: pins accept the STATIC whitelist only
+ * ({{trigger.*}} / {{run.*}}). Step-output refs are directive-only — a pin is
+ * expanded once at dispatch, so it cannot carry another step's output.
+ */
+function pinTemplateErrors(pin: string, stepId: string): string[] {
+  const errors: string[] = [];
+  const re = /\{\{\s*([^}]*?)\s*\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(pin)) !== null) {
+    const name = m[1];
+    if ((PIPELINE_TEMPLATE_VARS as readonly string[]).includes(name)) continue;
+    errors.push(
+      name.startsWith('steps.')
+        ? `step "${stepId}": context pin "{{${name}}}" — step-output references are not allowed in context pins (pin the upstream intent's hooks.stop glob instead)`
+        : `step "${stepId}": unknown template variable "{{${name}}}" in context pin (allowed: ${PIPELINE_TEMPLATE_VARS.map((v) => `{{${v}}}`).join(', ')})`,
+    );
   }
   return errors;
 }
@@ -794,8 +825,12 @@ export function validatePipelineDef(
         } else {
           // Glob pins share the hooks.stop artifact vocabulary; concrete
           // paths stay loose here and are judged at dispatch, as before.
+          // Templates render before expansion (static whitelist only), so the
+          // structural glob check runs on a placeholder-substituted copy.
           for (const pin of rawStep.context as string[]) {
-            const v = pin.trim();
+            const raw = pin.trim();
+            errors.push(...pinTemplateErrors(raw, stepId));
+            const v = raw.replace(/\{\{\s*[^}]*?\s*\}\}/g, 'x');
             if (!v.includes('*')) continue;
             const globErr = validateArtifactGlob(v, `step "${stepId}": context`);
             if (globErr) {
