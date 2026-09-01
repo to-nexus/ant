@@ -19,6 +19,26 @@ export type AnthropicImageMime =
   | 'image/webp'
   | 'image/gif';
 
+/** Per-turn caps for base64 image attachment (count, per-image, total). */
+export interface ImageAttachBudgets {
+  maxImages: number;
+  maxBytesPerImage: number;
+  maxTotalBytes: number;
+}
+
+/**
+ * One owner for the image-attach budgets (env-tunable). Shared by the code
+ * job's vision builder and the universal @ctx image band, so the two planes
+ * cannot drift to different caps.
+ */
+export function resolveImageAttachBudgets(): ImageAttachBudgets {
+  return {
+    maxImages: parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10),
+    maxBytesPerImage: parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10),
+    maxTotalBytes: parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10),
+  };
+}
+
 export function detectImageMimeFromBuffer(buf: Buffer): AnthropicImageMime | null {
   if (!buf || buf.length < 4) return null;
 

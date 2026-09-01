@@ -216,7 +216,9 @@ An intent's stop globs are its output contract: pipeline authoring pins
 exactly these globs as a downstream step's context, so keep them stable and
 specific. The plane's file tools are text-only — `read_file` refuses binary
 and `create_file` cannot author it — so an artifact another intent or step
-will consume must be a text format.
+will consume must be a text format. The one non-text input is a supported
+image (PNG / JPEG / WebP / GIF): attached as context, it reaches the model
+as a visual input rather than through `read_file`.
 
 A hook is for observable completion. When an intent's "done" is evidence the
 runtime can see — a produced file, a successful call — declare it here rather

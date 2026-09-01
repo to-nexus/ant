@@ -995,15 +995,36 @@ principle in `base/system.md` step 2, operating rules in
 partition"), contract facts in `on-demand/definition-format.md`'s hooks
 section.
 
-The same verdict now guards ingress: the artifacts upload route runs the
-read-path classifier (`isBinaryPath` fast-path + `sniffBufferKind` head
-sniff, one SSOT in `core/utils/binaryExtensions.ts`) and refuses per-file
-what no tool could read — `binary` and `invalid-utf8` (a CP949/EUC-KR CSV
-export) get distinct remediation messages, a folder upload sheds only its
-unreadable members (200 + `rejected[]`, 415 `UNREADABLE_FILES` when nothing
-was admissible), and nothing is skipped silently. Admitted ≡ readable is the
-invariant; guard: `tests/http/universal-artifact-mutations.test.ts` (upload
-readability gate).
+The same verdict now guards ingress, and the rule is **admitted ≡
+consumable, bytes decide**. A universal file has exactly two consumption
+channels: UTF-8 text → `read_file`/`search_files` (classifier:
+`isBinaryPath` fast-path + `sniffBufferKind` head sniff, one SSOT in
+`core/utils/binaryExtensions.ts`) and supported images → vision (classifier:
+`detectImageMimeFromBuffer` magic bytes in `core/utils/imageMime.ts` — the
+same SSOT the code job's vision builder uses; extensions are never trusted,
+per sage-orbiting-grain). The upload route admits a file iff one channel
+takes it: `binary` with no image signature and `invalid-utf8` (a CP949/EUC-KR
+CSV export) get distinct remediation messages, a folder upload sheds only
+its unconsumable members (200 + `rejected[]`, 415 `UNREADABLE_FILES` when
+nothing was admissible), and nothing is skipped silently.
+
+The vision channel itself is wired end-to-end for universal: an `@ctx` pin
+whose bytes are a supported image becomes a base64 block on the current user
+message. `buildAttachedContext` (`nodes/attachedContext.ts`) computes the
+prompt line and the block in ONE pass so they cannot disagree (a line
+claiming the model can see an unattached image is the near-loading-brace
+shape); budgets are shared with the code job via `resolveImageAttachBudgets`
+(one owner for the `ANT_UI_IMAGE_*` envs); blocks merge into the OUTBOUND
+copy only, after token estimation (`attachImageBlocksToLastUserMessage` in
+`nodes/agent.ts`) — base64 never enters `session:main`, never inflates the
+estimate, and degrades to an honest "cannot view images" line on non-vision
+providers. Known deferral: MCP tool results that carry images
+(`McpConnectionManager` extracts them) are still dropped by the universal
+registry wrapper — plumbing them through means base64 in persisted tool
+results, which the session write budget must first be taught to shed.
+Guards: `tests/http/universal-artifact-mutations.test.ts` (upload gate),
+`tests/customAgents/universal-prompt-injection.test.ts` (line ↔ block
+coherence, outbound-only merge).
 
 ## Streaming & turn identity (A14/A15)
 

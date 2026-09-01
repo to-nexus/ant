@@ -56,7 +56,8 @@ import { getUniversalMcp, getOrCreateUniversalTurnStreaming } from '../runtime';
 import { compactRun } from '../../../../core/context';
 import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
 import { getModelContextWindowOrDefault } from '@ant/shared';
-import { buildAttachedContextSection } from './attachedContext';
+import { buildAttachedContext } from './attachedContext';
+import type { ImageContentBlock } from '../../../../core/ports/llm';
 
 const DEBUG = process.env.UNIVERSAL_DEBUG === 'true';
 
@@ -66,7 +67,11 @@ const HISTORY_BUDGET_FLOOR = 75_000;
 /** Conservative Phase-1 compaction trigger (85% of the history budget). */
 const COMPACT_TRIGGER_RATIO = 0.85;
 
-async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedCustomJob): Promise<string> {
+async function buildSystemPrompt(
+  state: UniversalGraphState,
+  resolved: ResolvedCustomJob,
+  attachedSection: string | null,
+): Promise<string> {
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Universal:Agent] PromptBuilder not available');
 
@@ -108,20 +113,32 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
   });
 
   const sections = [result.system, result.user];
-
-  // `@ctx:` mentions — no eager content load (universal has no RAC/pool);
-  // directories get a list_files-first instruction, large files an inline
-  // outline so read_file's range-refusal has a real target.
-  const attachedSection = state.featurePath
-    ? buildAttachedContextSection(
-        state.featurePath,
-        state.turnContext?.context ?? [],
-        getActiveCustomAgentScopeRoots(),
-      )
-    : null;
   if (attachedSection) sections.push(attachedSection);
 
   return sections.filter(Boolean).join('\n\n---\n\n');
+}
+
+/**
+ * Merge vision blocks into the CURRENT user message, after token estimation
+ * (base64 must not inflate the estimate) and without touching the persisted
+ * history object — the last message is replaced by a new block-content copy,
+ * so session:main stays text-only.
+ */
+export function attachImageBlocksToLastUserMessage(
+  messages: ConversationMessage[],
+  imageBlocks: readonly ImageContentBlock[],
+): ConversationMessage[] {
+  if (imageBlocks.length === 0 || messages.length === 0) return messages;
+  const last = messages[messages.length - 1];
+  if (last.role !== 'user') return messages;
+  const existing =
+    typeof last.content === 'string'
+      ? [{ type: 'text' as const, text: last.content || '(see attached images)' }]
+      : last.content;
+  return [
+    ...messages.slice(0, -1),
+    { ...last, content: [...existing, ...imageBlocks] },
+  ];
 }
 
 /**
@@ -203,7 +220,15 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
   if (!llm) throw new Error('LLM is required for universal agent node');
 
   const resolved = requireActiveCustomJob();
-  const systemPrompt = await buildSystemPrompt(state, resolved);
+  // `@ctx:` mentions — text pins stay pointer-only (universal has no
+  // RAC/pool); image pins become vision blocks on the current user message.
+  // Section text and blocks come from ONE pass so they cannot disagree.
+  const attached = state.featurePath
+    ? buildAttachedContext(state.featurePath, state.turnContext?.context ?? [], getActiveCustomAgentScopeRoots(), {
+        enabled: llm.provider === 'anthropic',
+      })
+    : { section: null, imageBlocks: [] as ImageContentBlock[] };
+  const systemPrompt = await buildSystemPrompt(state, resolved, attached.section);
   const includeClarify =
     isClarifyEnabled(resolved, state.turnContext?.intents ?? ['general']) &&
     (state.clarifyRoundsUsed ?? 0) < UNIVERSAL_CLARIFY_BUDGET;
@@ -248,6 +273,10 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
 
   const isFirstCall = baseHistory.filter((m) => m.role === 'assistant').length === 0;
 
+  // Vision blocks merge AFTER estimation (base64 would inflate the estimate)
+  // and only into the outbound copy — session:main history stays text.
+  const llmMessages = attachImageBlocksToLastUserMessage(messages, attached.imageBlocks);
+
   try {
     try {
       applyEstimatedInputTokensFromMessages(state as any, [
@@ -255,7 +284,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
         { role: 'system', content: systemPrompt },
       ]);
 
-      for await (const event of llm.stream(messages, {
+      for await (const event of llm.stream(llmMessages, {
         system: systemPrompt,
         tools: toolDefinitions,
         maxTokens: LLM_MAX_TOKENS.DEFAULT,
@@ -312,7 +341,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
     } catch (error) {
       console.warn('[Universal:Agent] Streaming failed, falling back to invoke:', error);
       if (llm.invokeWithUsage) {
-        const result = await llm.invokeWithUsage(messages, {
+        const result = await llm.invokeWithUsage(llmMessages, {
           system: systemPrompt,
           enableThinking: false,
           temperature: LLM_TEMPERATURE.CONVERSATIONAL,
@@ -324,7 +353,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
           });
         }
       } else {
-        responseText = await llm.invoke(messages, {
+        responseText = await llm.invoke(llmMessages, {
           system: systemPrompt,
           enableThinking: false,
           temperature: LLM_TEMPERATURE.CONVERSATIONAL,

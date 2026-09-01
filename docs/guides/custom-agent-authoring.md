@@ -428,14 +428,19 @@ is (**form**), and how the runtime knows it happened (**evidence**):
 
 Patterns that keep unattended pipelines from failing on normal days:
 
-- **Consumer-first form.** An artifact another intent or pipeline step
-  consumes must be text (`read_file` refuses binary) — Markdown, JSON, CSV. A
-  binary format a person needs (a spreadsheet, a document) is a terminal
+- **Consumer-first form.** A file is consumable through exactly two
+  channels, and the bytes decide (extensions never): UTF-8 text →
+  `read_file`/`search_files` (Markdown, JSON, CSV), and supported images
+  (PNG / JPEG / WebP / GIF by magic bytes) → vision, attached to the model
+  as a visual input when pinned with `@ctx`. An artifact another intent
+  produces for the next one stays text — agents cannot author binary — and
+  a binary format a person needs (a spreadsheet, a document) is a terminal
   conversion step at the end of the chain, held to an `action:` hook. The
-  workspace upload enforces the same verdict at ingress: a binary file
-  (xlsx, pdf, …) or a non-UTF-8 text file (a legacy-encoded CSV export) is
-  rejected per-file with the fix named — convert to a text format, or
-  re-save as UTF-8 — and a folder upload sheds only its unreadable members.
+  workspace upload enforces the same verdict at ingress: a file with
+  neither channel (xlsx, pdf, …) or a non-UTF-8 text file (a legacy-encoded
+  CSV export) is rejected per-file with the fix named — convert to a text
+  format, or re-save as UTF-8 — and a folder upload sheds only its
+  unconsumable members.
 - **Run manifest.** Have a producing intent write a small manifest file at a
   stable path on every run — what it produced, ids, counts, an empty list when
   there was nothing to do. Pin the manifest downstream: an empty day stays a

@@ -36,7 +36,7 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getExecutionLogger } from "../../../../../../core/utils/executionLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
-import { detectImageMimeFromBuffer, type AnthropicImageMime } from "../../../../../../core/utils/imageMime";
+import { detectImageMimeFromBuffer, resolveImageAttachBudgets, type AnthropicImageMime } from "../../../../../../core/utils/imageMime";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { selectArtifacts, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getTechTier, getRACDocuments, getModelContextWindow, getEffectiveDomain, type ResolvedArtifact } from "@ant/shared";
@@ -716,9 +716,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
         const fileSystem = state.deps.fileSystem;
 
-        const maxImages = parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10);
-        const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10);
-        const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10);
+        const { maxImages, maxBytesPerImage, maxTotalBytes } = resolveImageAttachBudgets();
 
         // Handoff first (it carries the design-source contract), then attached
         // images the handoff walk did not already yield. One budget for both.

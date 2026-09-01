@@ -350,4 +350,30 @@ describe('universal artifact upload — readability gate', () => {
     await expect(fs.access(path.join(artifactsRoot, 'inbox/good.csv'))).resolves.toBeUndefined();
     await expect(fs.access(path.join(artifactsRoot, 'inbox/sheet.xlsx'))).rejects.toThrow();
   });
+
+  // ── vision channel: images are consumable, so they are admitted ────────────
+
+  const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
+
+  it('a PNG (magic bytes) is admitted — the vision channel consumes it', async () => {
+    const res = await uploadFiles([{ name: 'screen.png', bytes: PNG_HEAD }]);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.uploadedFiles).toEqual(['inbox/screen.png']);
+    expect(body.rejected).toBeUndefined();
+  });
+
+  it('bytes decide, not the extension: PNG bytes under a .csv name are admitted', async () => {
+    const res = await uploadFiles([{ name: 'mislabeled.csv', bytes: PNG_HEAD }]);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.uploadedFiles).toEqual(['inbox/mislabeled.csv']);
+  });
+
+  it('text bytes under a .png name are refused — no channel consumes them (read_file stubs .png, vision sees no image)', async () => {
+    const res = await uploadFiles([{ name: 'fake.png', bytes: 'just,text\n' }]);
+    expect(res.status).toBe(415);
+    const body = await res.json();
+    expect(body.rejected[0].reason).toContain('Images are accepted');
+  });
 });

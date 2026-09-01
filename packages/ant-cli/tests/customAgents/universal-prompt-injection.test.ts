@@ -17,7 +17,8 @@ import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromp
 import { TEMPLATE_PATHS } from '../../src/core/prompt/builder/templatePaths';
 import { buildCustomJobSystemBlock, INTENT_PROMPT_INLINE_CAP, ON_DEMAND_INDEX_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
 import type { ResolvedCustomJob } from '../../src/core/customAgents/types';
-import { buildAttachedContextSection, classifyAttachedEntry } from '../../src/agents/universal/graph/nodes/attachedContext';
+import { buildAttachedContext, buildAttachedContextSection, classifyAttachedEntry } from '../../src/agents/universal/graph/nodes/attachedContext';
+import { attachImageBlocksToLastUserMessage } from '../../src/agents/universal/graph/nodes/agent';
 import {
   READ_FILE_FULL_READ_LIMIT,
   READ_FILE_RANGE_MAX_BYTES,
@@ -488,5 +489,107 @@ describe('buildAttachedContextSection — gate + peer labelling', () => {
   it('a peer path that no longer resolves degrades, never throws', () => {
     const section = buildAttachedContextSection(container, ['_agents/ghost-agent/agent.yaml'], roots())!;
     expect(section).toContain('no longer exists');
+  });
+});
+
+// ── @ctx image pins — the vision channel ─────────────────────────────────────
+//
+// The section line and the vision block are computed in ONE pass, so the
+// prose about an image always matches what is actually sent (a line claiming
+// the model can see an unattached image is the near-loading-brace shape).
+
+describe('classifyAttachedEntry — image kind (bytes decide)', () => {
+  it('a file whose bytes are a supported image classifies image regardless of size branch', () => {
+    expect(
+      classifyAttachedEntry({ exists: true, isDirectory: false, sizeBytes: 10, imageMime: 'image/png' }),
+    ).toBe('image');
+    expect(
+      classifyAttachedEntry({
+        exists: true,
+        isDirectory: false,
+        sizeBytes: READ_FILE_RANGE_MAX_BYTES + 1,
+        imageMime: 'image/jpeg',
+      }),
+    ).toBe('image');
+  });
+});
+
+describe('buildAttachedContext — image line ↔ vision block coherence', () => {
+  const PNG = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(64, 1),
+  ]);
+  let container: string;
+
+  beforeEach(() => {
+    container = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-vision-'));
+    fs.mkdirSync(path.join(container, 'artifacts'), { recursive: true });
+    fs.writeFileSync(path.join(container, 'artifacts', 'shot.png'), PNG);
+  });
+  afterEach(() => fs.rmSync(container, { recursive: true, force: true }));
+
+  it('vision enabled: the block is attached AND the line says so', () => {
+    const { section, imageBlocks } = buildAttachedContext(container, ['shot.png'], [], { enabled: true });
+    expect(imageBlocks).toHaveLength(1);
+    expect(imageBlocks[0]).toMatchObject({ type: 'image', source: { type: 'base64', media_type: 'image/png' } });
+    expect(section).toContain('attached to this message');
+  });
+
+  it('vision disabled (non-vision provider): zero blocks AND the line degrades honestly', () => {
+    const { section, imageBlocks } = buildAttachedContext(container, ['shot.png'], [], { enabled: false });
+    expect(imageBlocks).toHaveLength(0);
+    expect(section).toContain('cannot view images');
+    expect(section).not.toContain('attached to this message');
+  });
+
+  it('over the per-image budget: zero blocks AND the line says too large', () => {
+    const { section, imageBlocks } = buildAttachedContext(container, ['shot.png'], [], {
+      enabled: true,
+      budgets: { maxImages: 4, maxBytesPerImage: 8, maxTotalBytes: 1024 },
+    });
+    expect(imageBlocks).toHaveLength(0);
+    expect(section).toContain('too large to attach');
+  });
+
+  it('count budget spent: later images are named as not attached', () => {
+    fs.writeFileSync(path.join(container, 'artifacts', 'shot2.png'), PNG);
+    const { section, imageBlocks } = buildAttachedContext(container, ['shot.png', 'shot2.png'], [], {
+      enabled: true,
+      budgets: { maxImages: 1, maxBytesPerImage: 1024, maxTotalBytes: 4096 },
+    });
+    expect(imageBlocks).toHaveLength(1);
+    expect(section).toContain('budget for this turn is already spent');
+  });
+
+  it('text-only wrapper stays vision-off (zero blocks, degraded line)', () => {
+    const section = buildAttachedContextSection(container, ['shot.png'], []);
+    expect(section).toContain('cannot view images');
+  });
+});
+
+describe('attachImageBlocksToLastUserMessage — outbound-only merge', () => {
+  const block = {
+    type: 'image' as const,
+    source: { type: 'base64' as const, media_type: 'image/png' as const, data: 'AA==' },
+  };
+
+  it('merges into the last user message without mutating the input array or message', () => {
+    const original = [{ role: 'user' as const, content: 'look at this' }];
+    const out = attachImageBlocksToLastUserMessage(original, [block]);
+    expect(out).not.toBe(original);
+    expect(original[0].content).toBe('look at this');
+    expect(Array.isArray(out[0].content)).toBe(true);
+    expect((out[0].content as any[])[0]).toEqual({ type: 'text', text: 'look at this' });
+    expect((out[0].content as any[])[1]).toBe(block);
+  });
+
+  it('no blocks → the exact same array back', () => {
+    const original = [{ role: 'user' as const, content: 'x' }];
+    expect(attachImageBlocksToLastUserMessage(original, [])).toBe(original);
+  });
+
+  it('last message not user → untouched (never violates role alternation)', () => {
+    const original = [{ role: 'assistant' as const, content: 'done' }];
+    expect(attachImageBlocksToLastUserMessage(original, [block])).toBe(original);
   });
 });

@@ -15,6 +15,7 @@ import * as yaml from 'js-yaml';
 import multer from 'multer';
 import { writeBufferVerifiedContained } from '../../../../core/utils/binaryIntegrity';
 import { isBinaryPath, sniffBufferKind, SNIFF_BYTES } from '../../../../core/utils/binaryExtensions';
+import { detectImageMimeFromBuffer } from '../../../../core/utils/imageMime';
 import { toNfc } from '../../../../core/utils/unicodePath';
 import { boundedMultipart } from '../middleware/boundedMultipart';
 import { treeRateLimiter } from '../middleware/rateLimiter';
@@ -419,23 +420,28 @@ export function createCustomAgentRoutes(deps: {
         const uploadViolation = reservedRootViolation(effectiveRel);
         if (uploadViolation) return res.status(400).json(uploadViolation);
 
-        // Readability gate — the SAME verdict read_file gives (extension
-        // fast-path + head sniff), so what the store admits ≡ what the agent
-        // can read. A file no tool can open is refused loudly at ingress
+        // Consumability gate — a file is admitted iff the agent plane has a
+        // channel that consumes it, and the BYTES decide (extensions never):
+        //   text  (utf-8)                      → read_file / search_files
+        //   image (magic bytes png/jpeg/webp/gif, the vision SSOT) → vision
+        // Everything else has no channel and is refused loudly at ingress
         // instead of riding along as dead weight; a folder upload sheds only
-        // the unreadable members and names each one.
+        // the unconsumable members and names each one.
         const buf = files[i].buffer;
         const head = buf.subarray(0, SNIFF_BYTES);
-        const kind = isBinaryPath(effectiveRel) ? 'binary' : sniffBufferKind(head, buf.length > head.length);
-        if (kind !== 'text') {
-          rejected.push({
-            path: effectiveRel,
-            reason:
-              kind === 'binary'
-                ? 'binary file — agents cannot read it; convert to a text format (CSV / Markdown / JSON)'
-                : 'not valid UTF-8 text — re-save with UTF-8 encoding (e.g. Excel "CSV UTF-8")',
-          });
-          continue;
+        const isImage = detectImageMimeFromBuffer(head) !== null;
+        if (!isImage) {
+          const kind = isBinaryPath(effectiveRel) ? 'binary' : sniffBufferKind(head, buf.length > head.length);
+          if (kind !== 'text') {
+            rejected.push({
+              path: effectiveRel,
+              reason:
+                kind === 'binary'
+                  ? 'binary file — agents cannot read it; convert to a text format (CSV / Markdown / JSON). Images are accepted as PNG / JPEG / WebP / GIF.'
+                  : 'not valid UTF-8 text — re-save with UTF-8 encoding (e.g. Excel "CSV UTF-8")',
+            });
+            continue;
+          }
         }
 
         const filePath = resolveMergedPath(req, req.params.projectId, effectiveRel);
@@ -448,7 +454,7 @@ export function createCustomAgentRoutes(deps: {
       if (uploadedFiles.length === 0 && rejected.length > 0) {
         return res.status(415).json({
           code: 'UNREADABLE_FILES',
-          message: 'No file was uploaded: none is readable as UTF-8 text.',
+          message: 'No file was uploaded: none is consumable by the agent (UTF-8 text, or a PNG / JPEG / WebP / GIF image).',
           uploadedFiles,
           count: 0,
           rejected,
