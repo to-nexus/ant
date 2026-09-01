@@ -39,6 +39,7 @@ import { CLARIFY_TOOL_NAME, clarifyBlockFromArgs } from '../../../common/clarify
 import { getUniversalMcp, getUniversalRegistry, UNIVERSAL_RESULT_LIMITS } from '../runtime';
 import { projectHistoryTurns } from '../session/historyProjection';
 import { clarifyPauseNode } from './clarifyPause';
+import { approvalPauseNode } from './approvalPause';
 
 const WRITE_SIDE_EFFECTS = new Set(['fileCreated', 'fileModified']);
 
@@ -52,30 +53,58 @@ const PLAN_TURN_EXECUTION_ERROR = (name: string): string =>
 const universalResultManager = new ToolResultManager(new TokenBudgetManager(), UNIVERSAL_RESULT_LIMITS);
 
 /**
- * Approval rejection (fail-closed, both builtin and extension tools). The
- * error steers the model; the notice is the user-visible half — without it
- * the block surfaces only as narration, and an unattended run that needs the
- * call parks on its stop hooks with no visible cause. The deep link lands on
- * the job.yaml whose `tools.approval` is the one knob that unblocks it.
+ * Approval rejection — both builtin and extension tools. The error steers the
+ * model; the notice is the user-visible half — without it the block surfaces
+ * only as narration, and a run that needs the call parks on its stop hooks
+ * with no visible cause. The deep link lands on the job.yaml whose
+ * `tools.approval` is the one knob that unblocks it.
+ *
+ * Two flavors: interactive runs stay FAIL-CLOSED (the interactive approve
+ * flow does not exist yet); an UNATTENDED (pipeline) run CAN pause for a
+ * human — but only as the round's sole call, so the rejection instructs a
+ * re-issue alone (the clarify sole-call discipline).
  */
 function approvalRejection(
   toolName: string,
   resolved: { agentId: string; jobId: string },
+  unattended: boolean,
 ): { allowed: false; error: string; notice: import('../../../common/tool/orchestrator').GateRejectionNotice } {
   return {
     allowed: false,
-    error:
-      `"${toolName}" requires user approval and the interactive approval flow is not available yet (fail-closed). ` +
-      `Do NOT retry this call. Tell the user what you intended to do and ask them to either perform it themselves ` +
-      `or have the job author declare \`tools.approval["${toolName}"]: never\` in job.yaml if it is safe to run unattended.`,
+    error: unattended
+      ? `"${toolName}" requires human approval. Re-issue this call ALONE (the only tool call of its round) — the run will pause and a person will approve or reject it from the pipeline inbox.`
+      : `"${toolName}" requires user approval and the interactive approval flow is not available yet (fail-closed). ` +
+        `Do NOT retry this call. Tell the user what you intended to do and ask them to either perform it themselves ` +
+        `or have the job author declare \`tools.approval["${toolName}"]: never\` in job.yaml if it is safe to run unattended.`,
     notice: {
       content:
-        `Approval required: "${toolName}" was not executed (approval-gated calls are refused when no one can approve). ` +
-        `To let this job run it unattended, set tools.approval["${toolName}"]: never in job.yaml — or perform the action yourself.`,
+        `Approval required: "${toolName}" was not executed` +
+        (unattended
+          ? ' in this round (approval-gated calls pause the run only when issued alone).'
+          : ` (approval-gated calls are refused when no one can approve). ` +
+            `To let this job run it unattended, set tools.approval["${toolName}"]: never in job.yaml — or perform the action yourself.`),
       agentId: resolved.agentId,
       definitionPath: `jobs/${resolved.jobId}/job.yaml`,
     },
   };
+}
+
+/**
+ * Would this call pass every gate EXCEPT the approval one? The pause wrapper
+ * uses it: a call that is unknown/not allowlisted/plan-blocked must fall to
+ * the inner node's instructive rejection, never pause a human for it.
+ */
+function callNeedsApprovalOnly(state: UniversalGraphState, call: { name: string; args: Record<string, any> }): boolean {
+  const resolved = requireActiveCustomJob();
+  if (call.name === CLARIFY_TOOL_NAME) return false;
+  if (state.turnContext?.planTurn) return false; // plan turns reject execution/writes outright
+  if (isExtensionToolName(call.name)) {
+    const info = getUniversalMcp()?.getToolInfo(call.name);
+    if (!info) return false;
+    return requiresApproval(call.name, resolved.approval, { mcpReadOnlyHint: info.readOnlyHint });
+  }
+  if (!resolved.builtinTools.includes(call.name)) return false;
+  return requiresApproval(call.name, resolved.approval);
 }
 
 /** Tool rounds without a `<checklist>` re-emit before the nudge fires (and its re-fire period). */
@@ -140,7 +169,9 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
         return { allowed: false, error: PLAN_TURN_EXECUTION_ERROR(call.name) };
       }
       if (requiresApproval(call.name, resolved.approval, { mcpReadOnlyHint: info.readOnlyHint })) {
-        return approvalRejection(call.name, resolved);
+        // One-turn grant: the human just approved exactly this tool.
+        if (state._approvalGrantTool === call.name) return { allowed: true };
+        return approvalRejection(call.name, resolved, state._unattended === true);
       }
       return { allowed: true };
     }
@@ -163,7 +194,8 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
     }
 
     if (requiresApproval(call.name, resolved.approval)) {
-      return approvalRejection(call.name, resolved);
+      if (state._approvalGrantTool === call.name) return { allowed: true };
+      return approvalRejection(call.name, resolved, state._unattended === true);
     }
 
     return { allowed: true };
@@ -320,12 +352,22 @@ async function toolNodeFn(state: UniversalGraphState): Promise<Partial<Universal
     const paused = await clarifyPauseNode(state, pending[0]);
     if (paused) return paused;
   }
+  // Approval pause (unattended runs, sole-call rounds, no grant) — the tool
+  // approval HITL rail. Everything else falls to the inner gate rejection.
+  if (
+    pending.length === 1 &&
+    state._unattended === true &&
+    state._approvalGrantTool !== pending[0].name &&
+    callNeedsApprovalOnly(state, pending[0])
+  ) {
+    return approvalPauseNode(state, pending[0]);
+  }
   return innerToolNode(state);
 }
 
-/** Pure predicate: a clarify pause ends the turn; otherwise loop to agent. */
+/** Pure predicate: a clarify/approval pause ends the turn; otherwise loop to agent. */
 export function routeAfterTool(state: UniversalGraphState): 'agent' | 'respond' {
-  return state._clarifyPause ? 'respond' : 'agent';
+  return state._clarifyPause || state._approvalPause ? 'respond' : 'agent';
 }
 
 export { toolNodeFn as toolNode };

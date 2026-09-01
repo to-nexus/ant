@@ -176,6 +176,22 @@ export interface UniversalGraphState extends ResolvableState {
    * routes tool→respond and shapes the seal. Per-run only, never restored.
    */
   _clarifyPause?: { toolUseId: string; question: string };
+  /**
+   * Scheduler-owned (pipeline) run — an approval-gated tool call pauses the
+   * turn awaiting a human decision instead of the interactive fail-closed
+   * rejection. Per-run input (turn meta), never sealed.
+   */
+  _unattended?: boolean;
+  /**
+   * One-turn approval grant: the tool name a human just approved — the gate
+   * admits it this turn. Per-run input (approve re-dispatch), never sealed.
+   */
+  _approvalGrantTool?: string;
+  /**
+   * Set by approvalPauseNode when THIS run ends awaiting a human tool
+   * approval — routes tool→respond and shapes the seal. Per-run only.
+   */
+  _approvalPause?: { toolUseId: string; toolName: string; argsSummary: string };
 }
 
 export const UniversalAnnotation = Annotation.Root({
@@ -209,6 +225,9 @@ export const UniversalAnnotation = Annotation.Root({
   clarifyRoundsUsed: Annotation<number | undefined>,
   inheritedTurnContext: Annotation<InheritedTurnContext | undefined>,
   _clarifyPause: Annotation<{ toolUseId: string; question: string } | undefined>,
+  _unattended: Annotation<boolean | undefined>,
+  _approvalGrantTool: Annotation<string | undefined>,
+  _approvalPause: Annotation<{ toolUseId: string; toolName: string; argsSummary: string } | undefined>,
 } as const);
 
 export function createInitialUniversalState(params: {
@@ -235,6 +254,10 @@ export function createInitialUniversalState(params: {
   inheritedTurnContext?: InheritedTurnContext;
   /** Hook ledger restored from a paused seal (stop-hook / clarify continuity). */
   restoredHookLedger?: StopHookLedger;
+  /** Scheduler-owned run — approval-gated calls pause instead of fail-closed. */
+  unattended?: boolean;
+  /** One-turn approval grant (approve re-dispatch), by tool name. */
+  approvalGrantTool?: string;
 }): UniversalGraphState {
   return {
     featurePath: params.containerPath,
@@ -264,5 +287,7 @@ export function createInitialUniversalState(params: {
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,
     inheritedTurnContext: params.inheritedTurnContext,
+    _unattended: params.unattended,
+    _approvalGrantTool: params.approvalGrantTool,
   } as unknown as UniversalGraphState;
 }

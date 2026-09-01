@@ -53,6 +53,7 @@ import {
 import type { StateStorePort } from '../../core/ports/stateStore';
 import type {
   ScheduleQueuePort,
+  PipelineApprovalEnterJobData,
   PipelineClarifyEnterJobData,
   PipelineControlJobData,
   PipelineFireJobData,
@@ -143,6 +144,8 @@ export interface PipelineCoordinatorDeps {
 }
 
 interface HitlRecord {
+  /** Absent/'gate' = an approval STEP; 'tool' = a paused approval-gated tool call. */
+  kind?: 'gate' | 'tool';
   gateId: string;
   cardId: string;
   runId: string;
@@ -154,6 +157,10 @@ interface HitlRecord {
   timeoutAt?: string;
   anchorJobId: string;
   prompt: string;
+  /** kind:'tool' — the approval-gated tool name (the approve re-dispatch grant). */
+  tool?: string;
+  /** kind:'tool' — the paused job (stale-arm guard on resume). */
+  jobId?: string;
 }
 
 export class PipelineRunCoordinator {
@@ -193,6 +200,8 @@ export class PipelineRunCoordinator {
         return this.handleOutcomeRetry(data);
       case 'clarify-enter':
         return this.enterAwaitingClarify(data);
+      case 'approval-enter':
+        return this.enterAwaitingToolApproval(data);
       default:
         logger.warn(`[Pipeline] unknown control job kind: ${(data as any).kind}`, { component: COMPONENT });
     }
@@ -414,6 +423,7 @@ export class PipelineRunCoordinator {
     step: JobStepDef,
     retries: number,
     directiveOverride?: string,
+    approvalGrantTool?: string,
   ): Promise<void> {
     const pipelineId = run.pipelineId;
     // Standing failures (approval/membership/credits/definition/meta) never
@@ -522,7 +532,16 @@ export class PipelineRunCoordinator {
         overrideDirective: directive,
         customJobRef: step.customJobRef,
         declaresSelfApi: resolved.declaresSelfApi,
-        universalTurnMeta: meta.meta ?? undefined,
+        // Every pipeline dispatch is UNATTENDED: approval-gated tool calls
+        // pause for the inbox instead of the interactive fail-closed reject.
+        // The grant rides only the approve re-dispatch (one turn, one tool).
+        universalTurnMeta: {
+          intents: meta.meta?.intents ?? [],
+          context: meta.meta?.context ?? [],
+          ...(meta.meta?.plan && { plan: true }),
+          unattended: true,
+          ...(approvalGrantTool && { approvalGrantTool }),
+        },
         firedBy: 'schedule',
         pipelineRunId: run.runId,
         pipelineStepId: step.id,
@@ -770,10 +789,77 @@ export class PipelineRunCoordinator {
 
     const approved = decision === 'approved' || decision === 'expired_approve';
     const decidedAt = new Date().toISOString();
-    const applied = await this.applyOutcome(hitl.owner, hitl.runId, hitl.stepId, approved ? 'succeeded' : 'failed', undefined, (record) => ({
-      ...record,
-      gate: record.gate ? { ...record.gate, decision, decidedBy, decidedAt, via } : record.gate,
-    }));
+
+    // Tool-approval APPROVE resumes the step instead of sealing an outcome:
+    // the paused job re-dispatches with the decision as the dangling call's
+    // tool_result and a one-turn grant for the tool. REJECT falls through to
+    // the normal failed outcome below (`on: failure` consumes it).
+    if (hitl.kind === 'tool' && approved) {
+      let resumed = false;
+      const result = await this.mutateRun(hitl.owner, hitl.runId, async (live) => {
+        const step = live.steps.find((s) => s.stepId === hitl.stepId);
+        if (!step || this.isTerminal(live.status) || step.status !== 'awaiting_gate' || step.gate?.gateId !== gateId) {
+          return { run: live, dispatches: [] };
+        }
+        resumed = true;
+        const steps = live.steps.map((s): StepRecord =>
+          s.stepId === hitl.stepId
+            ? { ...s, status: 'dispatched', gate: s.gate ? { ...s.gate, decision, decidedBy, decidedAt, via } : s.gate }
+            : s,
+        );
+        const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
+        return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
+      });
+      if (!result || !resumed) return false;
+      await this.deps.scheduleQueue.cancelDelayed(`gre-${gateId}`);
+      await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gateId));
+      await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(cardId));
+      if (hitl.jobId) await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(hitl.jobId)).catch(() => {});
+      await this.appendEvent(hitl.owner, hitl.projectId, {
+        ts: decidedAt,
+        event: 'human_resolved',
+        runId: hitl.runId,
+        stepId: hitl.stepId,
+        gateId,
+        detail: { kind: 'tool', tool: hitl.tool, decision, decidedBy, via },
+      });
+      await this.publish(hitl.owner, {
+        cause: 'approvalResolved',
+        projectId: hitl.projectId,
+        pipelineId: hitl.pipelineId,
+        runId: hitl.runId,
+        gateId,
+        decision,
+        decidedBy,
+      });
+      await this.publish(hitl.owner, { cause: 'runUpdate', projectId: hitl.projectId, pipelineId: hitl.pipelineId, run: this.publicRun(result.run) });
+      const def = result.run.defSnapshot;
+      const stepDef = def?.steps.find((s) => s.id === hitl.stepId);
+      if (def && stepDef && !isApprovalStep(stepDef) && hitl.tool) {
+        await this.dispatchJobStep(
+          hitl.owner,
+          def,
+          result.run,
+          stepDef,
+          0,
+          `APPROVED by a human reviewer — the "${hitl.tool}" call is authorized. Re-issue the exact same tool call now and continue the work.`,
+          hitl.tool,
+        );
+      }
+      return true;
+    }
+
+    const applied = await this.applyOutcome(
+      hitl.owner,
+      hitl.runId,
+      hitl.stepId,
+      approved ? 'succeeded' : 'failed',
+      hitl.kind === 'tool' && !approved ? { error: `tool-approval-rejected: ${hitl.tool ?? 'unknown-tool'}` } : undefined,
+      (record) => ({
+        ...record,
+        gate: record.gate ? { ...record.gate, decision, decidedBy, decidedAt, via } : record.gate,
+      }),
+    );
     // Keys are deleted only AFTER the outcome landed — a crash/lock-starved
     // apply keeps the HITL record recoverable (the timeout arm re-funnels).
     if (!applied) return false;
@@ -891,6 +977,24 @@ export class PipelineRunCoordinator {
           jobId: data.jobId,
           question: clarify.question,
           toolUseId: clarify.toolUseId,
+          retries: 0,
+        });
+        return;
+      }
+      // Tool-approval seal: the job ended awaiting a human decision on an
+      // approval-gated call (L3). Not an outcome — the step parks.
+      const approvalSeal = await this.detectApprovalSeal(owner, runId, stepId, data.jobId);
+      if (approvalSeal) {
+        await this.enterAwaitingToolApproval({
+          kind: 'approval-enter',
+          owner,
+          pipelineId,
+          projectId,
+          runId,
+          stepId,
+          jobId: data.jobId,
+          toolName: approvalSeal.toolName,
+          argsSummary: approvalSeal.argsSummary,
           retries: 0,
         });
         return;
@@ -1314,6 +1418,152 @@ export class PipelineRunCoordinator {
       if (fallback && fallback !== 'fail' && declaredOutcomes.includes(fallback)) verdict = fallback;
     }
     return { ...(output && { output }), ...(verdict ? { verdict } : { missingVerdict: true }) };
+  }
+
+  /** Same read channel as the clarify seal — the tool-approval pause markers. */
+  private async detectApprovalSeal(
+    owner: PipelineOwner,
+    runId: string,
+    stepId: string,
+    jobId: string,
+  ): Promise<{ toolName: string; argsSummary: string } | null> {
+    try {
+      const run = await this.getRun(runId);
+      const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
+      if (!run || !stepDef || isApprovalStep(stepDef)) return null;
+      const ref = parseCustomJobRef(stepDef.customJobRef);
+      if (!ref) return null;
+      const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
+      const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
+      if (raw === null) return null;
+      const session = JSON.parse(raw);
+      const state = session?.state ?? session;
+      if (state?.awaitingApproval !== true || state?.jobId !== jobId) return null;
+      if (typeof state.approvalTool !== 'string' || state.approvalTool.length === 0) return null;
+      return {
+        toolName: state.approvalTool,
+        argsSummary: typeof state.approvalArgsSummary === 'string' ? state.approvalArgsSummary : '',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Park a step whose job sealed awaiting a TOOL APPROVAL (L3 — the third
+   * HITL layer, unattended runs). The step parks `awaiting_gate` with a
+   * kind:'tool' HITL record; every resolve channel is the SAME NX
+   * choice-resolved funnel as an approval step. APPROVE re-dispatches the
+   * step with the decision text as the dangling call's tool_result plus a
+   * one-turn grant for the tool; REJECT fails the step (`on: failure`
+   * consumes it). Open-ended wait — no timeout arm; run cancel and
+   * deactivation are the escape hatches.
+   */
+  private async enterAwaitingToolApproval(data: PipelineApprovalEnterJobData): Promise<void> {
+    const { owner, pipelineId, projectId, runId, stepId, jobId, toolName, argsSummary } = data;
+    const gateId = `tga-${runId}-${stepId}-${jobId}`;
+    const cardId = `pipe-${gateId}`;
+    const armedAt = new Date().toISOString();
+    const prompt = `Tool approval: ${toolName}${argsSummary ? ` ${argsSummary}` : ''}`;
+    let parked = false;
+    const result = await this.mutateRun(owner, runId, async (live) => {
+      const step = live.steps.find((s) => s.stepId === stepId);
+      if (!step || this.isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
+        return { run: live, dispatches: [] };
+      }
+      parked = true;
+      const steps = live.steps.map((s): StepRecord =>
+        s.stepId === stepId
+          ? { ...s, status: 'awaiting_gate', gate: { gateId, cardId, prompt, armedAt } }
+          : s,
+      );
+      const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
+      return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
+    });
+    if (!result) {
+      // Lock starvation — bounded re-arm, clarify-enter parity.
+      if (data.retries < MAX_OUTCOME_RETRIES) {
+        await this.deps.scheduleQueue.armDelayed(`approval-enter-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
+          ...data,
+          retries: data.retries + 1,
+        });
+      } else {
+        logger.warn(`[Pipeline] approval-enter dropped after retries: ${runId}/${stepId}`, { component: COMPONENT });
+      }
+      return;
+    }
+    if (!parked) return; // stale/duplicate event
+
+    // The paused round's wall-clock bound stands down (human wait is open-ended).
+    await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
+    const hitl: HitlRecord = {
+      kind: 'tool',
+      gateId,
+      cardId,
+      runId,
+      stepId,
+      pipelineId,
+      projectId,
+      owner,
+      onTimeout: 'reject',
+      anchorJobId: jobId,
+      prompt,
+      tool: toolName,
+      jobId,
+    };
+    await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.HITL(gateId), JSON.stringify(hitl), REDIS_TTL.PIPE.HITL);
+    await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.CARD(cardId), gateId, REDIS_TTL.PIPE.HITL);
+
+    if (this.deps.chatService) {
+      try {
+        await this.deps.chatService.appendChoicePresented(projectId, UNIVERSAL_FEATURE, {
+          jobId,
+          cardId,
+          cardType: 'pipeline_approval',
+          prompt,
+          payload: {
+            gateId,
+            runId,
+            stepId,
+            pipelineId,
+            pipelineName: result.run.defSnapshot?.name ?? pipelineId,
+            kind: 'tool',
+            tool: toolName,
+          },
+          userContext: owner,
+        });
+      } catch (e) {
+        logger.warn(`[Pipeline] failed to present tool-approval card ${cardId}`, { component: COMPONENT }, e);
+      }
+    }
+
+    await this.appendEvent(owner, projectId, {
+      ts: armedAt,
+      event: 'awaiting_human',
+      runId,
+      stepId,
+      jobId,
+      gateId,
+      detail: { kind: 'tool', tool: toolName, argsSummary },
+    });
+    await this.publish(owner, {
+      cause: 'approvalRequested',
+      projectId,
+      approval: {
+        kind: 'tool',
+        gateId,
+        cardId,
+        runId,
+        pipelineId,
+        pipelineName: result.run.defSnapshot?.name ?? pipelineId,
+        projectId,
+        stepId,
+        prompt,
+        armedAt,
+        jobId,
+      },
+    });
+    await this.publish(owner, { cause: 'runUpdate', projectId, pipelineId, run: this.publicRun(result.run) });
   }
 
   // ============================================

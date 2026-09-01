@@ -62,3 +62,45 @@ export function buildClarifyToolResultTurn(
     ],
   };
 }
+
+export interface DanglingToolUse {
+  toolUseId: string;
+  name: string;
+}
+
+/**
+ * Detect ANY dangling tool_use at the tail — the transcript-validity superset
+ * of the clarify detection. Consumers branch on `name` / the seal markers:
+ * clarify keeps its rail, an approval pause resumes with the human decision,
+ * and anything else (a rejected approval's leftover, a crash tail) is closed
+ * with a neutral note so the next LLM call stays valid.
+ */
+export function findDanglingToolUse(history: MessageLike[] | undefined): DanglingToolUse | null {
+  if (!history || history.length === 0) return null;
+  const tail = history[history.length - 1];
+  if (!tail || tail.role !== 'assistant' || !Array.isArray(tail.content)) return null;
+  const lastBlock = tail.content[tail.content.length - 1];
+  if (!lastBlock || lastBlock.type !== 'tool_use') return null;
+  if (typeof lastBlock.id !== 'string' || lastBlock.id.length === 0) return null;
+  if (typeof lastBlock.name !== 'string' || lastBlock.name.length === 0) return null;
+  return { toolUseId: lastBlock.id, name: lastBlock.name };
+}
+
+/** Close a dangling tool_use of any name with the given text as its result. */
+export function buildToolResultTurn(
+  toolUseId: string,
+  toolName: string,
+  text: string,
+): { role: 'user'; content: Array<Record<string, any>> } {
+  return {
+    role: 'user',
+    content: [
+      {
+        type: 'tool_result',
+        tool_use_id: toolUseId,
+        tool_name: toolName,
+        content: text,
+      },
+    ],
+  };
+}

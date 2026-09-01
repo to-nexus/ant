@@ -18,7 +18,8 @@ import { buildUniversalErrorSealState } from './session/sealConversation';
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
-import { findDanglingClarifyToolUse, buildClarifyToolResultTurn } from '../../common/clarify/toolResume';
+import { buildClarifyToolResultTurn, buildToolResultTurn, findDanglingToolUse } from '../../common/clarify/toolResume';
+import { CLARIFY_TOOL_NAME } from '../../common/clarify/tool';
 import { parseSealedHookLedger, type StopHookCheck, type StopHookLedger } from '../../../core/customAgents/stopHooks';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
@@ -37,6 +38,10 @@ export interface UniversalRunnerParams {
   explicitContext?: string[];
   /** `@plan` per-turn plan-mode request — this run only. */
   planRequested?: boolean;
+  /** Scheduler-owned run — approval-gated tool calls pause instead of fail-closed. */
+  unattended?: boolean;
+  /** One-turn approval grant (approve re-dispatch), by tool name. */
+  approvalGrantTool?: string;
   deps: {
     llm: any;
     session?: any;
@@ -91,6 +96,8 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let restoredHookLedger: StopHookLedger | undefined;
   let restoredHookContext: InheritedTurnContext | undefined;
   let sealedAwaitingStopHooks = false;
+  let sealedApprovalToolUseId: string | undefined;
+  let restoredApprovalContext: InheritedTurnContext | undefined;
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
@@ -114,6 +121,12 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         if (sealedAwaitingStopHooks) {
           restoredHookContext = parseSealedTurnContext(sessionState.hookTurnContext);
         }
+        // Approval pause markers — same advisory role as the clarify markers;
+        // the structural gate is the dangling tool_use itself.
+        if (sessionState.awaitingApproval === true && typeof sessionState.approvalToolUseId === 'string') {
+          sealedApprovalToolUseId = sessionState.approvalToolUseId;
+          restoredApprovalContext = parseSealedTurnContext(sessionState.approvalTurnContext);
+        }
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
     } catch (e) {
@@ -129,16 +142,32 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   // compaction (the pair rides the hot tail in the agent node).
   const conversations = restoredConversations ?? {};
   const main = [...(conversations[CONV_KEYS.SESSION_MAIN] ?? [])];
-  // Clarify continuity applies ONLY when this run structurally closes the
+  // Pause continuity applies ONLY when this run structurally closes the
   // dangling call — the sealed context is advisory, like the seal markers.
-  const dangling = findDanglingClarifyToolUse(main);
+  // Three dangling shapes: clarify (its own rail), an approval pause (the
+  // input IS the human decision text), and anything else — a leftover from a
+  // rejected approval or a crash tail — closed with a neutral note so the
+  // provider transcript stays valid.
+  const danglingAny = findDanglingToolUse(main);
+  const dangling = danglingAny?.name === CLARIFY_TOOL_NAME ? danglingAny : null;
+  const danglingApproval =
+    danglingAny && !dangling && sealedApprovalToolUseId === danglingAny.toolUseId ? danglingAny : null;
+  const danglingOther = danglingAny && !dangling && !danglingApproval ? danglingAny : null;
   let inheritedTurnContext: InheritedTurnContext | undefined;
   if (params.input && params.input.trim().length > 0) {
     if (dangling) {
       console.log(`🙋 [Universal] Clarify answered — closing tool_use ${dangling.toolUseId}`);
       main.push(buildClarifyToolResultTurn(dangling.toolUseId, params.input) as ConversationMessage);
       inheritedTurnContext = restoredClarifyContext;
+    } else if (danglingApproval) {
+      console.log(`🛂 [Universal] Approval decided — closing tool_use ${danglingApproval.toolUseId}`);
+      main.push(buildToolResultTurn(danglingApproval.toolUseId, danglingApproval.name, params.input) as ConversationMessage);
+      inheritedTurnContext = restoredApprovalContext;
     } else {
+      if (danglingOther) {
+        console.warn(`⚠️ [Universal] Healing a dangling tool_use ${danglingOther.toolUseId} (${danglingOther.name})`);
+        main.push(buildToolResultTurn(danglingOther.toolUseId, danglingOther.name, '(not executed — the pending call was superseded; a new instruction follows)') as ConversationMessage);
+      }
       // Turn-opening stamp: a stable identity for read_state scope='history'.
       // Adapter wire mapping rebuilds {role, content} only, so the stamp never
       // reaches the LLM (prompt-cache safe); legacy unstamped turns fall back
@@ -160,6 +189,10 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     console.warn(`⚠️ [Universal] Empty input on a clarify-awaiting session — closing tool_use ${dangling.toolUseId} with a no-reply note`);
     main.push(buildClarifyToolResultTurn(dangling.toolUseId, '(no reply — proceed with sensible defaults and state the assumption)') as ConversationMessage);
     inheritedTurnContext = restoredClarifyContext;
+  } else if (danglingAny) {
+    console.warn(`⚠️ [Universal] Empty input with a dangling tool_use — healing ${danglingAny.toolUseId} (${danglingAny.name})`);
+    main.push(buildToolResultTurn(danglingAny.toolUseId, danglingAny.name, '(not executed — no decision arrived; proceed with sensible defaults and state the assumption)') as ConversationMessage);
+    if (danglingApproval) inheritedTurnContext = restoredApprovalContext;
   }
   // Stop-hook pause continuity — no dangling tool_use to key on (the pause
   // is a plain sealed turn), so the seal marker itself gates: the next run
@@ -168,10 +201,10 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   if (!inheritedTurnContext && restoredHookContext) {
     inheritedTurnContext = restoredHookContext;
   }
-  // The ledger is adopted only alongside a pause continuation (a clarify
-  // closure or a stop-hook pause seal) — never from a normal seal, which
-  // omits it (self-clear: a fresh request is a fresh contract).
-  const adoptedHookLedger = dangling || sealedAwaitingStopHooks ? restoredHookLedger : undefined;
+  // The ledger is adopted only alongside a pause continuation (a clarify /
+  // approval closure or a stop-hook pause seal) — never from a normal seal,
+  // which omits it (self-clear: a fresh request is a fresh contract).
+  const adoptedHookLedger = dangling || danglingApproval || sealedAwaitingStopHooks ? restoredHookLedger : undefined;
   conversations[CONV_KEYS.SESSION_MAIN] = main;
 
   // ── MCP connect (fail-loud: the definition declared these servers).
@@ -234,6 +267,8 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     planRequested: params.planRequested,
     inheritedTurnContext,
     restoredHookLedger: adoptedHookLedger,
+    unattended: params.unattended,
+    approvalGrantTool: params.approvalGrantTool,
   });
   if (restoredTokenUsage) (initialState as any).tokenUsage = restoredTokenUsage;
   if (restoredTokenUsageByModel) (initialState as any).tokenUsageByModel = restoredTokenUsageByModel;

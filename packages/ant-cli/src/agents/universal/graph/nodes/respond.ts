@@ -151,7 +151,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   //    lines share the manifest slot (✓/✗ split, unmet patterns verbatim so
   //    an author's glob typo is visible).
   const hookManifest =
-    !state._clarifyPause && hookChecks.length > 0
+    !state._clarifyPause && !state._approvalPause && hookChecks.length > 0
       ? formatStopHookManifest(hookChecks, state.language)
       : null;
   if (writes.length > 0 || hookManifest) {
@@ -192,7 +192,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
       const verdict = verdictMatches.length > 0 ? verdictMatches[verdictMatches.length - 1][1] : undefined;
       const sessionState = {
         conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(getConv(state.conversations, CONV_KEYS.SESSION_MAIN)) },
-        ...(verdict && !state._clarifyPause && { verdict }),
+        ...(verdict && !state._clarifyPause && !state._approvalPause && { verdict }),
         tokenUsage: state.tokenUsage,
         tokenUsageByModel: state.tokenUsageByModel,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,
@@ -215,6 +215,15 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
           // confinement. Rides only the paused seal — self-clears at the
           // next non-paused seal, exactly like the markers above.
           ...(state.turnContext && { clarifyTurnContext: state.turnContext }),
+        }),
+        // Approval pause markers — the tool-approval HITL rail (unattended
+        // runs). Same I2 shape and self-clear discipline as clarify.
+        ...(state._approvalPause && {
+          awaitingApproval: true,
+          approvalToolUseId: state._approvalPause.toolUseId,
+          approvalTool: state._approvalPause.toolName,
+          approvalArgsSummary: state._approvalPause.argsSummary,
+          ...(state.turnContext && { approvalTurnContext: state.turnContext }),
         }),
         // Stop-hook pause markers — the third rider of the clarify pause
         // rail: honest paused seal + resumable interruption (published by

@@ -208,6 +208,13 @@ hooks:
     - action: api__my-api__request    # this tool was called successfully
 ```
 
+Approval posture: a tool declared `tools.approval: always` is refused
+fail-closed in interactive runs, but under a PIPELINE the run pauses and a
+person approves or rejects the exact call from the pipeline inbox — so an
+intent whose risky write should be human-signed per call may keep
+`approval: always` and still run scheduled. Declare `approval: never` only
+for writes that are safe fully unattended.
+
 Each entry carries exactly one of `artifact` or `action`. An `action` must name
 a tool the job actually has — a builtin in its allowlist, or a tool from a
 connection it declares — or the job will not load.

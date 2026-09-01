@@ -117,6 +117,24 @@ export interface PipelineStepTimeoutJobData {
   jobId: string;
 }
 
+/**
+ * Re-arm for a tool-approval-seal transition that lost the per-run lock —
+ * clarify-enter parity (without it the step hangs `running` after the job
+ * sealed awaiting a tool approval).
+ */
+export interface PipelineApprovalEnterJobData {
+  kind: 'approval-enter';
+  owner: PipelineOwner;
+  pipelineId: string;
+  projectId: string;
+  runId: string;
+  stepId: string;
+  jobId: string;
+  toolName: string;
+  argsSummary: string;
+  retries: number;
+}
+
 /** Reminder re-arm for an unresolved gate (bounded; resolve cancels it). */
 export interface PipelineGateRemindJobData {
   kind: 'gate-remind';
@@ -135,6 +153,7 @@ export type PipelineControlJobData =
   | PipelineStepRetryJobData
   | PipelineOutcomeRetryJobData
   | PipelineClarifyEnterJobData
+  | PipelineApprovalEnterJobData
   | PipelineStepTimeoutJobData
   | PipelineGateRemindJobData;
 

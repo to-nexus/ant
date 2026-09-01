@@ -588,8 +588,12 @@ export interface PipelineListEntry {
 }
 
 export interface PipelinePendingApproval {
-  /** Absent = gate (pre-clarify rows). Clarify rows carry the clarifyId in gateId/cardId. */
-  kind?: 'gate' | 'clarify';
+  /**
+   * Absent = gate (pre-clarify rows). Clarify rows carry the clarifyId in
+   * gateId/cardId; `tool` rows are paused approval-gated tool calls (L3) —
+   * approve/reject rides the same gate resolve funnel.
+   */
+  kind?: 'gate' | 'clarify' | 'tool';
   gateId: string;
   cardId: string;
   runId: string;

@@ -824,6 +824,19 @@ export interface UniversalTurnMeta {
    * file writes to `plan/` for the turn.
    */
   plan?: boolean;
+  /**
+   * Pipeline-dispatched (scheduler-owned) run: an approval-gated tool call
+   * PAUSES the turn awaiting a human decision (end-and-resume, the clarify
+   * rail) instead of the interactive fail-closed rejection. Set ONLY by the
+   * pipeline coordinator — never by an HTTP ingress.
+   */
+  unattended?: boolean;
+  /**
+   * Approval-resume grant: the ONE tool name a human just approved — admits
+   * that tool past the approval gate for THIS turn only. Set by the pipeline
+   * coordinator on the approve re-dispatch.
+   */
+  approvalGrantTool?: string;
 }
 
 // ── Definition file surface (account-scoped agent settings API) ─────────────

@@ -474,6 +474,41 @@ answer       → applyClarifyAnswer (guard: awaiting_clarify ∧ clarify.jobId m
   events reuse `awaiting_human` / `human_resolved` with
   `detail.kind = 'clarify'`.
 
+## 5c. Tool-approval HITL (L3) — the paused approval-gated call
+
+The third HITL layer: a step's job that issues an approval-gated tool call
+(`tools.approval: always`, or a non-read-only MCP tool) no longer dies
+fail-closed under the scheduler — pipeline dispatches ride
+`UniversalTurnMeta.unattended: true` (set ONLY by the coordinator, never an
+HTTP ingress), and the universal runtime PAUSES instead:
+
+```
+tool node: sole-call round + approval-gated + no grant
+  → approvalPauseNode (clarifyPause mirror: dangling tool_use, normal completion)
+  → respond seals { awaitingApproval, approvalToolUseId, approvalTool, approvalArgsSummary, approvalTurnContext }
+coordinator: detectApprovalSeal → enterAwaitingToolApproval
+  → step 'awaiting_gate' + kind:'tool' HITL record + pipeline_approval card (kind:'tool')
+resolve (SAME NX choice-resolved funnel as approval steps):
+  APPROVE → step 'dispatched' → dispatchJobStep(directiveOverride = decision text,
+            approvalGrantTool = the tool) → NEW jobId; the runner closes the
+            dangling call with the decision text and the gate admits that ONE
+            tool for that ONE turn (turn-scoped grant)
+  REJECT  → normal failed outcome (`tool-approval-rejected: {tool}` —
+            `on: failure` consumes it); the leftover dangling call is healed
+            by the runner's generic dangling-tool_use closure on the
+            session's next turn
+```
+
+Multi-call rounds never pause: the gate rejection instructs the model to
+re-issue the gated call ALONE (the clarify sole-call discipline), so exactly
+one tool_use dangles. Interactive runs keep the fail-closed rejection — the
+interactive approve flow is still future work, but it will consume the same
+seal. The wait is open-ended (no timeout arm); run cancel and deactivation
+are the escape hatches, and a lock-starved park re-arms via the bounded
+`approval-enter` control job (clarify-enter parity). This is doc 44 §1.3's
+"확인 스텝은 L3를 대체하지 못한다" answered at the platform level: an intent
+may now keep `approval: always` on its risky writes and run under a pipeline.
+
 **Run-log visibility**: the activation's `runs/` dir is grafted into the
 universal artifacts tree as the reserved read-only `pipeline-runs` node
 (`getPipelineRunsRootOf` — structural containerPath↔actRoot mapping, no
@@ -743,11 +778,11 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
   expectedJobId guard so a superseded round's late outcome cannot clobber the
   current one), job-step `timeout` (delayed `sto-` arm, kill legs + retryable
   failure on expiry; stands down during clarify waits), and gate `remindAfter`
-  re-arms (`gre-`, bounded by MAX_GATE_REMINDERS). Remaining: A3
-  approval-await integration (consumes the runner-axis `pendingApproval`
-  seal). Also shipped: the trigger block became OPTIONAL (manual-only
-  pipelines, §2) and `on.runCompleted` event triggers (pipeline→pipeline
-  chaining, §2 — `firedBy: 'event'`, chain-depth bound).
+  re-arms (`gre-`, bounded by MAX_GATE_REMINDERS), A3 approval-await (§5c —
+  the tool-approval HITL rail: `awaitingApproval` seal, kind:'tool' gate,
+  grant re-dispatch), the OPTIONAL trigger block (manual-only pipelines, §2),
+  and `on.runCompleted` event triggers (pipeline→pipeline chaining, §2 —
+  `firedBy: 'event'`, chain-depth bound). Phase 2 is complete.
 - **Phase 3**: per-(project, customJobRef) duplicate-gate relaxation +
   tenant concurrency slots, parallel branches/fan-in + FE turn grouping,
   free-DAG canvas editing, `cancelPrevious`, caps admin surface.

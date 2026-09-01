@@ -221,6 +221,39 @@ describe('verdict routing', () => {
   });
 });
 
+describe('tool-approval HITL (L3)', () => {
+  it('unattended rides the ONE turn-meta channel and only the coordinator sets it', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/unattended: true/);
+    // No HTTP ingress may mark a run unattended.
+    const jobRoutes = read('periphery/adapters/http/routes/job.routes.ts');
+    expect(jobRoutes).not.toMatch(/unattended/);
+  });
+
+  it('the pause is the clarify rail: sole-call rounds only, seal markers, generic dangling heal', () => {
+    const tool = read('agents/universal/graph/nodes/tool.ts');
+    expect(tool).toMatch(/approvalPauseNode/);
+    expect(tool).toMatch(/callNeedsApprovalOnly/);
+    const respond = read('agents/universal/graph/nodes/respond.ts');
+    expect(respond).toMatch(/awaitingApproval: true/);
+    // The runner heals ANY dangling tool_use — a rejected approval's leftover
+    // must not brick the session's next turn.
+    const runner = read('agents/universal/graph/runner.ts');
+    expect(runner).toMatch(/findDanglingToolUse/);
+    expect(runner).toMatch(/danglingOther/);
+  });
+
+  it('resolution rides the SAME NX gate funnel; approve re-dispatches with a one-turn grant', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/enterAwaitingToolApproval/);
+    expect(coordinator).toMatch(/hitl\.kind === 'tool' && approved/);
+    expect(coordinator).toMatch(/tool-approval-rejected/);
+    // The grant is turn-scoped, by tool name, and the gate consumes it.
+    const tool = read('agents/universal/graph/nodes/tool.ts');
+    expect(tool.match(/_approvalGrantTool === call\.name/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('runCompleted chaining', () => {
   it('chained fires ride the SAME fire path, scoped to the activator, depth-bounded at fire', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
@@ -267,8 +300,9 @@ describe('step output capture ({{steps.*}} source)', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
     expect(coordinator).toMatch(/captureStepOutput/);
     expect(coordinator).toMatch(/PIPELINE_STEP_OUTPUT_MAX_CHARS/);
-    // Both seal reads (clarify + capture) verify the seal belongs to this job.
-    expect(coordinator.match(/state\?\.jobId (!==|===) jobId/g)?.length ?? 0).toBe(2);
+    // Every seal read (clarify + approval + capture) verifies the seal
+    // belongs to this job — the session is shared per customJobRef.
+    expect(coordinator.match(/state\?\.jobId (!==|===) jobId/g)?.length ?? 0).toBe(3);
     // Artifact expansion is the bounded, non-failing gate helper.
     expect(coordinator).toMatch(/expandArtifactGlobsBounded\(/);
   });
