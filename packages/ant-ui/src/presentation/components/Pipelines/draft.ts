@@ -14,7 +14,6 @@
  */
 
 import {
-  isApprovalStep,
   type ApprovalStepDef,
   type JobStepDef,
   type PipelineDef,
@@ -172,8 +171,4 @@ export function effectiveNeedsOf(def: PipelineDef, index: number): string[] {
   const step = def.steps[index];
   if (step.needs !== undefined) return step.needs;
   return index > 0 ? [def.steps[index - 1].id] : [];
-}
-
-export function stepKindOf(step: PipelineStepDef): 'job' | 'gate' {
-  return isApprovalStep(step) ? 'gate' : 'job';
 }

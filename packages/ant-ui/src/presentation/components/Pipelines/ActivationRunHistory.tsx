@@ -23,7 +23,6 @@ const RUN_PILL: Record<string, { state: any; labelKey: string; fallback: string 
   failed: { state: 'error', labelKey: 'runs.failed', fallback: 'Failed' },
   partial: { state: 'warning', labelKey: 'runs.partial', fallback: 'Partial' },
   cancelled: { state: 'not-configured', labelKey: 'runs.cancelled', fallback: 'Cancelled' },
-  expired: { state: 'not-configured', labelKey: 'runs.expired', fallback: 'Expired' },
 };
 
 const STEP_COLOR: Record<string, string> = {
@@ -142,6 +141,9 @@ function RunRow({
         {started.toLocaleString()} {duration !== null && `· ${duration}s`}
       </span>
       <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-3)' }}>{run.runId}</span>
+      {run.error && (
+        <span style={{ flexBasis: '100%', fontSize: 11, color: 'var(--red-500)' }}>{run.error}</span>
+      )}
     </button>
   );
 }

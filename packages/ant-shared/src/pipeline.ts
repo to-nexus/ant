@@ -309,8 +309,7 @@ export type PipelineRunStatus =
   | 'completed'
   | 'failed'
   | 'partial'
-  | 'cancelled'
-  | 'expired';
+  | 'cancelled';
 
 export type PipelineStepStatus =
   | 'pending'

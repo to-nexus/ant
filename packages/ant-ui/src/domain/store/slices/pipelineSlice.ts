@@ -117,7 +117,6 @@ export interface PipelineSliceActions {
   loadActivePipeline: (projectId: string) => Promise<void>;
   loadActivationRuns: (pipelineId: string, projectId: string, userId?: string) => Promise<void>;
   loadPipelineRunDetail: (runId: string, projectId: string) => Promise<void>;
-  clearPipelineRunDetail: () => void;
   loadPipelineApprovals: () => Promise<void>;
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject') => Promise<void>;
   answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
@@ -411,8 +410,6 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       /* keep previous */
     }
   },
-
-  clearPipelineRunDetail: () => set({ pipelineRunDetail: null }),
 
   loadPipelineApprovals: async () => {
     try {

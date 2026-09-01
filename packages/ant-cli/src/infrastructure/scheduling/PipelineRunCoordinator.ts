@@ -1161,7 +1161,14 @@ export class PipelineRunCoordinator {
 
   private async finalizeRun(owner: PipelineOwner, run: RunRecord): Promise<void> {
     const endedAt = run.endedAt ?? new Date().toISOString();
-    const sealed: RunRecord = { ...run, endedAt };
+    // A failed/partial run names its cause: the first failed step's error.
+    // (No other producer writes run.error — without this the field is dead.)
+    const firstFailed = run.error
+      ? undefined
+      : run.steps.find((s) => s.status === 'failed' && s.error);
+    const error =
+      run.error ?? ((run.status === 'failed' || run.status === 'partial') && firstFailed ? `${firstFailed.stepId}: ${firstFailed.error}` : undefined);
+    const sealed: RunRecord = { ...run, endedAt, ...(error && { error }) };
     await this.saveRun(sealed);
     await this.appendEvent(owner, run.projectId, {
       ts: endedAt,
@@ -1178,7 +1185,7 @@ export class PipelineRunCoordinator {
       fireEpoch: run.fireEpoch,
       startedAt: run.startedAt,
       endedAt,
-      ...(run.error && { error: run.error }),
+      ...(sealed.error && { error: sealed.error }),
     });
     const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, run.projectId);
     const holder = await this.deps.stateStore.getKey(activeKey);
@@ -1342,7 +1349,7 @@ export class PipelineRunCoordinator {
   // ============================================
 
   private isTerminal(status: RunRecord['status']): boolean {
-    return status === 'completed' || status === 'failed' || status === 'partial' || status === 'cancelled' || status === 'expired';
+    return status === 'completed' || status === 'failed' || status === 'partial' || status === 'cancelled';
   }
 
   /** SSE payload copy — the frozen def never rides the wire. */

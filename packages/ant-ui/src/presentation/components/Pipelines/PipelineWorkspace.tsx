@@ -24,7 +24,6 @@ import { Button, BoardViewModeToggle, Toggle } from '../aurora';
 import { HintBadge } from '../common/HintBadge';
 import { OrgAccessCard } from '../shared/org/OrgAccessCard';
 import { PromoteZone } from '../shared/org/PromoteZone';
-import { updatePipelineEditors } from '@/infrastructure/http/api/pipelines';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeCron } from './cronDescribe';
 import { StepInspector } from './StepInspector';
@@ -61,7 +60,7 @@ export function PipelineWorkspace() {
   const enablePipelineById = useStore((s) => s.enablePipelineById);
   const disablePipelineById = useStore((s) => s.disablePipelineById);
   const promotePipelineById = useStore((s) => s.promotePipelineById);
-  const loadPipelines = useStore((s) => s.loadPipelines);
+  const savePipelineEditors = useStore((s) => s.savePipelineEditors);
   const isTeamActive = useStore(selectIsTeamActive);
   const { showConfirm } = useAlertModalContext();
 
@@ -350,8 +349,8 @@ export function PipelineWorkspace() {
                   ns="pipelines"
                   resourceId={selectedId!}
                   org={entry.org}
-                  onSaveEditors={(editors) => updatePipelineEditors(selectedId!, editors)}
-                  onSaved={loadPipelines}
+                  onSaveEditors={(editors) => savePipelineEditors(selectedId!, editors)}
+                  onSaved={() => {} /* slice updates the entry's org in place — one write path */}
                   onError={setOrgError}
                 />
               )}

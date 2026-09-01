@@ -87,10 +87,6 @@ export function promotePipeline(pipelineId: string): Promise<{ id: string; scope
   return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/promote`);
 }
 
-export function fetchPipelinePermissions(pipelineId: string): Promise<PipelineOrgPermissions> {
-  return apiGet(`${base()}/${encodeURIComponent(pipelineId)}/permissions`);
-}
-
 export function updatePipelineEditors(pipelineId: string, editors: string[]): Promise<PipelineOrgPermissions> {
   return apiPut(`${base()}/${encodeURIComponent(pipelineId)}/editors`, { editors });
 }

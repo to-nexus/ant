@@ -90,7 +90,9 @@
     "title": "Waiting for you",
     "approve": "Approve",
     "reject": "Reject",
-    "timeout": "Auto-decides {{when}}"
+    "timeout": "Auto-decides {{when}}",
+    "clarifyPlaceholder": "Type your answer…",
+    "clarifySubmit": "Answer & resume"
   },
   "editor": {
     "pickOne": "Select a pipeline on the left,\nor create a new one.",
@@ -206,9 +208,11 @@
     "failed": "Failed",
     "partial": "Partial",
     "cancelled": "Cancelled",
-    "expired": "Expired",
     "gateExpired": "Timed out → {{action}}",
-    "gateDecided": "{{decision}} by {{who}}"
+    "gateDecided": "{{decision}} by {{who}}",
+    "clarifyAsked": "Q{{round}}: {{question}}",
+    "clarifyAnswered": "answered by {{who}}",
+    "clarifyWaiting": "awaiting answer"
   },
   "danger": {
     "delete": "Delete",

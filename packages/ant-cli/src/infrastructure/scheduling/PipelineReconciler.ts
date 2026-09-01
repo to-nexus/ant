@@ -163,7 +163,7 @@ async function healOverlapGuard(
   const raw = await stateStore.getKey(REDIS_KEYS.PIPE.RUN(runId));
   const run = raw ? (JSON.parse(raw) as RunRecord) : null;
   const terminal =
-    !run || ['completed', 'failed', 'partial', 'cancelled', 'expired'].includes(run.status);
+    !run || ['completed', 'failed', 'partial', 'cancelled'].includes(run.status);
   if (terminal) {
     await stateStore.deleteKey(activeKey).catch(() => {});
     logger.info(`[Pipeline] healed stale overlap guard: ${projectId} (run ${runId})`, { component: COMPONENT });
