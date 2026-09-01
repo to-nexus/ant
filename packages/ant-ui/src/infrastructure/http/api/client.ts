@@ -260,6 +260,8 @@ export class ApiError extends Error {
   leftovers?: string[];
   /** Offending file basename (e.g. 422 CORRUPTED_FILE on upload). */
   filename?: string;
+  /** Per-file refusals (415 UNREADABLE_FILES on artifact upload). */
+  rejected?: Array<{ path: string; reason: string }>;
 
   constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message);
@@ -276,6 +278,7 @@ export class ApiError extends Error {
     this.stage = data?.stage as string | undefined;
     this.leftovers = data?.leftovers as string[] | undefined;
     this.filename = data?.filename as string | undefined;
+    this.rejected = data?.rejected as Array<{ path: string; reason: string }> | undefined;
   }
 }
 

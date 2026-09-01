@@ -37,10 +37,19 @@ export { BINARY_EXTENSIONS, isBinaryPath } from '@ant/shared';
 import { isBinaryPath } from '@ant/shared';
 
 /** Head window for content sniffing (git uses the same 8000-byte heuristic). */
-const SNIFF_BYTES = 8000;
+export const SNIFF_BYTES = 8000;
 
 /**
- * Content-based binary verdict over a head window.
+ * Why a head window fails the "readable as utf-8 text" policy. `binary`
+ * (NUL byte) and `invalid-utf8` (no NUL, but not valid utf-8 — typically a
+ * legacy-encoded text file such as a CP949/EUC-KR CSV export) get different
+ * remediation advice at ingress, so the distinction is kept here rather than
+ * re-derived by callers.
+ */
+export type BufferKind = 'text' | 'binary' | 'invalid-utf8';
+
+/**
+ * Content-based kind verdict over a head window.
  *
  * @param head head bytes of the file (up to SNIFF_BYTES)
  * @param truncatedTail true when `head` is a prefix of a larger file — the
@@ -48,10 +57,10 @@ const SNIFF_BYTES = 8000;
  *   tail sequence is trimmed before validity checking instead of counting
  *   as invalid.
  */
-export function isBinaryBuffer(head: Buffer, truncatedTail = false): boolean {
-  if (head.length === 0) return false;
+export function sniffBufferKind(head: Buffer, truncatedTail = false): BufferKind {
+  if (head.length === 0) return 'text';
   for (const b of head) {
-    if (b === 0) return true;
+    if (b === 0) return 'binary';
   }
   let end = head.length;
   if (truncatedTail) {
@@ -66,10 +75,14 @@ export function isBinaryBuffer(head: Buffer, truncatedTail = false): boolean {
   }
   try {
     new TextDecoder('utf-8', { fatal: true }).decode(head.subarray(0, end));
-    return false;
+    return 'text';
   } catch {
-    return true;
+    return 'invalid-utf8';
   }
+}
+
+export function isBinaryBuffer(head: Buffer, truncatedTail = false): boolean {
+  return sniffBufferKind(head, truncatedTail) !== 'text';
 }
 
 /**

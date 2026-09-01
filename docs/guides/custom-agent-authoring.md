@@ -431,7 +431,11 @@ Patterns that keep unattended pipelines from failing on normal days:
 - **Consumer-first form.** An artifact another intent or pipeline step
   consumes must be text (`read_file` refuses binary) — Markdown, JSON, CSV. A
   binary format a person needs (a spreadsheet, a document) is a terminal
-  conversion step at the end of the chain, held to an `action:` hook.
+  conversion step at the end of the chain, held to an `action:` hook. The
+  workspace upload enforces the same verdict at ingress: a binary file
+  (xlsx, pdf, …) or a non-UTF-8 text file (a legacy-encoded CSV export) is
+  rejected per-file with the fix named — convert to a text format, or
+  re-save as UTF-8 — and a folder upload sheds only its unreadable members.
 - **Run manifest.** Have a producing intent write a small manifest file at a
   stable path on every run — what it produced, ids, counts, an empty list when
   there was nothing to do. Pin the manifest downstream: an empty day stays a

@@ -113,11 +113,17 @@ export function fetchUniversalArtifactsTree(
   return apiGet(`${projectBase(projectId)}/universal/artifacts/tree`);
 }
 
+/** Per-file upload refusal — the file is not readable as UTF-8 text (binary, or a legacy-encoded CSV). */
+export interface RejectedUploadFile {
+  path: string;
+  reason: string;
+}
+
 export async function uploadUniversalArtifacts(
   projectId: string,
   dirPath: string,
   entries: UploadFileEntry[],
-): Promise<{ uploadedFiles: string[]; count: number }> {
+): Promise<{ uploadedFiles: string[]; count: number; rejected: RejectedUploadFile[] }> {
   const formData = new FormData();
   formData.append('dirPath', dirPath);
   for (const entry of entries) {
@@ -137,7 +143,11 @@ export async function uploadUniversalArtifacts(
     );
   }
   const data = await response.json().catch(() => ({}));
-  return { uploadedFiles: data?.uploadedFiles || [], count: data?.count || 0 };
+  return {
+    uploadedFiles: data?.uploadedFiles || [],
+    count: data?.count || 0,
+    rejected: Array.isArray(data?.rejected) ? data.rejected : [],
+  };
 }
 
 /**

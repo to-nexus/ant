@@ -241,3 +241,113 @@ function collectArtifactRoutes(
   }
   return [];
 }
+
+// ── upload readability gate ──────────────────────────────────────────────────
+//
+// The store admits only what the agent plane can read: the upload route runs
+// the SAME classifier as read_file (extension fast-path + head sniff over
+// NUL/utf-8 validity). A folder upload sheds only its unreadable members and
+// names each one — never a silent skip, never dead weight in the store.
+
+describe('universal artifact upload — readability gate', () => {
+  let tmpWorkspaces: string;
+  let projectPath: string;
+  let artifactsRoot: string;
+  let server: http.Server;
+  let baseUrl: string;
+
+  beforeEach(async () => {
+    tmpWorkspaces = await fs.mkdtemp(path.join(os.tmpdir(), 'ant-universal-upload-'));
+    projectPath = path.join(tmpWorkspaces, ORG, USER, PROJECT_ID);
+    await fs.mkdir(projectPath, { recursive: true });
+    await fs.writeFile(
+      path.join(projectPath, 'config.json'),
+      JSON.stringify({ projectType: 'universal' }),
+      'utf-8',
+    );
+    ensureUniversalContainer(projectPath);
+    artifactsRoot = path.join(projectPath, 'universal', 'artifacts');
+
+    const resolver = new UnifiedWorkspaceResolver(tmpWorkspaces);
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: USER };
+      (req as any).organization = { id: ORG, kind: 'team' };
+      next();
+    });
+    app.use(createCustomAgentRoutes({ workspaceResolver: resolver, organizationRepository: {} as any }));
+    await new Promise<void>((resolve) => {
+      server = app.listen(0, () => resolve());
+    });
+    const addr = server.address();
+    baseUrl = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await fs.rm(tmpWorkspaces, { recursive: true, force: true });
+  });
+
+  const uploadFiles = async (entries: Array<{ name: string; bytes: Buffer | string }>) => {
+    const form = new FormData();
+    form.append('dirPath', 'inbox');
+    for (const e of entries) {
+      const bytes = typeof e.bytes === 'string' ? Buffer.from(e.bytes, 'utf-8') : e.bytes;
+      form.append('files', new Blob([new Uint8Array(bytes)]), e.name);
+      form.append('relativePaths', e.name);
+    }
+    return fetch(`${baseUrl}/projects/${PROJECT_ID}/universal/artifacts/upload`, {
+      method: 'POST',
+      body: form,
+    });
+  };
+
+  it('utf-8 CSV is admitted and lands on disk', async () => {
+    const res = await uploadFiles([{ name: 'ledger.csv', bytes: 'id,amount\n1,1000\n2,2000\n' }]);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.uploadedFiles).toEqual(['inbox/ledger.csv']);
+    expect(body.rejected).toBeUndefined();
+    await expect(fs.readFile(path.join(artifactsRoot, 'inbox/ledger.csv'), 'utf-8')).resolves.toContain('amount');
+  });
+
+  it('a known-binary extension is refused whole (415) and never written', async () => {
+    const res = await uploadFiles([{ name: 'report.xlsx', bytes: 'looks like text but the extension is authoritative' }]);
+    expect(res.status).toBe(415);
+    const body = await res.json();
+    expect(body.code).toBe('UNREADABLE_FILES');
+    expect(body.rejected).toHaveLength(1);
+    expect(body.rejected[0].path).toBe('inbox/report.xlsx');
+    expect(body.rejected[0].reason).toContain('text format');
+    await expect(fs.access(path.join(artifactsRoot, 'inbox/report.xlsx'))).rejects.toThrow();
+  });
+
+  it('NUL bytes under an unknown extension are sniffed binary', async () => {
+    const res = await uploadFiles([{ name: 'dump.customfmt', bytes: Buffer.from([0x41, 0x00, 0x42]) }]);
+    expect(res.status).toBe(415);
+    const body = await res.json();
+    expect(body.rejected[0].reason).toContain('binary');
+  });
+
+  it('legacy-encoded (non-utf-8) text names the encoding fix, not "binary"', async () => {
+    // 0xB0 0xA1 is "가" in EUC-KR/CP949 — the classic Korean-Excel CSV export.
+    const res = await uploadFiles([{ name: 'legacy.csv', bytes: Buffer.from([0xb0, 0xa1, 0x2c, 0x31, 0x0a]) }]);
+    expect(res.status).toBe(415);
+    const body = await res.json();
+    expect(body.rejected[0].reason).toContain('UTF-8');
+    expect(body.rejected[0].reason).not.toContain('binary');
+  });
+
+  it('a folder upload sheds only unreadable members — partial 200 with a named rejection', async () => {
+    const res = await uploadFiles([
+      { name: 'good.csv', bytes: 'a,b\n1,2\n' },
+      { name: 'sheet.xlsx', bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04]) },
+    ]);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.uploadedFiles).toEqual(['inbox/good.csv']);
+    expect(body.rejected).toEqual([{ path: 'inbox/sheet.xlsx', reason: expect.stringContaining('text format') }]);
+    await expect(fs.access(path.join(artifactsRoot, 'inbox/good.csv'))).resolves.toBeUndefined();
+    await expect(fs.access(path.join(artifactsRoot, 'inbox/sheet.xlsx'))).rejects.toThrow();
+  });
+});

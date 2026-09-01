@@ -145,5 +145,6 @@
   },
   "universal": {
     "uploading": "업로드 중…"
-  }
+  },
+  "uploadRejected": "{{count}}개 파일이 업로드되지 않았습니다 — 에이전트가 읽을 수 없는 파일입니다:"
 }

@@ -115,16 +115,33 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
       if (!selectedProject || entries.length === 0) return;
       setUploading(true);
       try {
-        await uploadUniversalArtifacts(selectedProject, dirPath, entries);
+        const result = await uploadUniversalArtifacts(selectedProject, dirPath, entries);
+        // Partial acceptance: unreadable members of a folder upload are shed
+        // per-file with a named reason — never silently.
+        if (result.rejected.length > 0) {
+          showError(
+            `${t('artifacts:uploadRejected', { count: result.rejected.length })}\n\n` +
+              result.rejected.map((r) => `• ${r.path} — ${r.reason}`).join('\n'),
+          );
+        }
         await loadTree();
       } catch (err) {
         console.error('[UniversalArtifacts] Upload failed:', err);
-        surfaceError(err);
+        // A 415 whole-upload refusal carries the same per-file list.
+        const rejected = (err as { rejected?: Array<{ path: string; reason: string }> })?.rejected;
+        if (Array.isArray(rejected) && rejected.length > 0) {
+          showError(
+            `${t('artifacts:uploadRejected', { count: rejected.length })}\n\n` +
+              rejected.map((r) => `• ${r.path} — ${r.reason}`).join('\n'),
+          );
+        } else {
+          surfaceError(err);
+        }
       } finally {
         setUploading(false);
       }
     },
-    [selectedProject, loadTree, surfaceError],
+    [selectedProject, loadTree, surfaceError, showError, t],
   );
 
   // Sessions subtree carries the SAME restricted permissions as the

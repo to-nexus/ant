@@ -995,6 +995,16 @@ principle in `base/system.md` step 2, operating rules in
 partition"), contract facts in `on-demand/definition-format.md`'s hooks
 section.
 
+The same verdict now guards ingress: the artifacts upload route runs the
+read-path classifier (`isBinaryPath` fast-path + `sniffBufferKind` head
+sniff, one SSOT in `core/utils/binaryExtensions.ts`) and refuses per-file
+what no tool could read — `binary` and `invalid-utf8` (a CP949/EUC-KR CSV
+export) get distinct remediation messages, a folder upload sheds only its
+unreadable members (200 + `rejected[]`, 415 `UNREADABLE_FILES` when nothing
+was admissible), and nothing is skipped silently. Admitted ≡ readable is the
+invariant; guard: `tests/http/universal-artifact-mutations.test.ts` (upload
+readability gate).
+
 ## Streaming & turn identity (A14/A15)
 
 Two defects the WS-D end-to-end surfaced, both structural rather than cosmetic:

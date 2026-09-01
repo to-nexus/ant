@@ -14,6 +14,7 @@ import { isReservedSessionRelativePath } from '../../../../core/utils/sessionPat
 import * as yaml from 'js-yaml';
 import multer from 'multer';
 import { writeBufferVerifiedContained } from '../../../../core/utils/binaryIntegrity';
+import { isBinaryPath, sniffBufferKind, SNIFF_BYTES } from '../../../../core/utils/binaryExtensions';
 import { toNfc } from '../../../../core/utils/unicodePath';
 import { boundedMultipart } from '../middleware/boundedMultipart';
 import { treeRateLimiter } from '../middleware/rateLimiter';
@@ -410,20 +411,55 @@ export function createCustomAgentRoutes(deps: {
       const relativePaths: string[] = Array.isArray(rawRelPaths) ? rawRelPaths : rawRelPaths ? [rawRelPaths] : [];
 
       const uploadedFiles: string[] = [];
+      const rejected: Array<{ path: string; reason: string }> = [];
       for (let i = 0; i < files.length; i++) {
         // NFC at ingestion — see files.routes.ts upload route.
         const relPath = toNfc(relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
         const effectiveRel = path.join(dirPath, relPath).replace(/\\/g, '/');
         const uploadViolation = reservedRootViolation(effectiveRel);
         if (uploadViolation) return res.status(400).json(uploadViolation);
+
+        // Readability gate — the SAME verdict read_file gives (extension
+        // fast-path + head sniff), so what the store admits ≡ what the agent
+        // can read. A file no tool can open is refused loudly at ingress
+        // instead of riding along as dead weight; a folder upload sheds only
+        // the unreadable members and names each one.
+        const buf = files[i].buffer;
+        const head = buf.subarray(0, SNIFF_BYTES);
+        const kind = isBinaryPath(effectiveRel) ? 'binary' : sniffBufferKind(head, buf.length > head.length);
+        if (kind !== 'text') {
+          rejected.push({
+            path: effectiveRel,
+            reason:
+              kind === 'binary'
+                ? 'binary file — agents cannot read it; convert to a text format (CSV / Markdown / JSON)'
+                : 'not valid UTF-8 text — re-save with UTF-8 encoding (e.g. Excel "CSV UTF-8")',
+          });
+          continue;
+        }
+
         const filePath = resolveMergedPath(req, req.params.projectId, effectiveRel);
-        // Byte-safe write (size + header verification) — uploads must survive
-        // binary payloads unmodified (no utf-8 round-trip). The container root is
-        // the boundary the write descends from.
+        // Byte-safe write (size + header verification) — admitted text must
+        // land exactly as sent. The container root is the boundary the write
+        // descends from.
         await writeBufferVerifiedContained(containerRootFor(req, req.params.projectId), filePath, files[i].buffer);
         uploadedFiles.push(effectiveRel);
       }
-      res.json({ success: true, uploadedFiles, count: uploadedFiles.length });
+      if (uploadedFiles.length === 0 && rejected.length > 0) {
+        return res.status(415).json({
+          code: 'UNREADABLE_FILES',
+          message: 'No file was uploaded: none is readable as UTF-8 text.',
+          uploadedFiles,
+          count: 0,
+          rejected,
+        });
+      }
+      res.json({
+        success: true,
+        uploadedFiles,
+        count: uploadedFiles.length,
+        ...(rejected.length > 0 && { rejected }),
+      });
     } catch (error: any) {
       if (error?.code === 'CORRUPTED_FILE') {
         return res.status(422).json({ code: 'CORRUPTED_FILE', message: error.message, filename: error.filename });

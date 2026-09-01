@@ -145,5 +145,6 @@
   },
   "universal": {
     "uploading": "Uploading…"
-  }
+  },
+  "uploadRejected": "{{count}} file(s) were not uploaded — agents cannot read them:"
 }
