@@ -379,8 +379,9 @@ export class PipelineRunCoordinator {
     if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
 
     // Project-level duplicate gate — with the pipeline-owned project gate on
-    // the interactive side, the only expected collision left is the seal race
-    // between a finishing step's job and this dispatch: re-arm absorbs it.
+    // the interactive side AND the executor's one-job-in-flight rule, the only
+    // collision left is the seal race between a finishing step's job (status
+    // record lagging the pub/sub event) and this dispatch: 1–2 re-arms absorb it.
     const duplicate = await findDuplicateActiveJob(this.deps.stateStore as any, owner, run.projectId, UNIVERSAL_FEATURE, 'universal');
     if (duplicate) {
       if (retries >= MAX_DUPLICATE_RETRIES) return void (await fail('duplicate-job-timeout'));

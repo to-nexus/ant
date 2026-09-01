@@ -85,6 +85,9 @@ steps:
   neither success nor failure — skips cascade.
 - `defaults.onStepFailure: abort` cancels everything still pending on the
   first failure; `continue` lets independent branches finish.
+- Branches never run concurrently: at most one job step is in flight per run,
+  so fan-out siblings execute one at a time in file order. Branch for
+  routing (`on:`) and failure isolation, not for speed.
 
 ## Keys that are rejected on purpose
 

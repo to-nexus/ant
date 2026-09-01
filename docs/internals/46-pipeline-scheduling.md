@@ -289,6 +289,21 @@ success nor failure). `defaults.onStepFailure: abort` (default) cancels
 still-pending steps on the first failure and seals `failed`; `continue`
 lets independent branches finish and seals `partial` on mixed outcomes.
 
+**At most ONE job step is in flight per run** (dispatched / running /
+awaiting_clarify). Every step dispatches into the same project, so the
+project-level duplicate gate would serialize ready siblings through bounded
+60s re-arms — a valid fan-out definition could fail (`duplicate-job-timeout`)
+purely on a sibling's duration. The executor defers ready job steps instead
+(they stay `pending`, dispatched in file order on the blocker's seal event);
+gates hold no project slot and still arm eagerly, and skip/cancel judgments
+stay eager so cascades propagate immediately. `awaiting_clarify` counts as
+in-flight because the answer re-dispatches that same step OUTSIDE the planner.
+Consequence: fan-out expresses routing and failure isolation, not concurrency
+— true parallel dispatch arrives with Phase 3's duplicate-gate relaxation, as
+an executor-only change. The duplicate gate stays as the seal-race safety net
+(a finishing job's status record lagging its pub/sub event), absorbed in 1–2
+re-arms.
+
 **FlowProducer was rejected**, not overlooked: ① a step's jobId can change
 mid-step (clarify end-and-resume re-dispatches under a new id — shipped, §5b) while
 a Flow tree is frozen at enqueue; ② a human gate can wait weeks, holding Flow

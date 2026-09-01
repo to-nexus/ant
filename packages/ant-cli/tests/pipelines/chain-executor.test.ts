@@ -44,10 +44,27 @@ describe('planAdvance — initial dispatch', () => {
     expect(plan.run.steps.map((s) => s.status)).toEqual(['dispatched', 'pending', 'pending']);
   });
 
-  it('dispatches parallel roots (explicit empty needs)', () => {
+  it('parallel roots serialize: first root only, the second dispatches on its seal', () => {
     const d = def([job('a'), job('b', { needs: [] })]);
     const plan = planAdvance(d, freshRun(d));
-    expect(plan.dispatches.map((x) => x.stepId).sort()).toEqual(['a', 'b']);
+    // One job in flight per run — 'b' is ready but deferred, not skipped.
+    expect(plan.dispatches.map((x) => x.stepId)).toEqual(['a']);
+    expect(plan.run.steps.map((s) => s.status)).toEqual(['dispatched', 'pending']);
+    const after = applyStepOutcome(d, plan.run, 'a', 'succeeded');
+    expect(after.dispatches.map((x) => x.stepId)).toEqual(['b']);
+  });
+
+  it('diamond a→(b,c)→d runs strictly sequentially in file order', () => {
+    const d = def([job('a'), job('b', { needs: ['a'] }), job('c', { needs: ['a'] }), job('dd', { needs: ['b', 'c'] })]);
+    const s1 = planAdvance(d, freshRun(d));
+    expect(s1.dispatches.map((x) => x.stepId)).toEqual(['a']);
+    const s2 = applyStepOutcome(d, s1.run, 'a', 'succeeded');
+    expect(s2.dispatches.map((x) => x.stepId)).toEqual(['b']);
+    expect(s2.run.steps.find((s) => s.stepId === 'c')?.status).toBe('pending');
+    const s3 = applyStepOutcome(d, s2.run, 'b', 'succeeded');
+    expect(s3.dispatches.map((x) => x.stepId)).toEqual(['c']);
+    const s4 = applyStepOutcome(d, s3.run, 'c', 'succeeded');
+    expect(s4.dispatches.map((x) => x.stepId)).toEqual(['dd']);
   });
 
   it('is idempotent — re-planning an in-flight run dispatches nothing new', () => {
@@ -128,6 +145,43 @@ describe('planAdvance — advance, skip cascade, gates', () => {
     );
     const replanned = planAdvance(d, { ...started.run, steps });
     expect(replanned.run.status).toBe('awaiting_human');
+  });
+
+  it('an awaiting_clarify blocker defers a ready sibling (no back-door parallel dispatch)', () => {
+    const d = def([job('a'), job('b', { needs: [] })]);
+    const started = planAdvance(d, freshRun(d)); // a dispatched, b deferred
+    const steps = started.run.steps.map((s) =>
+      s.stepId === 'a' ? { ...s, status: 'awaiting_clarify' as const } : s,
+    );
+    const replanned = planAdvance(d, { ...started.run, steps });
+    // The clarify answer re-dispatches 'a' directly, outside the planner —
+    // 'b' starting now would collide with that resume.
+    expect(replanned.dispatches).toEqual([]);
+    expect(replanned.run.steps.find((s) => s.stepId === 'b')?.status).toBe('pending');
+  });
+
+  it('a gate arms eagerly while a job is in flight (gates hold no project slot)', () => {
+    const d = def([job('a'), gate('g', { needs: ['a'] }), job('b', { needs: ['a'] })]);
+    const s1 = planAdvance(d, freshRun(d));
+    const s2 = applyStepOutcome(d, s1.run, 'a', 'succeeded');
+    // File order: the gate arms AND the job dispatches in the same plan.
+    expect(s2.dispatches.map((x) => `${x.kind}:${x.stepId}`)).toEqual(['gate:g', 'job:b']);
+  });
+
+  it('abort: a deferred ready sibling is cancelled when a failure lands', () => {
+    const d = def([job('a'), job('b', { needs: [] })]); // abort default
+    const started = planAdvance(d, freshRun(d)); // a dispatched, b deferred
+    const after = applyStepOutcome(d, started.run, 'a', 'failed');
+    expect(after.dispatches).toEqual([]);
+    expect(after.run.steps.find((s) => s.stepId === 'b')?.status).toBe('cancelled');
+    expect(after.run.status).toBe('failed');
+  });
+
+  it('continue: the deferred sibling dispatches after the failure', () => {
+    const d = def([job('a'), job('b', { needs: [] })], 'continue');
+    const started = planAdvance(d, freshRun(d));
+    const after = applyStepOutcome(d, started.run, 'a', 'failed');
+    expect(after.dispatches.map((x) => x.stepId)).toEqual(['b']);
   });
 
   it('a skipped need is neither success nor failure — downstream skips cascade', () => {

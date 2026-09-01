@@ -17,6 +17,9 @@
  *   already-terminal needs, and the run seals `failed`.
  *   `continue`: independent branches keep going; a finished run with both
  *   successes and failures seals `partial`.
+ * - At most ONE job step is in flight per run (dispatched / running /
+ *   awaiting_clarify): ready siblings stay `pending` in file order and
+ *   dispatch on the blocker's seal. Gates arm eagerly (no project slot).
  */
 
 import {
@@ -65,6 +68,20 @@ export function planAdvance(def: PipelineDef, run: RunRecord): ChainPlan {
 
   const anyFailed = () => steps.some((s) => s.status === 'failed');
 
+  // At most ONE job step in flight per run. Every step dispatches into the
+  // same project, so the project-level duplicate gate would serialize ready
+  // siblings through bounded 60s re-arms — a valid fan-out def could fail
+  // (`duplicate-job-timeout`) purely on a sibling's duration. The executor
+  // defers ready job steps instead (they stay `pending`, in file order); the
+  // next one dispatches on the blocker's seal event. `awaiting_clarify`
+  // counts as in flight: the answer re-dispatches that SAME step directly,
+  // outside this planner. Gates hold no project slot and still arm eagerly;
+  // skip/cancel judgments stay eager so cascades propagate immediately.
+  // True parallel dispatch is Phase 3 (duplicate-gate relaxation).
+  let jobInFlight = steps.some(
+    (s) => s.status === 'dispatched' || s.status === 'running' || s.status === 'awaiting_clarify',
+  );
+
   let changed = true;
   while (changed) {
     changed = false;
@@ -98,8 +115,17 @@ export function planAdvance(def: PipelineDef, run: RunRecord): ChainPlan {
         continue;
       }
 
-      record.status = isApprovalStep(stepDef) ? 'awaiting_gate' : 'dispatched';
-      dispatches.push({ stepId: stepDef.id, kind: isApprovalStep(stepDef) ? 'gate' : 'job', def: stepDef });
+      if (isApprovalStep(stepDef)) {
+        record.status = 'awaiting_gate';
+        dispatches.push({ stepId: stepDef.id, kind: 'gate', def: stepDef });
+        changed = true;
+        continue;
+      }
+      // Ready job step, but a job is already in flight — deferred, not skipped.
+      if (jobInFlight) continue;
+      record.status = 'dispatched';
+      dispatches.push({ stepId: stepDef.id, kind: 'job', def: stepDef });
+      jobInFlight = true;
       changed = true;
     }
   }
@@ -124,7 +150,8 @@ export function applyStepOutcome(
 export function deriveRunStatus(steps: StepRecord[], policy: 'abort' | 'continue'): PipelineRunStatus {
   const awaiting = steps.some((s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify');
   // `pending` is not "live": post-fixpoint a pending step always sits behind
-  // an executing or gated ancestor — only actual execution keeps `running`.
+  // an executing or gated ancestor, or behind an in-flight sibling (the
+  // one-job-in-flight rule) — only actual execution keeps `running`.
   const executing = steps.some((s) => s.status === 'dispatched' || s.status === 'running');
   if (executing) return 'running';
   if (awaiting) return 'awaiting_human';
