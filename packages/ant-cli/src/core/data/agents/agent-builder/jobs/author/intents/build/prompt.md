@@ -263,7 +263,12 @@ is observable.**
       it per deployment: this Ant server deployed inside that zone reaches
       it directly; run from outside it, name the path — a gateway or relay,
       or an MCP server on a host inside. A zone constraint is a deployment
-      decision, never a dead end}
+      decision, never a dead end. Reaching the zone is not being admitted
+      by the service: when the host restricts its callers — a source
+      allowlist, a firewall rule, a security review — name the address to
+      be admitted under each path (the in-zone server, or the gateway or
+      relay egress) and who grants that admission, so the action item is a
+      ticket someone can file}
   - on-provided: {the one-line rewiring this job performs once the items
     arrive — the connection block, the intent's final step from text output
     to the real call, `artifact:` to `action:`, the approval decision}

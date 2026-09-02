@@ -1035,6 +1035,20 @@ states the decision (verdict is the completion), and the elided-read
 compaction lane (`truncateReadFile` head+tail with the range-read hint) let
 the model reconstruct full coverage of a 937-line attachment — the dedup
 guard's range-blindness (A8) stays a tracked runtime residue, harmless here.
+A follow-up closed reachability's other half: reaching the zone is not
+being ADMITTED by the service. An intranet host commonly restricts its
+callers independently of topology — a source-IP allowlist, a firewall rule,
+a security review (this project's own ALB is exactly such an allowlist) —
+so an in-zone deployment with a registered credential can still be refused
+at the network layer with no manifest entry naming the missing grant. The
+`reachability:` field now also names the address to be admitted under each
+deployment path (the in-zone server, or the gateway/relay egress — the
+address is a function of the chosen path, which is why this lives in
+reachability and not `access:`, whose grantor is the service admin rather
+than the network team) and who grants that admission, so the action item is
+a ticket someone can actually file. Not a new structural token: skeleton v2
+tokens are unchanged, and omit-if-inapplicable keeps public-API entries
+clean.
 
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
