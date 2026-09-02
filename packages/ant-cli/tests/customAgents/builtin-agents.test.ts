@@ -315,10 +315,12 @@ describe('shipped agent-builder definition', () => {
   });
 
   // The dependency manifest is a HANDOFF: its skeleton must name the path a
-  // future build turn updates in place, and the two declaration channels the
-  // promotion loop lands a wired connection in. Structural tokens only — the
-  // legend's prose is not pinned, per the no-prose-pinning policy.
-  it('the manifest skeleton names its path and both declaration channels', () => {
+  // future build turn updates in place, the two declaration channels the
+  // promotion loop lands a wired connection in, and the field labels a later
+  // turn finds entries by — the skeleton declares them structural tokens
+  // (never localized, never renamed). Structural tokens only — the legend's
+  // prose is not pinned, per the no-prose-pinning policy.
+  it('the manifest skeleton names its path, both declaration channels, and every field token', () => {
     const prompt = fs.readFileSync(
       path.join(SRC_AGENTS_DIR, 'agent-builder', 'jobs', 'author', 'intents', 'build', 'prompt.md'),
       'utf-8',
@@ -326,6 +328,20 @@ describe('shipped agent-builder definition', () => {
     expect(prompt).toContain('dependencies/{agentId}.md');
     expect(prompt).toContain('`mcp.servers`');
     expect(prompt).toContain('`apis`');
+    for (const token of [
+      '- used-by:',
+      '- substitute:',
+      '- interface:',
+      '- wiring:',
+      '- access:',
+      '- reachability:',
+      '- on-provided:',
+      '- alternative:',
+      '- gate:',
+      '- status: virtual | provided | wired',
+    ]) {
+      expect(prompt).toContain(token);
+    }
   });
 
   // `tools.builtin` is a CLOSED vocabulary the builder cannot infer: the doc
