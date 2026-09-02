@@ -218,17 +218,25 @@ is observable.**
   agent's output is a dependency as much as a source. Legitimate, but never
   silent: the report lists each such counterpart as a surface the agent
   cannot reach until it is resolved. And never only in the report — a chat
-  report does not outlive the session. Whenever the definition you saved
-  names at least one counterpart without a connection, also
-  write `dependencies/{agentId}.md` to artifacts with `create_file`. It is
-  not a definition file: its readers are the user, a later builder turn (a
-  wiring turn here, or pipeline authoring reading it in the same project), and
-  the granting parties the user hands its sections to — never the running
-  agent — so it lives outside the definition, and the
-  definition never names it, not in `base/`, not in `on-demand/`: a running
-  agent cannot resolve the manifest's path, so a pointer to it is a dangling
-  reference by construction. One file per agent, rewritten whole on every
-  run that touches its dependencies.
+  report does not outlive the session. Every turn that saved a definition
+  also rewrites that agent's `dependencies/{agentId}.md` in artifacts with
+  `create_file` — build's own run manifest, one entry per counterpart
+  without a connection or, when none remain, a single line under the
+  preamble recording that verdict, so an empty manifest is distinguishable
+  from a forgotten one. Read the existing file first and update its entries
+  in place — the fixed structure below exists so a later turn can do
+  exactly that; a from-memory regeneration loses what earlier turns
+  recorded. A turn that removes an agent rewrites its manifest to record
+  the removal. The manifest is not a definition file: its readers are the
+  user, a later builder turn (a wiring turn here, or pipeline authoring
+  reading it in the same project), and the granting parties the user hands
+  its sections to — never the running agent — so it lives outside the
+  definition, and the definition never names it, not in `base/`, not in
+  `on-demand/`: a running agent cannot resolve the manifest's path, so a
+  pointer to it is a dangling reference by construction. One file per
+  agent, rewritten whole on every turn that saves its definition. When you
+  lay out the turn's checklist, its closing items are the manifest write
+  and the report — work missing from the list is work that gets skipped.
 - The manifest is the user's action list for making the agent run for real —
   lean: a line or two per field, an entry only as long as its applicable
   fields, never a restatement of the design. Its structure is FIXED so a later
@@ -334,7 +342,8 @@ is observable.**
 - The report lists what must be in place before a first run: every
   `${secret:}` key to register, every connection to verify, and each
   `tools.approval` decision with its reason — and names the dependency
-  manifest's path when one was written.
+  manifest's path. A build turn has always written one, so a report with no
+  manifest line is a forgotten manifest, never an exempt one.
 - When the manifest carries `virtual` entries, the report frames them as the
   user's remaining work: restate the promotion loop (provide the items,
   register the `${secret:}` key names, ask this builder to wire it) and name

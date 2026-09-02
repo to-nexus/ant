@@ -1,7 +1,11 @@
 # Turn completion contract for pinned/inherited build turns: the turn is not
-# done until at least one definition write actually went through the API. When
-# there is legitimately nothing to write, the exit is clarify (exempt from this
-# gate) — never a re-save of identical content.
+# done until at least one definition write actually went through the API AND
+# the agent's dependency manifest was (re)written — build's own run manifest,
+# recording each counterpart the definition names without a connection, or the
+# verdict that none remain. When there is legitimately nothing to write, the
+# exit is clarify (exempt from this gate) — never a re-save of identical
+# content.
 hooks:
   stop:
     - action: api__ant__request
+    - artifact: dependencies/*.md

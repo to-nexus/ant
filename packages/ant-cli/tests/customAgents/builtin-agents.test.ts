@@ -261,8 +261,14 @@ describe('shipped agent-builder definition', () => {
     const build = resolved.intents.find((i) => i.id === 'build');
     const review = resolved.intents.find((i) => i.id === 'review');
     // A pinned build turn is done only when a definition write went through
-    // the API; the sanctioned no-op exit is clarify, which this gate exempts.
-    expect(build?.hooks?.stop).toEqual([{ action: 'api__ant__request' }]);
+    // the API AND the agent's dependency manifest was (re)written — build's
+    // run manifest (quick-catching-couch: prose-only obligation produced
+    // zero manifests). The sanctioned no-op exit is clarify, which this
+    // gate exempts.
+    expect(build?.hooks?.stop).toEqual([
+      { action: 'api__ant__request' },
+      { artifact: 'dependencies/*.md' },
+    ]);
     // Inspection reports with stated assumptions instead of blocking on questions.
     expect(review?.clarify).toBe(false);
     expect(review?.hooks).toBeUndefined();
