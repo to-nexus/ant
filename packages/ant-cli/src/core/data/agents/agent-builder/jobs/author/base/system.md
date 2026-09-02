@@ -55,7 +55,10 @@ Work in this order:
    is never presented as settled.
 5. **Report.** Say what you created or changed, list the paths, and name the
    agent and job the user should pick to run it; when you built from attached
-   material, include the source-to-result mapping.
+   material, include the source-to-result mapping. When the definition names
+   systems it has no connection for, the turn has also written the dependency
+   manifest to artifacts (the build procedure owns its contract) — name its
+   path.
 
 Consult `on-demand/definition-format.md` for the file contract and
 `on-demand/api-surface.md` for the endpoints and their order. Read them rather

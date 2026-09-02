@@ -934,6 +934,31 @@ section is the sanctioned home for the automation-status reframe ("this
 intent is that performer"). The report must also now state each job's hook
 decision, so a correct "no hooks" is distinguishable from a forgotten one.
 
+**Amendment — unwired dependencies get a durable manifest**
+(slate-nodding-guard, 2026-09-02): an agent authored from material full of
+internal systems (ticketing, mass-mail, admin consoles) correctly declared no
+connections — no endpoint or credential existed to declare — and substituted
+each write with a ready-to-transcribe text deliverable. The gap was
+downstream: everything the user must provide to promote those substitutes to
+real connections lived only in the build turn's chat report, which does not
+outlive the session. The build prose now requires a second deliverable
+whenever the saved definition names at least one system without a connection:
+`dependencies/{agentId}.md`, written to the job's ARTIFACT plane with
+`create_file` (its readers are the user and a future build turn, so it is not
+a definition file and never enters `on-demand/`, whose admission rule stays
+"what the running agent opens mid-task"). Per dependency, a few lines: what
+is missing — endpoint or existing MCP server, `${secret:}` key NAMES to
+register (the credential store carries values; the builder never asks for
+one), access rights and their grantor, network reachability (internal-only,
+segmented, VDI), or the verdict that a private API/MCP must be provided plus
+the operations it must support, read off the substitute deliverable's own
+fields — then the one-line rewiring the builder performs once the items
+arrive (connection block, text output → real call, `artifact:` → `action:`,
+approval) and a `virtual`/`provided`/`wired` status the wiring turn updates
+in place. Post-wiring human steps (a send button) are marked as gates, not
+dependencies. Deliberately NOT a hook: the manifest is conditional, and
+`build`'s stop contract stays the pinned `action: api__ant__request`.
+
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
 (a design that meaningfully reshapes user-provided material is confirmed

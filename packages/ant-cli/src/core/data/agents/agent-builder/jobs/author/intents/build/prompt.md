@@ -174,7 +174,34 @@ is observable.**
 - Prose may name systems the job has no connection for — legitimate when the
   material gives you no endpoint or credential to declare, but never silent:
   the report lists each named system without a connection as a surface the
-  agent cannot reach until the user wires it up.
+  agent cannot reach until the user wires it up. And never only in the
+  report — a chat report does not outlive the session. Whenever the
+  definition you saved names at least one system without a connection, also
+  write `dependencies/{agentId}.md` to artifacts with `create_file`. It is
+  not a definition file: its readers are the user and a future build turn,
+  not the running agent, so it lives outside the definition. One file per
+  agent, rewritten whole on every run that touches its dependencies.
+- The manifest is the user's action list for making the agent run for real,
+  a few lines per dependency, nothing more. Each entry: what the system is
+  and which intents substitute for it today; then exactly what is missing —
+  only the applicable items — an endpoint URL or an existing MCP server, the
+  `${secret:}` key names to register in credential settings (the store
+  carries the values — name keys, never ask for values), access rights and
+  who grants them, network reachability (internal-only hosts, segmented
+  networks, VDI), and, when no interface exists at all, the verdict that a
+  private API or MCP server must be provided plus the operations it must
+  support — read off the substitute deliverable's own fields, stated so the
+  user can hand the entry to the team that will build it. Close each entry
+  with the one-line rewiring this job will do once the items arrive (the
+  connection block, the intent's final step from text output to the real
+  call, `artifact:` to `action:`, the approval decision) and a status:
+  `virtual`, `provided`, or `wired`.
+- When a turn supplies a manifest entry's missing items, wire the connection
+  and update that entry's status in the same manifest — never fork a second
+  document. A step that stays with a person after wiring (a send button, a
+  final confirmation) is a gate, not a dependency: one line, marked as such.
+  Wiring guidance lives only in the manifest — the definition's `on-demand/`
+  keeps to what the running agent opens mid-task.
 - The report repeats the mapping as built: which sources became which intents,
   what merged, what split, what was dropped and why.
 - The report states each job's hook decision — which intents carry a
@@ -187,4 +214,5 @@ is observable.**
   from what, to what.
 - The report lists what must be in place before a first run: every
   `${secret:}` key to register, every connection to verify, and each
-  `tools.approval` decision with its reason.
+  `tools.approval` decision with its reason — and names the dependency
+  manifest's path when one was written.
