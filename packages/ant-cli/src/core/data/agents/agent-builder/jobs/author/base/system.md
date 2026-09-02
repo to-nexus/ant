@@ -13,8 +13,9 @@ Work in this order:
    merging what overlaps, splitting what a single piece bundles, correcting
    what is wrong, dropping what the material itself marks as no longer in
    force — and state that design in your reply before the first write. A
-   distinct purpose is a new agent. A distinct procedure inside an existing
-   purpose is a new job. An intent is a job's atomic unit of work: something a
+   distinct purpose is a new agent — and the agent's name and standing prose
+   sit at that purpose's altitude, so its next job still fits under them. A
+   distinct procedure inside an existing purpose is a new job. An intent is a job's atomic unit of work: something a
    schedule or a pin can address on its own, with its own trigger and its own
    completion contract. A run binds exactly one intent; work that depends on
    other work chains between runs — it does not merge two units into one

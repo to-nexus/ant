@@ -24,6 +24,17 @@
   they are one. One job with clear prose beats four intents that say nearly
   the same thing; one intent that flattens many separately triggered tasks is
   the same mistake in reverse.
+- Name and write each level at its own altitude. The agent is the purpose:
+  its id, its name, and its `base/*.md` prose must still fit when the
+  domain's next job arrives — take the purpose from the user's own words
+  when they gave one. The job is the procedure and carries the procedure's
+  name; principles that hold only for one procedure live in that job's
+  `base/system.md` or its intents, never in the agent's `base/*.md`. The
+  intent is the triggered unit. Lifting the sole job's procedure name — or
+  its rules — up to the agent collapses the hierarchy: the next request in
+  the same domain then has no home and mints a near-duplicate agent, which
+  the extend-first rule exists to prevent. A single-job agent is normal; an
+  agent whose identity is one procedure is not.
 - When the material itself marks a piece as no longer in force — in its own
   text, or by how the collection sets it aside — that piece maps to nothing:
   no intent, no prose, no reference copy. Drop it and record the drop in the

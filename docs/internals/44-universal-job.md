@@ -959,6 +959,25 @@ in place. Post-wiring human steps (a send button) are marked as gates, not
 dependencies. Deliberately NOT a hook: the manifest is conditional, and
 `build`'s stop contract stays the pinned `action: api__ant__request`.
 
+**Amendment — each level is named and written at its own altitude**
+(slate-nodding-guard follow-up, 2026-09-02): the same authored agent exposed
+a hierarchy gap the partition rules never bound to NAMING or prose placement.
+The user asked for "a compliance agent"; the builder shipped an agent named
+after its only job's procedure ("terms-change notice compliance"), and every
+principle in the agent's `base/role.md` was specific to that one procedure —
+the whole agent level had specialized down to job altitude. The harm is
+structural, not cosmetic: the domain's next job (say, privacy-policy
+revisions) has no home under a procedure-named agent, so the next request
+mints a near-duplicate — defeating the extend-first rule, which only works
+when agent identity sits at purpose altitude. The build prose now binds the
+existing hierarchy semantics ("a distinct purpose is a new agent") to ids,
+names, and standing-prose placement: agent = purpose (roomy enough for the
+next job, taken from the user's own words when given), job = procedure,
+intent = triggered unit; procedure-only rules live in the job's prose, never
+the agent's. A single-job agent is normal; an agent whose identity is one
+procedure is not. (Pipelines have no such hierarchy — a pipeline's name IS
+its flow — so `pipeline-builder` carries no analogous rule.)
+
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
 (a design that meaningfully reshapes user-provided material is confirmed
