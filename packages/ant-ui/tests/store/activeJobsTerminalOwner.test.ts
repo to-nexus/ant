@@ -105,3 +105,73 @@ describe('activeJobs terminal owner', () => {
     expect(s.getState().activeJobs.code).toBeDefined();
   });
 });
+
+/**
+ * Same axis, other direction: state that outlives the SESSION RECORD it was
+ * rendered from. Deleting the record behind the viewed job (per-job trash, or
+ * the feature-wide Hard Reset) must blank the work tab in the same tick —
+ * before this owner existed, the Hard Reset relied on the BE's kanban reset
+ * broadcast, which carries a board only for the job types KanbanService
+ * serves, so a workspace project's checklist stayed on screen until a reload.
+ */
+describe('clearJobTabView', () => {
+  let s: ReturnType<typeof makeStore>;
+  beforeEach(() => { s = makeStore(); });
+
+  it('blanks the board, the job identity, and the run-state chrome', () => {
+    s.setState({
+      currentJobId: 'j1',
+      isRunning: true,
+      jobStartPending: true,
+      isQueued: true,
+      queuePosition: { position: 2, total: 3 },
+      kanban: {
+        jobId: 'j1',
+        todo: [{ id: 't1' }],
+        inProgress: [],
+        completed: [],
+        isEstimating: false,
+        dataSource: 'live',
+        checklist: { items: [{ id: 'c1', state: 'done' }] },
+        tokenUsage: { totalTokens: 42 },
+      },
+    });
+
+    s.getState().clearJobTabView();
+
+    const st = s.getState();
+    expect(st.currentJobId).toBeUndefined();
+    expect(st.kanban.jobId).toBeUndefined();
+    expect(st.kanban.todo).toEqual([]);
+    expect(st.kanban.dataSource).toBe('session');
+    // Per-job fields ride the replaced object — never re-listed field by field.
+    expect((st.kanban as any).checklist).toBeUndefined();
+    expect((st.kanban as any).tokenUsage).toBeUndefined();
+    expect(st.isRunning).toBe(false);
+    expect(st.jobStartPending).toBe(false);
+    expect(st.isQueued).toBe(false);
+    expect(st.queuePosition).toBeNull();
+  });
+
+  it('prunes the cleared job from activeJobs and leaves concurrent jobs alone', () => {
+    s.setState({
+      currentJobId: 'j1',
+      activeJobs: {
+        code: { jobId: 'j1', status: 'completed' },
+        plan: { jobId: 'j2', status: 'running' },
+      },
+    });
+
+    s.getState().clearJobTabView();
+
+    expect(s.getState().activeJobs.code).toBeUndefined();
+    expect(s.getState().activeJobs.plan).toBeDefined();
+  });
+
+  it('is a no-op-safe when no job is being viewed', () => {
+    s.setState({ currentJobId: undefined, activeJobs: { plan: { jobId: 'j2', status: 'running' } } });
+    s.getState().clearJobTabView();
+    expect(s.getState().currentJobId).toBeUndefined();
+    expect(s.getState().activeJobs.plan).toBeDefined();
+  });
+});

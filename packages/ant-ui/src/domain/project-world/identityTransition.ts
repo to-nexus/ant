@@ -15,9 +15,11 @@
  * "what cleared state looks like" — see docs/internals/ui-async-policy.md
  * §7.5.4 (no parallel ghost surfaces).
  *
- * Kept store-free (only a type-only import) so `resetSlice` can consume it
- * without a `store ↔ project-world` runtime cycle.
+ * Kept slice-free so `resetSlice` can consume it without a
+ * `store ↔ project-world` runtime cycle — the one runtime import is the
+ * `EMPTY_KANBAN_BOARD` literal from `store/types`, which imports no slice.
  */
+import { EMPTY_KANBAN_BOARD } from '../store/types';
 import type { StaticMainPanelTab } from '../store/types';
 
 export type IdentityScope = 'project' | 'feature';
@@ -47,14 +49,7 @@ export function identityResetPatch(scope: IdentityScope): Record<string, unknown
     chatEvents: [],
     streamingBuffers: {},
     lastChatSnapshotTs: undefined,
-    kanban: {
-      jobId: undefined,
-      todo: [],
-      inProgress: [],
-      completed: [],
-      isEstimating: false,
-      dataSource: 'session' as const,
-    },
+    kanban: { ...EMPTY_KANBAN_BOARD },
     isRunning: false,
     currentJobId: undefined,
   };

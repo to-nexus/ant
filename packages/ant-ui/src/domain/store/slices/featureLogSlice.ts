@@ -198,7 +198,7 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
 
   resetFeatureContext: async (projectId, featureName, reason) => {
     await resetFeatureContextApi(projectId, featureName, reason);
-    // Eagerly wipe both SSOT caches the Chat / Timeline tabs read from:
+    // Eagerly wipe the SSOT caches the Chat / Timeline / Job tabs read from:
     //   - `chatEvents` / `streamingBuffers` (chat slice, SSE-populated) →
     //     cleared locally so the Chat tab does not flash stale messages
     //     between the HTTP response and the `events_cleared` SSE
@@ -209,6 +209,11 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
     //     dropped so the subsequent re-fetch is treated as a fresh feature
     //     switch.
     get().clearChatEvents?.('full');
+    //   - the work tab (`clearJobTabView`) → the board, the checklist and the
+    //     job chip all render FROM the sessions this call just wiped. Same
+    //     reason as the chat clear above: idempotent with the BE's board
+    //     reset broadcast, and not dependent on it arriving.
+    get().clearJobTabView?.();
     set({
       breadcrumbs: [],
       breadcrumbsStatus: 'idle',

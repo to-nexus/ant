@@ -737,19 +737,18 @@ export function createFeaturesRoutes(deps: {
         );
       }
 
-      // Refresh the kanban so every connected tab clears stale state for this
-      // jobType. Universal has no board (checklist surface) and KanbanService
-      // is universal-unaware — the broadcast would be pure noise, skip it.
-      if (jobType !== 'universal') {
-        await broadcastKanbanReset(
-          deps.stateStore,
-          deps.kanbanService,
-          projectId,
-          featureName,
-          jobType,
-          userContext,
-        );
-      }
+      // Refresh the board so every connected tab clears stale state for this
+      // jobType. Universal rides the SAME call: its surface is the checklist,
+      // which travels on the same frame — skipping it here is what left a
+      // deleted run's checklist rendered in every other open tab.
+      await broadcastKanbanReset(
+        deps.stateStore,
+        deps.kanbanService,
+        projectId,
+        featureName,
+        jobType,
+        userContext,
+      );
 
       logger.debug(`[Features] Deleted job ${jobId} (${jobType})`);
       res.json({ success: true, jobId });

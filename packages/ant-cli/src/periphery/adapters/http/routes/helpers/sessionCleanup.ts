@@ -444,6 +444,38 @@ export async function deleteJobRunFromSession(
   }
 }
 
+/**
+ * A board surface with nothing to show. `checklist` is EXPLICIT, and that is
+ * the whole point: the FE reducer preserves the last-seen checklist across any
+ * frame that omits the field (a token-only or terminal-seal update must not
+ * blank the Checklist board), so a reset frame that left it undefined blanked
+ * the kanban columns while the checklist of the very run just deleted stayed
+ * on screen. One frame, both surfaces — canonical and universal do not get
+ * separate reset paths.
+ */
+function emptyBoard(jobType: SessionableJobType): KanbanData {
+  return {
+    jobId: undefined,
+    todo: [],
+    inProgress: [],
+    completed: [],
+    isEstimating: false,
+    dataSource: 'session',
+    checklist: { items: [] },
+    jobType,
+    agent: getAgentForJob(jobType),
+  };
+}
+
+/**
+ * Re-publish `jobType`'s board after its session record was deleted, so every
+ * open tab drops what it was rendering.
+ *
+ * Universal reads its board from the container's per-(agentId, customJobId)
+ * session files, which KanbanService does not serve — so the frame is built
+ * here rather than skipped. Skipping is what left a workspace project's
+ * checklist rendered until a reload.
+ */
 export async function broadcastKanbanReset(
   stateStore: StateStorePort | undefined,
   kanbanService: KanbanService | undefined,
@@ -456,16 +488,24 @@ export async function broadcastKanbanReset(
     return;
   }
   try {
-    kanbanService.invalidateSessionCacheByFeature(userContext as any, projectId, featureName, jobType);
-    const kanbanData = await kanbanService.getKanbanData(
-      projectId,
-      featureName,
-      jobType,
-      undefined,
-      undefined,
-      undefined,
-      userContext as any,
-    );
+    let kanbanData: KanbanData;
+    if (jobType === 'universal') {
+      kanbanData = emptyBoard(jobType);
+    } else {
+      kanbanService.invalidateSessionCacheByFeature(userContext as any, projectId, featureName, jobType);
+      const served = await kanbanService.getKanbanData(
+        projectId,
+        featureName,
+        jobType,
+        undefined,
+        undefined,
+        undefined,
+        userContext as any,
+      );
+      // Same explicitness as `emptyBoard`: a served board that carries no
+      // checklist must SAY so, or the FE keeps the stale one.
+      kanbanData = { ...served, checklist: served?.checklist ?? { items: [] } };
+    }
     const { getRealtimeBroadcastChannel } = await import(
       '../../../../../infrastructure/state/redisConstants'
     );

@@ -104,3 +104,29 @@ describe('clearFeatureLog', () => {
     expect(store.getState().contextLensKey).toBeUndefined();
   });
 });
+
+/**
+ * Hard Reset wipes the feature's sessions from disk, so every surface that
+ * renders FROM those sessions has to be cleared in the same tick. Chat and the
+ * timeline were; the work tab was not, and stayed rendered until a reload —
+ * the BE reset broadcast cannot own it (it carries a board only for the job
+ * types KanbanService serves, and a workspace checklist is not one).
+ */
+describe('resetFeatureContext — surfaces cleared', () => {
+  it('clears chat, the feature log, and the work tab', async () => {
+    const clearChatEvents = vi.fn();
+    const clearJobTabView = vi.fn();
+    const store = create<any>()((set, get, s) => ({
+      ...createFeatureLogSlice(set as any, get as any, s as any),
+      clearChatEvents,
+      clearJobTabView,
+    }));
+
+    await store.getState().loadContextEstimate('p1', 'f1');
+    await store.getState().resetFeatureContext('p1', 'f1');
+
+    expect(clearChatEvents).toHaveBeenCalledWith('full');
+    expect(clearJobTabView).toHaveBeenCalledTimes(1);
+    expect(store.getState().breadcrumbs).toEqual([]);
+  });
+});

@@ -26,6 +26,8 @@ import {
   getSessionFilePath,
 } from '../../../src/core/utils/sessionPaths';
 import { FileSessionAdapter } from '../../../src/periphery/adapters/session/FileSessionAdapter';
+import { broadcastKanbanReset } from '../../../src/periphery/adapters/http/routes/helpers/sessionCleanup';
+import { SESSIONABLE_JOB_TYPES } from '@ant/shared';
 
 async function fileExists(p: string): Promise<boolean> {
   try {
@@ -132,5 +134,69 @@ describe('Hard Reset — clearCanonicalDirectory on sessions/', () => {
     const trace = await adapter.loadAllChat();
     expect(trace).toHaveLength(1);
     expect((trace[0] as any).text).toBe('after reset');
+  });
+});
+
+/**
+ * Stage 4 re-publishes the board so open tabs drop what they were rendering.
+ *
+ * Two ways that used to leak a deleted session onto the screen:
+ *  - the loop iterated a hand-written `['code','design','learn','plan']`, so a
+ *    `visual` board and a `universal` checklist were never told to reset;
+ *  - the frame left `checklist` undefined, and the FE reducer preserves the
+ *    last-seen checklist across any frame that omits it — so the kanban
+ *    columns blanked while the checklist of the wiped run stayed up.
+ *
+ * Canonical and universal share ONE frame and ONE call: the checklist is not a
+ * second surface with its own reset path.
+ */
+describe('Hard Reset — board reset broadcast', () => {
+  function fakes(served?: any) {
+    const published: any[] = [];
+    const stateStore = { publish: async (_c: string, m: any) => { published.push(m); } } as any;
+    const kanbanService = {
+      invalidateSessionCacheByFeature: () => {},
+      getKanbanData: async () => served ?? {
+        jobId: undefined, todo: [], inProgress: [], completed: [],
+        isEstimating: false, dataSource: 'session',
+      },
+    } as any;
+    return { published, stateStore, kanbanService };
+  }
+  const ctx = { organizationId: 'org', userId: 'u' };
+
+  it('publishes an explicit empty checklist for every sessionable job type', async () => {
+    for (const jobType of SESSIONABLE_JOB_TYPES) {
+      const { published, stateStore, kanbanService } = fakes();
+      await broadcastKanbanReset(stateStore, kanbanService, 'p1', 'f1', jobType, ctx);
+      expect(published).toHaveLength(1);
+      expect(published[0].type).toBe('kanban');
+      // Explicit — an omitted checklist is what the FE preserves.
+      expect(published[0].data.checklist).toEqual({ items: [] });
+    }
+  });
+
+  it('does not let a served board carry a stale checklist through the reset', async () => {
+    const { published, stateStore, kanbanService } = fakes({
+      jobId: undefined, todo: [], inProgress: [], completed: [],
+      isEstimating: false, dataSource: 'session',
+      checklist: { items: [{ id: 'item-1', text: 'stale', state: 'done' }] },
+    });
+    await broadcastKanbanReset(stateStore, kanbanService, 'p1', 'f1', 'code', ctx);
+    // The served board is authoritative when it HAS one; the guard is that an
+    // absent checklist is stated, never inherited from the previous frame.
+    expect(published[0].data.checklist.items).toHaveLength(1);
+  });
+
+  it('serves the universal frame without KanbanService (container-scoped sessions)', async () => {
+    const { published, stateStore } = fakes();
+    const kanbanService = {
+      invalidateSessionCacheByFeature: () => { throw new Error('must not be called'); },
+      getKanbanData: async () => { throw new Error('must not be called'); },
+    } as any;
+    await broadcastKanbanReset(stateStore, kanbanService, 'p1', 'f1', 'universal', ctx);
+    expect(published[0].data.jobType).toBe('universal');
+    expect(published[0].data.checklist).toEqual({ items: [] });
+    expect(published[0].data.todo).toEqual([]);
   });
 });

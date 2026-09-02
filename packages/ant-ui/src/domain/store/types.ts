@@ -108,6 +108,25 @@ export interface JobState {
   activeJobs: Record<string, ActiveJobEntry>;
 }
 
+/**
+ * The empty board — "the work tab has no job to show".
+ *
+ * ONE literal for every site that blanks the board (store seed, identity
+ * transition, session-record deletion). Three hand-written copies had already
+ * drifted apart on which fields they named. The object is REPLACED wholesale,
+ * so every per-job field — the kanban columns AND the universal `checklist`,
+ * tokenUsage, interruption — is dropped by construction: the two board
+ * surfaces do not get separate clearing paths, and nothing is re-listed here.
+ */
+export const EMPTY_KANBAN_BOARD: KanbanData = {
+  jobId: undefined,
+  todo: [],
+  inProgress: [],
+  completed: [],
+  isEstimating: false,
+  dataSource: 'session',
+};
+
 export interface SSEState {
   kanban: KanbanData;
   /**

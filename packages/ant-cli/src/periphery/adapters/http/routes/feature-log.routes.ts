@@ -1,3 +1,4 @@
+import { SESSIONABLE_JOB_TYPES } from '@ant/shared';
 import type { SessionableJobType } from '@ant/shared';
 import { Router, Request, Response } from 'express';
 import { registerFeatureParamDecoders } from './helpers/featureParam';
@@ -242,9 +243,10 @@ export function createFeatureLogRoutes(deps: {
    *      feature.jsonl, chat.jsonl, sessions/architect/*.json,
    *      sessions/planner/*.json. Canonical subdirectory structure is
    *      preserved (debug/runtime stay as empty dirs, files inside go).
-   *   4. broadcastKanbanReset × jobType — invalidate KanbanService cache
-   *      and publish a fresh (empty) kanban snapshot so every open tab
-   *      resets its view in sync.
+   *   4. broadcastKanbanReset × SESSIONABLE_JOB_TYPES — invalidate the
+   *      KanbanService cache and publish a fresh (empty) board so every open
+   *      tab resets its view in sync. One frame carries BOTH surfaces (kanban
+   *      columns + universal checklist), so neither can be left behind.
    *   5. fileTreeNotifier.notifyFileTreeUpdate — file tree is push-based
    *      and must be explicitly notified of the bulk deletions.
    *
@@ -268,7 +270,10 @@ export function createFeatureLogRoutes(deps: {
       const reason = rawReason === '' ? 'user_reset' : rawReason;
 
       const featurePath = resolveContainerPath(deps.workspaceResolver, userContext, projectId, featureName);
-      const jobTypes: Array<'code' | 'design' | 'learn' | 'plan'> = ['code', 'design', 'learn', 'plan'];
+      // Every sessionable job type — NOT a hand-written subset. The old
+      // literal was `['code','design','learn','plan']`, so a `visual` board and
+      // a `universal` checklist both survived the wipe on screen.
+      const jobTypes = SESSIONABLE_JOB_TYPES;
 
       // 1. SSOT cascade seal for every job tied to this feature. We finalize
       //    (not pause) because the feature's sessions are about to be wiped

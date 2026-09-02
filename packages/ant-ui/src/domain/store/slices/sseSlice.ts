@@ -18,6 +18,7 @@ import { createUnseenArtifactsHandler, createBridgeHandler, createTransferHandle
 import { setupConnectionPolicy } from './sse/sseConnectionPolicy';
 import { handleInitialActiveJobs } from './sse/activeJobsBootstrap';
 import { selectIsAuthBlocked } from '../selectors/auth';
+import { EMPTY_KANBAN_BOARD } from '../types';
 
 let sliceHandlerIds: HandlerId[] = [];
 
@@ -108,7 +109,7 @@ function bufferKey(turnId: string, workerScope?: string | null): BufferKey {
 }
 
 export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) => ({
-  kanban: { jobId: undefined, todo: [], inProgress: [], completed: [], isEstimating: false, dataSource: 'session' as const },
+  kanban: { ...EMPTY_KANBAN_BOARD },
   chatEvents: [],
   streamingBuffers: {},
   lastChatSnapshotTs: undefined,

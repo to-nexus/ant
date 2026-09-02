@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { parseCustomJobRef } from '@ant/shared';
-import { JobState, QueuePosition, InlineAskContext, ActiveJobEntry } from '../types';
+import { JobState, QueuePosition, InlineAskContext, ActiveJobEntry, EMPTY_KANBAN_BOARD } from '../types';
 import { Session } from '@/domain/models/session';
 import { JobExecution } from '@/infrastructure/http/cli';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
@@ -47,6 +47,23 @@ export interface JobActions {
    * on the ambient `selectedJobType`.
    */
   deleteJobId: (jobId: string, jobType?: string) => Promise<void>;
+  /**
+   * SSOT for "the work tab no longer has a job to show".
+   *
+   * Every path that DELETES the session record behind the currently viewed
+   * job funnels through here — the per-job trash (`deleteJobId`) and the
+   * feature-wide Hard Reset (`resetFeatureContext`). Only the per-job path
+   * used to clear anything, so a Hard Reset left the board — and, for a
+   * workspace project, the whole checklist — rendered until a reload.
+   *
+   * BOTH board surfaces reset here by construction: the kanban columns and the
+   * universal checklist are one `kanban` object, replaced wholesale rather
+   * than field by field, so neither surface needs its own path.
+   *
+   * Clears the view, not the history: `chatEvents` / breadcrumbs belong to the
+   * caller (see `resetFeatureContext`), which wipes them on its own axis.
+   */
+  clearJobTabView: () => void;
 }
 
 export type JobSlice = JobState & JobActions;
@@ -331,22 +348,28 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     }
 
     if (wasCurrent) {
-      sseManager.disconnectWorkflow(jobId);
-      set({
-        currentJobId: undefined,
-        kanban: {
-          jobId: undefined,
-          todo: [],
-          inProgress: [],
-          completed: [],
-          isEstimating: false,
-          dataSource: 'session',
-          interruption: undefined,
-          recursionCount: undefined,
-          recursionLimit: undefined,
-          jobTiming: undefined,
-        },
-      });
+      get().clearJobTabView();
+    }
+  },
+
+  clearJobTabView: () => {
+    const { currentJobId } = get();
+    if (currentJobId) {
+      sseManager.disconnectWorkflow(currentJobId);
+    }
+    set({
+      currentJobId: undefined,
+      kanban: { ...EMPTY_KANBAN_BOARD },
+      // The chip's run-state chrome is part of the view. Both callers are
+      // gated on the job not being live (409 / `hasRunningJobForFeature`), so
+      // this converges rather than cancelling anything.
+      isRunning: false,
+      jobStartPending: false,
+      isQueued: false,
+      queuePosition: null,
+    });
+    if (currentJobId) {
+      get().clearActiveJobByJobId?.(currentJobId);
     }
   },
 
