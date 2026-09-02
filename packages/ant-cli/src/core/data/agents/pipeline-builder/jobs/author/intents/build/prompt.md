@@ -8,6 +8,14 @@
   as text to copy into a directive.
 - An intent's `hooks.stop` artifact globs are its output contract — they are
   what a downstream step pins as `context`. Note them while reading.
+- A definition also says how real each intent runs today. An intent whose
+  procedure touches an external system the job declares no connection for
+  (`apis` / `mcp.servers`), and whose completion contract is `artifact:`-only,
+  runs on a substitute — authored text standing in for the real call. When
+  `dependencies/{agentId}.md` exists in this project's artifacts, read it:
+  it is that agent's dependency status ledger and names the human relays
+  (`gate:`). Name the steps that run on substitutes in the design you state,
+  so nobody reads a green run as the real work having happened.
 
 **Design the trigger.**
 
@@ -54,6 +62,15 @@
 - A tool the step's intent gates with `approval: always` pauses the run for
   per-call approval on its own; do not add an approval step to guard a write
   its intent already gates.
+- A gate holds a run for a person's decision, never for their labor. When the
+  chain crosses work a person performs outside any step — relaying a
+  deliverable into a system no agent reaches, fetching something only they
+  can — the downstream work's real trigger is that handoff arriving, not the
+  upstream step sealing. Author that seam as a pipeline boundary: end this
+  pipeline at the handoff deliverable, and make the downstream chain its own
+  pipeline, fired manually when the handoff is in hand — `runCompleted` only
+  once the seam itself is automated. The split is reversible: when the seam
+  is wired later, chain the two pipelines or merge them.
 
 **Write each step's directive and pins.**
 
@@ -100,6 +117,8 @@
 - Show the id and name, the trigger with its next fires, each step (what it
   runs, on what condition, with which directive or the default), each gate
   with its timeout, and the failure policy.
+- Name any step that runs on a substitute and any seam left to a person —
+  what this pipeline delivers for real, and where its output waits on hands.
 - End with the hand-over line: the pipeline is a disabled draft; a person
   enables it and activates it on a project in the Pipelines tab, and that is
   where run-now, run history, and approvals live.
