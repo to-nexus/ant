@@ -732,6 +732,41 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
 `tests/store/identity-transition.test.ts` (pipelines tab survives project switches),
 `tests/components/pipelineOriginChip.test.tsx`.
 
+### Readiness is an authoring concern — substitutes and the human seam
+
+The 2026-09-02 first-principles audit (doc 44, "first-principles closure")
+confirmed that no activation or dispatch gate carries a dependency-readiness
+axis: a pipeline whose every step runs a `virtual` (substitute-backed) intent
+passes every gate, writes authored text in place of real calls, and seals
+`completed`. That is **by design and stays so** — substitutes plus a human
+relay are a legitimate operating mode, and a readiness gate would mint a
+second home for wiring state, whose SSOT is the agent definition's connection
+block (`apis` / `mcp.servers`). The dependency manifest
+(`dependencies/{agentId}.md`) is a human handoff document with zero
+programmatic readers; do not teach the scheduler to parse it. If a future
+surface wants a readiness verdict, it derives one from signals the lane
+already holds: the definition's connection block, and the dispatcher's
+`artifact:` vs `action:` stop-hook partition (today used only to collect
+`{{steps.*.artifacts}}` globs).
+
+The obligations live at authoring time, in the pipeline builder's contract:
+
+- **Disclosure** — while gathering definitions, derive which intents run on
+  substitutes (external-system procedure, no declared connection,
+  `artifact:`-only completion; the same-project manifest is read
+  opportunistically as the status ledger) and name those steps in the stated
+  design and the report, so a green run is never mistaken for the real work.
+- **The seam rule** — an approval gate holds a run for a person's DECISION,
+  never their labor. When a person performs work between steps (relaying a
+  deliverable into a system no agent reaches), the downstream chain's real
+  trigger is that handoff arriving, so the domain is authored as **multiple
+  pipelines** split at the seam: the upstream one ends at the handoff
+  deliverable, the downstream one is manual-fired while the seam is human
+  (`runCompleted` only once it is automated). The split is reversible —
+  wiring the seam later means chaining or merging the two. No inter-pipeline
+  ordering machinery exists or is planned; `runCompleted` and manual fire are
+  the whole vocabulary.
+
 ---
 
 ## 9. Phasing

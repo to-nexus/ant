@@ -1091,6 +1091,65 @@ from conversations: a counterpart that must first change is a negotiation
 to open, not a request to file. One new optional structural token
 (`alternative:`); existing manifests are unaffected by the omit rule.
 
+**Amendment — first-principles closure: the taxonomy, the report model, and
+the pipeline seam** (2026-09-02): the manifest commits above were each
+incident-driven, so the whole authoring contract was re-derived from first
+principles and diffed against the shipped text — the first non-reactive pass.
+Verdict: the contract is coherent — no rule holds two homes, the decision
+axes close — with three corrections and one lane finding.
+
+1. One wording contradiction: "a few lines per dependency, nothing more"
+   against its own eight-field skeleton (real entries run 10+ lines).
+   Corrected to the level the lean rule actually binds: a line or two per
+   field, entry length follows applicable fields, never a design restatement.
+2. The blocker taxonomy CLOSES — every candidate reason an agent or pipeline
+   cannot run for real maps to a labeled home or an explicit exclusion, so
+   an overlooked category is now a contract bug, not a gap: security/policy
+   sign-off for automated access, data-movement (PII) rules, and
+   procurement/paid seats are absorbed by `access:` (rights AND approvals,
+   grantor per item, credential when one is issued — the network side of a
+   security review already lives in `reachability:` admission); an
+   organization that cannot issue a service account is resolution-ladder
+   rung 3 (change the practice / renegotiate); throughput and batch-window
+   constraints are explicitly OUT of the manifest — they reshape the intent
+   design itself (partition, procedure), which the build turn owns.
+3. The reader model stays three audiences. A fourth (the pipeline author)
+   was rejected: pipeline authoring does not need the manifest to know how
+   real a step runs — that is derivable from the definition it already
+   fetches (an intent touching a system the job declares no connection for,
+   with `artifact:`-only completion). But "a future build turn" generalizes
+   to a later BUILDER turn: the artifacts plane is per-project, so a
+   pipeline-authoring turn in the same project reads the manifest
+   opportunistically as the status ledger (its `gate:` entries mark the
+   human relays). The report's five obligations (mapping as built, hook
+   decisions, deliverable contracts, first-run checklist, remaining work
+   with tickets vs conversations) were judged one coherent model — no
+   restructure.
+
+The lane finding: the manifest has one writer and zero programmatic readers,
+and neither pipeline activation (enabled / universal project / one-active /
+no-live-job) nor dispatch (approval / membership / credits / definition /
+turn-meta / dup) carries a readiness axis — a pipeline composed of virtual
+intents passes every gate, writes substitutes, and seals `completed`.
+Deliberately NOT fixed in machinery: a readiness gate would block a
+legitimate operating mode (substitutes + human relay) and mint a second home
+for wiring state, whose SSOT is the definition's connection block. The
+machine-legible signal already exists should a future surface want to derive
+it (the connection block; the dispatcher's `artifact:` vs `action:` stop-hook
+partition, today used only to collect `{{steps.*.artifacts}}` globs). The fix
+is authoring-time, in the pipeline builder's contract (doc 46): disclose
+substitute-backed steps in the stated design and the report, and author
+human-carried seams as pipeline boundaries — a gate holds a run for a
+person's DECISION, never their labor; work a person performs between steps
+means the downstream chain's real trigger is the handoff arriving, so it is
+authored as its own pipeline, manual-fired until the seam is automated
+(`runCompleted` after), reversibly. The agent builder's review intent gains
+its missing audit lane: read the build instructions (not inlined on review
+turns), audit the definition against them, and check the manifest against
+the definition (entry coverage, `status:` vs declared connections, the
+interface/wiring self-contradiction) — saying so, instead of guessing, when
+the manifest lives in another project.
+
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
 (a design that meaningfully reshapes user-provided material is confirmed
@@ -1106,7 +1165,8 @@ in: save it there" line was an admission license hiding in an endpoint doc,
 and was removed.
 
 The tests assert structure only (intent id set, every builder intent ships a
-`prompt.md`, hooks, the on-demand filename set, Latin script,
+`prompt.md`, hooks, the on-demand filename set, Latin script, the manifest
+skeleton's path, declaration channels, and field-label tokens,
 `tests/customAgents/builtin-agents.test.ts`) — prose is never regex-pinned,
 per the no-prose-pinning policy. The hook-authoring criterion and the
 schedule/pipeline boundary are prose and are likewise not pinned — the gated
@@ -1125,8 +1185,10 @@ names, bundle sizes — went unnamed, so a builder given "the weekly report is
 a spreadsheet" would faithfully author an intent that cannot work: the
 universal plane is text-only in both directions (`readFile.ts` refuses
 binary, `create_file` refuses binary targets), inter-step handoff has exactly
-one data channel (artifact `context` pins — `{{steps.*}}` is reserved,
-unimplemented), and an `artifact:` stop hook is satisfiable only by the four
+one data channel (artifact `context` pins — `{{steps.<id>.answer}}` /
+`{{steps.<id>.artifacts}}` substitute into directives as a summary channel
+only, `{{steps.<id>.verdict}}` is rejected at save, and no `{{steps.*}}` form
+is pinnable as context), and an `artifact:` stop hook is satisfiable only by the four
 write-evidence tools (`ARTIFACT_WRITE_EVIDENCE_TOOLS`; `run_command` output
 and spooled MCP results leave no write evidence — `graph/runtime.ts` spool
 header). The corrected text extends the same principle: a deliverable's
@@ -1145,8 +1207,9 @@ own duplicate guard because an `action:` hook proves a call happened, not
 that it happened exactly once. Two platform limits are mitigated by authored
 patterns rather than runtime changes: no per-run pin scoping (static globs,
 newest-mtime-first) → business-key path partitioning; empty-match pins fail
-the step → the always-written run manifest, which doubles as the scalar
-handoff channel `{{steps.*}}` would otherwise be. Homes as before: design
+the step → the always-written run manifest, which doubles as the data
+handoff channel the directive-only `{{steps.*}}` summaries cannot be. Homes
+as before: design
 principle in `base/system.md` step 2, operating rules in
 `intents/build/prompt.md` ("Design each deliverable's contract with the
 partition"), contract facts in `on-demand/definition-format.md`'s hooks
