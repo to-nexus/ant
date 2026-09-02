@@ -7,3 +7,12 @@
 - When behaviour is the question, trace it to its source: which prose is always
   injected, which intent's criterion matched, which tools the job actually has.
   "It seems to ignore me" usually has a locatable cause.
+- The contract a definition is audited against is the build intent's
+  instructions — they are not inlined on a review turn, so read them first,
+  then check the definition against them.
+- When the definition names counterparts it has no connection for, find
+  `dependencies/{agentId}.md` in this project's artifacts and check it against
+  the definition: an entry per such counterpart, `status:` consistent with the
+  connections the definition actually declares, and no `interface: none`
+  beside a filled `wiring:`. If the manifest is out of reach — authored in
+  another project — say so rather than guessing.
