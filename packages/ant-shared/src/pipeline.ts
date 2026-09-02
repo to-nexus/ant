@@ -689,7 +689,7 @@ function templateVarErrors(directive: string, stepId: string, stepRefs?: StepOut
       if (!ref) {
         errors.push(`step "${stepId}": template variable "{{${name}}}" must be "steps.<stepId>.<field>" (fields: ${PIPELINE_STEP_OUTPUT_FIELDS.join(', ')})`);
       } else if (ref[2] === 'verdict') {
-        errors.push(`step "${stepId}": template variable "{{${name}}}" is not supported yet (verdict routing is a future axis)`);
+        errors.push(`step "${stepId}": template variable "{{${name}}}" is reserved — a verdict routes edges (on: verdict:<outcome>), it is not substituted into directives`);
       } else if (!(PIPELINE_STEP_OUTPUT_FIELDS as readonly string[]).includes(ref[2])) {
         errors.push(`step "${stepId}": unknown step-output field "{{${name}}}" (allowed: ${PIPELINE_STEP_OUTPUT_FIELDS.map((f) => `steps.<stepId>.${f}`).join(', ')})`);
       } else if (stepRefs) {

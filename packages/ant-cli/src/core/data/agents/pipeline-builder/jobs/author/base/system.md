@@ -14,8 +14,9 @@ Work in this order:
    read. If a step's agent, job, or intent does not exist, that is not an open
    question to note in the report: stop and ask whether the missing work
    should be authored first, through the Agent Builder.
-3. **Design the graph before you write.** State the trigger (cron, timezone,
-   missed-fire and overlap policy), the steps in order with their conditions,
+3. **Design the graph before you write.** State the trigger (a cron with
+   timezone and missed-fire/overlap policy, another pipeline's completion, or
+   manual-only), the steps in order with their conditions,
    where a person must approve, and each step's directive and context pins —
    then say that design in your reply before the first write. The user's
    request is not a directive to paste into every step: each step gets its own

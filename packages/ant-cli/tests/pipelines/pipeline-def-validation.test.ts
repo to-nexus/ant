@@ -195,7 +195,7 @@ describe('validatePipelineDef — structural rules', () => {
     ['steps.*.verdict reserved', baseDef({ steps: [
       { id: 'a', customJobRef: 'x/a', directive: 'a' },
       { id: 'b', customJobRef: 'x/b', directive: '{{steps.a.verdict}}' },
-    ] }), /verdict routing is a future axis/],
+    ] }), /a verdict routes edges/],
     ['steps.* self reference', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{steps.a.answer}}' }] }), /must not reference the step itself/],
     ['steps.* unknown step', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{steps.ghost.answer}}' }] }), /references unknown step "ghost"/],
     ['steps.* gate reference', baseDef({ steps: [

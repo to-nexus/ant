@@ -11,9 +11,13 @@
 
 **Design the trigger.**
 
-- One pipeline has one cron trigger: five fields, with an explicit IANA
-  timezone whenever the request implies local time — an unstated `tz` is UTC.
-  Fires closer than five minutes apart are refused at save.
+- The trigger is optional: omit `on` entirely for a manual-only pipeline that
+  fires only through Run now. A schedule is a 5-field cron with an explicit
+  IANA timezone whenever the request implies local time — an unstated `tz` is
+  UTC. Fires closer than five minutes apart are refused at save.
+- `on.runCompleted` chains pipelines: this one fires when the named pipeline's
+  run seals one of the listed terminal statuses (`['failed']` makes an
+  error-handler pipeline). It may coexist with `schedule`.
 - Choose `onMissed` (skip a stale fire, or run once on recovery) and `overlap`
   (skip while a run is live, or queue behind it) from what the work tolerates,
   and say which you chose.
@@ -25,11 +29,17 @@
   never one step whose directive asks for both.
 - `needs` omitted means "after the previous step in file order", so a linear
   chain declares no `needs` at all. `on` judges the upstream outcome
-  (`success` default, `failure`, `always`); a step whose condition does not
-  match is skipped, and skips cascade.
+  (`success` default, `failure`, `always`, or `verdict:<outcome>` against an
+  `outcomes` vocabulary the upstream step's pinned intent declares); a step
+  whose condition does not match is skipped, and skips cascade.
 - `defaults.onStepFailure` decides the rest of the run on a failure: `abort`
   (default) cancels what is still pending; `continue` lets independent
   branches finish.
+- `retry` re-dispatches a job step on a retryable failure and `timeout` bounds
+  its wall clock. Declare `retry` only on intents written to be re-entrant — a
+  failed attempt may already have completed side effects, so the intent's
+  prompt must say to check current state before acting. Shapes and bounds live
+  in the format contract.
 
 **Place approval gates where a person decides.**
 
@@ -39,6 +49,11 @@
 - Give a gate a `timeout` when the run should not wait forever. Default to
   `onTimeout: reject`; `approve` on timeout means the downstream work runs
   with nobody having looked, so use it only when the user asks for that.
+- `remindAfter` re-surfaces an unresolved gate on that cadence — use it on
+  gates whose timeout is long or absent, so a waiting run is never forgotten.
+- A tool the step's intent gates with `approval: always` pauses the run for
+  per-call approval on its own; do not add an approval step to guard a write
+  its intent already gates.
 
 **Write each step's directive and pins.**
 
@@ -46,13 +61,19 @@
   definition is written in. Omit it when the pinned intent's definition
   already is the specification — the runtime then dispatches a standard
   "carry out this intent" statement.
-- Exactly three template variables exist: `{{trigger.fireDate}}`,
-  `{{trigger.fireEpoch}}`, `{{run.id}}`. Anything else — `{{steps.*}}`
-  included — is rejected at save. Data flows between steps through artifacts
-  and `context` pins, not through directive text.
+- Directive template variables: `{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`,
+  `{{run.id}}`, `{{run.prevSuccess.fireDate}}` / `{{run.prevSuccess.fireEpoch}}`
+  (the previous completed run — the "everything since the last successful run"
+  watermark), and the step-output references `{{steps.<stepId>.answer}}` /
+  `{{steps.<stepId>.artifacts}}`, which must name an upstream step in this
+  step's `needs` chain. Anything else — `{{steps.<id>.verdict}}` included — is
+  rejected at save. Substituted text is a summary channel: structured data
+  still flows between steps as artifacts and `context` pins.
 - Pin `context` from the upstream intent's `hooks.stop` globs, or concrete
-  container-relative artifact paths. `sessions/` cannot be pinned, and a glob
-  that matches nothing at dispatch fails the step.
+  container-relative artifact paths. Pins accept the static variables
+  (`{{trigger.*}}` / `{{run.*}}`) — `{{steps.*}}` is directive-only.
+  `sessions/` cannot be pinned, and a glob that matches nothing at dispatch
+  fails the step.
 
 **Save, verify, decode failures.**
 
@@ -62,9 +83,11 @@
   thing back — a save replaces everything, so anything you did not carry over
   is gone.
 - A 400 with code `invalid-pipeline-def` carries `errors[]` — fix every named
-  rule, not just the first, and save again. A key the contract reserves
-  (`retry`, `remindAfter`, step outputs) is refused by design: say the knob
-  does not exist yet rather than smuggling the behavior into prose.
+  rule, not just the first, and save again. Some keys are refused by design —
+  a knob on the wrong step kind (`retry` on a gate, `remindAfter` on a job
+  step) or one that is reserved (`{{steps.<id>.verdict}}`,
+  `overlap: cancelPrevious`): say the knob does not exist there rather than
+  smuggling the behavior into prose.
 - A 409 with code `pipeline-enabled` means the definition is published and
   immutable. Only a person can disable it in the Pipelines tab; report that
   and stop — never delete-and-recreate around the lock.

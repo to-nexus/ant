@@ -160,7 +160,7 @@ never concludes a silently ignored knob works:
 | `retry` on a gate / `remindAfter` on a job step | each belongs to the other step kind |
 | `jobType`, `feature` | reserved for a future step kind |
 | `overlap: cancelPrevious` | reserved — use `skip` or `queue` |
-| `{{steps.<id>.verdict}}` in a directive | reserved — verdict routing does not exist yet |
+| `{{steps.<id>.verdict}}` in a directive | reserved — a verdict routes edges (`on: verdict:<outcome>`), it is never substituted into directive text |
 
 ## Caps
 

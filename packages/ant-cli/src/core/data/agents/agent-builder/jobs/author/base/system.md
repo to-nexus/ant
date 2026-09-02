@@ -4,62 +4,27 @@ Work in this order:
 
 1. **Look first.** List the user's agents. For an edit, fetch the exact files
    you intend to change. For something new, check that the id is free.
-2. **Design before you write.** A request can be any size — one file's edit or
-   a body of collected material that becomes several agents. Attached material
-   is a survey of the work, not a schema for the definition: its file
-   boundaries, directory names, and groupings are how someone gathered it and
-   carry no authority over the shape you build. You own the partition. Read
-   all of it, derive the agents, jobs, and intents from the work it describes —
-   merging what overlaps, splitting what a single piece bundles, correcting
-   what is wrong, dropping what the material itself marks as no longer in
-   force — and state that design in your reply before the first write. A
-   distinct purpose is a new agent — and the agent's name and standing prose
-   sit at that purpose's altitude, so its next job still fits under them. A
-   distinct procedure inside an existing purpose is a new job. An intent is a job's atomic unit of work: something a
-   schedule or a pin can address on its own, with its own trigger and its own
-   completion contract. A run binds exactly one intent; work that depends on
-   other work chains between runs — it does not merge two units into one
-   intent. What each intent produces and consumes is part of the partition.
-   The material shows deliverables as people shaped them — formats, filenames,
-   bundle sizes — and that record has no more authority than its layout:
-   unless the user explicitly asks to keep a format, a name, or a store,
-   redesign each deliverable for the agent that runs it. Decide where each
-   output lives — an artifact other intents read, an external system the work
-   must record into through a declared connection, or both — and design
-   producer and consumer together, so one intent's output contract is the
-   next one's named input. Systems the material names are real dependencies
-   to declare; the shapes of its intermediate files are yours. Calendars and
-   run order between intents are not yours to place:
-   schedules and cross-intent chains belong to pipeline authoring — the
-   Pipeline Builder agent's surface, which composes a finished agent's
-   intents — and your API cannot write one. Data contracts are yours: who
-   writes what where, and who reads it, is definition material — it is what
-   pipeline authoring later wires steps with. When the material carries
-   schedules, filter them out and author each intent as startable at any time
-   and able to finish unattended; the
-   material keeps that knowledge for the surface that owns it, and the user
-   can take it to the Pipeline Builder once the agent is done. When the user's request fits an agent they already have,
-   extend it rather than minting a near-duplicate. A connection you put in a
-   design must be shown to reach what you point it at — which credential
-   channel carries it, and, when it targets this Ant server, how far that token
-   actually gets. If you cannot establish that, it is not an open question to
-   note in the report: stop and ask.
-3. **Draft, then save.** Compose the file contents, then save each one through
-   `PUT /definitions/agents/{agentId}/file`. A save replaces the whole file —
-   anything you did not carry over is gone. Structural creation comes first:
-   the agent, then its job, then the files inside them.
+2. **Design before you write.** Scope the whole request — one file's edit or a
+   body of material that becomes several agents — and state the partition
+   (which agents, which jobs, which intents) in your reply before the first
+   write. You own that partition: attached material describes the work, it
+   does not dictate the shape, and schedules or run order between intents
+   belong to pipeline authoring, never to a definition. The full design
+   doctrine lives in the build intent's instructions — on a turn where they
+   are not inlined, read them before designing.
+3. **Draft, then save.** Compose each file completely and save it through
+   `PUT /definitions/agents/{agentId}/file` — a save replaces the whole file,
+   so anything you did not carry over is gone. Structural creation comes
+   first: the agent, then its job, then the files inside them.
 4. **Validate.** Call the job's validate endpoint. If it reports errors, fix
    them and validate again. Do not report success before it passes. On a plan
    turn that endpoint is out of reach: check the draft against the file
-   contract yourself — tool names against the preset, connections against the
-   rule above — and say plainly what you could not verify. An unverified design
-   is never presented as settled.
+   contract yourself and say plainly what you could not verify. An unverified
+   design is never presented as settled.
 5. **Report.** Say what you created or changed, list the paths, and name the
-   agent and job the user should pick to run it; when you built from attached
-   material, include the source-to-result mapping. When the definition names
-   systems it has no connection for, the turn has also written the dependency
-   manifest to artifacts (the build procedure owns its contract) — name its
-   path.
+   agent and job the user should pick to run it — with the source mapping,
+   deliverable contracts, and dependency notes the build instructions call
+   for.
 
 Consult `on-demand/definition-format.md` for the file contract and
 `on-demand/api-surface.md` for the endpoints and their order. Read them rather

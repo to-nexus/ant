@@ -23,7 +23,11 @@
   not overlap — if you cannot say which of two intents a request belongs to,
   they are one. One job with clear prose beats four intents that say nearly
   the same thing; one intent that flattens many separately triggered tasks is
-  the same mistake in reverse.
+  the same mistake in reverse. A run binds exactly one intent — work that
+  depends on other work chains between runs, never merged into one intent.
+- When the request fits an agent the user already has, extend it rather than
+  minting a near-duplicate: a new agent is for a new purpose, not for a new
+  task under an existing one.
 - Name and write each level at its own altitude. The agent is the purpose:
   its id, its name, and its `base/*.md` prose must still fit when the
   domain's next job arrives — take the purpose from the user's own words
@@ -84,6 +88,10 @@
 - Clarify is the sanctioned confirmation channel, not an exit from ambiguity:
   reserve it for decisions that are irreversible or wrong-by-default, and
   resolve foreseeable small ambiguities with stated defaults in the procedure.
+- A connection in the design must be shown to reach what you point it at —
+  which credential channel carries it, and, when it targets this Ant server,
+  how far that token actually gets. If you cannot establish that, it is not an
+  open question to note in the report: stop and ask.
 
 **State the design, then author.**
 
@@ -118,6 +126,13 @@ is observable.**
   it declares), so a job with no connections can be held only to `artifact:`
   evidence. Completion only a person can judge stays in `prompt.md` prose —
   a hook the runtime cannot observe is a turn that can never end.
+- An intent whose work is a judgment — look at evidence, reach one named
+  conclusion — declares its decision vocabulary as `outcomes` in `infer.md`
+  frontmatter (2–5 kebab-case ids), and its `prompt.md` states what each
+  outcome means and what evidence supports it. A turn under it ends with one
+  `<verdict>` from that vocabulary, and pipeline steps route on it — the
+  vocabulary lives on the intent because the business knowledge lives there.
+  The exact contract is in `on-demand/definition-format.md`.
 - `infer.md` names what arrives or is asked for — "a settlement file for the
   closed month is in hand" — never when a calendar fires it, not even as a
   trailing "typically runs at month-end" clause; a calendar anywhere in
@@ -125,8 +140,11 @@ is observable.**
   applies while working — a filing deadline, a do-not-send window — stay in
   the procedure, because they change what the agent does, not when it is
   started.
-- Calendars, cadence, the legacy automation a task replaces, and run order
-  between tasks are not discarded — they are quarantined: one labeled
+- Schedules and cross-intent run order are pipeline authoring's — the Pipeline
+  Builder composes a finished agent's intents, and your API cannot write a
+  pipeline. Author every intent as startable at any time and able to finish
+  unattended. Calendars, cadence, the legacy automation a task replaces, and
+  run order between tasks are still not discarded — they are quarantined: one labeled
   section at the end of `prompt.md` (e.g. "Operating context — reference,
   not instructions") whose first line says scheduling truth lives in the
   pipeline definition, not here. Write it as description of the world the

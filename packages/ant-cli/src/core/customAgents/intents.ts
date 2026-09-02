@@ -92,9 +92,10 @@ function assertNotGeneral(intentId: string, agentId: string, jobId?: string): vo
 
 /**
  * Validate one raw `infer.md` file (per-file rules only — the cross-file cap
- * stays in `parseIntentsDir`). Frontmatter is optional and allows exactly one
- * key (`clarify: <bool>`); a comments-only frontmatter block is valid (that
- * is where authoring guidance lives without reaching the rendered prompt).
+ * stays in `parseIntentsDir`). Frontmatter is optional and allows exactly two
+ * keys (`clarify: <bool>`, `outcomes: [..]`); a comments-only frontmatter
+ * block is valid (that is where authoring guidance lives without reaching the
+ * rendered prompt).
  * The prose body is the inference criterion: non-empty after trim, bounded.
  */
 export function validateInferFile(
