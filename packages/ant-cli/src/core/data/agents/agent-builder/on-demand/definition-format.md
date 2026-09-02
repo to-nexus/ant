@@ -196,7 +196,8 @@ the intent, because the business knowledge lives here; pipelines only
 reference it.
 
 `prompt.md` has no size limit and is inlined only while its intent is active —
-it is where a task's procedure lives; `infer.md` only decides when it applies.
+it is where a task's procedure lives; `infer.md` only decides when it applies,
+and `prompt.md` never restates that condition.
 
 `hooks.yaml` declares what must be true for a turn to be complete. The file
 must declare exactly one top-level `hooks` key; the events nest under it:

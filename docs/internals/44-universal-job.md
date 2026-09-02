@@ -959,6 +959,33 @@ in place. Post-wiring human steps (a send button) are marked as gates, not
 dependencies. Deliberately NOT a hook: the manifest is conditional, and
 `build`'s stop contract stays the pinned `action: api__ant__request`.
 
+**Amendment — the manifest entry is a provisioning spec, not a blocker list**
+(quiet-being-aspen audit, 2026-09-02): the first live manifest exposed two
+judgment gaps the prose-item enumeration permitted. (1) Systems with
+well-known public interfaces (Jira, Confluence) were filed under "no
+interface exists — a private API/MCP must be provided", which skips the very
+items the entry exists to collect — the `${secret:}` key names, the auth
+scheme, the operations. (2) Network reachability was stated as a dead-end
+fact ("internal-only — unreachable") when it is a deployment decision: an
+Ant server deployed inside that zone reaches the host directly. The
+`missing:` field is now four labeled sub-fields (structural tokens, the
+omit-if-inapplicable rule unchanged): `interface:` (the standard API or
+existing MCP server, named; "none — must be provided, supporting: {…}" only
+when no interface exists anywhere — unreachable is not "none"), `wiring:`
+(base URL, auth scheme + header, `${secret:}` key NAMES, the operations
+that become `allow` lines), `access:` (rights and grantor), and
+`reachability:` (the zone, and what satisfies it per deployment — in-zone
+Ant reaches it directly; from outside, a gateway/relay or an in-zone MCP
+host). Two adjacent authoring rules landed with it: the definition never
+names the manifest or its path (its readers are the user and a future build
+turn; a running agent cannot resolve it — the audited `base/role.md` carried
+exactly that dangling pointer), and `prompt.md` never restates the trigger —
+all seven audited intents opened with a trigger section paraphrasing
+`infer.md`, and one pair had already drifted into contradiction (an open
+trigger set in `infer.md`, a closed enumeration in `prompt.md`). The
+condition has one home; `prompt.md` begins at what the agent does once it
+applies.
+
 **Amendment — each level is named and written at its own altitude**
 (slate-nodding-guard follow-up, 2026-09-02): the same authored agent exposed
 a hierarchy gap the partition rules never bound to NAMING or prose placement.

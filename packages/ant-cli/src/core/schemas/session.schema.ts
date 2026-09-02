@@ -24,6 +24,11 @@ export const SessionRunInputSchema = z.object({
 
 /**
  * SessionRunOutput Schema
+ *
+ * Design/code-job outputs. Universal runs keep `output: {}` BY DESIGN — no
+ * universal reader exists; their file evidence lives in the container files,
+ * the `_turnToolWrites` chat manifest / stop-hook ledger, and pipeline
+ * `captureStepOutput` glob expansion.
  */
 export const SessionRunOutputSchema = z.object({
   // Design task outputs
@@ -77,6 +82,11 @@ export const SessionRunSchema = z.object({
 
 /**
  * SessionArtifacts Schema
+ *
+ * Written only by architect design checkpoints and code learn — universal
+ * sessions keep `.artifacts = {}` by design (schema-required placeholder,
+ * no universal reader; see SessionRunOutputSchema for where universal file
+ * evidence actually lives).
  */
 export const SessionArtifactsSchema = z.object({
   latestDesign: z.string().optional(),

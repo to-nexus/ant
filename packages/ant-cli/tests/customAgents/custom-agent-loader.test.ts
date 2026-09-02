@@ -128,6 +128,57 @@ describe('loadCustomJob — validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/universal preset/);
   });
 
+  // tools.approval entries must name a callable tool with a literal policy —
+  // a dead entry ships a false security posture (quiet-being-aspen audit).
+  it('approval key not in tools.builtin → throws (dead entry)', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', { tools: { builtin: ['read_file'], approval: { http_request: 'never' } } });
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/not in this job's tools\.builtin/);
+  });
+
+  it('approval key in the default full preset passes when tools.builtin is omitted', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', { tools: { approval: { http_request: 'never' } } });
+    expect(loadCustomJob(roots(), 'ops', 'weekly').approval.http_request).toBe('never');
+  });
+
+  it('mcp__ approval key requires a declared server; any tool suffix passes once declared', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {
+      mcp: { servers: { db: { transport: 'stdio', command: 'npx' } } },
+    });
+    writeJob(dir, 'weekly', { tools: { approval: { mcp__db__any_tool: 'always' } } });
+    expect(loadCustomJob(roots(), 'ops', 'weekly').approval.mcp__db__any_tool).toBe('always');
+
+    const dir2 = writeAgent(roots()[0].root, 'ops2', {});
+    writeJob(dir2, 'weekly', { tools: { approval: { mcp__ghost__tool: 'always' } } });
+    expect(() => loadCustomJob(roots(), 'ops2', 'weekly')).toThrow(/no MCP server "ghost"|not declared in mcp\.servers/);
+  });
+
+  it('api__ approval key follows the same declared-server rule', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {
+      apis: { erp: { baseUrl: 'https://erp.example.com/api' } },
+    });
+    writeJob(dir, 'weekly', { tools: { approval: { api__erp__request: 'always' } } });
+    expect(loadCustomJob(roots(), 'ops', 'weekly').approval.api__erp__request).toBe('always');
+
+    const dir2 = writeAgent(roots()[0].root, 'ops2', {});
+    writeJob(dir2, 'weekly', { tools: { approval: { api__ghost__request: 'always' } } });
+    expect(() => loadCustomJob(roots(), 'ops2', 'weekly')).toThrow(/not declared in apis/);
+  });
+
+  it('unrecognized approval key → throws (typo guard)', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', { tools: { approval: { htp_request: 'never' } } });
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/not a recognized tool name/);
+  });
+
+  it('non-literal approval value → throws (YAML 1.1 yes/no pitfall)', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    // yaml.dump would re-quote a string; a real `yes` in YAML 1.1 arrives as boolean true.
+    writeJob(dir, 'weekly', { tools: { builtin: ['run_command'], approval: { run_command: true } } });
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/must be 'always' or 'never'/);
+  });
+
   it('mcp env carrying a literal value loads through — plain text is authored, not refused', () => {
     const dir = writeAgent(roots()[0].root, 'ops', {
       mcp: { servers: { db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'postgres://user:pw@host' } } } },
@@ -293,7 +344,7 @@ describe('loadCustomJob — composition (job-only tools, mcp union)', () => {
       dir,
       'weekly',
       {
-        tools: { builtin: ['read_file', 'create_file'], approval: { fetch_url: 'always', create_file: 'always' } },
+        tools: { builtin: ['read_file', 'create_file', 'fetch_url'], approval: { fetch_url: 'always', create_file: 'always' } },
         mcp: { servers: { jobonly: { transport: 'http', url: 'http://localhost:9' } } },
       },
       {
@@ -308,7 +359,7 @@ describe('loadCustomJob — composition (job-only tools, mcp union)', () => {
     // mcp union (the one field that still composes agent ∪ job)
     expect(Object.keys(resolved.mcpServers).sort()).toEqual(['jobonly', 'shared']);
     // builtin = the job's declaration
-    expect(resolved.builtinTools.sort()).toEqual(['create_file', 'read_file']);
+    expect(resolved.builtinTools.sort()).toEqual(['create_file', 'fetch_url', 'read_file']);
     // approval = job-declared only
     expect(resolved.approval).toEqual({ fetch_url: 'always', create_file: 'always' });
   });

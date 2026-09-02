@@ -117,6 +117,10 @@ is observable.**
   there. An intent without a `prompt.md` shows up in the running agent's
   catalog as carrying no instructions — a trigger with no procedure is not a
   unit of work.
+- `prompt.md` never restates the trigger — an opening section that
+  paraphrases `infer.md` gives the condition two spellings, and they diverge
+  on the next edit. The condition has exactly one home; `prompt.md` begins
+  at what the agent does once it applies.
 - `hooks.yaml` is the optional third file: the completion contract. When the
   material says what done looks like and that evidence is something the
   runtime can observe — a file the turn must produce, a call it must make —
@@ -208,8 +212,11 @@ is observable.**
   definition you saved names at least one system without a connection, also
   write `dependencies/{agentId}.md` to artifacts with `create_file`. It is
   not a definition file: its readers are the user and a future build turn,
-  not the running agent, so it lives outside the definition. One file per
-  agent, rewritten whole on every run that touches its dependencies.
+  not the running agent, so it lives outside the definition — and the
+  definition never names it, not in `base/`, not in `on-demand/`: a running
+  agent cannot resolve the manifest's path, so a pointer to it is a dangling
+  reference by construction. One file per agent, rewritten whole on every
+  run that touches its dependencies.
 - The manifest is the user's action list for making the agent run for real —
   a few lines per dependency, nothing more. Its structure is FIXED so a later
   turn can find and update entries in place: headings and field labels below
@@ -226,14 +233,24 @@ is observable.**
   - used-by: {intent ids that substitute for this system today}
   - substitute: {the text deliverable standing in — one line}
   - missing:
-    - {one line per applicable item: the endpoint URL, or an existing MCP
-      server; the `${secret:}` key NAMES to register in credential settings
-      — the store carries the values, never ask for a value; access rights
-      and who grants them; network reachability (internal-only hosts,
-      segmented networks, VDI); or "no interface exists — a private API or
-      MCP server must be provided, supporting: {operations read off the
+    - interface: {the interface this system already has — a well-known
+      public API or an existing MCP server, named; or "none — a private API
+      or MCP server must be provided, supporting: {operations read off the
       substitute deliverable's own fields}", stated so the user can hand
-      this entry to the team that will build it}
+      this entry to the team that will build it. A system whose standard
+      interface exists but is unreachable from here is never "none" — name
+      the interface and let reachability carry the obstacle}
+    - wiring: {what the connection block will need, as names: the base URL,
+      the auth scheme and the header it rides, the `${secret:}` key NAMES
+      to register in credential settings — the store carries the values,
+      never ask for a value — and the operations the intents need, which
+      become the `allow` lines}
+    - access: {the rights required and who grants them}
+    - reachability: {the network zone the host lives in, and what satisfies
+      it per deployment: this Ant server deployed inside that zone reaches
+      it directly; run from outside it, name the path — a gateway or relay,
+      or an MCP server on a host inside. A zone constraint is a deployment
+      decision, never a dead end}
   - on-provided: {the one-line rewiring this job performs once the items
     arrive — the connection block, the intent's final step from text output
     to the real call, `artifact:` to `action:`, the approval decision}

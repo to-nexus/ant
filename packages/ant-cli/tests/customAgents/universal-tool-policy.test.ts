@@ -86,6 +86,19 @@ describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
     expect(manager.truncateResult('run_command', 'y'.repeat(10_000)).wasTruncated).toBe(false);
   });
 
+  it('buildReturn folds a successful create_file into _turnToolWrites — the universal file-evidence contract (session .artifacts stays empty by design)', async () => {
+    const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+    const state = { toolCalls: [], _turnToolWrites: ['earlier/kept.md'], _turnToolActions: [], recursionCount: 0 } as any;
+    const executionEvents = [
+      { toolName: 'create_file', args: { path: 'dependencies/terms-notice.md' }, result: { content: 'File created' } },
+      // A failed write never counts as evidence (completion-signal = actual-write).
+      { toolName: 'create_file', args: { path: 'broken/nope.md' }, result: { content: 'x', error: 'EACCES' } },
+    ] as any;
+    const ret = universalToolNodeConfig.buildReturn(state, { updatedHistory: [], executionEvents } as any) as any;
+    expect(ret._turnToolWrites).toEqual(['earlier/kept.md', 'dependencies/terms-notice.md']);
+    expect(ret._turnToolActions).toEqual(['create_file']);
+  });
+
   it('buildContext wires featureHistory over session:main — read_state history is live, not a stub', async () => {
     const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
     const fileSystem = { getRootPath: () => '/tmp/universal-artifacts' };

@@ -34,6 +34,7 @@ import {
   validateMcpServers,
   validateApiServers,
   API_TOOL_PREFIX,
+  MCP_TOOL_PREFIX,
   type CustomAgentScope,
   type CustomAgentSummary,
   type CustomJobSummary,
@@ -472,6 +473,55 @@ export function loadCustomJob(
     ...listOnDemandDocs(agentDir, ON_DEMAND_DIR_NAME),
     ...listOnDemandDocs(agentDir, `jobs/${jobId}/${ON_DEMAND_DIR_NAME}`),
   ];
+
+  // Approval-map cross-file rules — an entry must name a tool this job can
+  // actually call and carry a literal 'always'/'never', or the declared
+  // posture is a silent no-op (a dead `http_request: never` reads as if
+  // outbound HTTP were permitted; YAML 1.1 `yes` would be treated as never).
+  for (const [toolKey, policy] of Object.entries(approval)) {
+    const approvalLabel = `jobs/${jobId}/job.yaml tools.approval`;
+    if (policy !== 'always' && policy !== 'never') {
+      throw new CustomAgentValidationError(
+        `${approvalLabel}: "${toolKey}" must be 'always' or 'never', got ${JSON.stringify(policy)} — quote the value (YAML 1.1 parses yes/no as booleans)`,
+        agentId,
+        jobId,
+      );
+    }
+    if (isUniversalBuiltinTool(toolKey)) {
+      if (!builtinTools.includes(toolKey)) {
+        throw new CustomAgentValidationError(
+          `${approvalLabel}: "${toolKey}" is not in this job's tools.builtin — the entry is dead; add the tool to tools.builtin or delete the entry`,
+          agentId,
+          jobId,
+        );
+      }
+    } else if (toolKey.startsWith(API_TOOL_PREFIX)) {
+      const serverName = toolKey.slice(API_TOOL_PREFIX.length).split('__')[0];
+      if (!apiServers[serverName]) {
+        throw new CustomAgentValidationError(
+          `${approvalLabel}: "${toolKey}" names API server "${serverName}" which is not declared in apis`,
+          agentId,
+          jobId,
+        );
+      }
+    } else if (toolKey.startsWith(MCP_TOOL_PREFIX)) {
+      // Tool-level MCP names are not statically enumerable — server-level only.
+      const serverName = toolKey.slice(MCP_TOOL_PREFIX.length).split('__')[0];
+      if (!mcpServers[serverName]) {
+        throw new CustomAgentValidationError(
+          `${approvalLabel}: "${toolKey}" names MCP server "${serverName}" which is not declared in mcp.servers`,
+          agentId,
+          jobId,
+        );
+      }
+    } else {
+      throw new CustomAgentValidationError(
+        `${approvalLabel}: "${toolKey}" is not a recognized tool name (a builtin from the universal preset, "mcp__…", or "api__…")`,
+        agentId,
+        jobId,
+      );
+    }
+  }
 
   // Stop-hook cross-file rules (H7/H8) — intra-file shape was validated by
   // parseIntentsDir; here the declaration must be SATISFIABLE by this job's

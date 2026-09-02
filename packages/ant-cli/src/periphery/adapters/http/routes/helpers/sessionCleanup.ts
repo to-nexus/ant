@@ -97,6 +97,7 @@ export async function appendRunToSessionFile(
       createdAt: now,
       updatedAt: now,
       runs: [],
+      // Schema-required placeholder; no universal reader — see session.schema.ts.
       artifacts: {},
     };
     await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true }).catch(() => {});
@@ -150,6 +151,7 @@ export async function appendRunToSessionFile(
       job: runJob,
       timestamp: completedAt,
       input: { type: 'text', summary: '' },
+      // Schema-required placeholder; no universal reader — see session.schema.ts.
       output: {},
       jobId,
       kanbanSnapshot,
