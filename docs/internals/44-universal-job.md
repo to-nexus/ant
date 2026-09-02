@@ -1005,6 +1005,37 @@ the agent's. A single-job agent is normal; an agent whose identity is one
 procedure is not. (Pipelines have no such hierarchy — a pipeline's name IS
 its flow — so `pipeline-builder` carries no analogous rule.)
 
+**Amendment — the manifest is a handoff, and one home also means no copies**
+(empty-braking-grasp audit, 2026-09-02, the first live run after the full
+manifest fix chain — which it confirmed end-to-end: trigger single-home,
+no dead approval keys, no dangling manifest pointer, skeleton v2 fields,
+deployment-conditional reachability all held). Three residues, all prompt
+contract: (1) the promotion loop — provide the missing items, register the
+`${secret:}` key NAMES in credential settings, ask the builder to wire it,
+whereupon the connection lands in `mcp.servers`/`apis` and the entry's
+`status:` advances in place — existed only as builder-side instruction
+(L261-264); neither the manifest nor the report told the USER, so the
+manifest listed what was missing without saying what to do about it. The
+skeleton legend now carries the loop as a structural sentence (the manifest
+must work as a handoff: someone not in the session — the user, or another
+agent — acts on it), and the report contract frames `virtual` entries as
+remaining work, naming each entry's declaration channel. (2) `interface:
+none` recurred for Confluence in the same manifest whose own `wiring:` line
+configured that API — the skeleton's interface field now states the
+self-contradiction test: if you can fill `wiring:`, an interface exists.
+(3) The altitude rule bound lifting a procedure's rules to agent prose but
+not DUPLICATING them there (the audited `role.md` restated the job's
+principles verbatim beside `system.md`, double-injecting both every turn),
+nor two adjacent stale-by-construction placements: agent prose enumerating
+the job's intents, and agent prose stating connection status — wiring state
+has one home, the manifest's `status:`, for the same reason the definition
+never names the manifest's path. Also confirmed live and deliberately NOT
+changed: an outcomes intent with no stop hook is legal when the report
+states the decision (verdict is the completion), and the elided-read
+compaction lane (`truncateReadFile` head+tail with the range-read hint) let
+the model reconstruct full coverage of a 937-line attachment — the dedup
+guard's range-blindness (A8) stays a tracked runtime residue, harmless here.
+
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
 (a design that meaningfully reshapes user-provided material is confirmed

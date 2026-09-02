@@ -314,6 +314,20 @@ describe('shipped agent-builder definition', () => {
     expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'definition-format.md']);
   });
 
+  // The dependency manifest is a HANDOFF: its skeleton must name the path a
+  // future build turn updates in place, and the two declaration channels the
+  // promotion loop lands a wired connection in. Structural tokens only — the
+  // legend's prose is not pinned, per the no-prose-pinning policy.
+  it('the manifest skeleton names its path and both declaration channels', () => {
+    const prompt = fs.readFileSync(
+      path.join(SRC_AGENTS_DIR, 'agent-builder', 'jobs', 'author', 'intents', 'build', 'prompt.md'),
+      'utf-8',
+    );
+    expect(prompt).toContain('dependencies/{agentId}.md');
+    expect(prompt).toContain('`mcp.servers`');
+    expect(prompt).toContain('`apis`');
+  });
+
   // `tools.builtin` is a CLOSED vocabulary the builder cannot infer: the doc
   // said "a name outside the preset is rejected" without listing the preset,
   // and an authored job.yaml came back declaring `clarify` (a knob, not a

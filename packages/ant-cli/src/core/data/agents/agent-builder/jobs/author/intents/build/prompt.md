@@ -38,7 +38,13 @@
   its rules — up to the agent collapses the hierarchy: the next request in
   the same domain then has no home and mints a near-duplicate agent, which
   the extend-first rule exists to prevent. A single-job agent is normal; an
-  agent whose identity is one procedure is not.
+  agent whose identity is one procedure is not. Duplicating a procedure's
+  rules into agent prose is the same violation as lifting them — each rule
+  keeps one home. Agent prose also never enumerates the job's intents (the
+  list is stale the moment one is added) and never states connection status
+  ("this agent is not wired to X") — wiring state lives only in the
+  dependency manifest, whose `status:` the wiring turn updates; prose
+  stating it is stale the moment the user wires the system.
 - When the material itself marks a piece as no longer in force — in its own
   text, or by how the collection sets it aside — that piece maps to nothing:
   no intent, no prose, no reference copy. Drop it and record the drop in the
@@ -229,6 +235,11 @@ is observable.**
   status: virtual = no connection, substitute in use · provided = items
   received, wiring pending · wired = connection declared in the definition.
 
+  To promote a virtual entry: provide the missing items, register the
+  `${secret:}` key names in credential settings, then ask this builder to
+  wire it — the connection lands in the definition (`mcp.servers` or
+  `apis`) and the entry's `status:` advances in place.
+
   ## {system name}
   - used-by: {intent ids that substitute for this system today}
   - substitute: {the text deliverable standing in — one line}
@@ -239,7 +250,9 @@ is observable.**
       substitute deliverable's own fields}", stated so the user can hand
       this entry to the team that will build it. A system whose standard
       interface exists but is unreachable from here is never "none" — name
-      the interface and let reachability carry the obstacle}
+      the interface and let reachability carry the obstacle. If you can
+      fill `wiring:` below, an interface exists: "none" beside a filled
+      wiring line is a contradiction}
     - wiring: {what the connection block will need, as names: the base URL,
       the auth scheme and the header it rides, the `${secret:}` key NAMES
       to register in credential settings — the store carries the values,
@@ -276,3 +289,10 @@ is observable.**
   `${secret:}` key to register, every connection to verify, and each
   `tools.approval` decision with its reason — and names the dependency
   manifest's path when one was written.
+- When the manifest carries `virtual` entries, the report frames them as the
+  user's remaining work: restate the promotion loop (provide the items,
+  register the `${secret:}` key names, ask this builder to wire it) and name
+  the declaration channel each entry's wiring lands in — `mcp.servers` or
+  `apis`. The report is a handoff: someone who was not in this session — the
+  user, or another agent acting for them — takes it and makes the intents
+  run for real.
