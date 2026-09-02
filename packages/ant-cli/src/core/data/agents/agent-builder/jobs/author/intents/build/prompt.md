@@ -210,16 +210,20 @@ is observable.**
   pinned turn ask through clarify whether anything else is wanted.
 - Prefer the user's own vocabulary for names and descriptions. They are the one
   who will recognize the agent in a list later.
-- Prose may name systems the job has no connection for — legitimate when the
-  material gives you no endpoint or credential to declare, but never silent:
-  the report lists each named system without a connection as a surface the
-  agent cannot reach until the user wires it up. And never only in the
-  report — a chat report does not outlive the session. Whenever the
-  definition you saved names at least one system without a connection, also
+- Prose may name counterparts the job has no connection for — a system with
+  no endpoint or credential to declare, or a practice outside any system: a
+  team that hands over or receives the work's deliverables as local files,
+  mail attachments, an office document someone maintains by hand. Both
+  directions count — a consumer whose expected format constrains this
+  agent's output is a dependency as much as a source. Legitimate, but never
+  silent: the report lists each such counterpart as a surface the agent
+  cannot reach until it is resolved. And never only in the report — a chat
+  report does not outlive the session. Whenever the definition you saved
+  names at least one counterpart without a connection, also
   write `dependencies/{agentId}.md` to artifacts with `create_file`. It is
   not a definition file: its readers are the user, a future build turn, and
   the granting parties the user hands its sections to — never the running
-  agent — so it lives outside the definition — and the
+  agent — so it lives outside the definition, and the
   definition never names it, not in `base/`, not in `on-demand/`: a running
   agent cannot resolve the manifest's path, so a pointer to it is a dangling
   reference by construction. One file per agent, rewritten whole on every
@@ -229,22 +233,31 @@ is observable.**
   turn can find and update entries in place: headings and field labels below
   are structural tokens (never localized, never renamed); values follow the
   definition's language. Omit a field that does not apply — never a section.
-- It is also a dispatchable request. A system's section is the handoff unit:
-  the user forwards it, with the document's opening lines, to the parties
-  that own that system — several parties may each act on their own item. So
-  every missing item names its grantor and is written in the target system's
-  own vocabulary, actionable as handed; Ant-internal vocabulary — intent
-  ids, `${secret:}` key names, artifact/action — stays in the fields only
-  the user and the wiring turn read (`used-by`, `substitute`, `wiring`,
-  `on-provided`, `status`).
+- It is also a dispatchable request. A counterpart's section is the handoff
+  unit: the user forwards it, with the document's opening lines, to the
+  parties that own that counterpart — several parties may each act on their
+  own item. So every missing item names its grantor and is written in the
+  counterpart's own vocabulary, actionable as handed; Ant-internal
+  vocabulary — intent ids, `${secret:}` key names, artifact/action — stays
+  in the fields only the user and the wiring turn read (`used-by`,
+  `substitute`, `wiring`, `on-provided`, `status`).
+- Not every entry resolves by wiring. The resolution ladder is: wire the
+  interface that exists; have one built; change the practice — the owning
+  team adopts an addressable home for the deliverable, or the deliverable's
+  format and channel are renegotiated (bring the concrete spec read off the
+  substitute, so the conversation starts from a proposal); move the work
+  itself into an agent this builder authors — which shifts the dependency
+  to whatever access that agent needs, never erases it; or keep the human
+  relay and stay `virtual` with a `gate:`. State the ask at the rung the
+  counterpart is actually on: handing a "build an API" ticket to a team
+  that works in local spreadsheets skips the conversation they need first.
 
   ```markdown
   # Dependencies — {agent name} ({agentId})
 
   {two or three lines for a reader outside this session: what this agent
   does and who runs it — the context a granting team needs, because one
-  system's section below is handed whole to the parties that own that
-  system}
+  counterpart's section below is handed whole to the parties that own it}
 
   status: virtual = no connection, substitute in use · provided = items
   received, wiring pending · wired = connection declared in the definition.
@@ -254,19 +267,23 @@ is observable.**
   wire it — the connection lands in the definition (`mcp.servers` or
   `apis`) and the entry's `status:` advances in place.
 
-  ## {system name}
-  - used-by: {intent ids that substitute for this system today}
+  ## {system or counterpart}
+  - used-by: {intent ids that substitute for this counterpart today}
   - substitute: {the text deliverable standing in — one line}
   - missing:
     - interface: {the interface this system already has — a well-known
       public API or an existing MCP server, named; or "none — a private API
       or MCP server must be provided, supporting: {operations read off the
       substitute deliverable's own fields}", stated so the user can hand
-      this entry to the team that will build it. A system whose standard
-      interface exists but is unreachable from here is never "none" — name
-      the interface and let reachability carry the obstacle. If you can
-      fill `wiring:` below, an interface exists: "none" beside a filled
-      wiring line is a contradiction}
+      this entry to the team that will build it; or, when the deliverable
+      lives in no system at all — local files, mail attachments, a document
+      kept by hand — the choice the owning team must make: adopt an
+      addressable home for it, or renegotiate its format and channel, with
+      the concrete spec (fields, format, where) this agent needs. A system
+      whose standard interface exists but is unreachable from here is never
+      "none" — name the interface and let reachability carry the obstacle.
+      If you can fill `wiring:` below, an interface exists: "none" beside a
+      filled wiring line is a contradiction}
     - wiring: {what the connection block will need, as names: the base URL,
       the auth scheme and the header it rides, the `${secret:}` key NAMES
       to register in credential settings — the store carries the values,
@@ -288,6 +305,10 @@ is observable.**
   - on-provided: {the one-line rewiring this job performs once the items
     arrive — the connection block, the intent's final step from text output
     to the real call, `artifact:` to `action:`, the approval decision}
+  - alternative: {only when the counterpart's own work could instead move
+    into an agent this builder authors — one line naming that agent's job
+    and the access it would still need; delegation shifts the dependency,
+    it never erases it}
   - gate: {only when a human step remains after wiring — a send button, a
     final confirmation — one line naming it}
   - status: virtual | provided | wired
@@ -314,6 +335,9 @@ is observable.**
   user's remaining work: restate the promotion loop (provide the items,
   register the `${secret:}` key names, ask this builder to wire it) and name
   the declaration channel each entry's wiring lands in — `mcp.servers` or
-  `apis`. The report is a handoff: someone who was not in this session — the
-  user, or another agent acting for them — takes it and makes the intents
-  run for real.
+  `apis`. Say which entries are tickets and which are conversations: an
+  entry whose counterpart must first change — adopt a home for the
+  deliverable, renegotiate its format, or hand its work to an agent — is a
+  negotiation to open, not a request to file. The report is a handoff:
+  someone who was not in this session — the user, or another agent acting
+  for them — takes it and makes the intents run for real.

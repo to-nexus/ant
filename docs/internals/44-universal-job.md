@@ -1068,6 +1068,29 @@ implicit. The department-facing axis is dependency grants alone: the other
 remaining work a build leaves (prose review, approval decisions, pipeline
 composition) is the user's own and stays homed in the report.
 
+**Amendment — the dependency's subject is a counterpart, not only a system**
+(memoized-lantern follow-up, 2026-09-02): the manifest's inclusion trigger
+("names a system without a connection") silently excluded the dependencies
+an AX transformation actually trips on. A team that exchanges the work's
+deliverables outside any system — local spreadsheets, mail attachments, a
+hand-kept document — has no team to hand a "build an API" ticket to; and a
+CONSUMER whose expected format constrains this agent's output is a
+dependency as much as a source, yet is not a "system" either. The subject
+generalizes to counterpart (a system, or a practice, on either side of the
+work), and the contract states the resolution ladder so each entry's ask is
+made at the rung the counterpart is actually on: wire the interface that
+exists → have one built → change the practice (an addressable home for the
+deliverable, or a renegotiated format/channel — the entry carries the
+concrete spec read off the substitute, so the negotiation opens from a
+proposal) → move the work itself into an agent this builder authors → keep
+the human relay (`virtual` + `gate:`). Delegation gets a labeled optional
+field (`alternative:`) with its honesty clause built in: moving a
+counterpart's work into an agent shifts the dependency to whatever access
+that agent needs — it never erases it. The report distinguishes tickets
+from conversations: a counterpart that must first change is a negotiation
+to open, not a request to file. One new optional structural token
+(`alternative:`); existing manifests are unaffected by the omit rule.
+
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
 (a design that meaningfully reshapes user-provided material is confirmed
