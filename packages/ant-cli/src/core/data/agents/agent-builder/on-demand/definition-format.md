@@ -17,7 +17,7 @@ rule the loader enforces on them.
     intents/{intentId}/
       infer.md                            required — the intent exists once this is saved
       prompt.md                           optional — inlined while the intent is active
-      hooks.yaml                          optional — completion contract
+      hooks.yaml                          completion contract — owed when done is observable
 ```
 
 Nothing else is writable. Intents live under a job, never under the agent.
@@ -222,6 +222,8 @@ connection it declares — or the job will not load.
 
 `artifact:` globs resolve against the job's artifact root — `*` matches within
 one path segment, `**` matches any depth; `sessions/` is reserved and refused.
+Working-file paths a `prompt.md` names live on the same root — never prefix
+them `artifacts/`, or the prompt's path and the hook's glob stop matching.
 Entries are conjunctive (all must be met, at most 8 per intent), so one
 contract can require both a working file and a system call. Artifact evidence
 comes only from the file tools (`create_file`, `edit_file`, `append_file`,
@@ -242,6 +244,10 @@ A hook is for observable completion. When an intent's "done" is evidence the
 runtime can see — a produced file, a successful call — declare it here rather
 than leaving it as prose alone; when done is a judgment only a reader can
 make, there is nothing to declare and the contract stays in `prompt.md`.
+Declaring `outcomes` in `infer.md` never stands in for a hook: the verdict
+picks which result, the hook proves the deliverable exists. An ending that
+means "the inputs are missing" belongs to clarify, which the hook gate
+exempts — not to a verdict that leaves the turn's contract unmet.
 
 ## Scopes
 

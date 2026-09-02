@@ -61,6 +61,10 @@
   pattern as the producer's `hooks.stop` artifact glob and name the same
   pattern in the consumer's `prompt.md` inputs — the glob is the interface
   between the intents, and it is what a pipeline step later pins as context.
+  Paths in a definition are plane-relative — the same root the hook globs
+  resolve against — never prefixed `artifacts/`: a prompt that names
+  `artifacts/x` beside a hook that declares `x/*` is a producer whose
+  contract can never be met.
 - Give every producing intent a run manifest: a small file at a stable path,
   written on every run, listing what the run produced — records created,
   counts, paths — an empty list when there was nothing to do. The manifest is
@@ -111,8 +115,8 @@
   from it — a report that maps sources onto a shape the user never saw is a
   silent redesign, not an iteration.
 
-**Author each intent as two prose files, plus a completion contract when done
-is observable.**
+**Author each intent as three files — trigger, procedure, completion
+contract — the third omitted only when done is not observable.**
 
 - `infer.md` is the trigger criterion — the condition under which the intent
   applies, at most 1000 characters. `prompt.md` is the procedure — what the
@@ -127,21 +131,30 @@ is observable.**
   paraphrases `infer.md` gives the condition two spellings, and they diverge
   on the next edit. The condition has exactly one home; `prompt.md` begins
   at what the agent does once it applies.
-- `hooks.yaml` is the optional third file: the completion contract. When the
-  material says what done looks like and that evidence is something the
-  runtime can observe — a file the turn must produce, a call it must make —
-  declare it: `artifact:` a glob the turn's writes must match, `action:` a
-  tool that must have been called. An `action` can only name a tool the job
-  actually carries (a builtin in its allowlist, or a tool from a connection
-  it declares), so a job with no connections can be held only to `artifact:`
-  evidence. Completion only a person can judge stays in `prompt.md` prose —
-  a hook the runtime cannot observe is a turn that can never end.
+- `hooks.yaml` is the completion contract, owed whenever done is
+  observable: an intent whose `prompt.md` names a stable output path owes
+  that pattern as an `artifact:` glob (the turn's writes must match it); an
+  intent whose work records into a declared connection owes that `action:`
+  (the tool must have been successfully called). An `action` can only name
+  a tool the job actually carries (a builtin in its allowlist, or a tool
+  from a connection it declares), so a job with no connections can be held
+  only to `artifact:` evidence. Omitting `hooks.yaml` is the exception,
+  legitimate only when the intent produces nothing the runtime can
+  observe — completion only a person can judge stays in `prompt.md` prose,
+  because a hook the runtime cannot observe is a turn that can never end —
+  and the report states why. An ending that means "the inputs are missing"
+  is a clarify exit, never a verdict: clarify is exempt from the hook gate,
+  so the artifact hook stays safe on a turn that legitimately produces
+  nothing.
 - An intent whose work is a judgment — look at evidence, reach one named
   conclusion — declares its decision vocabulary as `outcomes` in `infer.md`
   frontmatter (2–5 kebab-case ids), and its `prompt.md` states what each
   outcome means and what evidence supports it. A turn under it ends with one
   `<verdict>` from that vocabulary, and pipeline steps route on it — the
   vocabulary lives on the intent because the business knowledge lives there.
+  Declaring `outcomes` never discharges the hook obligation: the verdict
+  picks which result, the hook proves the deliverable exists — a judgment
+  intent that writes its findings to a file still owes that file's glob.
   The exact contract is in `on-demand/definition-format.md`.
 - `infer.md` names what arrives or is asked for — "a settlement file for the
   closed month is in hand" — never when a calendar fires it, not even as a
@@ -215,7 +228,11 @@ is observable.**
   team that hands over or receives the work's deliverables as local files,
   mail attachments, an office document someone maintains by hand. Both
   directions count — a consumer whose expected format constrains this
-  agent's output is a dependency as much as a source. Legitimate, but never
+  agent's output is a dependency as much as a source. Name them as
+  reference, never as procedure: prose must not direct the running agent to
+  consult a counterpart the job has no connection for — the substitute
+  snapshot is the runtime instruction, and the master source it stands in
+  for is context, recorded in the manifest's entry. Legitimate, but never
   silent: the report lists each such counterpart as a surface the agent
   cannot reach until it is resolved. And never only in the report — a chat
   report does not outlive the session. Every turn that saved a definition
