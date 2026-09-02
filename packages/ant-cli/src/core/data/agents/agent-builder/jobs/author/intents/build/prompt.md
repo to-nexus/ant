@@ -217,8 +217,9 @@ is observable.**
   report — a chat report does not outlive the session. Whenever the
   definition you saved names at least one system without a connection, also
   write `dependencies/{agentId}.md` to artifacts with `create_file`. It is
-  not a definition file: its readers are the user and a future build turn,
-  not the running agent, so it lives outside the definition — and the
+  not a definition file: its readers are the user, a future build turn, and
+  the granting parties the user hands its sections to — never the running
+  agent — so it lives outside the definition — and the
   definition never names it, not in `base/`, not in `on-demand/`: a running
   agent cannot resolve the manifest's path, so a pointer to it is a dangling
   reference by construction. One file per agent, rewritten whole on every
@@ -228,9 +229,22 @@ is observable.**
   turn can find and update entries in place: headings and field labels below
   are structural tokens (never localized, never renamed); values follow the
   definition's language. Omit a field that does not apply — never a section.
+- It is also a dispatchable request. A system's section is the handoff unit:
+  the user forwards it, with the document's opening lines, to the parties
+  that own that system — several parties may each act on their own item. So
+  every missing item names its grantor and is written in the target system's
+  own vocabulary, actionable as handed; Ant-internal vocabulary — intent
+  ids, `${secret:}` key names, artifact/action — stays in the fields only
+  the user and the wiring turn read (`used-by`, `substitute`, `wiring`,
+  `on-provided`, `status`).
 
   ```markdown
   # Dependencies — {agent name} ({agentId})
+
+  {two or three lines for a reader outside this session: what this agent
+  does and who runs it — the context a granting team needs, because one
+  system's section below is handed whole to the parties that own that
+  system}
 
   status: virtual = no connection, substitute in use · provided = items
   received, wiring pending · wired = connection declared in the definition.
@@ -258,7 +272,9 @@ is observable.**
       to register in credential settings — the store carries the values,
       never ask for a value — and the operations the intents need, which
       become the `allow` lines}
-    - access: {the rights required and who grants them}
+    - access: {the rights required, who grants them, and the credential
+      that party must issue — its value is what the user later registers
+      under the wiring line's `${secret:}` names}
     - reachability: {the network zone the host lives in, and what satisfies
       it per deployment: this Ant server deployed inside that zone reaches
       it directly; run from outside it, name the path — a gateway or relay,

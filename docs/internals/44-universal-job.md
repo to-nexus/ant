@@ -1048,7 +1048,25 @@ reachability and not `access:`, whose grantor is the service admin rather
 than the network team) and who grants that admission, so the action item is
 a ticket someone can actually file. Not a new structural token: skeleton v2
 tokens are unchanged, and omit-if-inapplicable keeps public-API entries
-clean.
+clean. A second follow-up generalized what these fixes were each patching
+one hole of: the manifest's reader model was two audiences (the user, the
+wiring turn) when its purpose needs three — the GRANTING PARTIES the user
+forwards it to, each acting on its own item. The `interface: none` field
+alone already said "stated so the user can hand this entry to the team that
+will build it"; that stance is now the document's: a system's section is
+the handoff unit (per-system organization stands — it matches the status
+lifecycle and, usually, ownership; per-grantor files would need an org
+chart the builder doesn't have and would fork a second drifting document),
+every missing item names its grantor and is written in the target system's
+own vocabulary, Ant-internal vocabulary stays in the user/wiring-turn
+fields (`used-by`, `substitute`, `wiring`, `on-provided`, `status`), the
+skeleton opens with a two-to-three-line preamble giving a cold reader the
+agent's purpose and operator, and `access:` names the credential the
+granting party must issue — the bridge between a granted right and the
+value registered under the wiring line's `${secret:}` names, previously
+implicit. The department-facing axis is dependency grants alone: the other
+remaining work a build leaves (prose review, approval decisions, pipeline
+composition) is the user's own and stays homed in the report.
 
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
