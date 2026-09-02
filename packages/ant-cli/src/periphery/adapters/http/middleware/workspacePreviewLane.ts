@@ -15,6 +15,24 @@
  * the URL, which is also what lets the frame drop `allow-same-origin`: with no
  * cookie to restore, the preview frame runs as an opaque origin, so scripts in an
  * LLM-authored document reach nothing at all.
+ *
+ * It is mounted TWICE, under two header profiles, because "browsing works" must
+ * not depend on a deployment having published a second hostname yet — that
+ * dependency is exactly what left the original defect live in cloud:
+ *
+ *   `content-origin`       on the preview content listener. A separate origin,
+ *                          so the document may script.
+ *   `control-plane-inert`  on ant-api, where a distinct content origin does not
+ *                          exist. Same origin as a cookie-authenticated API, so
+ *                          the response carries the CSP `sandbox` DIRECTIVE:
+ *                          the browser gives the document an opaque origin and
+ *                          refuses to run its scripts even in a top-level tab.
+ *                          That is an origin-model change, not a content filter
+ *                          — the sink the origin-split rule protects (a document
+ *                          driving the API with the viewer's session) is closed
+ *                          by the browser itself. The ticket rides in the URL and
+ *                          its holder may hand it to anyone, so this header is
+ *                          unconditional on every response of that profile.
  */
 
 import * as path from 'path';
@@ -92,9 +110,16 @@ function refuse(res: Response): void {
   );
 }
 
+/**
+ * Which origin this mount answers on. It selects the header profile and nothing
+ * else — containment, ticket redemption and the served root are identical.
+ */
+export type WorkspaceLaneProfile = 'content-origin' | 'control-plane-inert';
+
 export interface WorkspacePreviewLaneDeps {
   workspaceResolver: WorkspaceResolver;
   ticketStore: NavTicketStore;
+  profile: WorkspaceLaneProfile;
 }
 
 /**
@@ -106,6 +131,11 @@ export interface WorkspacePreviewLaneDeps {
  */
 export function createWorkspacePreviewLane(deps: WorkspacePreviewLaneDeps): RequestHandler {
   return async (req: Request, res: Response): Promise<void> => {
+    // Stamped before ANY branch can answer. On the inert profile the CSP is the
+    // whole reason this mount is allowed to exist, so it must not be reachable
+    // past a refusal, a 404 or a 405.
+    stampLaneHeaders(req, res, deps.profile);
+
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.status(405).type('text/plain').send('Method Not Allowed');
       return;
@@ -143,8 +173,6 @@ export function createWorkspacePreviewLane(deps: WorkspacePreviewLaneDeps): Requ
       return;
     }
 
-    stampLaneHeaders(res);
-
     // The sub-app is mounted at '/', so hand it the path with the ticket segment
     // removed. `req.originalUrl` is untouched, which is what serve-static's
     // "directory without a trailing slash → 301" builds its Location from.
@@ -163,6 +191,18 @@ function decodeSafe(value: string): string {
 }
 
 /**
+ * The one origin this document may load a subresource from.
+ *
+ * `'self'` cannot be used: the inert profile hands the document an OPAQUE origin,
+ * and `'self'` resolves against the document's origin, so it would match nothing
+ * and every stylesheet, image and font in the artifact would be blocked.
+ */
+function selfOrigin(req: Request): string {
+  const host = req.get('host');
+  return host ? `${req.protocol}://${host}` : "'none'";
+}
+
+/**
  * `helmet()` on the content listener disables only COEP/COOP/CSP, so it still
  * stamps `X-Frame-Options: SAMEORIGIN` and `Cross-Origin-Resource-Policy:
  * same-origin` — which would block the app origin from framing this lane and
@@ -173,15 +213,41 @@ function decodeSafe(value: string): string {
  *
  * `Access-Control-Allow-Origin: *` is safe precisely because it cannot be
  * combined with credentials: the ticket is the credential, and this lane must
- * never be cookie-authenticated.
+ * never be cookie-authenticated. It is also load-bearing rather than cosmetic —
+ * a font requested by an opaque-origin document is a CORS request.
+ *
+ * The `control-plane-inert` profile adds the CSP `sandbox` directive. That is
+ * what makes serving a user-authored document from the API's own origin safe:
+ * the browser gives the response an opaque origin and refuses to script it, in an
+ * iframe and in a top-level tab alike, so the document cannot reach the
+ * cookie-authenticated API it shares an origin with.
  */
-function stampLaneHeaders(res: Response): void {
+function stampLaneHeaders(req: Request, res: Response, profile: WorkspaceLaneProfile): void {
   res.removeHeader('X-Frame-Options');
-  res.setHeader('Content-Security-Policy', `frame-ancestors ${frameAncestors().join(' ')}`);
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Access-Control-Allow-Origin', '*');
   // Keeps the ticket out of the Referer of anything the document links out to.
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex');
+
+  const ancestors = `frame-ancestors ${frameAncestors().join(' ')}`;
+  if (profile === 'content-origin') {
+    res.setHeader('Content-Security-Policy', ancestors);
+    return;
+  }
+
+  const origin = selfOrigin(req);
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      'sandbox',
+      "default-src 'none'",
+      `img-src ${origin} data:`,
+      `style-src ${origin} 'unsafe-inline'`,
+      `font-src ${origin} data:`,
+      `media-src ${origin} data:`,
+      ancestors,
+    ].join('; '),
+  );
 }

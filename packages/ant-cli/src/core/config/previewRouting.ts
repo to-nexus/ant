@@ -164,3 +164,32 @@ export function assertPreviewOriginSeparation(controlPort = getPreviewControlPor
     );
   }
 }
+
+/**
+ * Public origin the preview CONTENT listener is published on, or `undefined`
+ * where a deployment has not published one yet.
+ *
+ * This is the ONE declaration of that fact, and it lives on the server on
+ * purpose. It used to be a frontend build-time guess
+ * (`VITE_PREVIEW_CONTENT_HOST` → `hasDistinctContentOrigin()`), which meant a
+ * topology fact was baked into a static bundle: the cloud UI build never passed
+ * the variable, so every cloud user silently got the pre-lane behaviour and the
+ * HTML preview's links kept 400ing on the byte route.
+ *
+ * Deliberately NOT derived from `getPreviewContentPort()`: this is read by
+ * ant-api, whose `PORT` is its own, not ant-preview's. A derivation there would
+ * point at a port nothing serves.
+ *
+ * Unset is not a failure — the workspace preview lane is also mounted on the
+ * control plane under an inert profile, so browsing still works; only scripting
+ * is withheld until a content origin exists.
+ */
+export function resolvePublicContentOrigin(): string | undefined {
+  const raw = process.env.ANT_PREVIEW_CONTENT_ORIGIN;
+  if (!raw || !raw.trim()) return undefined;
+  try {
+    return new URL(raw.trim()).origin;
+  } catch {
+    return undefined;
+  }
+}

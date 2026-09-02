@@ -123,6 +123,7 @@ gate sites.
 | `ANT_K8S_NAMESPACE` | unset | Namespace for IDE pods. If unset, falls back to Docker. |
 | `ANT_PREVIEW_BASE_DOMAIN` | unset | Base domain for preview URL routing in cloud. |
 | `ANT_PREVIEW_CONTENT_PORT` | `PORT + 1` | ant-preview serves user CONTENT (preview + deploy proxies) on this port and its cookie-authenticated `/projects/*` control plane on `PORT`. They must not share an origin: a document served from a public deploy would otherwise drive the control plane same-origin with the viewer's session. Equal ports = boot failure. Publish the two listeners under **different hostnames**. |
+| `ANT_PREVIEW_CONTENT_ORIGIN` | empty | Public origin the content listener above is published on (e.g. `https://ant-app.example.com`). Read by **ant-api**, which answers the HTML preview's `<base href>` from it — this is a deployment fact, so it must not be re-derived in a frontend build. Empty = the preview browses ant-api's own `/workspace` mount instead, which serves under a CSP-`sandbox` profile: links work, scripts do not. Set it once the content-host ingress exists. |
 | `ANT_CHILD_UID` | unset | Numeric uid for user-authored child processes (dev servers, install scripts, build commands). Unset = children keep the service identity, correct for the single-developer local CLI. Requires the container to be permitted to change uids; the runtime probes once and logs loudly if not. |
 | `ANT_CHILD_GID` | unset | Numeric gid companion to `ANT_CHILD_UID`. |
 | `ANT_CHILD_UMASK` | `002` in the images | Octal umask applied at service bootstrap so the service and the child identity can each clean up the other's files in the shared workspace. Unset = no change. |
@@ -190,7 +191,7 @@ secrets.
 |----------|---------|---------|
 | `VITE_CLOUD_BACKEND_BASE` | empty | Where the API and realtime live. Empty = same-origin. |
 | `VITE_PREVIEW_HOST` | empty | ant-preview MANAGEMENT API origin (`/projects/*`). Empty = same-origin. |
-| `VITE_PREVIEW_CONTENT_HOST` | empty | Origin the user's own preview/deploy app is served from. Empty = fall back to `VITE_PREVIEW_HOST` (single-host, pre-split behaviour). Point this at the content listener's hostname — it must differ from the management origin. |
+| `VITE_PREVIEW_CONTENT_HOST` | empty | Origin the user's own preview/deploy **app links** point at. Empty = fall back to `VITE_PREVIEW_HOST` (single-host, pre-split behaviour). Point this at the content listener's hostname — it must differ from the management origin. Note: the file editor's HTML preview does NOT read this. It asks the server (`ANT_PREVIEW_CONTENT_ORIGIN`), because a deployment fact baked into a static bundle is what kept the preview's links broken in cloud. |
 
 ## Read next
 

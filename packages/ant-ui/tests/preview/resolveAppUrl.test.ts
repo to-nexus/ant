@@ -14,7 +14,6 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  hasDistinctContentOrigin,
   resolveAppUrl,
   PREVIEW_BASE,
   PREVIEW_CONTENT_BASE,
@@ -54,24 +53,3 @@ describe('resolveAppUrl', () => {
  * The lane is mounted only on the content listener, so "is a second origin
  * published?" is a host-environment capability, not a mode.
  */
-describe('hasDistinctContentOrigin', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('is false when no content host is declared — the single-host topology', () => {
-    expect(hasDistinctContentOrigin()).toBe(false);
-  });
-
-  it('is false when the content host is declared but equal to the management host', () => {
-    vi.stubEnv('VITE_PREVIEW_HOST', 'https://ant-preview.example.com');
-    vi.stubEnv('VITE_PREVIEW_CONTENT_HOST', 'https://ant-preview.example.com');
-    expect(hasDistinctContentOrigin()).toBe(false);
-  });
-
-  it('is true only when the two origins actually differ', () => {
-    vi.stubEnv('VITE_PREVIEW_HOST', 'https://ant-preview.example.com');
-    vi.stubEnv('VITE_PREVIEW_CONTENT_HOST', 'https://ant-app.example.com');
-    expect(hasDistinctContentOrigin()).toBe(true);
-  });
-});

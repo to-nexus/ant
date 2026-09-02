@@ -5,14 +5,11 @@ import { useStore } from '@/domain/store';
 import {
   fetchFileBlob,
   getDownloadUrl,
-  getRawFileDirUrl,
-  hasDistinctContentOrigin,
   isBinaryFilePath,
   isBinaryImageFilePath,
   isHtmlFilePath,
   isSvgFilePath,
   mintFilePreviewTicket,
-  resolveAppUrl,
 } from '@/infrastructure/http/api';
 import {
   canToggleViewMode,
@@ -150,6 +147,12 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
   const [htmlPreviewFrame, setHtmlPreviewFrame] = useState<HtmlPreviewFrame | null>(null);
+  // A ticket we could not mint is a broken preview, not a quieter one. It used
+  // to fall back to a `<base href>` on the byte route, which rendered the
+  // browse failure as raw JSON inside the frame and made "the lane is absent"
+  // indistinguishable from "the lane is broken".
+  const [htmlPreviewUnavailable, setHtmlPreviewUnavailable] = useState(false);
+  const [htmlPreviewAttempt, setHtmlPreviewAttempt] = useState(0);
 
   // NOTE: Streaming preview routing is owned by MainContentArea
   // (`shouldRenderStreamingPreView` → renders <VirtualDocumentViewer/>).
@@ -291,33 +294,31 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   useEffect(() => {
     if (!isHtmlFile || viewMode !== 'preview' || !selectedProject || !selectedFeature || !selectedFile) {
       setHtmlPreviewFrame(null);
-      return;
-    }
-    const rawDirHref = getRawFileDirUrl(selectedProject, selectedFeature, selectedFile);
-    if (!hasDistinctContentOrigin()) {
-      setHtmlPreviewFrame(resolveHtmlPreviewFrame({ contentBaseHref: null, rawDirHref }));
+      setHtmlPreviewUnavailable(false);
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
-        const { basePath } = await mintFilePreviewTicket(selectedProject, selectedFeature, selectedFile);
-        if (cancelled) return;
-        setHtmlPreviewFrame(
-          resolveHtmlPreviewFrame({ contentBaseHref: resolveAppUrl(basePath), rawDirHref }),
+        const { baseUrl, allowScripts } = await mintFilePreviewTicket(
+          selectedProject,
+          selectedFeature,
+          selectedFile,
         );
+        if (cancelled) return;
+        setHtmlPreviewUnavailable(false);
+        setHtmlPreviewFrame(resolveHtmlPreviewFrame({ baseHref: baseUrl, allowScripts }));
       } catch {
-        // A mint hiccup degrades to the pre-lane row rather than blanking the
-        // preview — subresources still resolve, links and scripts do not.
         if (!cancelled) {
-          setHtmlPreviewFrame(resolveHtmlPreviewFrame({ contentBaseHref: null, rawDirHref }));
+          setHtmlPreviewFrame(null);
+          setHtmlPreviewUnavailable(true);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [isHtmlFile, viewMode, selectedProject, selectedFeature, selectedFile]);
+  }, [isHtmlFile, viewMode, selectedProject, selectedFeature, selectedFile, htmlPreviewAttempt]);
 
   // HTML preview, part 2 — WHAT is rendered. The blob keeps the live (unsaved)
   // buffer as the preview source, and the injected `<base href>` is what lets a
@@ -705,6 +706,22 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 className="h-full min-h-[70vh] w-full"
                 style={{ border: 'none', background: 'var(--bg-canvas)' }}
               />
+            ) : htmlPreviewUnavailable ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+                <div className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>
+                  {t('editor.htmlPreviewUnavailableTitle')}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  {t('editor.htmlPreviewUnavailableBody')}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setHtmlPreviewAttempt((n) => n + 1)}
+                >
+                  {t('editor.htmlPreviewRetry')}
+                </Button>
+              </div>
             ) : htmlPreviewFrame ? (
               <div
                 className="p-4 text-sm"

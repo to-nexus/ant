@@ -94,23 +94,6 @@ export const getPreviewContentBase = (): string => {
 export const PREVIEW_CONTENT_BASE = () => getPreviewContentBase();
 
 /**
- * Does this deployment publish a DISTINCT content origin?
- *
- * Derived from the one declaration above — never a second env var. It is false
- * for a single-host deployment and for any cloud whose content-host ingress has
- * not landed yet, and in that topology the workspace preview lane is
- * unreachable: it is mounted only on the content listener, by design.
- *
- * This is a host-environment CAPABILITY signal in the same sense as
- * subdomain-vs-path preview routing — it forks no business logic and no data
- * plane, and it has exactly one consumer (the HTML preview's frame resolution).
- * Delete it, and the fallback row it selects, once every deployment publishes
- * the content host.
- */
-export const hasDistinctContentOrigin = (): boolean =>
-  getPreviewContentBase() !== getPreviewBase();
-
-/**
  * Resolve an app (preview/deploy) URL returned by the backend.
  * Subdomain routing returns an absolute URL on the app's OWN host → use verbatim.
  * Path routing returns a root-relative path → prefix the CONTENT origin (this is

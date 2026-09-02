@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveHtmlPreviewFrame, withBaseHref } from '@/domain/file/htmlPreviewDocument';
 
-const BASE = 'http://localhost:4200/api/projects/p/features/main/files-raw/visual/ui/handoff/screens/';
+const BASE = 'https://ant-app.example.com/workspace/abc123/visual/ui/handoff/screens/';
 
 describe('withBaseHref', () => {
   it('inserts the base as the first child of <head>', () => {
@@ -65,32 +65,47 @@ describe('withBaseHref', () => {
 });
 
 /**
- * The preview frame truth table. Two rows and one invariant — the invariant is
- * the point: a blob document carries the APP origin, so `allow-scripts` together
- * with `allow-same-origin` would give an LLM-authored page the session cookie
- * and `window.parent`.
+ * The preview frame truth table — ONE row, keyed on what the server answered.
+ *
+ * It used to have two, and the second was the original defect: where a
+ * deployment published no distinct content origin, the base pointed at the
+ * `files-raw` byte route, so a link to a folder rendered
+ * `{"error":"Path is a directory, not a file"}` inside the frame. The lane is
+ * now mounted on both planes, so there is nothing to fall back to.
+ *
+ * The invariant is still the point: a blob document carries the APP origin, so
+ * `allow-scripts` together with `allow-same-origin` would give an LLM-authored
+ * page the session cookie and `window.parent`.
  */
 describe('resolveHtmlPreviewFrame', () => {
-  const rawDirHref = 'https://api.example.com/api/projects/p/features/main/files-raw/docs/';
-  const contentBaseHref = 'https://ant-app.example.com/workspace/abc/docs/';
+  const contentBase = 'https://ant-app.example.com/workspace/abc/docs/';
+  const inertBase = 'https://api.example.com/workspace/abc/docs/';
 
-  it('browses the ticketed content lane, scripts on, when a content origin exists', () => {
-    const frame = resolveHtmlPreviewFrame({ contentBaseHref, rawDirHref });
-    expect(frame.baseHref).toBe(contentBaseHref);
+  it('scripts on where the server published a distinct content origin', () => {
+    const frame = resolveHtmlPreviewFrame({ baseHref: contentBase, allowScripts: true });
+    expect(frame.baseHref).toBe(contentBase);
     expect(frame.sandbox).toContain('allow-scripts');
   });
 
-  it('falls back to the byte route, scripts off, when there is no content origin', () => {
-    const frame = resolveHtmlPreviewFrame({ contentBaseHref: null, rawDirHref });
-    expect(frame.baseHref).toBe(rawDirHref);
-    expect(frame.sandbox).toBe('allow-same-origin');
+  it('scripts off on the inert control-plane lane — browsing still works', () => {
+    const frame = resolveHtmlPreviewFrame({ baseHref: inertBase, allowScripts: false });
+    expect(frame.baseHref).toBe(inertBase);
+    expect(frame.sandbox).not.toContain('allow-scripts');
   });
 
   it.each([
-    ['content origin', contentBaseHref],
-    ['fallback', null],
-  ])('never combines allow-scripts with allow-same-origin (%s row)', (_label, base) => {
-    const { sandbox } = resolveHtmlPreviewFrame({ contentBaseHref: base, rawDirHref });
-    expect(sandbox.includes('allow-scripts') && sandbox.includes('allow-same-origin')).toBe(false);
+    ['content origin', contentBase, true],
+    ['inert control plane', inertBase, false],
+  ])('%s: never allow-same-origin, always allow-popups', (_label, baseHref, allowScripts) => {
+    const { sandbox } = resolveHtmlPreviewFrame({ baseHref, allowScripts });
+    expect(sandbox).not.toContain('allow-same-origin');
+    // Without this a `target="_blank"` link dies silently on click — the other
+    // half of the reported "the link does nothing" symptom.
+    expect(sandbox).toContain('allow-popups');
+  });
+
+  it('the base is used verbatim — the frontend computes no part of it', () => {
+    expect(resolveHtmlPreviewFrame({ baseHref: inertBase, allowScripts: false }).baseHref)
+      .toBe(inertBase);
   });
 });

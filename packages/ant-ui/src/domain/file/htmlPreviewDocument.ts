@@ -49,25 +49,31 @@ export interface HtmlPreviewFrame {
 }
 
 /**
- * Two rows, and never a third.
+ * One row, and never a second.
  *
- * Row 1 — the deployment publishes a content origin, so the preview browses a
- * real static site through a ticketed lane. No cookie is needed for its
- * subresources, which is exactly what lets `allow-same-origin` go: the frame
- * runs at an OPAQUE origin, so `allow-scripts` grants an LLM-authored document
- * no reachable capability. The two flags must never appear together — a blob
- * document carries the APP origin, and the pair would hand that document the
- * session cookie and `window.parent`.
+ * There used to be two: a ticketed content-origin lane, and — where a
+ * deployment published no distinct content origin — the `files-raw` byte route
+ * as a `<base href>`. That second row WAS the original defect (a link to a
+ * folder rendered `400 {"error":"Path is a directory, not a file"}` inside the
+ * frame), kept alive behind a build-time frontend env var that no cloud build
+ * ever set. The lane is now mounted on both planes, so `baseUrl` always points
+ * at something that can browse and the server decides which.
  *
- * Row 2 — no distinct content origin (single-host, or a cloud whose content
- * ingress has not landed). Behaviour is exactly what it was before the lane
- * existed: subresources resolve through the byte route, and nothing scripts.
+ * `allow-same-origin` appears in no branch. The entry document is a blob, which
+ * carries the APP origin, so pairing it with `allow-scripts` would hand an
+ * LLM-authored document the session cookie and `window.parent`. Dropping it
+ * keeps the frame at an opaque origin in every topology.
+ *
+ * `allow-popups` is unconditional: without it a `target="_blank"` link — the
+ * commonest shape in an authored index page — dies silently on click, which is
+ * indistinguishable from the bug this file exists to fix.
  */
 export function resolveHtmlPreviewFrame(args: {
-  contentBaseHref: string | null;
-  rawDirHref: string;
+  baseHref: string;
+  allowScripts: boolean;
 }): HtmlPreviewFrame {
-  return args.contentBaseHref
-    ? { baseHref: args.contentBaseHref, sandbox: 'allow-scripts' }
-    : { baseHref: args.rawDirHref, sandbox: 'allow-same-origin' };
+  return {
+    baseHref: args.baseHref,
+    sandbox: args.allowScripts ? 'allow-scripts allow-popups' : 'allow-popups',
+  };
 }

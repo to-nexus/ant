@@ -25,6 +25,7 @@ import {
 import { resolveNavTicketStore } from '../middleware/navTicket';
 import { mintWorkspacePreviewTicket } from '../middleware/workspacePreviewTicket';
 import { WORKSPACE_LANE_PREFIX } from '../middleware/workspacePreviewLane';
+import { resolvePublicContentOrigin } from '../../../../core/config/previewRouting';
 import { acquireLock } from '../../../../core/redis/distributedLock';
 import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
@@ -518,11 +519,23 @@ export function createFilesRoutes(deps: {
           },
         );
 
+        // WHERE the preview browses is answered HERE, not by the frontend.
+        // It used to be a build-time FE guess (`VITE_PREVIEW_CONTENT_HOST`),
+        // which no cloud build ever set — so every cloud user silently fell back
+        // to the byte route and links kept 400ing. A deployment fact belongs to
+        // the process that holds the deployment's configuration.
+        const contentOrigin = resolvePublicContentOrigin();
         const dir = filePath.replace(/\\/g, '/').replace(/[^/]*$/, '');
+        const lanePath = `${WORKSPACE_LANE_PREFIX}/${ticket}/${dir}`;
+        const selfOrigin = `${req.protocol}://${req.get('host') ?? ''}`;
         res.json({
           ticket,
           expiresInSec,
-          basePath: `${WORKSPACE_LANE_PREFIX}/${ticket}/${dir}`,
+          baseUrl: `${contentOrigin ?? selfOrigin}${lanePath}`,
+          // Scripting is granted only by a separate origin. On this origin the
+          // lane answers under the inert profile (CSP `sandbox`), so promising
+          // scripts would be a lie the browser refuses to keep.
+          allowScripts: Boolean(contentOrigin),
         });
       } catch (error: any) {
         sendErrorResponse(res, 500, error, 'Files');

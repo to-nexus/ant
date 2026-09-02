@@ -956,6 +956,7 @@ export class PreviewServer {
     const workspaceLane = createWorkspacePreviewLane({
       workspaceResolver: this.workspaceResolver,
       ticketStore: this.stateStore,
+      profile: 'content-origin',
     });
     this.contentApp.use(WORKSPACE_LANE_PREFIX, (req: Request, res: Response, next) => {
       if (this.contentHostKind(req)) return next();

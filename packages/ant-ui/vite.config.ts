@@ -41,6 +41,13 @@ const PROXY_TABLE = {
     target: REALTIME_PROXY_TARGET,
     changeOrigin: true,
   },
+  // Workspace preview lane — the file editor's HTML preview browses here when
+  // no distinct preview content origin is published. Ticket-authorized, so it
+  // carries no cookie and is not part of `/api`.
+  '/workspace': {
+    target: API_PROXY_TARGET,
+    changeOrigin: true,
+  },
 } as const;
 
 /**
@@ -61,6 +68,7 @@ function antSiteProxy(): PluginOption {
       url.startsWith('/api') ||
       url.startsWith('/ide') ||
       url.startsWith('/realtime') ||
+      url.startsWith('/workspace') ||
       url.startsWith('/dev-cases') ||
       url.startsWith('/@') ||
       url.startsWith('/__') ||

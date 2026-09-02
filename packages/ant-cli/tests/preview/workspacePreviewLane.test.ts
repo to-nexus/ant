@@ -60,6 +60,8 @@ let base: string;
 let workspaces: string;
 let store: FakeStore;
 let server: Server;
+let inertBase: string;
+let inertServer: Server;
 let ticket: string;
 let otherTicket: string;
 
@@ -96,6 +98,7 @@ beforeAll(async () => {
     createWorkspacePreviewLane({
       workspaceResolver: new UnifiedWorkspaceResolver(workspaces),
       ticketStore: store,
+      profile: 'content-origin',
     }),
   );
   server = await new Promise<Server>((resolve) => {
@@ -103,10 +106,27 @@ beforeAll(async () => {
   });
   const { port } = server.address() as { port: number };
   base = `http://127.0.0.1:${port}`;
+
+  // The same lane on the plane that also answers a cookie-authenticated API.
+  const inertApp = express();
+  inertApp.use(
+    WORKSPACE_LANE_PREFIX,
+    createWorkspacePreviewLane({
+      workspaceResolver: new UnifiedWorkspaceResolver(workspaces),
+      ticketStore: store,
+      profile: 'control-plane-inert',
+    }),
+  );
+  inertServer = await new Promise<Server>((resolve) => {
+    const s = inertApp.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  const inertPort = (inertServer.address() as { port: number }).port;
+  inertBase = `http://127.0.0.1:${inertPort}`;
 });
 
 afterAll(async () => {
   await new Promise<void>(r => server.close(() => r()));
+  await new Promise<void>(r => inertServer.close(() => r()));
   fs.rmSync(workspaces, { recursive: true, force: true });
 });
 
@@ -246,23 +266,49 @@ describe('workspace preview lane — mint on the API, redeem on the content orig
       body: JSON.stringify({ path: filePath }),
     });
 
-  it('the minted basePath is exactly what the lane serves', async () => {
+  /** The FE computes no part of the base — the server hands back an absolute URL. */
+  it('the minted baseUrl is exactly what the lane serves', async () => {
     const res = await mint('pages/index.html');
     expect(res.status).toBe(200);
-    const { basePath } = await res.json();
-    expect(basePath).toMatch(new RegExp(`^${WORKSPACE_LANE_PREFIX}/[0-9a-f]{64}/pages/$`));
+    const { baseUrl } = await res.json();
+    expect(baseUrl).toMatch(
+      new RegExp(`^${apiBase}${WORKSPACE_LANE_PREFIX}/[0-9a-f]{64}/pages/$`),
+    );
 
-    const served = await fetch(`${base}${basePath}`, { headers: html });
+    const served = await fetch(`${base}${new URL(baseUrl).pathname}`, { headers: html });
     expect(served.status).toBe(200);
     expect(await served.text()).toContain('<h1>pages</h1>');
   });
 
   it('a file at the feature root yields a base with no directory segment', async () => {
-    const { basePath } = await (await mint('index.html')).json();
-    expect(basePath).toMatch(new RegExp(`^${WORKSPACE_LANE_PREFIX}/[0-9a-f]{64}/$`));
-    const served = await fetch(`${base}${basePath}`, { headers: html });
+    const { baseUrl } = await (await mint('index.html')).json();
+    expect(baseUrl).toMatch(new RegExp(`^${apiBase}${WORKSPACE_LANE_PREFIX}/[0-9a-f]{64}/$`));
+    const served = await fetch(`${base}${new URL(baseUrl).pathname}`, { headers: html });
     expect(served.status).toBe(200);
     expect(await served.text()).toContain('<h1>entry</h1>');
+  });
+
+  /**
+   * Scripting follows the ORIGIN, not the caller's hope. With no content origin
+   * published the base points back at the API, where the lane answers under the
+   * inert profile — promising scripts there would be a lie the browser refuses.
+   */
+  it('withholds scripting when no content origin is published', async () => {
+    delete process.env.ANT_PREVIEW_CONTENT_ORIGIN;
+    const body = await (await mint('index.html')).json();
+    expect(body.allowScripts).toBe(false);
+    expect(body.baseUrl.startsWith(apiBase)).toBe(true);
+  });
+
+  it('grants scripting and the content origin once one is published', async () => {
+    process.env.ANT_PREVIEW_CONTENT_ORIGIN = 'https://ant-app.example.com';
+    try {
+      const body = await (await mint('index.html')).json();
+      expect(body.allowScripts).toBe(true);
+      expect(body.baseUrl.startsWith('https://ant-app.example.com/workspace/')).toBe(true);
+    } finally {
+      delete process.env.ANT_PREVIEW_CONTENT_ORIGIN;
+    }
   });
 
   it('refuses to mint for a path that is a directory', async () => {
@@ -284,5 +330,70 @@ describe('workspace preview lane — mint on the API, redeem on the content orig
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * The inert profile is what allows this lane to be mounted on an origin that
+ * also answers a cookie-authenticated API. The CSP `sandbox` directive gives
+ * every response an opaque origin with scripting off — in a top-level tab as
+ * well as in an iframe — so the document cannot drive that API with the
+ * viewer's session. The ticket rides in the URL and its holder may hand it to
+ * anyone, so the header is asserted on EVERY response shape, not the happy one.
+ */
+describe('workspace preview lane — control-plane-inert profile', () => {
+  const inertUrl = (tk: string, rel: string) =>
+    `${inertBase}${WORKSPACE_LANE_PREFIX}/${tk}/${rel}`;
+
+  const cases: [string, () => Promise<Response>][] = [
+    ['a served file', () => fetch(inertUrl(ticket, 'index.html'), { headers: html })],
+    ['a directory index', () => fetch(inertUrl(ticket, 'pages/'), { headers: html })],
+    ['a 404', () => fetch(inertUrl(ticket, 'nope.html'), { headers: html })],
+    ['a refused ticket', () => fetch(`${inertBase}${WORKSPACE_LANE_PREFIX}/`, { headers: html })],
+    ['a reserved sessions path', () => fetch(inertUrl(ticket, 'sessions/architect/code.json'), { headers: html })],
+    ['a rejected method', () => fetch(inertUrl(ticket, 'index.html'), { method: 'POST' })],
+  ];
+
+  it.each(cases)('%s carries the sandbox CSP', async (_label, run) => {
+    const res = await run();
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp.split(';').map(d => d.trim())).toContain('sandbox');
+  });
+
+  it("never spells a source as 'self' — an opaque origin matches nothing", async () => {
+    const res = await fetch(inertUrl(ticket, 'index.html'), { headers: html });
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain('sandbox');
+    // `frame-ancestors` is about the EMBEDDER's origin, so `'self'` is correct
+    // there. Every FETCH directive must name the real origin instead — `'self'`
+    // resolves against the sandboxed document, which has none.
+    const fetchDirectives = csp
+      .split(';')
+      .map(d => d.trim())
+      .filter(d => /^(default|img|style|font|media)-src/.test(d));
+    expect(fetchDirectives.length).toBeGreaterThan(0);
+    for (const directive of fetchDirectives) {
+      expect(directive).not.toContain("'self'");
+    }
+    // Subresources must name the real origin, or the artifact renders unstyled.
+    expect(csp).toContain(inertBase);
+  });
+
+  it('the content-origin profile does NOT sandbox — that plane may script', async () => {
+    const res = await fetch(url(ticket, 'index.html'), { headers: html });
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain('frame-ancestors');
+    expect(csp.split(';').map(d => d.trim())).not.toContain('sandbox');
+  });
+
+  it('browsing works identically on both planes — the point of the second mount', async () => {
+    const res = await fetch(inertUrl(ticket, 'pages/'), { headers: html });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<h1>pages</h1>');
+  });
+
+  it("another tenant's ticket still resolves to that tenant's own root", async () => {
+    const res = await fetch(inertUrl(otherTicket, 'index.html'), { headers: html });
+    expect(await res.text()).toContain('<h1>other tenant</h1>');
   });
 });

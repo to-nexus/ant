@@ -96,11 +96,16 @@ Both are deployment-layer, so the code ships the seam and the deployment decides
 2. **Serve user content from its own hostname.** `ant-preview` runs two listeners:
    `PORT` (4102) is the cookie-authenticated `/projects/*` control plane, and
    `ANT_PREVIEW_CONTENT_PORT` (4103) serves preview and deploy content. Publish
-   them under **different hostnames** and point `VITE_PREVIEW_CONTENT_HOST` at the
-   content one. A public deploy's HTML or SVG is attacker-authorable; on a shared
-   origin its script can call the control plane with the viewer's session. The
-   local compose stack demonstrates the layout: `:4200` is the app, `:4201` is
-   content.
+   them under **different hostnames**, point `VITE_PREVIEW_CONTENT_HOST` at the
+   content one (app links) and set `ANT_PREVIEW_CONTENT_ORIGIN` to the same value
+   on ant-api (the file editor's HTML preview). A public deploy's HTML or SVG is
+   attacker-authorable; on a shared origin its script can call the control plane
+   with the viewer's session. The local compose stack demonstrates the layout:
+   `:4200` is the app, `:4201` is content.
+
+   Until that content hostname exists, nothing breaks: the HTML preview browses
+   ant-api's own `/workspace` mount, which serves every response with the CSP
+   `sandbox` directive — links and styles work, scripts do not.
 
 ## Quick start with Docker Compose
 

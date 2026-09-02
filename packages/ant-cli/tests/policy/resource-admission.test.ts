@@ -645,3 +645,80 @@ describe('authenticated responses are never held by a shared cache', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * The workspace preview lane serves user-authored HTML from the API's OWN
+ * origin, which is also a cookie-authenticated control plane. That is allowed
+ * only under two structural conditions, both read from the source so a later
+ * edit cannot quietly drop one:
+ *
+ *  - it is mounted BEFORE authentication and never calls `next()`, so it cannot
+ *    reach the JWT gate, the approval gate, the self-API scope guard, or a body
+ *    parser (its credential is the ticket in the URL, not a cookie);
+ *  - every response of that profile carries the CSP `sandbox` directive, which
+ *    is what makes the document inert rather than a same-origin API driver.
+ */
+describe('workspace preview lane on the control plane', () => {
+  const configurator = () =>
+    readFileSync(
+      path.resolve(
+        __dirname,
+        '../../src/periphery/adapters/http/express/config/ServerConfigurator.ts',
+      ),
+      'utf8',
+    );
+
+  it('is mounted before authentication', () => {
+    const src = configurator();
+    const lane = src.indexOf('this.setupWorkspaceLane(app)');
+    const auth = src.indexOf('this.setupAuthentication(app)');
+    expect(lane).toBeGreaterThan(-1);
+    expect(auth).toBeGreaterThan(-1);
+    expect(lane).toBeLessThan(auth);
+  });
+
+  it('mounts the inert profile there — never the scripting one', () => {
+    const src = configurator();
+    expect(src).toMatch(/profile:\s*'control-plane-inert'/);
+    expect(src).not.toMatch(/profile:\s*'content-origin'/);
+  });
+
+  it('the lane answers every request it receives and never calls next()', () => {
+    const src = readFileSync(
+      path.resolve(
+        __dirname,
+        '../../src/periphery/adapters/http/middleware/workspacePreviewLane.ts',
+      ),
+      'utf8',
+    );
+    // The handler signature takes no `next`, so a fall-through is not spellable.
+    expect(src).toMatch(/async \(req: Request, res: Response\): Promise<void>/);
+    // Belt and braces: no bare `next()` call survives comment stripping either
+    // (`iterator.next()` is dotted and stays legal).
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).not.toMatch(/(?<![.\w])next\(\)/);
+  });
+
+  it('the mount wrapper does not fall through to the authenticated surface', () => {
+    const src = configurator();
+    const start = src.indexOf('private setupWorkspaceLane');
+    const body = src.slice(start, src.indexOf('private setupAuthentication'));
+    expect(start).toBeGreaterThan(-1);
+    expect(body.replace(/\/\/.*$/gm, '')).not.toMatch(/(?<![.\w])next\(\)/);
+  });
+
+  it('the CSP sandbox directive is unconditional within the inert profile', () => {
+    const src = readFileSync(
+      path.resolve(
+        __dirname,
+        '../../src/periphery/adapters/http/middleware/workspacePreviewLane.ts',
+      ),
+      'utf8',
+    );
+    // Stamped before any branch can answer — a 401/404/405 is a document too.
+    const stamp = src.indexOf('stampLaneHeaders(req, res, deps.profile)');
+    const firstAnswer = src.indexOf("res.status(405)");
+    expect(stamp).toBeGreaterThan(-1);
+    expect(stamp).toBeLessThan(firstAnswer);
+  });
+});

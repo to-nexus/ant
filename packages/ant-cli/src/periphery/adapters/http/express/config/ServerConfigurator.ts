@@ -16,6 +16,11 @@ import {
 import { createSelfApiScopeGuard } from '../../middleware/selfApiScopeGuard';
 import { createRequireApprovedAccount, ADMIN_SURFACE_PREFIX } from '../../middleware/requireApprovedAccount';
 import { createNoStoreForAuthenticated } from '../../middleware/noStoreForAuthenticated';
+import {
+  createWorkspacePreviewLane,
+  WORKSPACE_LANE_PREFIX,
+} from '../../middleware/workspacePreviewLane';
+import { resolveNavTicketStore as resolveWorkspaceTicketStore } from '../../middleware/navTicket';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
 import { parseIDEKey } from '../../../../../infrastructure/state/redisKeyUtils';
@@ -81,6 +86,7 @@ export class ServerConfigurator {
    * 4. IDE proxy auth (JWT check before proxy intercepts)
    * 5. IDE stub interceptors (short-circuit cosmetic-noise paths; after JWT, before proxy)
    * 6. Proxy middleware (intercepts /ide/ requests, no next())
+   * 6b. Workspace preview lane (ticket-authorized static browse, no next())
    * 7. Small-body parser for PUBLIC endpoints only (must come after proxy)
    * 8. General JWT auth (all other routes)
    * 9. Full-size body parser — only reached once authenticated
@@ -96,6 +102,7 @@ export class ServerConfigurator {
     this.setupIdeProxyAuth(app);
     this.setupIdeStubInterceptors(app);
     this.setupProxyMiddleware(app);
+    this.setupWorkspaceLane(app);
     this.setupPublicBodyParser(app);
     this.setupAuthentication(app);
     this.setupBodyParsers(app);
@@ -307,6 +314,43 @@ export class ServerConfigurator {
    * Cloud mode: JWT cookie-based authentication
    * Local mode: no auth (authService is undefined, early return)
    */
+  /**
+   * Workspace preview lane — the file editor's HTML preview, browsable on THIS
+   * origin where a deployment publishes no distinct content origin.
+   *
+   * Mounted here, before authentication, for the same reason the IDE proxy is:
+   * it answers every request it receives and never calls `next()`, so it cannot
+   * reach the JWT gate, the approval gate, the self-API scope guard or a body
+   * parser. Its credential is the ticket in the URL — the preview frame runs at
+   * an opaque origin and sends no cookie, so a cookie gate here could only ever
+   * fail closed. `PUBLIC_PATHS` is deliberately NOT widened: that list feeds the
+   * JWT gate and the pre-auth body parser, neither of which this lane reaches.
+   *
+   * Serving user-authored HTML from the API's own origin is a narrow, deliberate
+   * exception to the content/control-plane origin split, and the `inert` profile
+   * is what buys it: every response carries the CSP `sandbox` directive, so the
+   * browser gives the document an opaque origin and refuses to script it. See
+   * docs/internals/security-posture.md Axis 5.
+   */
+  private setupWorkspaceLane(app: Express): void {
+    const lanePromise = resolveWorkspaceTicketStore().then(ticketStore =>
+      createWorkspacePreviewLane({
+        workspaceResolver: this.deps.workspaceResolver,
+        ticketStore,
+        profile: 'control-plane-inert',
+      }),
+    );
+
+    app.use(WORKSPACE_LANE_PREFIX, (req: Request, res: Response, next: NextFunction) => {
+      lanePromise.then(lane => lane(req, res, next)).catch(error => {
+        logger.error('🖼️ [WorkspacePreview] lane unavailable', { component: 'ServerConfigurator' }, {
+          error: (error as Error)?.message,
+        });
+        res.status(503).type('text/plain').send('Preview unavailable');
+      });
+    });
+  }
+
   private setupAuthentication(app: Express): void {
     if (!this.deps.authService) {
       // Local mode: no authentication

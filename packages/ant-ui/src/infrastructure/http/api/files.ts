@@ -231,34 +231,22 @@ export function createDirectory(
   );
 }
 
-/**
- * Absolute URL of the directory holding `filePath`, under the raw-bytes
- * endpoint. Absolute on purpose: it is consumed as an HTML `<base href>` inside
- * a blob document, which cannot resolve the root-relative form `API_BASE()`
- * returns in local mode.
- *
- * This is the FALLBACK-topology base only (no distinct content origin — see
- * `hasDistinctContentOrigin`). It resolves subresources and nothing else: the
- * byte route has no directory-index resolution, so a link to a folder 400s.
- * Where a content origin exists, `mintFilePreviewTicket` supplies the base
- * instead and browsing works like the static site it is.
- */
-export function getRawFileDirUrl(
-  projectId: string,
-  featureName: string,
-  filePath: string,
-): string {
-  const dir = filePath.replace(/\\/g, '/').replace(/[^/]*$/, '');
-  const relative = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files-raw/${dir}`;
-  return new URL(relative, window.location.origin).href;
-}
-
 /** Where the ticketed workspace preview lane serves this file's directory. */
 export interface FilePreviewTicket {
   ticket: string;
   expiresInSec: number;
-  /** Root-relative — resolve it against the content origin with `resolveAppUrl`. */
-  basePath: string;
+  /**
+   * ABSOLUTE `<base href>` for the preview document, decided by the server.
+   *
+   * The frontend deliberately computes no part of it. It used to pick between a
+   * content-origin lane and the `files-raw` byte route from a build-time env
+   * var, and since no cloud build ever set that var, every cloud user got the
+   * byte route — whose contract is one path → one file, so a link to a folder
+   * came back as `400 {"error":"Path is a directory, not a file"}`.
+   */
+  baseUrl: string;
+  /** True only where a distinct content origin serves the lane. */
+  allowScripts: boolean;
 }
 
 /**

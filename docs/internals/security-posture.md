@@ -147,9 +147,42 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   with no cookie to restore, the frame runs opaque, so `allow-scripts` grants an
   LLM-authored document nothing. The two flags must never be combined — the
   entry document is a blob and carries the app origin.
-  This is also why `files-raw` now serves HTML as `attachment` alongside SVG:
-  browsing a document is a static-host job on the content origin, and the control
-  plane no longer serves an active document at all.
+  This is also why `files-raw` serves HTML as `attachment` alongside SVG:
+  browsing a document is a static-host job, and the byte route is not it.
+- **One narrow exception to the origin split, bought by CSP `sandbox`.** ✅ The
+  same lane is ALSO mounted on ant-api, whose origin answers a
+  cookie-authenticated control plane. That is normally the forbidden shape
+  (below), and the exception is deliberate and bounded, because the alternative
+  was worse: gating the lane on "does this deployment publish a content origin?"
+  left every deployment without one — the cloud included — silently running the
+  pre-lane code path, where a link to a folder rendered
+  `400 {"error":"Path is a directory, not a file"}` inside the preview. A
+  fallback row that is itself the defect is not a fallback.
+  What makes the exception hold is the CSP `sandbox` **directive**, stamped on
+  every response of the `control-plane-inert` profile: the browser gives the
+  document an opaque origin and refuses to script it, in a top-level tab as well
+  as in an iframe, so it cannot drive that API with the viewer's session. This is
+  an origin-model change enforced by the browser, NOT the SVG/HTML filter or
+  blanket CSP the rule below rejects — those leave the sink open.
+  Four properties are load-bearing and each has a guard
+  (`tests/preview/workspacePreviewLane.test.ts`,
+  `tests/policy/resource-admission.test.ts`):
+  1. The header is stamped BEFORE any branch can answer — 401/404/405 are
+     documents too, and the ticket's holder may hand its URL to anyone, so the
+     header must never be conditional.
+  2. No fetch directive spells `'self'`. It resolves against the sandboxed
+     document, which has no origin, so it matches nothing and the artifact would
+     render unstyled; the directives name the real origin instead.
+  3. The mount sits before authentication and never calls `next()`, so it reaches
+     neither the JWT gate, the approval gate, the self-API scope guard, nor a
+     body parser. Its credential is the ticket — the frame is opaque and sends no
+     cookie, so a cookie gate there could only fail closed.
+  4. Only the inert profile is mounted there. Scripting follows the origin, and
+     the mint answers `allowScripts: false` to match, so the frontend cannot
+     promise what the browser will refuse.
+  Still forbidden, unchanged: mounting a control-plane ROUTE on the content
+  listener, and serving user content from any cookie-authenticated surface that
+  does not carry this directive.
 - **A user-authored upstream never receives platform credentials.** ✅ Both the
   HTTP proxy (`buildCleanHeaders`) and the WebSocket upgrade
   (`rewriteUpgradeHeaders`) strip the platform session cookie and a *verifiable*

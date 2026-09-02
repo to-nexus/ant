@@ -110,7 +110,7 @@ Two project-scoped routes sit beside them:
 | Verb | Path | Notes |
 |------|------|-------|
 | GET  | `/api/projects/:id/features/:feature/files-raw/<path>` | Raw bytes. Active documents (SVG, HTML) come back as `attachment` — they must not render on the origin that answers this API. |
-| POST | `/api/projects/:id/features/:feature/files-preview-ticket` | Mints a 30-minute ticket for the workspace preview lane on the preview CONTENT origin. Returns `{ ticket, expiresInSec, basePath }`; `basePath` is root-relative because this process does not know which host publishes the content listener. See [22-preview-system.md](../internals/22-preview-system.md). |
+| POST | `/api/projects/:id/features/:feature/files-preview-ticket` | Mints a 30-minute ticket for the workspace preview lane. Returns `{ ticket, expiresInSec, baseUrl, allowScripts }`. `baseUrl` is ABSOLUTE and decided here, not by the frontend: it points at the preview CONTENT origin when `ANT_PREVIEW_CONTENT_ORIGIN` is published (`allowScripts: true`), otherwise back at this origin's own `/workspace` mount, which serves under the inert CSP-`sandbox` profile (`allowScripts: false`). See [22-preview-system.md](../internals/22-preview-system.md). |
 
 ## Cloud IDE
 
@@ -135,6 +135,12 @@ control plane goes through `ant-api`.
 | POST | `/api/preview/start`              | Launch a dev server.                  |
 | GET  | `/api/preview/status`             | Returns the active server map.        |
 | POST | `/api/preview/stop`               | Stop a feature's dev server.          |
+
+### Workspace preview lane (not under `/api`)
+
+| Verb | Path | Notes |
+|---|---|---|
+| GET/HEAD | `/workspace/:ticket/*` | Read-only static browse of one feature root, authorized by the ticket alone — no cookie, no JWT, never `next()`s. Mounted on BOTH the ant-preview content listener (scripting allowed) and ant-api (inert: every response carries the CSP `sandbox` directive). Anything but GET/HEAD is 405; an absent or expired ticket is 401 as an HTML page, because it renders inside an iframe. |
 
 ## Organizations (teams)
 

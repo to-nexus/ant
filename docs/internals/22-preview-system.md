@@ -90,22 +90,60 @@ Both are correct for a deployed page opened in its own tab and wrong for the one
 surface that exists to be embedded — so they are overridden on the lane, never by
 loosening helmet for the whole listener.
 
-Because the frame needs no cookie, the preview iframe drops `allow-same-origin`
-and gains `allow-scripts`: it runs at an opaque origin, so a script in an
-LLM-authored document reaches neither the app, its cookies, nor its storage.
-Those two flags must never appear together — the entry document is a blob, which
-carries the APP origin. `resolveHtmlPreviewFrame` (ant-ui) is their single owner.
+Because the frame needs no cookie, the preview iframe drops `allow-same-origin`:
+it runs at an opaque origin, so a script in an LLM-authored document reaches
+neither the app, its cookies, nor its storage. `allow-same-origin` appears in no
+branch, and `allow-popups` is unconditional — without it a `target="_blank"`
+link dies silently on click. `resolveHtmlPreviewFrame` (ant-ui) is the single
+owner of the flags.
+
+### Two mounts, because browsing must not wait on an ingress
+
+The lane is mounted twice under two header profiles. Containment, ticket
+redemption and the served root are identical; only the headers differ.
+
+| Profile | Mounted on | Scripts | What makes it safe |
+|---|---|---|---|
+| `content-origin` | the preview content listener | yes | a separate origin — the document has no reachable session |
+| `control-plane-inert` | ant-api, at `/workspace` | **no** | every response carries the CSP `sandbox` directive |
+
+The second mount exists because the first one's reachability is a *deployment*
+fact, and for a while the preview asked a static frontend bundle about it
+(`VITE_PREVIEW_CONTENT_HOST` → `hasDistinctContentOrigin()`). No cloud build ever
+set that variable, so every cloud user silently got the pre-lane behaviour and a
+link to a folder still rendered `400 {"error":"Path is a directory, not a file"}`
+inside the frame. A fallback row that IS the defect is not a fallback.
+
+So the question moved to the server: `POST .../files-preview-ticket` answers with
+an absolute `baseUrl` and an `allowScripts` flag, derived from
+`resolvePublicContentOrigin()` (`ANT_PREVIEW_CONTENT_ORIGIN`). The frontend
+computes no part of it and has exactly one row. Where no content origin is
+published the base points back at ant-api, and the inert profile serves it.
+
+On that plane the lane shares an origin with a cookie-authenticated API, which is
+normally forbidden (security-posture Axis 5). What buys the exception is the CSP
+`sandbox` **directive**: the browser gives the response an opaque origin and
+refuses to run its scripts — in a top-level tab as well as in an iframe — so the
+document cannot drive that API with the viewer's session. That is an origin-model
+change enforced by the browser, not a content filter. Two consequences worth
+remembering:
+
+- `'self'` must never appear in a fetch directive there. It resolves against the
+  sandboxed document, which has no origin, so it would match nothing and the
+  artifact would render unstyled. The directives name the real origin.
+- The header is stamped before any branch can answer — a 401, 404 and 405 are
+  documents too, and the ticket's holder may hand its URL to anyone.
+
+The lane on ant-api is mounted before authentication and never calls `next()`,
+so it reaches neither the JWT gate, the approval gate, the self-API scope guard
+nor a body parser. Its only credential is the ticket: the frame is opaque and
+sends no cookie, so a cookie gate there could only fail closed.
 
 **Known limit:** a root-relative reference (`href="/x.css"`) drops the
 `/workspace/:ticket` prefix — `<base>` does not affect absolute paths. This
 predates the lane (under the byte-route base such a path resolved to the app
 origin root). A per-ticket host label would fix it, but a 64-hex ticket exceeds
 the 63-character DNS label limit and shortening it weakens the capability.
-
-**Topology:** the lane is reachable only where a distinct content origin is
-published (`VITE_PREVIEW_CONTENT_HOST`). Where it is not, `hasDistinctContentOrigin()`
-selects the pre-lane row — byte-route subresources, no scripts, directory links
-still refused. Delete that row once every deployment publishes the content host.
 
 ## Proxy Strategy
 
