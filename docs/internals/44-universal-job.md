@@ -957,7 +957,9 @@ arrive (connection block, text output → real call, `artifact:` → `action:`,
 approval) and a `virtual`/`provided`/`wired` status the wiring turn updates
 in place. Post-wiring human steps (a send button) are marked as gates, not
 dependencies. Deliberately NOT a hook: the manifest is conditional, and
-`build`'s stop contract stays the pinned `action: api__ant__request`.
+`build`'s stop contract stays the pinned `action: api__ant__request` —
+SUPERSEDED by the quick-catching-couch amendment below: the condition was
+the gap, so it went, and the manifest is now hook-gated.
 
 **Amendment — the manifest entry is a provisioning spec, not a blocker list**
 (quiet-being-aspen audit, 2026-09-02): the first live manifest exposed two
@@ -1031,7 +1033,10 @@ the job's intents, and agent prose stating connection status — wiring state
 has one home, the manifest's `status:`, for the same reason the definition
 never names the manifest's path. Also confirmed live and deliberately NOT
 changed: an outcomes intent with no stop hook is legal when the report
-states the decision (verdict is the completion), and the elided-read
+states the decision (verdict is the completion) — narrowed by the
+quick-catching-couch amendment: that license holds only for an intent with
+no observable deliverable; a judgment intent that writes its findings to a
+file still owes the artifact glob — and the elided-read
 compaction lane (`truncateReadFile` head+tail with the range-read hint) let
 the model reconstruct full coverage of a 937-line attachment — the dedup
 guard's range-blindness (A8) stays a tracked runtime residue, harmless here.
@@ -1177,6 +1182,67 @@ lines are GET-only — both lanes asserted in
 `tests/customAgents/builtin-agents.test.ts`, and that every shipped allow line
 resolves through the guard is asserted in
 `tests/http/account-agent-routes.test.ts`).
+
+**Amendment — the honor-system manifest closes: build's run manifest,
+hook-gated** (quick-catching-couch RCA, 2026-09-03): the first live run after
+the audit closure produced the counterexample the lane finding had priced in.
+A build authored four intents from material naming a dozen unreachable
+counterparts (a compliance wiki declared the authoritative register, three
+Jira projects, a secure file relay), RECOGNIZED them — and discharged the
+whole obligation into a chat `### 의존성` paragraph, twice: zero `create_file`
+calls, no checklist item (the checklist froze before the first write), and
+the report's "names the manifest's path when one was written" read as
+compliant silence. The turn's only code-judged contract,
+`action: api__ant__request`, was satisfied by the first definition write —
+after which all 347 lines of build doctrine were honor-system. Two causes,
+each now closed:
+
+1. **The condition was the gap.** "Whenever the definition names at least one
+   counterpart without a connection" is a self-judged predicate, and a
+   conditional deliverable cannot be hook-gated. The manifest is now build's
+   own run manifest — the doctrine build preaches, applied to itself: every
+   turn that saves a definition rewrites `dependencies/{agentId}.md` (an
+   entry per unwired counterpart, or the recorded verdict that none remain,
+   so an empty manifest is distinguishable from a forgotten one; read first,
+   updated in place; a removal turn records the removal), and
+   `build/hooks.yaml` gains `artifact: dependencies/*.md`. Silent omission is
+   now a bounced turn, at worst a resumable pause. The report line lost its
+   "when one was written" escape. Cost accepted knowingly: every save turn
+   rewrites the manifest (cheap; statuses stay fresh), the hook proves
+   existence rather than quality (quality's owners stay the skeleton token
+   pins and the review lane), and clarify remains the no-op exit.
+2. **A prose-placement regression rode along.** ed3238911's budget
+   condensation deleted the always-injected `system.md` step-5 manifest
+   sentence as a "duplicate" of the build prompt — but a 23KB tool_result
+   read once at turn start is not attention-equivalent to always-on system
+   prose, and the last manifest-producing live run (quiet-being-aspen) had
+   run WITH that anchor while this run ran without it. The anchor is
+   restored as one sentence (5.3k/8k budget). Meta-rule worth keeping: a
+   change to always-injected prose invalidates prior live verification of
+   the behavior that prose anchored — n=1 green runs certify a placement,
+   not a doctrine.
+
+The same run surfaced the hook-authoring failure clear-dotting-mouse had only
+half-closed: all four authored intents had stable output paths, and the model
+declared zero hooks, reasoning "the verdict is the core, so the completion
+contract is left to the verdict" — a dichotomy the instructions never
+offered, reachable because the authoring bullet led with "optional" while the
+producer-glob and run-manifest obligations sat 70 lines earlier under a
+different header. The authoring site's polarity is inverted (owed when
+observable; omission is the justified exception, stated in the report),
+outcomes are explicitly declared non-discharging (the verdict picks which
+result, the hook proves the deliverable exists), and "inputs missing" endings
+are authored as clarify exits (gate-exempt), never verdicts. Two generalized
+rules from the run's output defects: definition paths are plane-relative
+(never `artifacts/`-prefixed — beside a bare hook glob that prefix is a
+contract that can never be met), and prose never directs the running agent to
+consult a counterpart the job has no connection for — the substitute snapshot
+is the runtime instruction. The review lane audits all of it: a missing
+manifest is itself a finding, as is an uncovered observable intent or a
+prompt-path/glob mismatch. Structural pins updated in
+`tests/customAgents/builtin-agents.test.ts` (build's stop contract is now the
+action AND the manifest glob); the pipeline-builder's single action hook is
+unchanged — the manifest has one writer.
 
 **Extension — deliverables are design space too** (2026-09-01). The
 no-authority principle originally covered only structure (partition) and
