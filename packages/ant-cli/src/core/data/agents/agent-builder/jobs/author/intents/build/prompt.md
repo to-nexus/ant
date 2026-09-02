@@ -221,7 +221,8 @@ is observable.**
   report does not outlive the session. Whenever the definition you saved
   names at least one counterpart without a connection, also
   write `dependencies/{agentId}.md` to artifacts with `create_file`. It is
-  not a definition file: its readers are the user, a future build turn, and
+  not a definition file: its readers are the user, a later builder turn (a
+  wiring turn here, or pipeline authoring reading it in the same project), and
   the granting parties the user hands its sections to — never the running
   agent — so it lives outside the definition, and the
   definition never names it, not in `base/`, not in `on-demand/`: a running
@@ -229,7 +230,8 @@ is observable.**
   reference by construction. One file per agent, rewritten whole on every
   run that touches its dependencies.
 - The manifest is the user's action list for making the agent run for real —
-  a few lines per dependency, nothing more. Its structure is FIXED so a later
+  lean: a line or two per field, an entry only as long as its applicable
+  fields, never a restatement of the design. Its structure is FIXED so a later
   turn can find and update entries in place: headings and field labels below
   are structural tokens (never localized, never renamed); values follow the
   definition's language. Omit a field that does not apply — never a section.
@@ -289,9 +291,11 @@ is observable.**
       to register in credential settings — the store carries the values,
       never ask for a value — and the operations the intents need, which
       become the `allow` lines}
-    - access: {the rights required, who grants them, and the credential
-      that party must issue — its value is what the user later registers
-      under the wiring line's `${secret:}` names}
+    - access: {the rights and approvals required — including any sign-off
+      that gates automated access, the data it moves, or a paid seat — who
+      grants each, and the credential the granting party issues when one
+      exists: its value is what the user later registers under the wiring
+      line's `${secret:}` names}
     - reachability: {the network zone the host lives in, and what satisfies
       it per deployment: this Ant server deployed inside that zone reaches
       it directly; run from outside it, name the path — a gateway or relay,
