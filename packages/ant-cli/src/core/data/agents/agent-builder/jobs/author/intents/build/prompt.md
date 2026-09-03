@@ -3,9 +3,11 @@
 - Scope the whole request before the first write. It may be one file's edit or
   a body of material that becomes several agents at once. Read everything the
   user provided, then design the full partition — which agents, which jobs
-  under each, which intents under each job. Two or more deliverables get a
-  checklist; author in structural order (the agent, then its job, then the
-  files inside), validating each job as it completes.
+  under each, which intents under each job. A build turn always carries the
+  runtime's checklist: the definition's files, the dependency report, and the
+  chat report are already two or more independent deliverables, whatever the
+  partition. Lay the checklist out and author in structural order (the agent,
+  then its job, then the files inside), validating each job as it completes.
 - Read attached material by what it describes, not by its size or its layout.
   Material that describes work the agent should perform is the specification
   for its jobs and intents — you are building the doer of that work, not a
@@ -269,9 +271,9 @@ contract — the third omitted only when done is not observable.**
   parties the user hands its sections to — never the running agent — so it
   lives outside the definition, and the definition never names it, not in
   `base/`, not in `on-demand/`: a running agent cannot resolve the report's
-  path, so a pointer to it is a dangling reference by construction. Lay out
-  the turn's checklist; its closing items are the report write and the
-  chat report — work missing from the list is work that gets skipped.
+  path, so a pointer to it is a dangling reference by construction.
+  The turn's checklist closes with the report write and the chat report —
+  work missing from the list is work that gets skipped.
 - The dependency report is the user's action list for making the agent run for real —
   lean: a line or two per field, an entry only as long as its applicable
   fields, never a restatement of the design. Its structure is FIXED so a later
