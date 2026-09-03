@@ -56,26 +56,16 @@
   keeps one home. Agent prose AND job prose never enumerate the job's
   intents (the list is stale the moment one is added — the catalog renders
   them; moving the list from `base/role.md` into `base/system.md` is the
-  same list one level down). What makes it that list is one item per
-  intent, not the words it is spelled with: intent ids, the situations
-  they trigger on, the deliverables they produce, a table with a row
-  each, a sentence naming them in parentheses — all the same list, and
-  all stale on the same edit. Count the items against the catalog before
-  deciding a phrasing is exempt. And the ban leaves something to write in
-  its place, because what the sentence is reaching for is real: the agent
-  IS for producing those things. Say what it stands for — the body of work
-  it holds and the party it holds it for — at a level a sixth deliverable
-  would not disturb ("this agent carries the terms-notice procedure for
-  the owner who runs it"), and let the catalog carry which units exist
-  today. The test is whether adding one intent would date the sentence.
-  The count test has one false positive to rule out: a roster of the
-  parties who perform the procedure's steps is NOT this list, however
-  many rows it has. Tell them apart by whether the correspondence closes
-  — the intent list has an item for every intent and an intent for every
-  item, while a roster names parties no intent serves and omits the
-  intents nobody hands off to. That roster is required prose, not a
-  violation; see the division of labour below.
-  Prose also never states connection status
+  same list one level down). It is that list whenever there is one item per
+  intent, whatever the items are called — ids, trigger situations,
+  deliverables, table rows — so count them against the catalog rather than
+  judging the phrasing. Write in its place what the sentence was reaching
+  for, one altitude up: the body of work the agent holds and who it holds
+  it for, such that adding an intent would not date it, leaving the catalog
+  to carry which units exist today. A roster of the parties who perform the
+  steps is not this list and is required prose — its correspondence does
+  not close, naming parties no intent serves and omitting intents nobody
+  hands off to. Prose also never states connection status
   ("this agent is not wired to X") — wiring state lives only in the
   dependency report, whose `status:` the wiring turn updates; prose
   stating it is stale the moment the user wires the system. What the reader
@@ -105,24 +95,19 @@
   no intent, no prose, no reference copy. Drop it and record the drop in the
   mapping.
 - That the step itself is taken by a person is NOT a reason to drop the work
-  unit. Nearly every step in a described procedure is performed by someone —
-  a team publishes, another extracts, a third presses send — and the agent's
-  deliverable for such a step is the request that step consumes, prepared to
-  its stated form. When the material gives a step its own trigger, its own
-  required form, and its own lead time, it has handed you an intent, and
-  "a person does that one" would drop the intents you are keeping for the
-  same reason. Two tells that a work unit went missing rather than being
-  decided against: job prose carrying a rule for work no intent performs —
-  the material was read, the rule shipped, the unit vanished — and a step
-  named in a schedule the agent produces but owned by no procedure.
-  Having taken those units on, do not then explain them in prose. A job
-  whose intents all hand text to people invites a paragraph accounting for
-  why — "no connection is declared here", "the agent does not operate these
-  systems" — and that paragraph is connection status, banned above, now
-  arriving as self-justification instead of as a fact about wiring. It goes
-  stale on the first connection and it is the report's `status:` and `gate:`
-  that carry it. The prose owes nothing beyond naming who performs each
-  step, which the division of labour already does.
+  unit. Nearly every step in a procedure is performed by someone, and the
+  agent's deliverable for such a step is the request that step consumes,
+  prepared to its stated form — so a step the material gives its own
+  trigger, required form and lead time is an intent, and "a person does
+  that one" would drop the intents you are keeping for the same reason.
+  Two tells that a unit went missing rather than being decided against:
+  job prose carrying a rule for work no intent performs, and a step named
+  in a schedule the agent produces but owned by no procedure. Having taken
+  those units on, do not explain them in prose: a job whose intents all
+  hand text to people invites a paragraph on why — "no connection is
+  declared here" — which is the connection status banned above, arriving
+  as self-justification. Naming who performs each step is all the prose
+  owes, and the division of labour already does it.
 
 **Design each deliverable's contract with the partition.**
 
@@ -292,16 +277,13 @@ contract — the third omitted only when done is not observable.**
   is that performer — the procedure must not leave the agent believing the
   work is already done elsewhere.
 - The quarantine covers job prose on the same terms, and job prose is where
-  run order arrives disguised as orientation: the material's overview of the
-  whole procedure, rewritten as numbered steps in `base/system.md` under a
-  heading like "the flow". Every intent then reads, on every turn, that its
-  work is step five of eight — which is the run order the pipeline owns,
-  stated as fact in prose no pipeline can update. Keep the orientation and
-  drop the ordering: name the stages as the terrain the work sits in, not as
-  a sequence with positions. If the sequence itself must be recorded, it goes
-  in a labeled section on the same terms as an intent's, and the steps no
-  intent performs are the tell that you are describing the procedure rather
-  than this job's part in it.
+  run order arrives disguised as orientation — the material's overview of
+  the whole procedure, rewritten as numbered steps in `base/system.md`.
+  Every intent then reads on every turn that its work is step five of
+  eight, which is the run order the pipeline owns, asserted where no
+  pipeline can correct it. Keep the orientation, drop the positions: name
+  the stages as terrain, not as a sequence. Steps in it that no intent
+  performs are the tell.
 
 **Admit to `on-demand/` only what the runner will open.**
 
@@ -491,17 +473,15 @@ contract — the third omitted only when done is not observable.**
       namespace choice, not information you lack), so "undecided" is never
       a wiring value; a fact you genuinely lack — a base URL, an auth
       scheme — is stated as an item to obtain, named with the party who
-      knows it, never left blank. Nor filled with a likely-looking guess:
-      a host inferred from the company's name, a vendor's default cloud
-      domain, a path shaped like the ones that system usually has. This
-      entry is forwarded and acted on, so an invented value is worse than
-      an admitted gap — a gap gets asked about, a plausible value gets a
-      ticket filed against it. If you are appending "or their internal
-      URL" to something you wrote, that hedge is the tell: you do not have
-      it, and the item to obtain is what belongs there. Values the material
-      itself carries are yours to use — including ones only its markup
-      holds, like the host inside a link — so read before concluding you
-      lack it — and the operations the intents need,
+      knows it, never left blank — and never filled with a likely-looking
+      guess: a host inferred from the company name, a vendor's default
+      domain. This entry gets forwarded and acted on, so an invented value
+      is worse than an admitted gap: the gap gets asked about, the
+      plausible value gets a ticket filed against it. Appending "or their
+      internal URL" to something you wrote is the tell that you lack it.
+      Values the material carries are yours — including ones only its
+      markup holds, like the host inside a link — so read before
+      concluding you lack one — and the operations the intents need,
       which become the `allow` lines. A CONDITIONAL is the contradiction in
       disguise: "if that system has an API, then a base URL and a token"
       reads as unfilled and is really the interface question, unanswered,
@@ -560,9 +540,8 @@ contract — the third omitted only when done is not observable.**
   ```
 
   `missing:` holds one item here, so nothing separates it from the fields
-  that follow — which is exactly where `on-provided:` gets written into
-  `interface:` and `gate:` slides under `missing:`. Both are entry fields;
-  the indentation is what says so.
+  after it — which is where `on-provided:` gets written into `interface:`
+  and `gate:` slides under `missing:`. Both are entry fields.
 - When a turn supplies a dependency-report entry's missing items, wire the
   connection and advance that entry's `status:` in the report (the file this
   session owns, or a new mnemonic-named one when the newest predates this
