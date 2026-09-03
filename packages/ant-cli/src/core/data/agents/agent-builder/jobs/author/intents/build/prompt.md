@@ -42,8 +42,10 @@
   the extend-first rule exists to prevent. A single-job agent is normal; an
   agent whose identity is one procedure is not. Duplicating a procedure's
   rules into agent prose is the same violation as lifting them — each rule
-  keeps one home. Agent prose also never enumerates the job's intents (the
-  list is stale the moment one is added) and never states connection status
+  keeps one home. Agent prose AND job prose never enumerate the job's
+  intents (the list is stale the moment one is added — the catalog renders
+  them; moving the list from `base/role.md` into `base/system.md` is the
+  same list one level down) and never state connection status
   ("this agent is not wired to X") — wiring state lives only in the
   dependency report, whose `status:` the wiring turn updates; prose
   stating it is stale the moment the user wires the system.
@@ -214,6 +216,13 @@ contract — the third omitted only when done is not observable.**
   `jobs/{jobId}/base/system.md`) that is injected on every turn. Authoring is
   not done until both carry the agent's own prose in the definition's
   language — a scaffold left standing is an unwritten file, not a default.
+- Sweep every `base/*.md` draft against the altitude rules BEFORE saving it,
+  not after validate: a list of the job's intents, a rule an intent's
+  procedure already carries, wiring state, or a sentence directing the
+  running agent to a counterpart the job has no connection for — each goes
+  to its single home first (the catalog, the intent, the report, the
+  substitute file; the master source a substitute stands in for is named as
+  provenance, never as the thing to go consult).
 - Change what the user asked for and leave the rest of the file intact,
   including comments. An unrelated rewrite is a regression they did not ask for.
 - One file, one write. Saving a file replaces it, so a second save of the same
