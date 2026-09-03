@@ -66,7 +66,15 @@
   no intent performs is where it shows from inside the definition; an intent
   whose deliverable describes the work instead of being the work product; an
   `infer.md` that lists alternative tasks instead of naming one arriving
-  situation, which is several intents under one name; and pieces the material
+  situation, which is several intents under one name — and the merge
+  clause is not the exemption it looks like: pieces merge when ONE
+  trigger drives them, so deliverables that each wait on a different
+  predecessor (a draft once the revision is settled, an extraction once
+  the notice date is fixed, a dispatch just before sending) are separate
+  triggers however single the stage sounds. The tell is in `prompt.md`:
+  N numbered sub-procedures with their own inputs and their own outputs
+  are N intents, and the one stop hook proves only that some file was
+  written; and pieces the material
   marks as no longer in force that were carried in anyway. The report's mapping claim — what merged, what split, what was
   dropped — is a claim to verify against that material, not a finding to
   accept.
