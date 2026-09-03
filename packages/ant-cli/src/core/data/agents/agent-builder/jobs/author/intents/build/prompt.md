@@ -305,6 +305,13 @@ contract — the third omitted only when done is not observable.**
   turn can find and update entries in place: headings and field labels below
   are structural tokens (never localized, never renamed); values follow the
   definition's language. Omit a field that does not apply — never a section.
+  A field is either answered with a value or absent. A value that says the
+  field cannot be answered — "n/a", "undecided", "not confirmed", "not
+  possible", in any language — is neither, and both a later turn and an
+  auditor score it as a filled line. Whatever made it unanswerable belongs to
+  the field that owns it: the rung the counterpart is actually on goes in
+  `interface:`, a human step that survives wiring goes in `gate:`, an approval
+  nobody has granted goes in `access:`.
 - It is also a dispatchable request. A counterpart's section is the handoff
   unit: the user forwards it, with the document's opening lines, to the
   parties that own that counterpart — several parties may each act on their
