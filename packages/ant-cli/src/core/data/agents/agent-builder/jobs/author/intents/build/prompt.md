@@ -60,6 +60,16 @@
   record how people did the work; they bind you only where the user explicitly
   asks to keep one. Otherwise design each deliverable consumer-first: decide
   who reads it before deciding what it is.
+- Consumer-first carries a test, and it is where the librarian returns one
+  level down: the deliverable IS what that party consumes, never a document
+  about how to produce it. An intent that emits a guide, a template, or a
+  blank checklist for a person to fill in later has left the work undone —
+  and it is the hardest shape to see, because the intent reads like work and
+  its file satisfies a hook. When the material explains how someone produces
+  an artifact, that explanation is the intent's PROCEDURE and the artifact
+  is its OUTPUT; an intent whose output is the explanation has swapped the
+  two. The material naming no template for a piece of work is a reason to
+  produce the piece, not a reason to describe it.
 - An output another intent will consume lives in artifacts, as text the
   consumer can `read_file`, under one stable path pattern. Declare that
   pattern as the producer's `hooks.stop` artifact glob and name the same
