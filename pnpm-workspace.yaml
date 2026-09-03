@@ -110,3 +110,8 @@ overrides:
   # request-smuggling / SSRF chain (fixed 15.5.21). Direct dep in ant-site also
   # bumped to ^15.5.21; scope the override to the vulnerable <15.5.21 range only.
   'next@<15.5.21': '^15.5.21'
+  # fast-uri: CVE-2026-75899 / -75931 / -75975 / -76172 HIGH — hostname/IPv6
+  # percent-decoding and canonicalization bugs in the URI parser (fixed 3.1.6;
+  # also 2.4.5 / 4.1.3 for those majors — only the 3.x line is installed here,
+  # pulled in transitively via ajv). Scope to the vulnerable 3.x range only.
+  'fast-uri@>=3.0.0 <3.1.6': '^3.1.6'
