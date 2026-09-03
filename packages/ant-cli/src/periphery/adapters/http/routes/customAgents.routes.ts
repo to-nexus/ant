@@ -244,8 +244,12 @@ export function createCustomAgentRoutes(deps: {
     try {
       const scopeRoots = scopeRootsFor(req);
       const resolved = loadCustomJob(scopeRoots, req.params.agentId, req.params.jobId);
+      const advisories = resolved.advisories ?? [];
       res.json({
-        valid: true,
+        // Advisories (H9-class) load fine but fail validation — see the
+        // account-agents validate route for the rationale.
+        valid: advisories.length === 0,
+        ...(advisories.length > 0 ? { errors: advisories } : {}),
         builtinTools: resolved.builtinTools,
         mcpServers: Object.keys(resolved.mcpServers),
         apiServers: Object.keys(resolved.apiServers),

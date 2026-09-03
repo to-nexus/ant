@@ -397,7 +397,13 @@ export function validateDefinitionSave(
   const errors: string[] = [];
   for (const jobId of affectedJobs) {
     try {
-      loadCustomJob(scopeRoots, agentId, jobId);
+      const resolved = loadCustomJob(scopeRoots, agentId, jobId);
+      // H9-class advisories: non-fatal at load (a running agent stays
+      // loadable) but a save must hear them — the author is mid-edit and
+      // self-corrects on `valid: false`.
+      for (const advisory of resolved.advisories ?? []) {
+        errors.push(`${agentId}/${jobId}: ${advisory}`);
+      }
     } catch (e) {
       if (e instanceof CustomAgentValidationError) {
         errors.push(`${agentId}/${jobId}: ${e.message}`);

@@ -523,9 +523,11 @@ export function loadCustomJob(
     }
   }
 
-  // Stop-hook cross-file rules (H7/H8) — intra-file shape was validated by
-  // parseIntentsDir; here the declaration must be SATISFIABLE by this job's
-  // machine contract, or the hook could never be met at runtime.
+  // Stop-hook cross-file rules (H7/H8 throw; H9 advises) — intra-file shape
+  // was validated by parseIntentsDir; here the declaration must be
+  // SATISFIABLE by this job's machine contract, or the hook could never be
+  // met at runtime.
+  const advisories: string[] = [];
   for (const intent of intents) {
     const hooksLabel = `${INTENTS_DIR_NAME}/${intent.id}/${INTENT_HOOKS_FILE_NAME}`;
     for (const hook of intent.hooks?.stop ?? []) {
@@ -536,6 +538,19 @@ export function loadCustomJob(
             `${hooksLabel}: intent "${intent.id}" declares an artifact stop hook ("${hook.artifact}") but tools.builtin grants no artifact-write tool (${ARTIFACT_WRITE_EVIDENCE_TOOLS.join(', ')})`,
             agentId,
             jobId,
+          );
+        }
+        // H9 — the glob and the procedure must name the same path family:
+        // an artifact hook whose directory no prompt step mentions is a
+        // completion contract the procedure never tells the agent to satisfy.
+        // Paths are structural tokens (never localized), so a literal
+        // substring test is a fair necessary condition. Advisory, not a
+        // throw: the save funnel surfaces it as a validation error while an
+        // already-running agent stays loadable.
+        const prefix = staticGlobDirPrefix(hook.artifact);
+        if (prefix && !(intentPrompts[intent.id] ?? '').includes(prefix)) {
+          advisories.push(
+            `${hooksLabel}: intent "${intent.id}" declares artifact stop hook "${hook.artifact}" but its ${INTENT_PROMPT_FILE_NAME} never names a path under "${prefix}" — add an output step writing there, or the turn can end only under runtime duress`,
           );
         }
       } else if (isUniversalBuiltinTool(hook.action)) {
@@ -588,5 +603,25 @@ export function loadCustomJob(
     clarifyDefault,
     agentDir,
     jobDir,
+    ...(advisories.length > 0 ? { advisories } : {}),
   };
+}
+
+/**
+ * Static directory prefix of an artifact glob — the segments before the
+ * first one carrying a wildcard, trailing slash included (`schedule/*.md`
+ * → `schedule/`); a fully literal glob is its own checkable token.
+ * `undefined` when the glob starts with a wildcard segment (`*.md`, `**`):
+ * nothing checkable.
+ */
+function staticGlobDirPrefix(glob: string): string | undefined {
+  const segs = glob.split('/');
+  const staticSegs: string[] = [];
+  for (const seg of segs) {
+    if (seg.includes('*')) break;
+    staticSegs.push(seg);
+  }
+  if (staticSegs.length === 0) return undefined;
+  if (staticSegs.length === segs.length) return glob;
+  return `${staticSegs.join('/')}/`;
 }

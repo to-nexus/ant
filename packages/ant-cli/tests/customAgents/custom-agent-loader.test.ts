@@ -849,6 +849,36 @@ describe('loadCustomJob — stop hooks (H7/H8 cross-file + happy path)', () => {
     });
     expect(loadCustomJob(roots(), 'ops', 'weekly').intents[0].hooks?.stop).toHaveLength(1);
   });
+
+  // H9 — the glob and the procedure must name the same path family. An
+  // unpaired artifact hook is an ADVISORY (surfaced at save/validate), never
+  // a load failure: an agent that already runs must stay loadable.
+  const h9Cases: Array<[string, string | undefined, string, boolean]> = [
+    // [case, prompt body, glob, expectAdvisory]
+    ['prompt names a path under the glob dir → clean', '결과를 `reports/{약관코드}.md`로 저장한다.', 'reports/*.md', false],
+    ['prompt never names the glob dir → advisory', 'Summarize the findings in your reply.', 'reports/*.md', true],
+    ['no prompt.md at all → advisory', undefined, 'reports/*.md', true],
+    ['glob with no static prefix (*.md) → skipped', 'Reply with a table.', '*.md', false],
+    ['fully literal glob named verbatim → clean', 'Write `runs/manifest.md` last.', 'runs/manifest.md', false],
+    ['fully literal glob absent from prompt → advisory', 'Reply only.', 'runs/manifest.md', true],
+    ['deep static prefix checked as a whole → advisory', 'Files go under `reports/`.', 'reports/2026/**', true],
+  ];
+  it.each(h9Cases)('H9: %s', (_name, prompt, glob, expectAdvisory) => {
+    const agentDir = writeAgent(roots()[0].root, 'ops', {}, { base: { 'system.md': 'Persona.' } });
+    writeJob(agentDir, 'weekly', {});
+    writeIntent(agentDir, 'weekly', 'a', {
+      ...(prompt !== undefined ? { prompt } : {}),
+      hooks: { hooks: { stop: [{ artifact: glob }] } },
+    });
+    const resolved = loadCustomJob(roots(), 'ops', 'weekly');
+    if (expectAdvisory) {
+      expect(resolved.advisories).toHaveLength(1);
+      expect(resolved.advisories?.[0]).toContain(glob);
+      expect(resolved.advisories?.[0]).toContain('never names a path');
+    } else {
+      expect(resolved.advisories).toBeUndefined();
+    }
+  });
 });
 
 describe('loadCustomJob — clarify knob (agent / job / intent)', () => {

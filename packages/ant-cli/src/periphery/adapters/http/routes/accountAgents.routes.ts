@@ -556,8 +556,12 @@ export function createAccountAgentRoutes(deps: {
   router.get('/:agentId/jobs/:jobId/validate', (req: Request, res: Response) => {
     try {
       const resolved = loadCustomJob(scopeRootsFor(req), req.params.agentId, req.params.jobId);
+      const advisories = resolved.advisories ?? [];
       res.json({
-        valid: true,
+        // Advisories (H9-class) load fine but fail validation — the author
+        // is the one asking, and `valid: false` is what they self-correct on.
+        valid: advisories.length === 0,
+        ...(advisories.length > 0 ? { errors: advisories } : {}),
         builtinTools: resolved.builtinTools,
         mcpServers: Object.keys(resolved.mcpServers),
         apiServers: Object.keys(resolved.apiServers),

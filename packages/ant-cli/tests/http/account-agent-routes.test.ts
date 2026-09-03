@@ -516,12 +516,21 @@ describe('definition file endpoints', () => {
     const res = await put('jobs/weekly/intents/research/infer.md', '---\nclarify: false\n---\nresearch things\n');
     expect(res.status).toBe(200);
     expect((await res.json()).validation).toEqual({ valid: true, errors: [] });
-    const prompt = await put('jobs/weekly/intents/research/prompt.md', 'Research procedure prose.\n');
+    const prompt = await put('jobs/weekly/intents/research/prompt.md', 'Research, then write the findings to `reports/{week}-weekly.md`.\n');
     expect(prompt.status).toBe(200);
     expect((await prompt.json()).validation).toEqual({ valid: true, errors: [] });
     const hooks = await put('jobs/weekly/intents/research/hooks.yaml', 'hooks:\n  stop:\n    - artifact: reports/*-weekly.md\n');
     expect(hooks.status).toBe(200);
     expect((await hooks.json()).validation).toEqual({ valid: true, errors: [] });
+    // H9: strip the output step from the prompt and the same definition still
+    // SAVES (200) but fails validation — an artifact hook whose glob no
+    // prompt step names is an authoring defect, surfaced where the author
+    // self-corrects, never a load failure.
+    const unpaired = await put('jobs/weekly/intents/research/prompt.md', 'Research procedure prose, reply in chat.\n');
+    expect(unpaired.status).toBe(200);
+    const validation = (await unpaired.json()).validation;
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.join('\n')).toContain('never names a path under "reports/"');
   });
 
   it('structural files cannot be deleted or renamed (delete the agent/job/intent directory instead)', async () => {

@@ -106,6 +106,13 @@ export interface ResolvedCustomJob {
   agentDir: string;
   /** Absolute path of the job definition dir. */
   jobDir: string;
+  /**
+   * Non-fatal authoring findings (H9: an artifact hook's glob no prompt step
+   * names). Surfaced as save-time validation errors so the author fixes the
+   * definition; the runtime load path ignores them — a defective contract
+   * degrades a turn, it must not brick an agent that already runs.
+   */
+  advisories?: readonly string[];
 }
 
 /** Loader failure — surfaces as HTTP 400 at job-accept (fail-loud). */
