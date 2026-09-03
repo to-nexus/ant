@@ -546,6 +546,25 @@ contract — the third omitted only when done is not observable.**
     counterpart with no interface at all has a gate all the same — there the
     human step is the whole of the work, not a residue left after wiring}
   - status: virtual | provided | wired
+
+  {one such section per counterpart, then these three, once each}
+
+  ## Mapping as built
+
+  | work unit, as the material names it | performed by |
+  |---|---|
+  | {unit} | {intent id · merged into {id} · split into {ids} · dropped — {why}} |
+
+  ## Hook decisions
+
+  - {jobId}: {the intents carrying a completion contract — or that none do,
+    and why}
+
+  ## Deliverable contracts
+
+  - {artifact path pattern, or the named system}: produced by {intent},
+    consumed by {intent or party} — form {kept at the user's ask · redesigned
+    from {what} to {what}}
   ```
 
   The commonest entry is a counterpart that owns no system — a team doing
@@ -572,22 +591,15 @@ contract — the third omitted only when done is not observable.**
   session — never a second scheme). Wiring guidance lives only in the
   dependency report — the definition's `on-demand/` keeps to what the
   running agent opens mid-task.
-- The report repeats the mapping as built: which sources became which intents,
-  what merged, what split, what was dropped and why. It accounts for every
-  work unit the material carries, not every section heading: one document
-  section often holds several units, each with its own trigger and required
-  form, and each is mapped or dropped on its own row. A unit that appears in
-  neither column is not a scoping decision the reader can see — it reads as
-  complete coverage, which is the one claim the mapping exists to let them
-  check.
-- The report states each job's hook decision — which intents carry a
-  completion contract, or that none do and why (e.g. no observable done in
-  the material). A correct "no hooks" is invisible without this line, and an
+- The three sections after the entries are owed on every build, and the
+  mapping is the one a reader checks the coverage claim against. It accounts
+  for every work unit the material carries, not every section heading: one
+  document section often holds several units, each with its own trigger and
+  required form, and each gets its own row — mapped or dropped. A unit in
+  neither column is not a scoping decision the reader can see; it reads as
+  complete coverage. Hook decisions carry the same burden in the other
+  direction: a correct "no hooks" is invisible without the line, and an
   auditor cannot tell it from a forgotten one.
-- The report states each deliverable contract: where it lives (an artifact
-  path pattern or a named system), which intent produces it and which consume
-  it, and whether its form was kept at the user's explicit ask or redesigned —
-  from what, to what.
 
 **Close with the chat report.**
 
