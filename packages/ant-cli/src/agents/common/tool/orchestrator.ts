@@ -170,6 +170,21 @@ export class ToolOrchestrator {
               console.warn(`⚠️ [Tool] gate notice emit failed for ${name}:`, (e as Error)?.message);
             }
           }
+          // Settle the streaming file card the arg-streamer may have opened
+          // for this call — skipping the handler otherwise strands it as
+          // `file_creating`/`file_editing`, which pins the FE's virtual
+          // editor tab in `streaming` until the job-terminal buffer sweep.
+          const deniedPath = typeof (args as { path?: unknown })?.path === 'string'
+            ? (args as { path: string }).path
+            : undefined;
+          if (deniedPath && (name === 'create_file' || name === 'append_file' || name === 'edit_file')) {
+            try {
+              if (name === 'edit_file') await ctx.chatStatus.failFileEdit(deniedPath, gate.error);
+              else await ctx.chatStatus.failFileCreation(deniedPath, gate.error);
+            } catch (e) {
+              console.warn(`⚠️ [Tool] gate-denied card settle failed for ${name}:`, (e as Error)?.message);
+            }
+          }
           events.push({
             toolCallId: id,
             toolName: name,

@@ -73,8 +73,11 @@ export const REDIS_KEYS = {
     /**
      * In-flight streaming buffer per turn/worker.
      * `ant:chat:turnBuffer:{sessionKey}:{turnId}:{workerScope}`
-     * Value: JSON `{ text?, thinking?, pendingCards? }`. Cleared on
-     * finalize. TTL 1h, refreshed on every write.
+     * Value: JSON `{ text?, thinking?, pendingCards? }`. Cleared on a
+     * CANCELLED finalize (`finalizeMessage(true)`) and swept feature-wide by
+     * `JobCleanupManager` at job termination (completed or interrupted;
+     * clarify-pause keeps its buffers). A successful finalize only drains
+     * text/thinking. TTL 1h, refreshed on every write.
      */
     TURN_BUFFER: `${REDIS_DOMAINS.CHAT}:turnBuffer:`,
     /**

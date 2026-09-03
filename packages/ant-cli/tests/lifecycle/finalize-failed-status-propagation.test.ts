@@ -255,4 +255,74 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
     const cardPayload = appendCancelledSpy.mock.calls[0][3];
     expect(cardPayload.reason).toBe('user_stopped');
   });
+
+  // ── Terminal turn-buffer sweep (major-loading-floor regression): a leftover
+  // pending card pins the FE virtual editor tab in `streaming` for the
+  // buffer's 1h TTL. The sweep must run on clean completion AND interruption;
+  // a clarify-paused non-task job keeps its buffers (the awaiting surface
+  // must outlive the job).
+
+  it('finalStatus="completed" → turn buffers are swept feature-wide', async () => {
+    const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({ emitted: true, cardId: 'card-4' }));
+    const tracker = makeTracker('sweep-clean');
+    const deps = makeDeps(appendCancelledSpy);
+    const jcm = new JobCleanupManager(tracker, deps);
+
+    await jcm.cleanupJobState('sweep-clean', 'proj-test', 'feat-test', undefined, 'code', undefined, 'completed');
+
+    expect(deps.chatService.clearAllTurnBuffers).toHaveBeenCalledTimes(1);
+    expect(deps.chatService.clearAllTurnBuffers).toHaveBeenCalledWith('proj-test', 'feat-test', expect.anything());
+  });
+
+  it('interruption present → turn buffers are swept (existing backstop preserved)', async () => {
+    const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({ emitted: true, cardId: 'card-5' }));
+    const tracker = makeTracker('sweep-stop');
+    const deps = makeDeps(appendCancelledSpy);
+    const jcm = new JobCleanupManager(tracker, deps);
+
+    await jcm.cleanupJobState(
+      'sweep-stop',
+      'proj-test',
+      'feat-test',
+      { reason: 'user_stopped', message: 'User pressed Stop', timestamp: '2026-05-21T00:00:00Z', canResume: false },
+      'code',
+      undefined,
+      'failed',
+    );
+
+    expect(deps.chatService.clearAllTurnBuffers).toHaveBeenCalledTimes(1);
+  });
+
+  it('clarify-paused non-task job → NO sweep and NO cancelled card', async () => {
+    // `plan` reads its session here (universal skips the read by design, so
+    // its clarify never reaches this suppression — end-and-resume ends clean).
+    sessionState.state.awaitingClarify = true;
+    const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({ emitted: true, cardId: 'card-6' }));
+    const tracker = makeTracker('sweep-clarify');
+    tracker.getState().jobToProject.set('sweep-clarify', {
+      projectId: 'proj-test',
+      featureName: 'feat-test',
+      jobType: 'plan',
+    } as any);
+    stateStoreStub.getJobMapping = vi.fn(async () => ({
+      projectId: 'proj-test',
+      featureName: 'feat-test',
+      jobType: 'plan',
+    })) as any;
+    const deps = makeDeps(appendCancelledSpy);
+    const jcm = new JobCleanupManager(tracker, deps);
+
+    await jcm.cleanupJobState(
+      'sweep-clarify',
+      'proj-test',
+      'feat-test',
+      { reason: 'user_stopped', message: 'clarify wait', timestamp: '2026-05-21T00:00:00Z', canResume: true },
+      'plan' as any,
+      undefined,
+      'paused' as any,
+    );
+
+    expect(deps.chatService.clearAllTurnBuffers).not.toHaveBeenCalled();
+    expect(appendCancelledSpy).not.toHaveBeenCalled();
+  });
 });

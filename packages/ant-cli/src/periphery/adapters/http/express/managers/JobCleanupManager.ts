@@ -580,17 +580,48 @@ export class JobCleanupManager {
           }
         : undefined);
 
-    if (cardInterruption && mapping.projectId && mapping.featureName) {
-      // Invariant I2 — see `shouldSuppressCancelledCardForClarify`.
-      // `sessionData` may be null if Phase A's `readSessionData` threw —
-      // `awaitingClarify` then defaults to falsy, so the card emits
-      // (correct behaviour for a crashed-mid-clarify session: there's
-      // no stable clarify card to collide with anymore).
-      const suppressedByClarify = shouldSuppressCancelledCardForClarify(
-        jobType,
-        sessionData?.state,
-      );
+    // Invariant I2 — see `shouldSuppressCancelledCardForClarify`.
+    // `sessionData` may be null if Phase A's `readSessionData` threw —
+    // `awaitingClarify` then defaults to falsy, so the card emits
+    // (correct behaviour for a crashed-mid-clarify session: there's
+    // no stable clarify card to collide with anymore).
+    const suppressedByClarify = shouldSuppressCancelledCardForClarify(
+      jobType,
+      sessionData?.state,
+    );
 
+    // Backstop for the terminal-turn streaming overlay: sweep every active
+    // TURN_BUFFER for this feature and broadcast empty snapshots so the FE
+    // projector clears its `streamingBuffers` mirror. Runs on interruption
+    // (covers the SIGTERM 1.8s race where a parallel worker exits before
+    // `LLMResponseService.finalizeMessage(true)` can run) AND on clean
+    // completion — the success path only flushes text/thinking, so a pending
+    // card an unsettled tool stream left behind would otherwise pin the FE's
+    // virtual editor tab in `streaming` for the buffer's 1h TTL, surviving
+    // reloads. Clarify-paused jobs keep their buffers: the awaiting-clarify
+    // surface must outlive the job. Best-effort — never throws or blocks the
+    // cancelled card emission below.
+    const cleanCompletion = !cardInterruption && (finalStatus ?? 'completed') === 'completed';
+    if (
+      mapping.projectId && mapping.featureName &&
+      (cleanCompletion || (cardInterruption && !suppressedByClarify))
+    ) {
+      try {
+        await this.deps.chatService.clearAllTurnBuffers(
+          mapping.projectId,
+          mapping.featureName,
+          effectiveUserContext,
+        );
+      } catch (err) {
+        logger.warn(
+          `clearAllTurnBuffers backstop failed`,
+          { component: 'JobCleanupManager', jobId },
+          err,
+        );
+      }
+    }
+
+    if (cardInterruption && mapping.projectId && mapping.featureName) {
       if (suppressedByClarify) {
         logger.info(
           `Suppressing cancelled card for clarify-paused non-task job (Invariant I2)`,
@@ -598,27 +629,6 @@ export class JobCleanupManager {
           { jobType, reason: cardInterruption.reason },
         );
       } else {
-        // Backstop for the cancelled-turn streaming overlay: sweep
-        // every active TURN_BUFFER for this feature and broadcast
-        // empty snapshots so the FE projector clears its
-        // `streamingBuffers` mirror. Best-effort — never throws or
-        // blocks the cancelled card emission below. Covers the
-        // SIGTERM 1.8s race where a parallel worker exits before
-        // `LLMResponseService.finalizeMessage(true)` can run.
-        try {
-          await this.deps.chatService.clearAllTurnBuffers(
-            mapping.projectId,
-            mapping.featureName,
-            effectiveUserContext,
-          );
-        } catch (err) {
-          logger.warn(
-            `clearAllTurnBuffers backstop failed`,
-            { component: 'JobCleanupManager', jobId },
-            err,
-          );
-        }
-
         // Wrap so a Redis blip / chat.jsonl write race surfaces with
         // a clear log instead of silently disappearing
         // (cancelled-card-missing RCA — the prior outer try/catch
