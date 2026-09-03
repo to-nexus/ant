@@ -148,6 +148,10 @@
   pattern as the producer's `hooks.stop` artifact glob and name the same
   pattern in the consumer's `prompt.md` inputs — the glob is the interface
   between the intents, and it is what a pipeline step later pins as context.
+  That glob is the whole of what an intent says about its neighbours. A
+  sentence placing it in a sequence — "the previous step is X, the next is
+  Y", "second of three" — is the run order the pipeline owns, asserted where
+  no pipeline can correct it, and it carries nothing the glob does not.
   Paths in a definition are plane-relative — the same root the hook globs
   resolve against — never prefixed `artifacts/`: a prompt that names
   `artifacts/x` beside a hook that declares `x/*` is a producer whose
