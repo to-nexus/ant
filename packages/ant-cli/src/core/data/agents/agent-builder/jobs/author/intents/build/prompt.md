@@ -38,6 +38,18 @@
   the same thing; one intent that flattens many separately triggered tasks is
   the same mistake in reverse. A run binds exactly one intent — work that
   depends on other work chains between runs, never merged into one intent.
+- Do the counting explicitly, before the partition is chosen. Walk the
+  material and list every unit it gives a trigger, a required form and a
+  lead time of its own; that list is what the partition answers to, and
+  each unit is one intent or a recorded drop. Then read the count back off
+  what you designed. Two shapes mean you skipped the step rather than
+  decided anything: an intent whose criterion names several deliverables
+  ("the comparison table, the publishing request, the extraction request
+  …") is that many intents wearing one name, and its `prompt.md` will
+  already have them as numbered sub-procedures with separate inputs and
+  separate outputs; a unit in neither the partition nor the drop list is
+  one you stopped seeing. Waiting on a different predecessor is a
+  different trigger, whatever single stage the material files them under.
 - When the request fits an agent the user already has, extend it rather than
   minting a near-duplicate: a new agent is for a new purpose, not for a new
   task under an existing one.
@@ -521,26 +533,23 @@ contract — the third omitted only when done is not observable.**
   - status: virtual | provided | wired
   ```
 
-  A counterpart that owns no system at all — a team that performs the step
-  by hand — uses the same fields and fills fewer of them. It is the
-  commonest entry, and the shape it collapses into is this one:
+  The commonest entry is a counterpart that owns no system — a team doing
+  the step by hand — which fills fewer of the same fields:
 
   ```markdown
-  ## {the team, named as they are known}
+  ## {the team, as they are known}
   - used-by: {the intent whose text output they act on}
-  - substitute: {the deliverable handed to them — one line}
+  - substitute: {the deliverable handed to them}
   - missing:
-    - interface: none — {the operations a system for this would support,
-      read off that deliverable's own fields, and the party who would
-      expose them}
-  - on-provided: {what this job rewires once that exists — belongs here,
-    not folded into the sentence above}
+    - interface: none — {operations a system for this would support, read
+      off that deliverable's fields, and who would expose them}
+  - on-provided: {what this job rewires once that exists}
   - gate: {the step they keep performing regardless}
   - status: virtual
   ```
 
-  `missing:` holds one item here, so nothing separates it from the fields
-  after it — which is where `on-provided:` gets written into `interface:`
+  `missing:` holds one item there, so nothing separates it from the fields
+  after it — which is where `on-provided:` gets folded into `interface:`
   and `gate:` slides under `missing:`. Both are entry fields.
 - When a turn supplies a dependency-report entry's missing items, wire the
   connection and advance that entry's `status:` in the report (the file this
