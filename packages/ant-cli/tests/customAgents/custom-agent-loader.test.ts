@@ -949,4 +949,24 @@ describe('gateDefinitionSave — per-file byte budget', () => {
     const gate = gateDefinitionSave('ops', 'on-demand/spec.md', '\u{AC00}'.repeat(Math.ceil(DEFINITION_FILE_MAX_BYTES / 3) + 1));
     expect(gate.ok).toBe(false);
   });
+
+  // An outcome naming the clarify exit is refused at SAVE only — the loader
+  // shares validateInferFile, so a definition already carrying one keeps loading.
+  const INFER = (outcomes: string) => `---\noutcomes: [${outcomes}]\n---\napplies when judging\n`;
+  it.each([
+    ['needs-clarification', 'thirty-day, seven-day, needs-clarification', false],
+    ['insufficient-input', 'schedule-produced, insufficient-input', false],
+    ['missing-input', 'ok, anomaly, missing-input', false],
+    ['input-required', 'ok, anomaly, input-required', false],
+    // a missing FINDING is a real verdict — the rule must not reach it
+    ['insufficient-evidence passes', 'compliant, insufficient-evidence', true],
+    ['ordinary vocabulary passes', 'thirty-day, seven-day, one-month', true],
+  ])('gates outcomes: %s', (_label, outcomes, shouldPass) => {
+    const gate = gateDefinitionSave('ops', 'jobs/notice/intents/assess/infer.md', INFER(outcomes));
+    expect(gate.ok).toBe(shouldPass);
+    if (!gate.ok) {
+      expect(gate.status).toBe(400);
+      expect(gate.error).toMatch(/clarify exit, not a verdict/);
+    }
+  });
 });

@@ -211,6 +211,25 @@ export function validateInferFile(
  * editor) with the universal-preset judgement injected for H6. Cross-file
  * satisfiability (H7/H8) stays in `loadCustomJob`.
  */
+/**
+ * Outcome ids that name the runtime's clarify exit rather than a conclusion the
+ * work reached. Checked at SAVE only (see the infer.md branch of
+ * `gateDefinitionSave`) — never from `validateInferFile` itself, which the
+ * loader also calls, so a definition already carrying one keeps loading.
+ * Deliberately narrow: it matches ids naming the clarify mechanism or a missing
+ * INPUT, never a missing finding — "insufficient-evidence" is a real verdict in
+ * an audit and must pass.
+ */
+const CLARIFY_EXIT_OUTCOME_IDS = new Set([
+  'needs-clarification', 'need-clarification', 'clarification-needed', 'clarification-required',
+  'needs-clarify', 'needs-input', 'need-input', 'input-needed', 'input-required',
+  'insufficient-input', 'missing-input', 'input-missing', 'incomplete-input',
+]);
+
+export function clarifyExitOutcomes(outcomes: string[] | undefined): string[] {
+  return (outcomes ?? []).filter((o) => CLARIFY_EXIT_OUTCOME_IDS.has(o));
+}
+
 export function validateHooksFileDoc(
   doc: unknown,
   intentId: string,

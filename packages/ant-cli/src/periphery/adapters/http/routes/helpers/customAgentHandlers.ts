@@ -39,6 +39,7 @@ import {
   INTENT_CATALOG_CAP,
   validateHooksFileDoc,
   validateInferFile,
+  clarifyExitOutcomes,
 } from '../../../../../core/customAgents/intents';
 
 // ── scaffolds ────────────────────────────────────────────────────────────────
@@ -314,7 +315,23 @@ export function gateDefinitionSave(
       const jobId = segments[1];
       const intentId = segments[3];
       try {
-        validateInferFile(content, intentId, agentId, jobId);
+        const { outcomes } = validateInferFile(content, intentId, agentId, jobId);
+        // Save-only: an outcome id meaning the turn could not start is the clarify
+        // exit wearing a verdict, and every pipeline branching on this intent gets
+        // a route for an answer nobody gave. The loader does not re-check it, so a
+        // definition already carrying one still loads.
+        const clarifyExits = clarifyExitOutcomes(outcomes);
+        if (clarifyExits.length > 0) {
+          return {
+            ok: false,
+            status: 400,
+            error:
+              `outcomes may not include "${clarifyExits.join('", "')}" — an outcome is a conclusion the work ` +
+              `reached, and "the inputs were missing" is the clarify exit, not a verdict. Drop it from the ` +
+              `vocabulary and let the turn end through clarify when it cannot start; if nothing is left that ` +
+              `names a decision, this intent is not a judgment and declares no outcomes at all`,
+          };
+        }
       } catch (e) {
         if (e instanceof CustomAgentValidationError) return { ok: false, status: 400, error: e.message };
         throw e;
