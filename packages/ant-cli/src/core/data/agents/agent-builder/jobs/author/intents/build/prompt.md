@@ -521,6 +521,29 @@ contract — the third omitted only when done is not observable.**
     human step is the whole of the work, not a residue left after wiring}
   - status: virtual | provided | wired
   ```
+
+  A counterpart that owns no system at all — a team that performs the step
+  by hand — uses the same fields and fills fewer of them. It is the
+  commonest entry, and the shape it collapses into is this one:
+
+  ```markdown
+  ## {the team, named as they are known}
+  - used-by: {the intent whose text output they act on}
+  - substitute: {the deliverable handed to them — one line}
+  - missing:
+    - interface: none — {the operations a system for this would support,
+      read off that deliverable's own fields, and the party who would
+      expose them}
+  - on-provided: {what this job rewires once that exists — belongs here,
+    not folded into the sentence above}
+  - gate: {the step they keep performing regardless}
+  - status: virtual
+  ```
+
+  `missing:` holds one item here, so nothing separates it from the fields
+  that follow — which is exactly where `on-provided:` gets written into
+  `interface:` and `gate:` slides under `missing:`. Both are entry fields;
+  the indentation is what says so.
 - When a turn supplies a dependency-report entry's missing items, wire the
   connection and advance that entry's `status:` in the report (the file this
   session owns, or a new mnemonic-named one when the newest predates this
