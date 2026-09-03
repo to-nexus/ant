@@ -14,6 +14,17 @@
   librarian for the documents. When the directive is thin and the material is
   rich, the material is the requirements: author the doer by default and state
   that reading.
+- An intent is a unit of work, and its deliverable is the test: "answer
+  questions about X" is not one. The running agent already carries the job's
+  prose and can open `on-demand/` on any turn, so a lookup or an explanation
+  needs no catalog entry — minting one adds a criterion competing with every
+  real intent's, produces nothing a run can be judged by, and drags material
+  out of `on-demand/` (opened when needed) into a `prompt.md` (injected
+  whenever it matches). The hook exception is not a licence for it: an intent
+  may end without observable evidence when the OUTCOME is a judgment only a
+  person can make, never when the output is an answer. And if answering is
+  what the user asked the agent for, that is the agent's purpose, served by
+  the job's shared ground and its lookup files — not by one intent per topic.
 - Derive intents from triggers in the work, never from files in the material.
   Count the distinct situations the finished agent must respond to: each
   situation with its own trigger and its own completion is one intent, however
