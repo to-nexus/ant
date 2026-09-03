@@ -53,11 +53,14 @@ prompt, and hooks) live under each \`jobs/{jobId}/\` directory.
 
 export const JOB_SCAFFOLD_SYSTEM_MD = `# Job Procedure
 
-Describe what this job does, step by step, and what a good result looks like.
-This file is always injected on top of the agent's shared \`base/\` prose.
-Put long, situational material into an intent's \`prompt.md\` instead — its
-\`infer.md\` criterion says when it applies, and the runtime loads the prompt
-only for turns under that intent.
+Describe the shared ground every intent under this job works on — the
+principles, constraints, and domain facts that hold for all of them, and what
+a good result looks like. What this job does is its intent catalog: the
+runtime renders that list every turn, so do not restate or enumerate the
+intents here. This file is always injected on top of the agent's shared
+\`base/\` prose. Put long, situational material into an intent's \`prompt.md\`
+instead — its \`infer.md\` criterion says when it applies, and the runtime
+loads the prompt only for turns under that intent.
 `;
 
 /**

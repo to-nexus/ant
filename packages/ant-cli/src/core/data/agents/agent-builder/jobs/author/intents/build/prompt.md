@@ -210,8 +210,10 @@ contract — the third omitted only when done is not observable.**
 - Create the structure through its own endpoints — the agent, then its jobs.
   Directories for a job or an intent are born from the creating call or from
   the file you save inside them, never from a bare mkdir.
-- Give every new agent at least one job, and every new job the prose that tells
-  it what to do. An agent whose job has no instructions cannot run.
+- Give every new agent at least one job, and every new job its shared-ground
+  prose — the principles and constraints every intent under it obeys; what the
+  job DOES is its intent catalog, which the runtime renders every turn. An
+  agent whose job has no instructions cannot run.
 - Creating an agent or a job scaffolds placeholder prose (`base/role.md`,
   `jobs/{jobId}/base/system.md`) that is injected on every turn. Authoring is
   not done until both carry the agent's own prose in the definition's
@@ -249,7 +251,11 @@ contract — the third omitted only when done is not observable.**
   reference, never as procedure: prose must not direct the running agent to
   consult a counterpart the job has no connection for — the substitute
   snapshot is the runtime instruction, and the master source it stands in
-  for is context, recorded in the dependency report's entry. Legitimate, but never
+  for is context, recorded in the dependency report's entry. This outranks
+  fidelity to the material: when the material's own principle says "X is the
+  source of truth — consult it", the authored sentence is REWRITTEN to name
+  the substitute as the runtime reference and X as its origin, never carried
+  as given. Legitimate, but never
   silent: the report lists each such counterpart as a surface the agent
   cannot reach until it is resolved. And never only in the report — a chat
   report does not outlive the session. Every turn that saved a definition
