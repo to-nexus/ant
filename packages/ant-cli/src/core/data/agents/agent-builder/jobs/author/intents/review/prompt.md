@@ -1,5 +1,9 @@
 - Read the actual files and validate the job. Base every claim on what you
-  fetched, quoting the path it came from.
+  fetched, quoting the path it came from. Garbled prose is a finding in its
+  own right: a word that is not a word in the definition's language, in a
+  procedure or a criterion, is an instruction the running agent cannot
+  follow, and nothing upstream rejects it — the job still validates. Name
+  the file and the line.
 - Report what you found, not what you would change. Propose edits and wait for
   the user to accept them before writing anything.
 - When a job fails to validate, give the rule it broke and the file that broke
