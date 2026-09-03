@@ -226,6 +226,21 @@ contract — the third omitted only when done is not observable.**
   not belong in the definition at all. The rule cuts both ways: a lookup table
   the procedures consult — a rate floor, a threshold list — inlined without
   its values or dropped entirely is lost curation, not restraint.
+- A table has ONE of the two homes, never both. `on-demand/` earns its
+  existence by being the material a procedure reaches for only sometimes, or
+  that is too large to carry in every turn under that intent; what a
+  procedure needs every time it runs belongs in its `prompt.md`. Saving the
+  same table to both makes the injected copy the one that is actually read
+  and the other a fork that silently diverges on the next edit — and the
+  `prompt.md` step telling the agent to open a file it was already handed is
+  a wasted round trip.
+- An `on-demand/` file is a SUBSTITUTE, never a pointer list. A file whose
+  content is identifiers in a system the job has no connection for — page
+  ids, ticket keys, record numbers — is the counterpart-consult ban in file
+  form: every line of it names something the running agent cannot open. What
+  those pages CONTAIN, extracted, is the file worth saving; the ids belong
+  where provenance belongs, one per substitute file, and the collection's
+  index of its own sources belongs nowhere in the definition.
 
 **Mechanics, edit hygiene, and reporting.**
 
