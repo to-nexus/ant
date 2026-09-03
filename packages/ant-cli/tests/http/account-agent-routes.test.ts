@@ -363,6 +363,39 @@ describe('definition file endpoints', () => {
     expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/agent.yaml'), 'utf-8')).toBe(before);
   });
 
+  it('whitelist refusal names the alternative — artifacts go through create_file', async () => {
+    const res = await api('/ops/file', {
+      method: 'PUT',
+      body: JSON.stringify({ path: 'dependency-report/ops.md', content: '# report' }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('outside the definition whitelist');
+    expect(body.error).toContain('create_file');
+  });
+
+  // Terminal JSON 404 — a wrong endpoint must not fall through to Express's
+  // HTML page: the caller is usually a job's api__ant__ tool, and HTML costs
+  // it a retry round (major-loading-floor RCA: PUT /:id/jobs/:jobId/file).
+  it('PUT /:id/jobs/:jobId/file → 404 JSON naming the single file funnel', async () => {
+    const res = await api('/ops/jobs/weekly/file', {
+      method: 'PUT',
+      body: JSON.stringify({ path: 'base/system.md', content: 'x' }),
+    });
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    const body = await res.json();
+    expect(body.error).toContain('PUT /definitions/agents/{agentId}/file');
+    expect(body.error).toContain('jobs/{jobId}/');
+  });
+
+  it('any unmatched path on the definitions surface → 404 JSON, never Express HTML', async () => {
+    const res = await api('/ops/no-such-resource/at-all', { method: 'PUT', body: JSON.stringify({}) });
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect((await res.json()).error).toContain('No such route');
+  });
+
   it.each([
     ['agent.yaml with tools', 'agent.yaml', 'id: ops\nname: x\ntools:\n  builtin: [read_file]\n', /moved to job level/],
     ['agent.yaml with description', 'agent.yaml', 'id: ops\nname: x\ndescription: legacy\n', /"description" was removed/],

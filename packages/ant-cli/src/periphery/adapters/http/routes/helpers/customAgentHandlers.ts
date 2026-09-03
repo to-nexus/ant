@@ -232,6 +232,19 @@ function mcpErrorOf(parsed: unknown): string | null {
   return validateMcpServers(doc?.mcp?.servers)[0] ?? validateApiServers(doc?.apis)[0] ?? null;
 }
 
+/**
+ * Whitelist refusal that names the alternative — a job writing its outputs
+ * through the definition API is the common miss (major-loading-floor RCA), and
+ * a bare refusal costs it a self-inference retry round.
+ */
+export function definitionWhitelistGuidance(relPath: string): string {
+  return (
+    `Path is outside the definition whitelist: ${relPath}. ` +
+    `This endpoint writes agent DEFINITION files only (agent.yaml, base/, jobs/{jobId}/..., ${ON_DEMAND_DIR_NAME}/...). ` +
+    'Job outputs and reports are artifacts — write them with the create_file tool into the job workspace, not through the definition API.'
+  );
+}
+
 export function gateDefinitionSave(
   agentId: string,
   relPath: string,
@@ -286,7 +299,7 @@ export function gateDefinitionSave(
         error: `reference/ was renamed to ${ON_DEMAND_DIR_NAME}/ — the channel is unchanged (paths rendered into the system block, bodies read on demand); save the file under ${ON_DEMAND_DIR_NAME}/ instead`,
       };
     }
-    return { ok: false, status: 400, error: `Path is outside the definition whitelist: ${normalized}` };
+    return { ok: false, status: 400, error: definitionWhitelistGuidance(normalized) };
   }
   {
     const segments = normalized.split('/');

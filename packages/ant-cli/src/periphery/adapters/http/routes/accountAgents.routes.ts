@@ -48,6 +48,7 @@ import {
   buildDefinitionTree,
   createCollisionMessage,
   decorateOrgAgentSummaries,
+  definitionWhitelistGuidance,
   findWritableAgent,
   gateDefinitionSave,
   patchYamlFile,
@@ -743,7 +744,7 @@ export function createAccountAgentRoutes(deps: {
       const rel = String(req.body?.path || '');
       if (!rel) return res.status(400).json({ error: 'path is required' });
       if (!isAllowedDefinitionPath(rel)) {
-        return res.status(400).json({ error: `Path is outside the definition whitelist: ${rel}` });
+        return res.status(400).json({ error: definitionWhitelistGuidance(rel) });
       }
       const full = resolveDefinitionPath(found.agentDir, rel);
       if (fs.existsSync(full)) {
@@ -765,7 +766,7 @@ export function createAccountAgentRoutes(deps: {
       if (!rel) return res.status(400).json({ error: 'path is required' });
       const kind = classifyDefinitionDir(rel);
       if (kind === 'unknown') {
-        return res.status(400).json({ error: `Path is outside the definition whitelist: ${rel}` });
+        return res.status(400).json({ error: definitionWhitelistGuidance(rel) });
       }
       // A job/intent directory is BORN by its own creator (POST /jobs, and the
       // intent's infer.md save) — mkdir must not become a second birth site.
@@ -953,6 +954,27 @@ export function createAccountAgentRoutes(deps: {
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
+  });
+
+  // Terminal JSON 404 — an unmatched path on this surface must not fall
+  // through to Express's HTML error page: the caller is usually a job's
+  // api__ant__ tool, and HTML costs it a self-inference retry round
+  // (major-loading-floor RCA: PUT /:id/jobs/:jobId/file). Name the funnel.
+  router.use((req: Request, res: Response) => {
+    if (/^\/[^/]+\/jobs\/[^/]+\/file$/.test(req.path)) {
+      return res.status(404).json({
+        error:
+          'No such route: definition files under jobs/ are written through the single funnel — ' +
+          'PUT /definitions/agents/{agentId}/file with body { path: "jobs/{jobId}/...", content } ' +
+          '(read: GET /definitions/agents/{agentId}/file?path=...).',
+      });
+    }
+    return res.status(404).json({
+      error:
+        `No such route: ${req.method} /definitions/agents${req.path}. ` +
+        'Definition files are read and written through GET|PUT /definitions/agents/{agentId}/file; ' +
+        'structure is created through POST /definitions/agents and POST /definitions/agents/{agentId}/jobs.',
+    });
   });
 
   return router;
