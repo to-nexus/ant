@@ -263,6 +263,32 @@ describe('universal run seal (Job-tab persistence, per-(agentId, customJobId) fi
     expect(await readUniversalRunExtras(sessionPath())).toEqual({});
   });
 
+  // A clarify-paused seal ends the turn under the gate's clarify exemption —
+  // without the stamp, `met: false` on a completed run reads as an unmet
+  // contract (oak-dreaming-sable Round 1, R1-N6: low-locking-album).
+  it('extras stamp hookReport rows exempt on a clarify-paused seal', async () => {
+    const lastTurnHooks = [
+      { intentId: 'build', hook: { action: 'api__ant__request' }, met: false },
+      { intentId: 'build', hook: { artifact: 'dependency-report/*.md' }, met: false },
+    ];
+    seedSession({
+      state: {
+        customJobRef: 'agent-builder/author',
+        conversations: { 'session:main': [{ role: 'user', content: 'agent를 만들어라' }] },
+        lastTurnHooks,
+        awaitingClarify: true,
+      },
+    });
+    const extras = await readUniversalRunExtras(sessionPath());
+    expect(extras.hookReport).toEqual(lastTurnHooks.map((h) => ({ ...h, exempt: 'clarify' })));
+    await appendRunToSessionFile(
+      sessionPath(), 'universal', 'j-6', emptyBoard('j-6'), 'completed',
+      { runExtras: { customJobRef: 'agent-builder/author', ...extras } },
+    );
+    const { SessionSchema } = await import('../../src/core/schemas/session.schema');
+    expect(SessionSchema.safeParse(readSession()).success).toBe(true);
+  });
+
   // Unlink-hazard regression: FileSessionAdapter.load DELETES a session file
   // whose safeParseSession fails — for universal that is the conversation
   // memory. Every value the seal path can write into `runs[i].job` must

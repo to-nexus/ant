@@ -86,6 +86,7 @@ export const SessionRunSchema = z.object({
     hook: z.union([z.object({ artifact: z.string() }), z.object({ action: z.string() })]),
     met: z.boolean(),
     matchedWrites: z.array(z.string()).optional(),
+    exempt: z.literal('clarify').optional(),
   })).optional(),
 });
 

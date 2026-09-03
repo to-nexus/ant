@@ -112,6 +112,8 @@ export interface SessionRun {
     hook: { artifact: string } | { action: string };
     met: boolean;
     matchedWrites?: string[];
+    /** The turn ended through clarify, which the hook gate exempts — `met: false` here is not an unmet contract. */
+    exempt?: 'clarify';
   }>;
 }
 

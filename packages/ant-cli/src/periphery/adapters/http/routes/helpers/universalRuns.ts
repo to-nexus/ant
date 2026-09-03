@@ -225,7 +225,13 @@ export async function readUniversalRunExtras(sessionPath: string): Promise<Parti
   if (!state) return {};
   const extras: Partial<SessionRun> = {};
   if (Array.isArray(state.lastTurnHooks) && state.lastTurnHooks.length > 0) {
-    extras.hookReport = state.lastTurnHooks;
+    // A clarify-paused seal ended the turn under the gate's clarify
+    // exemption — stamp it, or an auditor reads `met: false` on a completed
+    // run as an unmet contract (oak-dreaming-sable Round 1, R1-N6).
+    extras.hookReport =
+      state.awaitingClarify === true
+        ? state.lastTurnHooks.map((h: Record<string, unknown>) => ({ ...h, exempt: 'clarify' }))
+        : state.lastTurnHooks;
   }
   const mainConv = state.conversations?.['session:main'];
   const firstUser = Array.isArray(mainConv)
