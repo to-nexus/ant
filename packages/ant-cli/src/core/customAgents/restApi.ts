@@ -27,10 +27,12 @@
  *    rejections. The error framing matters beyond wording: action stop-hook
  *    evidence counts successful calls only, so an API-rejected write must
  *    never satisfy an `api__{server}__request` hook.
- *  - A string `body` rides only under an explicit caller Content-Type
- *    (form-encoded, plain text); without one it is refused before any network
- *    call — a pre-serialized JSON string is where corrupt `\u` escapes come
- *    from, and the upstream parser answers them with an HTML stack page.
+ *  - A string `body` rides only under an explicit caller NON-JSON
+ *    Content-Type (form-encoded, plain text); without one — or with a JSON
+ *    one, which is the same hand-serialized payload wearing a header — it is
+ *    refused before any network call. A pre-serialized JSON string is where
+ *    corrupt `\u` escapes come from, and the upstream parser answers them
+ *    with an HTML stack page.
  *  - An HTML 4xx/5xx body is reduced to a short sanitized extract (tags
  *    stripped, local filesystem paths redacted, hard byte cap): an error PAGE
  *    is not recovery data. JSON/text error bodies stay verbatim.
@@ -291,7 +293,7 @@ export function buildRestToolInfos(
             query: QUERY_PROP,
             body: {
               description:
-                'Request body. Pass the JSON structure itself (object/array) — the runtime serializes it and sets Content-Type: application/json. A pre-serialized JSON string is rejected; a string body is accepted only alongside an explicit non-JSON Content-Type header (form-encoded, plain text).',
+                'Request body. Pass the JSON structure itself (object/array) — the runtime serializes it and sets Content-Type: application/json. A pre-serialized JSON string is rejected even under an explicit JSON Content-Type header; a string body is accepted only alongside an explicit non-JSON Content-Type header (form-encoded, plain text).',
             },
             headers: HEADERS_PROP,
             timeout_ms: TIMEOUT_PROP,
@@ -440,21 +442,22 @@ export async function executeRestCall(
   }
 
   // body (write tool only) — the structure itself, serialized by the runtime.
-  // A pre-serialized JSON string without an explicit Content-Type is refused
-  // locally: hand-escaped strings are where corrupt `\u` escapes come from,
-  // and the upstream body-parser's answer is an HTML stack page the model
-  // cannot recover from. Form-encoded / plain-text bodies declare their
-  // Content-Type and ride verbatim.
+  // A pre-serialized JSON string is refused locally unless the caller declares
+  // an explicit NON-JSON Content-Type: hand-escaped strings are where corrupt
+  // `\u` escapes come from, and the upstream body-parser's answer is an HTML
+  // stack page the model cannot recover from. Merely adding a JSON
+  // Content-Type header is the same hand-serialized payload, not the escape
+  // hatch — only form-encoded / plain-text bodies ride verbatim.
   let body: string | undefined;
   if (toolName === 'request' && args.body !== undefined && args.body !== null) {
-    const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
-    if (typeof args.body === 'string' && !hasContentType) {
+    const contentType = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1];
+    if (typeof args.body === 'string' && (contentType === undefined || /json/i.test(contentType))) {
       return policyError(
-        'Policy: "body" must be a JSON object or array — pass the structure itself, not a pre-serialized JSON string; the runtime serializes it and sets Content-Type: application/json. For a form-encoded or plain-text body, set an explicit Content-Type header.',
+        'Policy: "body" must be a JSON object or array — pass the structure itself, not a pre-serialized JSON string; the runtime serializes it and sets Content-Type: application/json. A string body is accepted only with an explicit non-JSON Content-Type (form-encoded, plain text).',
       );
     }
     body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
-    if (!hasContentType) headers['Content-Type'] = 'application/json';
+    if (contentType === undefined) headers['Content-Type'] = 'application/json';
   }
   Object.assign(headers, compiled.headers);
 

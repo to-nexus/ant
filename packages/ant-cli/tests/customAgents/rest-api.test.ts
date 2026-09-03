@@ -268,6 +268,20 @@ describe('executor — result framing', () => {
     expect(rejected.isError).toBe(true);
     expect(rejected.text).toMatch(/pass the structure itself/);
     expect(calls).toHaveLength(2);
+
+    // Declaring a JSON Content-Type does not open the escape hatch: it is the
+    // same hand-serialized payload wearing a header (live bypass,
+    // oak-dreaming-sable — the model retried the refused string with
+    // Content-Type: application/json and rode straight through).
+    for (const ct of ['application/json', 'application/vnd.api+json', 'Application/JSON; charset=utf-8']) {
+      const viaHeader = await executeRestCall(
+        compiled(), 'request',
+        { method: 'PUT', path: '/v', body: '{"a":1}', headers: { 'Content-Type': ct } }, impl,
+      );
+      expect(viaHeader.isError).toBe(true);
+      expect(viaHeader.text).toMatch(/non-JSON Content-Type/);
+    }
+    expect(calls).toHaveLength(2);
   });
 
   it('an HTML error body is sanitized: tags stripped, local paths redacted, URL routes kept, capped', async () => {
