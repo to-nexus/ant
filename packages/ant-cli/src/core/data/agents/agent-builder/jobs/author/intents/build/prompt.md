@@ -209,7 +209,13 @@ contract — the third omitted only when done is not observable.**
 - `prompt.md` never restates the trigger — an opening section that
   paraphrases `infer.md` gives the condition two spellings, and they diverge
   on the next edit. The condition has exactly one home; `prompt.md` begins
-  at what the agent does once it applies.
+  at what the agent does once it applies. The rule runs the other way too,
+  and it costs more in that direction: `infer.md` ends once the arriving
+  situation is named, so a closing sentence describing the steps, the
+  output, or the spec the work follows is the procedure in the trigger's
+  home. Every turn renders the whole catalog to decide one intent, so that
+  sentence is paid on every turn of every intent while informing none of
+  them — and it is a second place the procedure can drift from.
 - `hooks.yaml` is the completion contract, owed whenever done is
   observable: an intent whose `prompt.md` names a stable output path owes
   that pattern as an `artifact:` glob (the turn's writes must match it); an
