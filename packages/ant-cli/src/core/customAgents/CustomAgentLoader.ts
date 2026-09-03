@@ -548,7 +548,15 @@ export function loadCustomJob(
         // throw: the save funnel surfaces it as a validation error while an
         // already-running agent stays loadable.
         const prefix = staticGlobDirPrefix(hook.artifact);
-        if (prefix && !(intentPrompts[intent.id] ?? '').includes(prefix)) {
+        if (prefix && intentPrompts[intent.id] === undefined) {
+          // Absent prompt gets its own message: during a parallel save batch
+          // hooks.yaml can land before prompt.md, and the pairing question is
+          // not yet decidable — a spurious "add an output step" here would
+          // send the author repairing a file that is still in flight.
+          advisories.push(
+            `${hooksLabel}: intent "${intent.id}" declares artifact stop hook "${hook.artifact}" but has no ${INTENT_PROMPT_FILE_NAME} yet — save the intent's ${INTENT_PROMPT_FILE_NAME} (a hook without a procedure cannot be satisfied), then re-validate`,
+          );
+        } else if (prefix && !(intentPrompts[intent.id] ?? '').includes(prefix)) {
           advisories.push(
             `${hooksLabel}: intent "${intent.id}" declares artifact stop hook "${hook.artifact}" but its ${INTENT_PROMPT_FILE_NAME} never names a path under "${prefix}" — add an output step writing there, or the turn can end only under runtime duress`,
           );

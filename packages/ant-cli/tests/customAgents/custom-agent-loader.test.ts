@@ -853,17 +853,20 @@ describe('loadCustomJob — stop hooks (H7/H8 cross-file + happy path)', () => {
   // H9 — the glob and the procedure must name the same path family. An
   // unpaired artifact hook is an ADVISORY (surfaced at save/validate), never
   // a load failure: an agent that already runs must stay loadable.
-  const h9Cases: Array<[string, string | undefined, string, boolean]> = [
-    // [case, prompt body, glob, expectAdvisory]
-    ['prompt names a path under the glob dir → clean', '결과를 `reports/{약관코드}.md`로 저장한다.', 'reports/*.md', false],
-    ['prompt never names the glob dir → advisory', 'Summarize the findings in your reply.', 'reports/*.md', true],
-    ['no prompt.md at all → advisory', undefined, 'reports/*.md', true],
-    ['glob with no static prefix (*.md) → skipped', 'Reply with a table.', '*.md', false],
-    ['fully literal glob named verbatim → clean', 'Write `runs/manifest.md` last.', 'runs/manifest.md', false],
-    ['fully literal glob absent from prompt → advisory', 'Reply only.', 'runs/manifest.md', true],
-    ['deep static prefix checked as a whole → advisory', 'Files go under `reports/`.', 'reports/2026/**', true],
+  const h9Cases: Array<[string, string | undefined, string, string | null]> = [
+    // [case, prompt body, glob, expected advisory substring (null = clean)]
+    ['prompt names a path under the glob dir → clean', '결과를 `reports/{약관코드}.md`로 저장한다.', 'reports/*.md', null],
+    ['prompt never names the glob dir → advisory', 'Summarize the findings in your reply.', 'reports/*.md', 'never names a path'],
+    // Absent prompt gets save-order-aware wording, not "add an output step":
+    // in a parallel save batch hooks.yaml can land before prompt.md, and a
+    // spurious repair instruction sends the author fixing an in-flight file.
+    ['no prompt.md at all → save-order advisory', undefined, 'reports/*.md', 'has no prompt.md yet'],
+    ['glob with no static prefix (*.md) → skipped', 'Reply with a table.', '*.md', null],
+    ['fully literal glob named verbatim → clean', 'Write `runs/manifest.md` last.', 'runs/manifest.md', null],
+    ['fully literal glob absent from prompt → advisory', 'Reply only.', 'runs/manifest.md', 'never names a path'],
+    ['deep static prefix checked as a whole → advisory', 'Files go under `reports/`.', 'reports/2026/**', 'never names a path'],
   ];
-  it.each(h9Cases)('H9: %s', (_name, prompt, glob, expectAdvisory) => {
+  it.each(h9Cases)('H9: %s', (_name, prompt, glob, expectedAdvisory) => {
     const agentDir = writeAgent(roots()[0].root, 'ops', {}, { base: { 'system.md': 'Persona.' } });
     writeJob(agentDir, 'weekly', {});
     writeIntent(agentDir, 'weekly', 'a', {
@@ -871,10 +874,10 @@ describe('loadCustomJob — stop hooks (H7/H8 cross-file + happy path)', () => {
       hooks: { hooks: { stop: [{ artifact: glob }] } },
     });
     const resolved = loadCustomJob(roots(), 'ops', 'weekly');
-    if (expectAdvisory) {
+    if (expectedAdvisory) {
       expect(resolved.advisories).toHaveLength(1);
       expect(resolved.advisories?.[0]).toContain(glob);
-      expect(resolved.advisories?.[0]).toContain('never names a path');
+      expect(resolved.advisories?.[0]).toContain(expectedAdvisory);
     } else {
       expect(resolved.advisories).toBeUndefined();
     }
