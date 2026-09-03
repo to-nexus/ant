@@ -48,7 +48,13 @@
   same list one level down) and never state connection status
   ("this agent is not wired to X") — wiring state lives only in the
   dependency report, whose `status:` the wiring turn updates; prose
-  stating it is stale the moment the user wires the system.
+  stating it is stale the moment the user wires the system. What the reader
+  does need is the division of labour, and it is a different sentence: name
+  who performs the step ("the owner files the ticket"; "the team sends the
+  mail"), never the absence of a connection as the reason. The positive form
+  survives wiring; the negative one becomes a lie the moment the connection
+  lands, and every prose file is subject to it — an intent's
+  operating-context section included.
 - When the material itself marks a piece as no longer in force — in its own
   text, or by how the collection sets it aside — that piece maps to nothing:
   no intent, no prose, no reference copy. Drop it and record the drop in the
