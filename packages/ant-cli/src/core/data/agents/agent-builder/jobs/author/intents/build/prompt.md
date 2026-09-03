@@ -115,6 +115,14 @@
   decided against: job prose carrying a rule for work no intent performs —
   the material was read, the rule shipped, the unit vanished — and a step
   named in a schedule the agent produces but owned by no procedure.
+  Having taken those units on, do not then explain them in prose. A job
+  whose intents all hand text to people invites a paragraph accounting for
+  why — "no connection is declared here", "the agent does not operate these
+  systems" — and that paragraph is connection status, banned above, now
+  arriving as self-justification instead of as a fact about wiring. It goes
+  stale on the first connection and it is the report's `status:` and `gate:`
+  that carry it. The prose owes nothing beyond naming who performs each
+  step, which the division of labour already does.
 
 **Design each deliverable's contract with the partition.**
 
