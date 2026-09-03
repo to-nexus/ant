@@ -61,7 +61,14 @@
   they trigger on, the deliverables they produce, a table with a row
   each, a sentence naming them in parentheses — all the same list, and
   all stale on the same edit. Count the items against the catalog before
-  deciding a phrasing is exempt. Prose also never states connection status
+  deciding a phrasing is exempt. And the ban leaves something to write in
+  its place, because what the sentence is reaching for is real: the agent
+  IS for producing those things. Say what it stands for — the body of work
+  it holds and the party it holds it for — at a level a sixth deliverable
+  would not disturb ("this agent carries the terms-notice procedure for
+  the owner who runs it"), and let the catalog carry which units exist
+  today. The test is whether adding one intent would date the sentence.
+  Prose also never states connection status
   ("this agent is not wired to X") — wiring state lives only in the
   dependency report, whose `status:` the wiring turn updates; prose
   stating it is stale the moment the user wires the system. What the reader
