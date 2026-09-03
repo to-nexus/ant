@@ -30,9 +30,10 @@
 - When the material the definition was authored from is still on the plane,
   read it and check the partition against it: work the material describes
   with its own trigger and its own output that no intent performs; an intent
-  whose deliverable describes the work instead of being the work product; and
-  pieces the material marks as no longer in force that were carried in
-  anyway. The report's mapping claim — what merged, what split, what was
+  whose deliverable describes the work instead of being the work product; an
+  `infer.md` that lists alternative tasks instead of naming one arriving
+  situation, which is several intents under one name; and pieces the material
+  marks as no longer in force that were carried in anyway. The report's mapping claim — what merged, what split, what was
   dropped — is a claim to verify against that material, not a finding to
   accept.
 - Check hook coverage: an intent whose `prompt.md` names a stable output path

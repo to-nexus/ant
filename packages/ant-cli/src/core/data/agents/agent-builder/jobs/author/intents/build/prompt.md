@@ -156,6 +156,14 @@ contract — the third omitted only when done is not observable.**
   there. An intent without a `prompt.md` shows up in the running agent's
   catalog as carrying no instructions — a trigger with no procedure is not a
   unit of work.
+- `infer.md` names ONE arriving situation, and the authored file is where
+  that is checked — the count you designed means nothing if the criterion you
+  saved reads "when any one of these tasks has to be done" and lists them.
+  Such a criterion is N intents wearing one name: nothing decides which
+  procedure the turn runs, so the turn picks a slice of a long procedure by
+  guess, and the one stop hook proves only that some file was written. A
+  criterion that needs "or" between task names, or a "one or more of" clause,
+  is a split; two criteria that differ only in wording are a merge.
 - `prompt.md` never restates the trigger — an opening section that
   paraphrases `infer.md` gives the condition two spellings, and they diverge
   on the next edit. The condition has exactly one home; `prompt.md` begins
