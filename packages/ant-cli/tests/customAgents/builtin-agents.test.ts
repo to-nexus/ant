@@ -261,13 +261,14 @@ describe('shipped agent-builder definition', () => {
     const build = resolved.intents.find((i) => i.id === 'build');
     const review = resolved.intents.find((i) => i.id === 'review');
     // A pinned build turn is done only when a definition write went through
-    // the API AND the agent's dependency manifest was (re)written — build's
+    // the API AND the agent's dependency report was (re)written — build's
     // run manifest (quick-catching-couch: prose-only obligation produced
-    // zero manifests). The sanctioned no-op exit is clarify, which this
-    // gate exempts.
+    // zero manifests). The single-segment glob covers both the base
+    // `{agentId}.md` and its `{agentId}-{mnemonic}.md` revisions. The
+    // sanctioned no-op exit is clarify, which this gate exempts.
     expect(build?.hooks?.stop).toEqual([
       { action: 'api__ant__request' },
-      { artifact: 'dependencies/*.md' },
+      { artifact: 'dependency-report/*.md' },
     ]);
     // Inspection reports with stated assumptions instead of blocking on questions.
     expect(review?.clarify).toBe(false);
@@ -320,18 +321,25 @@ describe('shipped agent-builder definition', () => {
     expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'definition-format.md']);
   });
 
-  // The dependency manifest is a HANDOFF: its skeleton must name the path a
-  // future build turn updates in place, the two declaration channels the
-  // promotion loop lands a wired connection in, and the field labels a later
-  // turn finds entries by — the skeleton declares them structural tokens
-  // (never localized, never renamed). Structural tokens only — the legend's
-  // prose is not pinned, per the no-prose-pinning policy.
-  it('the manifest skeleton names its path, both declaration channels, and every field token', () => {
+  // The dependency report is a HANDOFF: its skeleton must name the path a
+  // future build turn updates in place (base name + the mnemonic revision
+  // scheme, plus the legacy path a migration reads), the two declaration
+  // channels the promotion loop lands a wired connection in, and the field
+  // labels a later turn finds entries by — the skeleton declares them
+  // structural tokens (never localized, never renamed). Structural tokens
+  // only — the legend's prose is not pinned, per the no-prose-pinning policy.
+  it('the report skeleton names its paths, both declaration channels, and every field token', () => {
     const prompt = fs.readFileSync(
       path.join(SRC_AGENTS_DIR, 'agent-builder', 'jobs', 'author', 'intents', 'build', 'prompt.md'),
       'utf-8',
     );
-    expect(prompt).toContain('dependencies/{agentId}.md');
+    expect(prompt).toContain('dependency-report/{agentId}.md');
+    expect(prompt).toContain('dependency-report/{agentId}-{mnemonic}.md');
+    expect(prompt).toContain('dependencies/{agentId}.md'); // legacy read path
+    // The hook↔prompt pairing rule names the write-step template — an
+    // artifact glob obligates the procedure to name a matching path
+    // (blazing-crushing-dream: four hooks, zero prompt-named outputs).
+    expect(prompt).toContain('x/{business-key}.md');
     expect(prompt).toContain('`mcp.servers`');
     expect(prompt).toContain('`apis`');
     for (const token of [

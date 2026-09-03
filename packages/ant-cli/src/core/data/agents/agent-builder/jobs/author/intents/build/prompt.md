@@ -43,7 +43,7 @@
   keeps one home. Agent prose also never enumerates the job's intents (the
   list is stale the moment one is added) and never states connection status
   ("this agent is not wired to X") — wiring state lives only in the
-  dependency manifest, whose `status:` the wiring turn updates; prose
+  dependency report, whose `status:` the wiring turn updates; prose
   stating it is stale the moment the user wires the system.
 - When the material itself marks a piece as no longer in force — in its own
   text, or by how the collection sets it aside — that piece maps to nothing:
@@ -138,7 +138,13 @@ contract — the third omitted only when done is not observable.**
   (the tool must have been successfully called). An `action` can only name
   a tool the job actually carries (a builtin in its allowlist, or a tool
   from a connection it declares), so a job with no connections can be held
-  only to `artifact:` evidence. Omitting `hooks.yaml` is the exception,
+  only to `artifact:` evidence. The obligation runs both ways: a producing
+  intent's deliverable IS a file, so its `prompt.md` names the write step
+  that satisfies the glob — a `create_file` to a business-keyed path in the
+  same family (`x/{business-key}.md` for `artifact: x/*.md`). A deliverable
+  styled as a chat reply is not observable; a glob no prompt step writes
+  into leaves the turn to end only under runtime duress, at a path the
+  agent invents. Omitting `hooks.yaml` is the exception,
   legitimate only when the intent produces nothing the runtime can
   observe — completion only a person can judge stays in `prompt.md` prose,
   because a hook the runtime cannot observe is a turn that can never end —
@@ -232,29 +238,41 @@ contract — the third omitted only when done is not observable.**
   reference, never as procedure: prose must not direct the running agent to
   consult a counterpart the job has no connection for — the substitute
   snapshot is the runtime instruction, and the master source it stands in
-  for is context, recorded in the manifest's entry. Legitimate, but never
+  for is context, recorded in the dependency report's entry. Legitimate, but never
   silent: the report lists each such counterpart as a surface the agent
   cannot reach until it is resolved. And never only in the report — a chat
   report does not outlive the session. Every turn that saved a definition
-  also rewrites that agent's `dependencies/{agentId}.md` in artifacts with
-  `create_file` — build's own run manifest, one entry per counterpart
-  without a connection or, when none remain, a single line under the
-  preamble recording that verdict, so an empty manifest is distinguishable
-  from a forgotten one. Read the existing file first and update its entries
-  in place — the fixed structure below exists so a later turn can do
-  exactly that; a from-memory regeneration loses what earlier turns
-  recorded. A turn that removes an agent rewrites its manifest to record
-  the removal. The manifest is not a definition file: its readers are the
-  user, a later builder turn (a wiring turn here, or pipeline authoring
-  reading it in the same project), and the granting parties the user hands
-  its sections to — never the running agent — so it lives outside the
-  definition, and the definition never names it, not in `base/`, not in
-  `on-demand/`: a running agent cannot resolve the manifest's path, so a
-  pointer to it is a dangling reference by construction. One file per
-  agent, rewritten whole on every turn that saves its definition. When you
-  lay out the turn's checklist, its closing items are the manifest write
-  and the report — work missing from the list is work that gets skipped.
-- The manifest is the user's action list for making the agent run for real —
+  also writes that agent's dependency report in artifacts with
+  `create_file`, under `dependency-report/`: `dependency-report/{agentId}.md`
+  on a first build, and when a report from an EARLIER session already exists
+  there — a record the user may have already handed to a granting party,
+  never overwrite it — a new `dependency-report/{agentId}-{mnemonic}.md`,
+  the mnemonic a short kebab slug naming this round's change (`jira-wired`,
+  `coverage-fix`). Within one session, keep rewriting the file this session
+  created. The newest `{agentId}*` file is the current report; readers and
+  later turns go by file time, so no date belongs in the name. It is build's
+  own run manifest: one entry per counterpart without a connection or, when
+  none remain, a single line under the preamble recording that verdict, so
+  an empty report is distinguishable from a forgotten one. The definition's
+  own prose is the minimum entry set: before the write, sweep what you saved
+  for counterpart names — a human relay who performs a send, a downstream
+  consumer whose format binds the output — and every one named without a
+  connection gets an entry (human relays stay `virtual` with a `gate:`).
+  Read the newest existing report first and carry its entries forward — the
+  fixed structure below exists so a later turn can do exactly that; a
+  from-memory regeneration loses what earlier turns recorded. A legacy
+  `dependencies/{agentId}.md`, when present, is the prior report — read it
+  and continue under the new path. A turn that removes an agent writes a
+  report recording the removal. The report is not a definition file: its
+  readers are the user, a later builder turn (a wiring turn here, or
+  pipeline authoring reading it in the same project), and the granting
+  parties the user hands its sections to — never the running agent — so it
+  lives outside the definition, and the definition never names it, not in
+  `base/`, not in `on-demand/`: a running agent cannot resolve the report's
+  path, so a pointer to it is a dangling reference by construction. Lay out
+  the turn's checklist; its closing items are the report write and the
+  chat report — work missing from the list is work that gets skipped.
+- The dependency report is the user's action list for making the agent run for real —
   lean: a line or two per field, an entry only as long as its applicable
   fields, never a restatement of the design. Its structure is FIXED so a later
   turn can find and update entries in place: headings and field labels below
@@ -280,7 +298,7 @@ contract — the third omitted only when done is not observable.**
   that works in local spreadsheets skips the conversation they need first.
 
   ```markdown
-  # Dependencies — {agent name} ({agentId})
+  # Dependency Report — {agent name} ({agentId})
 
   {two or three lines for a reader outside this session: what this agent
   does and who runs it — the context a granting team needs, because one
@@ -314,8 +332,12 @@ contract — the third omitted only when done is not observable.**
     - wiring: {what the connection block will need, as names: the base URL,
       the auth scheme and the header it rides, the `${secret:}` key NAMES
       to register in credential settings — the store carries the values,
-      never ask for a value — and the operations the intents need, which
-      become the `allow` lines}
+      never ask for a value, and the key names you mint yourself here (a
+      namespace choice, not information you lack), so "undecided" is never
+      a wiring value; a fact you genuinely lack — a base URL, an auth
+      scheme — is stated as an item to obtain, named with the party who
+      knows it, never left blank — and the operations the intents need,
+      which become the `allow` lines}
     - access: {the rights and approvals required — including any sign-off
       that gates automated access, the data it moves, or a paid seat — who
       grants each, and the credential the granting party issues when one
@@ -342,10 +364,12 @@ contract — the third omitted only when done is not observable.**
     final confirmation — one line naming it}
   - status: virtual | provided | wired
   ```
-- When a turn supplies a manifest entry's missing items, wire the connection
-  and update that entry's `status:` in the same manifest — never fork a
-  second document. Wiring guidance lives only in the manifest — the
-  definition's `on-demand/` keeps to what the running agent opens mid-task.
+- When a turn supplies a dependency-report entry's missing items, wire the
+  connection and advance that entry's `status:` in the report (the file this
+  session owns, or a new mnemonic-named one when the newest predates this
+  session — never a second scheme). Wiring guidance lives only in the
+  dependency report — the definition's `on-demand/` keeps to what the
+  running agent opens mid-task.
 - The report repeats the mapping as built: which sources became which intents,
   what merged, what split, what was dropped and why.
 - The report states each job's hook decision — which intents carry a
@@ -359,9 +383,9 @@ contract — the third omitted only when done is not observable.**
 - The report lists what must be in place before a first run: every
   `${secret:}` key to register, every connection to verify, and each
   `tools.approval` decision with its reason — and names the dependency
-  manifest's path. A build turn has always written one, so a report with no
-  manifest line is a forgotten manifest, never an exempt one.
-- When the manifest carries `virtual` entries, the report frames them as the
+  report's path. A build turn has always written one, so a chat report with
+  no dependency-report line is a forgotten one, never an exempt one.
+- When the dependency report carries `virtual` entries, the chat report frames them as the
   user's remaining work: restate the promotion loop (provide the items,
   register the `${secret:}` key names, ask this builder to wire it) and name
   the declaration channel each entry's wiring lands in — `mcp.servers` or

@@ -12,10 +12,12 @@
   procedure touches an external system the job declares no connection for
   (`apis` / `mcp.servers`), and whose completion contract is `artifact:`-only,
   runs on a substitute — authored text standing in for the real call. When
-  `dependencies/{agentId}.md` exists in this project's artifacts, read it:
-  it is that agent's dependency status ledger and names the human relays
-  (`gate:`). Name the steps that run on substitutes in the design you state,
-  so nobody reads a green run as the real work having happened.
+  the agent's dependency report exists in this project's artifacts — the
+  newest `dependency-report/{agentId}*.md`, or a legacy
+  `dependencies/{agentId}.md` — read it: it is that agent's dependency
+  status ledger and names the human relays (`gate:`). Name the steps that
+  run on substitutes in the design you state, so nobody reads a green run
+  as the real work having happened.
 
 **Design the trigger.**
 

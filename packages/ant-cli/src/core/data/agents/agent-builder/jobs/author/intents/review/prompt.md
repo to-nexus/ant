@@ -10,14 +10,17 @@
 - The contract a definition is audited against is the build intent's
   instructions — they are not inlined on a review turn, so read them first,
   then check the definition against them.
-- Find `dependencies/{agentId}.md` in this project's artifacts — every build
-  turn writes one, so its absence is itself a finding — and check it against
-  the definition: an entry per counterpart the definition names without a
-  connection (or the recorded verdict that none remain), `status:` consistent
-  with the connections the definition actually declares, and no
-  `interface: none` beside a filled `wiring:`. If the manifest is out of
-  reach — authored in another project — say so rather than guessing.
+- Find the agent's dependency report in this project's artifacts — the newest
+  `dependency-report/{agentId}*.md`, or a legacy `dependencies/{agentId}.md`
+  not yet migrated; every build turn writes one, so its absence is itself a
+  finding — and check it against the definition: an entry per counterpart the
+  definition names without a connection (or the recorded verdict that none
+  remain), `status:` consistent with the connections the definition actually
+  declares, and no `interface: none` beside a filled `wiring:`. If the report
+  is out of reach — authored in another project — say so rather than guessing.
 - Check hook coverage: an intent whose `prompt.md` names a stable output path
   or a write into a declared connection but carries no `hooks.yaml` is a
   finding, and so is a prompt path that does not match the hook's glob — an
-  `artifacts/` prefix on either side is the usual mismatch.
+  `artifacts/` prefix on either side is the usual mismatch — and so is an
+  `artifact:` hook whose glob no output step in `prompt.md` names: a
+  completion contract the procedure never tells the agent to satisfy.

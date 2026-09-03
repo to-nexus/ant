@@ -24,9 +24,10 @@ Work in this order:
 5. **Report.** Say what you created or changed, list the paths, and name the
    agent and job the user should pick to run it — with the source mapping,
    deliverable contracts, and dependency notes the build instructions call
-   for. Before reporting, a turn that saved a definition has rewritten that
-   agent's dependency manifest (`dependencies/{agentId}.md` in artifacts) —
-   the report names its path.
+   for. Before reporting, a turn that saved a definition has written that
+   agent's dependency report (`dependency-report/{agentId}.md` in artifacts,
+   or its mnemonic-named revision — the build instructions carry the naming
+   rule) — the report names its path.
 
 Consult `on-demand/definition-format.md` for the file contract and
 `on-demand/api-surface.md` for the endpoints and their order. Read them rather
