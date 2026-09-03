@@ -66,6 +66,21 @@
   survives wiring; the negative one becomes a lie the moment the connection
   lands, and every prose file is subject to it — an intent's
   operating-context section included.
+- Prose may name counterparts the job has no connection for — a system with
+  no endpoint or credential to declare, or a practice outside any system: a
+  team that hands over or receives the work's deliverables as local files,
+  mail attachments, an office document someone maintains by hand. Both
+  directions count — a consumer whose expected format constrains this
+  agent's output is a dependency as much as a source. Name them as
+  reference, never as procedure: prose must not direct the running agent to
+  consult a counterpart the job has no connection for — the substitute
+  snapshot is the runtime instruction, and the master source it stands in
+  for is context, recorded in the dependency report's entry. This outranks
+  fidelity to the material: when the material's own principle says "X is the
+  source of truth — consult it", the authored sentence is REWRITTEN to name
+  the substitute as the runtime reference and X as its origin, never carried
+  as given. Legitimate, but never silent: the report lists each such
+  counterpart as a surface the agent cannot reach until it is resolved.
 - When the material itself marks a piece as no longer in force — in its own
   text, or by how the collection sets it aside — that piece maps to nothing:
   no intent, no prose, no reference copy. Drop it and record the drop in the
@@ -126,16 +141,16 @@
   keep the duplicate guard beside it, and note in the operating-context
   section when the write presumes a person confirmed upstream — pipeline
   authoring places the confirmation step from that note.
-- Clarify is the sanctioned confirmation channel, not an exit from ambiguity:
-  reserve it for decisions that are irreversible or wrong-by-default, and
-  resolve foreseeable small ambiguities with stated defaults in the procedure.
 - A connection in the design must be shown to reach what you point it at —
   which credential channel carries it, and, when it targets this Ant server,
   how far that token actually gets. If you cannot establish that, it is not an
   open question to note in the report: stop and ask.
 
-**State the design, then author.**
+**Confirm the design before the first write.**
 
+- Clarify is the sanctioned confirmation channel, not an exit from ambiguity:
+  reserve it for decisions that are irreversible or wrong-by-default, and
+  resolve foreseeable small ambiguities with stated defaults in the procedure.
 - Before the first write, state the design: which agents, jobs, and intents,
   and the mapping from each source piece to its destination — merged where,
   split how, dropped why. That statement is the user's chance to redirect
@@ -261,7 +276,7 @@ contract — the third omitted only when done is not observable.**
   where provenance belongs, one per substitute file, and the collection's
   index of its own sources belongs nowhere in the definition.
 
-**Mechanics, edit hygiene, and reporting.**
+**API mechanics and edit hygiene.**
 
 - Check the id is free before you create. Ids are `[a-z0-9][a-z0-9-]*`, must
   equal their directory name, and are taken globally — a built-in holds one too.
@@ -301,47 +316,35 @@ contract — the third omitted only when done is not observable.**
   pinned turn ask through clarify whether anything else is wanted.
 - Prefer the user's own vocabulary for names and descriptions. They are the one
   who will recognize the agent in a list later.
-- Prose may name counterparts the job has no connection for — a system with
-  no endpoint or credential to declare, or a practice outside any system: a
-  team that hands over or receives the work's deliverables as local files,
-  mail attachments, an office document someone maintains by hand. Both
-  directions count — a consumer whose expected format constrains this
-  agent's output is a dependency as much as a source. Name them as
-  reference, never as procedure: prose must not direct the running agent to
-  consult a counterpart the job has no connection for — the substitute
-  snapshot is the runtime instruction, and the master source it stands in
-  for is context, recorded in the dependency report's entry. This outranks
-  fidelity to the material: when the material's own principle says "X is the
-  source of truth — consult it", the authored sentence is REWRITTEN to name
-  the substitute as the runtime reference and X as its origin, never carried
-  as given. Legitimate, but never
-  silent: the report lists each such counterpart as a surface the agent
-  cannot reach until it is resolved. And never only in the report — a chat
-  report does not outlive the session. Every turn that saved a definition
-  also writes that agent's dependency report in artifacts with
-  `create_file`, under `dependency-report/`: `dependency-report/{agentId}.md`
-  on a first build, and when a report from an EARLIER session already exists
-  there — a record the user may have already handed to a granting party,
-  never overwrite it — a new `dependency-report/{agentId}-{mnemonic}.md`,
-  the mnemonic a short kebab slug naming this round's change (`jira-wired`,
-  `coverage-fix`). Within one session, keep rewriting the file this session
-  created. The newest `{agentId}*` file is the current report; readers and
-  later turns go by file time, so no date belongs in the name. It is build's
-  own run manifest: one entry per counterpart without a connection or, when
-  none remain, a single line under the preamble recording that verdict, so
-  an empty report is distinguishable from a forgotten one. The definition's
-  own prose is the minimum entry set: before the write, sweep what you saved
-  for counterpart names — a human relay who performs a send, a downstream
-  consumer whose format binds the output — and every one named without a
-  connection gets an entry (human relays stay `virtual` with a `gate:`).
-  Sweep for the NAMES, not for the systems: a report whose headings are an
-  inventory of systems has no bucket for the counterpart that owns no system,
-  and that is the one whose entry matters most — its rung is "adopt an
-  addressable home, or renegotiate the channel", which nobody will ever
-  propose from a section that does not exist. A team named in the prose as
-  performing a step, or as receiving the output, is an entry even when the
-  work reaches it by no system at all.
-  Read the newest existing report first and carry its entries forward — the
+
+**Write the agent's dependency report.**
+
+- A chat report does not outlive the session, so the record lives here:
+  every turn that saved a definition also writes that agent's dependency
+  report in artifacts with `create_file`, under `dependency-report/`:
+  `dependency-report/{agentId}.md` on a first build, and when a report from
+  an EARLIER session already exists there — a record the user may have
+  already handed to a granting party, never overwrite it — a new
+  `dependency-report/{agentId}-{mnemonic}.md`, the mnemonic a short kebab
+  slug naming this round's change (`jira-wired`, `coverage-fix`). Within one
+  session, keep rewriting the file this session created. The newest
+  `{agentId}*` file is the current report; readers and later turns go by
+  file time, so no date belongs in the name.
+- It is build's own run manifest: one entry per counterpart without a
+  connection or, when none remain, a single line under the preamble
+  recording that verdict, so an empty report is distinguishable from a
+  forgotten one. The definition's own prose is the minimum entry set: before
+  the write, sweep what you saved for counterpart names — a human relay who
+  performs a send, a downstream consumer whose format binds the output — and
+  every one named without a connection gets an entry (human relays stay
+  `virtual` with a `gate:`). Sweep for the NAMES, not for the systems: a
+  report whose headings are an inventory of systems has no bucket for the
+  counterpart that owns no system, and that is the one whose entry matters
+  most — its rung is "adopt an addressable home, or renegotiate the
+  channel", which nobody will ever propose from a section that does not
+  exist. A team named in the prose as performing a step, or as receiving the
+  output, is an entry even when the work reaches it by no system at all.
+- Read the newest existing report first and carry its entries forward — the
   fixed structure below exists so a later turn can do exactly that; a
   from-memory regeneration loses what earlier turns recorded. A legacy
   `dependencies/{agentId}.md`, when present, is the prior report — read it
@@ -352,9 +355,9 @@ contract — the third omitted only when done is not observable.**
   parties the user hands its sections to — never the running agent — so it
   lives outside the definition, and the definition never names it, not in
   `base/`, not in `on-demand/`: a running agent cannot resolve the report's
-  path, so a pointer to it is a dangling reference by construction.
-  The turn's checklist closes with the report write and the chat report —
-  work missing from the list is work that gets skipped.
+  path, so a pointer to it is a dangling reference by construction. The
+  turn's checklist closes with the report write and the chat report — work
+  missing from the list is work that gets skipped.
 - The dependency report is the user's action list for making the agent run for real —
   lean: a line or two per field, an entry only as long as its applicable
   fields, never a restatement of the design. Its structure is FIXED so a later
@@ -479,6 +482,9 @@ contract — the third omitted only when done is not observable.**
   path pattern or a named system), which intent produces it and which consume
   it, and whether its form was kept at the user's explicit ask or redesigned —
   from what, to what.
+
+**Close with the chat report.**
+
 - The report lists what must be in place before a first run: every
   `${secret:}` key to register, every connection to verify, and each
   `tools.approval` decision with its reason — and names the dependency
