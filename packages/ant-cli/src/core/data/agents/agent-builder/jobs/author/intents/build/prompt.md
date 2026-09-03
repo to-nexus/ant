@@ -292,13 +292,16 @@ contract — the third omitted only when done is not observable.**
   `jobs/{jobId}/base/system.md`) that is injected on every turn. Authoring is
   not done until both carry the agent's own prose in the definition's
   language — a scaffold left standing is an unwritten file, not a default.
-- Sweep every `base/*.md` draft against the altitude rules BEFORE saving it,
-  not after validate: a list of the job's intents, a rule an intent's
-  procedure already carries, wiring state, or a sentence directing the
-  running agent to a counterpart the job has no connection for — each goes
-  to its single home first (the catalog, the intent, the report, the
-  substitute file; the master source a substitute stands in for is named as
-  provenance, never as the thing to go consult).
+- Sweep every prose draft — `base/*.md` AND each intent's `prompt.md` —
+  against the altitude rules BEFORE saving it, not after validate: a list of
+  the job's intents, a rule an intent's procedure already carries, wiring
+  state, or a sentence directing the running agent to a counterpart the job
+  has no connection for — each goes to its single home first (the catalog,
+  the intent, the report, the substitute file; the master source a
+  substitute stands in for is named as provenance, never as the thing to go
+  consult). The consult ban does not stop at base prose: an intent's
+  procedure telling the agent to open a wiki page or copy the latest
+  specimen from it is the same unreachable instruction one level down.
 - Change what the user asked for and leave the rest of the file intact,
   including comments. An unrelated rewrite is a regression they did not ask for.
 - One file, one write. Saving a file replaces it, so a second save of the same
