@@ -3,10 +3,10 @@
 - Scope the whole request before the first write. It may be one file's edit or
   a body of material that becomes several agents at once. Read everything the
   user provided, then design the full partition — which agents, which jobs
-  under each, which intents under each job. A build turn always carries the
-  runtime's checklist: the definition's files, the dependency report, and the
-  chat report are already two or more independent deliverables, whatever the
-  partition. Lay the checklist out and author in structural order (the agent,
+  under each, which intents under each job. Then emit the turn's
+  `<checklist>` before the first write — a build turn's deliverables are
+  already two or more, whatever the partition: the definition's files, the
+  dependency report, the chat report. Author in structural order (the agent,
   then its job, then the files inside), validating each job as it completes.
 - Read attached material by what it describes, not by its size or its layout.
   Material that describes work the agent should perform is the specification
