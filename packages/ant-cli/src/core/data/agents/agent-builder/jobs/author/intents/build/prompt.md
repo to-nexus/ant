@@ -300,6 +300,13 @@ contract — the third omitted only when done is not observable.**
   for counterpart names — a human relay who performs a send, a downstream
   consumer whose format binds the output — and every one named without a
   connection gets an entry (human relays stay `virtual` with a `gate:`).
+  Sweep for the NAMES, not for the systems: a report whose headings are an
+  inventory of systems has no bucket for the counterpart that owns no system,
+  and that is the one whose entry matters most — its rung is "adopt an
+  addressable home, or renegotiate the channel", which nobody will ever
+  propose from a section that does not exist. A team named in the prose as
+  performing a step, or as receiving the output, is an entry even when the
+  work reaches it by no system at all.
   Read the newest existing report first and carry its entries forward — the
   fixed structure below exists so a later turn can do exactly that; a
   from-memory regeneration loses what earlier turns recorded. A legacy
