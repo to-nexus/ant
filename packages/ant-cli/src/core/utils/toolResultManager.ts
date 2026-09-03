@@ -205,12 +205,18 @@ export class ToolResultManager {
 
     const outlineSection = this.buildOutlineSection(resultStr, filePath);
     
+    // The omission marker is line-addressed: a count alone sent readers back
+    // over ranges they already held (~40KB of re-reads in one audited run) —
+    // the marker must say exactly which window is missing and that the head
+    // and tail are complete.
+    const omitFrom = keepStart + 1;
+    const omitTo = lines.length - keepEnd;
     const truncated = [
       ...lines.slice(0, keepStart),
-      `\n... (${omittedLines} lines omitted, file too large: ${originalTokens.toLocaleString()} tokens → ${maxTokens.toLocaleString()} limit) ...\n`,
+      `\n... (lines ${omitFrom}-${omitTo} omitted — ${omittedLines} lines, file too large: ${originalTokens.toLocaleString()} tokens → ${maxTokens.toLocaleString()} limit) ...\n`,
       ...lines.slice(-keepEnd),
       ...(outlineSection ? [`\n${outlineSection}`] : []),
-      `\nUse read_file with startLine/endLine to read specific sections.`,
+      `\nOnly lines ${omitFrom}-${omitTo} are missing — the head and tail above are complete; to see the omitted window, read_file with startLine=${omitFrom}, endLine=${omitTo}. Do not re-read ranges shown above.`,
     ].join('\n');
     
     const truncatedTokens = this.tokenManager.estimateTokens(truncated);

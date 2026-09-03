@@ -86,16 +86,30 @@ describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
     expect(manager.truncateResult('run_command', 'y'.repeat(10_000)).wasTruncated).toBe(false);
   });
 
+  it('a truncated read_file names the omitted LINE RANGE, not just a count — a count-only marker sent readers back over ranges they already held', async () => {
+    const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+    const manager = universalToolNodeConfig.resultManager!;
+    const big = Array.from({ length: 2000 }, (_, i) => `line ${i + 1}: ${'z'.repeat(40)}`).join('\n');
+    const res = manager.truncateResult('read_file', big, undefined, 'big.md');
+    expect(res.wasTruncated).toBe(true);
+    const marker = /lines (\d+)-(\d+) omitted/.exec(res.content);
+    expect(marker).not.toBeNull();
+    const [, from, to] = marker!;
+    // The guidance targets exactly the omitted window and warns off re-reads.
+    expect(res.content).toContain(`startLine=${from}, endLine=${to}`);
+    expect(res.content).toContain('head and tail above are complete');
+  });
+
   it('buildReturn folds a successful create_file into _turnToolWrites — the universal file-evidence contract (session .artifacts stays empty by design)', async () => {
     const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
     const state = { toolCalls: [], _turnToolWrites: ['earlier/kept.md'], _turnToolActions: [], recursionCount: 0 } as any;
     const executionEvents = [
-      { toolName: 'create_file', args: { path: 'dependencies/terms-notice.md' }, result: { content: 'File created' } },
+      { toolName: 'create_file', args: { path: 'dependency-report/terms-notice.md' }, result: { content: 'File created' } },
       // A failed write never counts as evidence (completion-signal = actual-write).
       { toolName: 'create_file', args: { path: 'broken/nope.md' }, result: { content: 'x', error: 'EACCES' } },
     ] as any;
     const ret = universalToolNodeConfig.buildReturn(state, { updatedHistory: [], executionEvents } as any) as any;
-    expect(ret._turnToolWrites).toEqual(['earlier/kept.md', 'dependencies/terms-notice.md']);
+    expect(ret._turnToolWrites).toEqual(['earlier/kept.md', 'dependency-report/terms-notice.md']);
     expect(ret._turnToolActions).toEqual(['create_file']);
   });
 
