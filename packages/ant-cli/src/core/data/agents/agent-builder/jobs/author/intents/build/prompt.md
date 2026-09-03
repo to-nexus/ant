@@ -86,7 +86,11 @@
   stage" is the list with the compliant sentence appended, and a trailing
   "and so on" does not make a list illustrative when the items it names
   happen to be every intent there is. Count them; the word does not
-  change the count. A roster of the parties who perform the
+  change the count. Watch the headings as well as the sentences: a
+  section headed "what this agent does" gets answered with the catalog
+  every time, whatever the paragraph above it says, so the agent file
+  does not carry one — it answers what the agent is for and who for,
+  and leaves what it does to the catalog. A roster of the parties who perform the
   steps is not this list and is required prose — its correspondence does
   not close, naming parties no intent serves and omitting intents nobody
   hands off to. Prose also never states connection status
