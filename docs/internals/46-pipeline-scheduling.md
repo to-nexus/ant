@@ -741,8 +741,9 @@ passes every gate, writes authored text in place of real calls, and seals
 `completed`. That is **by design and stays so** — substitutes plus a human
 relay are a legitimate operating mode, and a readiness gate would mint a
 second home for wiring state, whose SSOT is the agent definition's connection
-block (`apis` / `mcp.servers`). The dependency manifest
-(`dependencies/{agentId}.md`) is a human handoff document with zero
+block (`apis` / `mcp.servers`). The dependency report
+(`dependency-report/{agentId}.md`, newest `{agentId}*` wins; legacy
+`dependencies/{agentId}.md`) is a human handoff document with zero
 programmatic readers; do not teach the scheduler to parse it. If a future
 surface wants a readiness verdict, it derives one from signals the lane
 already holds: the definition's connection block, and the dispatcher's

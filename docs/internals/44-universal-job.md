@@ -1244,6 +1244,85 @@ prompt-path/glob mismatch. Structural pins updated in
 action AND the manifest glob); the pipeline-builder's single action hook is
 unchanged — the manifest has one writer.
 
+**Amendment — the polarity completes: a hook obligates the procedure, and the
+validator learns the pairing (H9)** (blazing-crushing-dream RCA, 2026-09-03):
+the first live run after the polarity inversion above — three hours after its
+commit — produced the inverted failure. The same terms-notice material, built
+fresh, came out with all four intents DECLARING `artifact:` hooks
+(`schedule/*.md`, `rules/*.md`, `reviews/*.md`, `comparisons/*.md`) while not
+one `prompt.md` named an output path or a write step: every deliverable was
+styled as a chat reply, and the globs were invented at hook-authoring time to
+satisfy the new "owed when observable" pressure. The final report then stated
+"each intent produces an observable artifact" — false for all four. Pre-
+inversion failure mode: zero hooks (quick-catching-couch). Post-inversion:
+unpaired hooks. A prompt fix moved the failure instead of closing the class —
+the ed3238911 meta-rule again (a change to always-injected prose invalidates
+prior live verification; this run WAS that re-verification, doing its job).
+
+The base loop needed no fix: the Turn Completion Contract is rendered into
+the running agent's system prompt, an unmet hook bounces with the exact glob
+("write a file matching `schedule/*.md`") under a re-entry budget, then
+pauses resumably — so the shipped agent degrades (a duress-write at a
+model-invented path, business key lost) rather than hangs. What was missing
+was machine enforcement at the authoring seam. Three closures:
+
+1. **H9, the validator's pairing rule** (`CustomAgentLoader.ts`, beside
+   H7/H8): an intent declaring `artifact: <glob>` must name the glob's
+   static directory prefix (`schedule/` for `schedule/*.md`; a fully literal
+   glob is its own token) somewhere in its `prompt.md` — paths are
+   structural tokens, never localized, so a literal substring test is a fair
+   necessary condition. H9 is an ADVISORY, not a throw: it surfaces as
+   `validation.valid:false` at the save funnel and the validate endpoint
+   (the channel the builder demonstrably self-corrects on — this same run
+   fixed a `tools.approval` validation error within one round), while the
+   runtime load path ignores it, so an agent that already runs never bricks
+   at accept. Guard: `tests/customAgents/custom-agent-loader.test.ts` (H9
+   rows), `builtin-agents.test.ts` (the pairing rule's `x/{business-key}.md`
+   template pinned in the build prompt).
+2. **The authoring rule binds both ways** (build prompt, review mirror): a
+   producing intent's deliverable IS a file — `prompt.md` names the write
+   step (`create_file` to a business-keyed path in the glob's family), and a
+   deliverable styled as a chat reply is not observable. The review lane's
+   hook-coverage check extends from prompt-path/glob MISMATCH to ABSENCE.
+3. **Wiring values are minted, never "undecided"**: the skeleton's `wiring:`
+   placeholder now states that `${secret:}` key names are the builder's own
+   namespace choice (this run left every key name, one base URL, and one
+   auth scheme as "미정" — handing the user a to-do list with no items);
+   a genuinely unknown fact is an item to obtain named with its owner. The
+   build prompt also gains the review lane's entry-coverage floor as a
+   pre-write self-check (this run's manifest omitted the human relay who
+   performs the send and four downstream consumers its own prose named — no
+   `gate:` entry existed at all).
+
+The same RCA renames the artifact: the manifest is now the **dependency
+report**, `dependency-report/{agentId}.md` (hook glob
+`dependency-report/*.md` — supersedes the `dependencies/{agentId}.md` path
+in the two amendments above). A report from an earlier session is a record
+the user may have already handed to a granting party, so a later round never
+overwrites it — it writes `dependency-report/{agentId}-{mnemonic}.md` (the
+mnemonic naming that round's change, e.g. `jira-wired`); the newest
+`{agentId}*` file is the current report, file time carries recency, and a
+legacy `dependencies/{agentId}.md` is read as the prior report and continued
+under the new path. Readers (review lane, pipeline builder) go by "newest,
+or legacy". Two runtime audit gaps from the same session close alongside:
+a truncated `read_file` now names the omitted LINE RANGE (a count-only
+marker sent the model back over ~40KB of ranges it already held — the
+"생략된 부분" re-reads were real truncation at the 16k cap, not
+hallucination), and the final seal's stop-hook evaluation persists into the
+run record (`runs[].hookReport`, plus the derived `input.summary` that was
+hardcoded empty) — until then the only evidence a gate ran was a transient
+chat line; the gate itself still feeds exclusively on the sealed
+`hookLedger`. Non-fixes, recorded deliberately: the checklist-before-first-
+write rule stays single-homed in the always-injected universal rules (this
+run's empty checklist was non-compliance, not a missing capability — the
+`<checklist>` tag needs no tool); the design-pause rule stays single-homed
+in `system.md` (the run reshaped a 938-line spec under a nine-word directive
+and dropped sections without the confirm-before-first-write the rule already
+mandates — a compliance failure, and the user declined a one-liner special
+case); and `gateDefinitionSave` staying advisory (`success:true` +
+`valid:false` persisted) is by design — an invalid definition cannot run
+(load fails at accept), and blocking saves would fight multi-file authoring.
+
 **Extension — deliverables are design space too** (2026-09-01). The
 no-authority principle originally covered only structure (partition) and
 scheduling (quarantine); the material's *deliverable shapes* — file formats,
