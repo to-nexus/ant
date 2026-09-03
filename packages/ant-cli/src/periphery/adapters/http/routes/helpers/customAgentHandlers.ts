@@ -45,7 +45,11 @@ import {
 
 export const AGENT_SCAFFOLD_ROLE_MD = `# Role
 
-Describe this agent's shared persona and working principles here.
+Describe this agent's purpose — who it is and what it is for, stated so it
+still fits when the next job in the same domain arrives. What it DOES is the
+intent catalog, which the runtime renders every turn: do not restate or
+enumerate the intents (or the situations they cover) here, and leave each
+procedure's own rules to the job and intent that own them.
 Everything in \`base/\` is always injected for every job of this agent.
 Job-specific procedure and the intent catalog (each intent's criterion,
 prompt, and hooks) live under each \`jobs/{jobId}/\` directory.
