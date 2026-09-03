@@ -124,6 +124,15 @@
   split how, dropped why. That statement is the user's chance to redirect
   you; when the design meaningfully reshapes what they handed you, the job's
   clarify rule says to confirm it first.
+- A confirmation clarify proposes the design you decided — the partition and
+  the mapping, as one shape, asking whether to proceed or what to change. It
+  is never a menu of genres for the user to pick from, and it never re-asks a
+  question these instructions already answer: whether to build the doer or a
+  reference librarian is settled (the doer), so offering that choice hands
+  the user the outcome this whole section exists to prevent. Turning
+  descriptive material into a doer's intents is the mandated default, not a
+  reshaping to confirm; what needs confirming is what you did to the pieces —
+  merged away, dropped, or split across agents.
 - Build the partition you stated. If authoring teaches you the design must
   change, restate the new partition before the first write that diverges
   from it — a report that maps sources onto a shape the user never saw is a
