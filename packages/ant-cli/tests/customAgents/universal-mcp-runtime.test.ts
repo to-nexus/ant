@@ -35,6 +35,7 @@ import {
   _resetUniversalRuntimeForTests,
   MCP_SPOOL_THRESHOLD_BYTES,
   UNIVERSAL_RESULT_LIMITS,
+  toolErrorCardSummary,
 } from '../../src/agents/universal/graph/runtime';
 import { ToolResultManager } from '../../src/core/utils/toolResultManager';
 import { TokenBudgetManager } from '../../src/core/utils/tokenBudget';
@@ -152,8 +153,15 @@ describe('universal MCP dispatch — registry instance identity', () => {
     return { ctx, shown };
   }
 
-  it('an isError result emits ONE failed tool_action status carrying the head line only', async () => {
-    buildUniversalRegistry(fakeMcp({ text: 'HTTP 404 Not Found\ncontent-type: text/html\n\n<pre>stack</pre>', isError: true }).mcp);
+  it('an isError result emits ONE failed tool_action status carrying the status line AND the reason', async () => {
+    // major-loading-floor gave the card the head line; oak-leaping-latch showed
+    // the head line alone is `HTTP 400 Bad Request` — a refusal naming no rule.
+    buildUniversalRegistry(
+      fakeMcp({
+        text: 'HTTP 400 Bad Request\ncontent-type: application/json\n\n{"error":"path is required"}',
+        isError: true,
+      }).mcp,
+    );
     const { ctx, shown } = statusCapturingCtx();
 
     const result = await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
@@ -163,8 +171,17 @@ describe('universal MCP dispatch — registry instance identity', () => {
     expect(shown[0].key).toBe('tool_action');
     expect(shown[0].data.status).toBe('failed');
     expect(shown[0].data.content).toContain(READ_TOOL);
-    expect(shown[0].data.content).toContain('HTTP 404 Not Found');
-    expect(shown[0].data.content).not.toContain('<pre>');
+    expect(shown[0].data.content).toContain('HTTP 400 Bad Request');
+    expect(shown[0].data.content).toContain('path is required');
+    expect(shown[0].data.content).not.toContain('content-type');
+  });
+
+  it.each([
+    ['single-line error text stays as-is', 'Unknown tool', 'Unknown tool'],
+    ['a blank result yields no summary', '', ''],
+    ['the summary is capped', `HTTP 500 x\n\n${'z'.repeat(400)}`, `HTTP 500 x — ${'z'.repeat(400)}`.slice(0, 200)],
+  ])('toolErrorCardSummary: %s', (_label, text, expected) => {
+    expect(toolErrorCardSummary(text)).toBe(expected);
   });
 
   it('a success result emits no status card', async () => {

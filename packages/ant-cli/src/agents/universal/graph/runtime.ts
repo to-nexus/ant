@@ -83,6 +83,23 @@ export const MCP_SPOOL_THRESHOLD_BYTES = Math.floor(
 );
 export const MCP_SPOOL_DIR = 'mcp-results';
 const MCP_SPOOL_PREVIEW_CHARS = 1500;
+const TOOL_ERROR_CARD_CHARS = 200;
+
+/**
+ * One-line failure summary for a remote-call error card. The head line of an
+ * HTTP error is only `HTTP 400 Bad Request` — it names no rule, so a card built
+ * from it alone leaves the user (and the model's own transcript) with a refusal
+ * whose reason is invisible. Carry the first body line with it; `content-type:`
+ * is transport noise and is skipped.
+ */
+export function toolErrorCardSummary(text: string): string {
+  const lines = (text || '').split('\n').map((l) => l.trim());
+  const headAt = lines.findIndex((l) => l.length > 0);
+  if (headAt < 0) return '';
+  const head = lines[headAt];
+  const reason = lines.slice(headAt + 1).find((l) => l.length > 0 && !/^content-type:/i.test(l));
+  return (reason ? `${head} — ${reason}` : head).slice(0, TOOL_ERROR_CARD_CHARS);
+}
 
 let _mcpSpoolSeq = 0;
 
@@ -140,12 +157,12 @@ export function buildUniversalRegistry(mcp: McpConnectionManager | null): ToolRe
           // cards; this covers the remote-call family. Best-effort: a status
           // emit failure must not change the tool result.
           try {
-            const headLine = (result.text || '').split('\n', 1)[0].slice(0, 200);
+            const summary = toolErrorCardSummary(result.text || '');
             await ctx.chatStatus.showStatus('tool_action', {
               toolName: info.name,
               actionIcon: '❌',
               status: 'failed',
-              content: `${info.name} failed${headLine ? `: ${headLine}` : ''}`,
+              content: `${info.name} failed${summary ? `: ${summary}` : ''}`,
             });
           } catch (e) {
             console.warn(`⚠️ [UniversalMCP] error-status emit failed for ${info.name}:`, (e as Error)?.message);
