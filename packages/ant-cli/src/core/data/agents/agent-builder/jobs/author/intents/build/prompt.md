@@ -281,6 +281,15 @@ contract — the third omitted only when done is not observable.**
   Declaring `outcomes` never discharges the hook obligation: the verdict
   picks which result, the hook proves the deliverable exists — a judgment
   intent that writes its findings to a file still owes that file's glob.
+  Every member is a conclusion the work reached. So no member means the
+  work could not run — "insufficient-input", "needs-clarification",
+  "cannot-determine" — because not being able to start is the clarify
+  exit, and dressing it as a verdict gives every pipeline branching on
+  this intent a route for an answer that was never given. Nor is a member
+  an attribute of what was examined ("adverse-found") when the decision
+  the work reaches is which period applies: name the decisions, not the
+  findings behind them. And an intent that is not a judgment at all
+  declares no `outcomes` — a producing intent's result is its file.
   The exact contract is in `on-demand/definition-format.md`.
 - `infer.md` names what arrives or is asked for — "a settlement file for the
   closed month is in hand" — never when a calendar fires it, not even as a
