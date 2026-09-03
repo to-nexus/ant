@@ -388,8 +388,8 @@ contract — the third omitted only when done is not observable.**
   possible", in any language — is neither, and both a later turn and an
   auditor score it as a filled line. Whatever made it unanswerable belongs to
   the field that owns it: the rung the counterpart is actually on goes in
-  `interface:`, a human step that survives wiring goes in `gate:`, an approval
-  nobody has granted goes in `access:`.
+  `interface:`, a human step the counterpart keeps goes in `gate:`, an
+  approval nobody has granted goes in `access:`.
 - It is also a dispatchable request. A counterpart's section is the handoff
   unit: the user forwards it, with the document's opening lines, to the
   parties that own that counterpart — several parties may each act on their
@@ -457,8 +457,9 @@ contract — the third omitted only when done is not observable.**
       disguise: "if that system has an API, then a base URL and a token"
       reads as unfilled and is really the interface question, unanswered,
       restated one field down. Beside `interface: none` this field is
-      omitted — the request lives in `interface:`, the surviving human step
-      in `gate:` — and beside a named interface it is concrete}
+      omitted — the request lives in `interface:`, the human step in the
+      entry's own `gate:` below — and beside a named interface it is
+      concrete}
     - access: {the rights and approvals required — including any sign-off
       that gates automated access, the data it moves, or a paid seat — who
       grants each, and the credential the granting party issues when one
@@ -481,8 +482,13 @@ contract — the third omitted only when done is not observable.**
     into an agent this builder authors — one line naming that agent's job
     and the access it would still need; delegation shifts the dependency,
     it never erases it}
-  - gate: {only when a human step remains after wiring — a send button, a
-    final confirmation — one line naming it}
+  - gate: {the human step this counterpart keeps — a send button, a final
+    confirmation, a hand-off someone performs — one line naming it. It is a
+    field of the entry, never an item under `missing:`: a gate is a step
+    deliberately retained, not something a granting party can provide, and
+    filed as missing it becomes a non-action on the user's action list. A
+    counterpart with no interface at all has a gate all the same — there the
+    human step is the whole of the work, not a residue left after wiring}
   - status: virtual | provided | wired
   ```
 - When a turn supplies a dependency-report entry's missing items, wire the
