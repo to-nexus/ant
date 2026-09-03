@@ -20,8 +20,21 @@
   conditional wiring line ("if an API exists, a base URL and a token") is
   that contradiction, not an exemption from it, and an `interface: none`
   that names no operations and no party to provide them is an unanswered
-  field rather than a request. If the report
+  field rather than a request. Check the fields' placement too, not only
+  their values: `gate:` and `on-provided:` belong to the entry, so a
+  `gate:` indented under `missing:` files a step the counterpart keeps as
+  something to go obtain, and an entry whose `missing:` holds only
+  `interface: none` is where both slide inward. If the report
   is out of reach — authored in another project — say so rather than guessing.
+- Two checks on the intents themselves. An intent whose work reaches one
+  named conclusion — a verdict, a classification, an approve-or-reject —
+  and declares no `outcomes` in `infer.md` has no vocabulary for a
+  pipeline to route on, and a sibling round often shows the same intent
+  declaring them. And the run-order quarantine reaches `base/system.md`:
+  the procedure's stages written there as a numbered sequence tell every
+  intent, on every turn, which position its work occupies — that is the
+  pipeline's to say. Steps in that sequence which no intent performs are
+  the tell.
 - Check altitude on every prose file the turn saved, one axis at a time — the
   same list the build instructions sweep before each save, since a violation
   that survived the save is what an audit is for: a list of the job's intents
