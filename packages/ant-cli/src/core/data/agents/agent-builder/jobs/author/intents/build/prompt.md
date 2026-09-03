@@ -465,7 +465,17 @@ contract — the third omitted only when done is not observable.**
       namespace choice, not information you lack), so "undecided" is never
       a wiring value; a fact you genuinely lack — a base URL, an auth
       scheme — is stated as an item to obtain, named with the party who
-      knows it, never left blank — and the operations the intents need,
+      knows it, never left blank. Nor filled with a likely-looking guess:
+      a host inferred from the company's name, a vendor's default cloud
+      domain, a path shaped like the ones that system usually has. This
+      entry is forwarded and acted on, so an invented value is worse than
+      an admitted gap — a gap gets asked about, a plausible value gets a
+      ticket filed against it. If you are appending "or their internal
+      URL" to something you wrote, that hedge is the tell: you do not have
+      it, and the item to obtain is what belongs there. Values the material
+      itself carries are yours to use — including ones only its markup
+      holds, like the host inside a link — so read before concluding you
+      lack it — and the operations the intents need,
       which become the `allow` lines. A CONDITIONAL is the contradiction in
       disguise: "if that system has an API, then a base URL and a token"
       reads as unfilled and is really the interface question, unanswered,
