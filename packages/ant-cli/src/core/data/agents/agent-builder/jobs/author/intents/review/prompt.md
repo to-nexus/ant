@@ -16,7 +16,11 @@
   finding — and check it against the definition: an entry per counterpart the
   definition names without a connection (or the recorded verdict that none
   remain), `status:` consistent with the connections the definition actually
-  declares, and no `interface: none` beside a filled `wiring:`. If the report
+  declares, and no `interface: none` beside a filled `wiring:` — a
+  conditional wiring line ("if an API exists, a base URL and a token") is
+  that contradiction, not an exemption from it, and an `interface: none`
+  that names no operations and no party to provide them is an unanswered
+  field rather than a request. If the report
   is out of reach — authored in another project — say so rather than guessing.
 - Check altitude on every prose file the turn saved, one axis at a time — the
   same list the build instructions sweep before each save, since a violation
@@ -36,7 +40,12 @@
   marks as no longer in force that were carried in anyway. The report's mapping claim — what merged, what split, what was
   dropped — is a claim to verify against that material, not a finding to
   accept.
-- Check hook coverage: an intent whose `prompt.md` names a stable output path
+- Check hook coverage. An intent that produces nothing at all — no file, no
+  call — is itself the finding, not an exempt case: hooklessness is for work
+  whose outcome only a person can judge, while a turn that answers from
+  material the definition already carries is the job's prose and its
+  `on-demand/` files, not an intent. Then, among the intents that do produce
+  something: one whose `prompt.md` names a stable output path
   or a write into a declared connection but carries no `hooks.yaml` is a
   finding, and so is a prompt path that does not match the hook's glob — an
   `artifacts/` prefix on either side is the usual mismatch — and so is an

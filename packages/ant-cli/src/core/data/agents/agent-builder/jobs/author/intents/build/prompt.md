@@ -418,7 +418,11 @@ contract — the third omitted only when done is not observable.**
       whose standard interface exists but is unreachable from here is never
       "none" — name the interface and let reachability carry the obstacle.
       If you can fill `wiring:` below, an interface exists: "none" beside a
-      filled wiring line is a contradiction}
+      filled wiring line is a contradiction. "none" is a REQUEST, never a
+      shrug: "an API may or may not exist" answers nothing and hands the
+      reader no item, so name the operations to be supported and the party
+      who would expose them — read the operations off the substitute's own
+      fields, which is information you already have}
     - wiring: {what the connection block will need, as names: the base URL,
       the auth scheme and the header it rides, the `${secret:}` key NAMES
       to register in credential settings — the store carries the values,
@@ -427,7 +431,12 @@ contract — the third omitted only when done is not observable.**
       a wiring value; a fact you genuinely lack — a base URL, an auth
       scheme — is stated as an item to obtain, named with the party who
       knows it, never left blank — and the operations the intents need,
-      which become the `allow` lines}
+      which become the `allow` lines. A CONDITIONAL is the contradiction in
+      disguise: "if that system has an API, then a base URL and a token"
+      reads as unfilled and is really the interface question, unanswered,
+      restated one field down. Beside `interface: none` this field is
+      omitted — the request lives in `interface:`, the surviving human step
+      in `gate:` — and beside a named interface it is concrete}
     - access: {the rights and approvals required — including any sign-off
       that gates automated access, the data it moves, or a paid seat — who
       grants each, and the credential the granting party issues when one
