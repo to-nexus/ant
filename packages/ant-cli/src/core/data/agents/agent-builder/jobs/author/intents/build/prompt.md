@@ -37,7 +37,13 @@
   they are one. One job with clear prose beats four intents that say nearly
   the same thing; one intent that flattens many separately triggered tasks is
   the same mistake in reverse. A run binds exactly one intent — work that
-  depends on other work chains between runs, never merged into one intent.
+  depends on other work chains between runs, never merged into one intent,
+  and where the merge rule and this one both seem to apply, this one
+  decides. "One kickoff starts all of it" is not one trigger: pieces
+  performed in succession, each waiting on the last one's output or on a
+  date the schedule sets for it, chain between runs by definition. The
+  agent's own back-calculation is the evidence to check — units it places
+  on different days are units it cannot perform in a single run.
 - Do the counting explicitly, before the partition is chosen. Walk the
   material and list every unit it gives a trigger, a required form and a
   lead time of its own; that list is what the partition answers to, and

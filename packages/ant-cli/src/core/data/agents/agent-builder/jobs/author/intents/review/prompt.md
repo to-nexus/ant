@@ -71,10 +71,14 @@
   trigger drives them, so deliverables that each wait on a different
   predecessor (a draft once the revision is settled, an extraction once
   the notice date is fixed, a dispatch just before sending) are separate
-  triggers however single the stage sounds. The tell is in `prompt.md`:
-  N numbered sub-procedures with their own inputs and their own outputs
-  are N intents, and the one stop hook proves only that some file was
-  written; and pieces the material
+  triggers however single the stage sounds. Where both rules seem to fit,
+  the chaining rule decides — "a run binds exactly one intent; work that
+  depends on other work chains between runs" — so "one kickoff starts all
+  of it" settles nothing. Two tells, and neither is a matter of degree:
+  `prompt.md` carries N numbered sub-procedures with their own inputs and
+  outputs, and the definition's OWN back-calculated schedule puts those
+  units on different days, which no single run can span. Report it as
+  structural, not as wording; and pieces the material
   marks as no longer in force that were carried in anyway. The report's mapping claim — what merged, what split, what was
   dropped — is a claim to verify against that material, not a finding to
   accept.
