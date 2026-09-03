@@ -80,17 +80,7 @@
   judging the phrasing. Write in its place what the sentence was reaching
   for, one altitude up: the body of work the agent holds and who it holds
   it for, such that adding an intent would not date it, leaving the catalog
-  to carry which units exist today. That sentence REPLACES the list; it
-  does not introduce one. "Back-calculation, spec check, comparison table,
-  extraction request and adverse judgement — the deliverables of each
-  stage" is the list with the compliant sentence appended, and a trailing
-  "and so on" does not make a list illustrative when the items it names
-  happen to be every intent there is. Count them; the word does not
-  change the count. Watch the headings as well as the sentences: a
-  section headed "what this agent does" gets answered with the catalog
-  every time, whatever the paragraph above it says, so the agent file
-  does not carry one — it answers what the agent is for and who for,
-  and leaves what it does to the catalog. A roster of the parties who perform the
+  to carry which units exist today. A roster of the parties who perform the
   steps is not this list and is required prose — its correspondence does
   not close, naming parties no intent serves and omitting intents nobody
   hands off to. Prose also never states connection status
