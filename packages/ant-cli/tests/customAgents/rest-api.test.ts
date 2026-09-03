@@ -251,7 +251,7 @@ describe('executor — result framing', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('an object body serializes with JSON Content-Type; a string body needs an explicit non-JSON Content-Type', async () => {
+  it('an object body serializes with JSON Content-Type; a non-JSON Content-Type string rides verbatim', async () => {
     const { impl, calls } = fetchStub(ok());
     await executeRestCall(compiled(), 'request', { method: 'POST', path: '/v', body: { a: 1 } }, impl);
     expect(calls[0].init.body).toBe('{"a":1}');
@@ -260,27 +260,39 @@ describe('executor — result framing', () => {
     await executeRestCall(compiled(), 'request', { method: 'POST', path: '/v', body: 'a=1&b=2', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, impl);
     expect(calls[1].init.body).toBe('a=1&b=2');
     expect((calls[1].init.headers as Record<string, string>)['Content-Type']).toBe('application/x-www-form-urlencoded');
+  });
 
-    // A pre-serialized JSON string is refused before any network call — a
-    // hand-escaped string is where corrupt \u escapes come from, and the
-    // upstream body-parser answers them with an HTML stack page.
-    const rejected = await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '{"a":1}' }, impl);
-    expect(rejected.isError).toBe(true);
-    expect(rejected.text).toMatch(/pass the structure itself/);
-    expect(calls).toHaveLength(2);
+  it('a pre-serialized JSON string body is parsed and normalized — upstream sees runtime bytes only', async () => {
+    // Refusal alone did not converge (icy-milling-flock burned 24 refused
+    // rounds re-sending strings), so a parseable string is coerced to the
+    // structure. The JSON-CT variant is the oak-dreaming-sable bypass shape.
+    const { impl, calls } = fetchStub(ok());
+    await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '{"a": 1}' }, impl);
+    expect(calls[0].init.body).toBe('{"a":1}');
+    expect((calls[0].init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
 
-    // Declaring a JSON Content-Type does not open the escape hatch: it is the
-    // same hand-serialized payload wearing a header (live bypass,
-    // oak-dreaming-sable — the model retried the refused string with
-    // Content-Type: application/json and rode straight through).
-    for (const ct of ['application/json', 'application/vnd.api+json', 'Application/JSON; charset=utf-8']) {
-      const viaHeader = await executeRestCall(
-        compiled(), 'request',
-        { method: 'PUT', path: '/v', body: '{"a":1}', headers: { 'Content-Type': ct } }, impl,
-      );
-      expect(viaHeader.isError).toBe(true);
-      expect(viaHeader.text).toMatch(/non-JSON Content-Type/);
-    }
+    await executeRestCall(
+      compiled(), 'request',
+      { method: 'PUT', path: '/v', body: '{"b": [1, 2]}', headers: { 'Content-Type': 'application/json' } }, impl,
+    );
+    expect(calls[1].init.body).toBe('{"b":[1,2]}');
+
+    // A corrupt escape fails the LOCAL parse — typed policy error, no network
+    // call, instead of the upstream HTML stack page (major-loading-floor D4).
+    const corrupt = await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '{"a": "\\uZZZZ"}' }, impl);
+    expect(corrupt.isError).toBe(true);
+    expect(corrupt.text).toMatch(/not valid JSON/);
+
+    // A string parsing to a bare scalar is not a structure.
+    const scalar = await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '"plain"' }, impl);
+    expect(scalar.isError).toBe(true);
+    expect(scalar.text).toMatch(/bare scalar/);
+
+    // Non-JSON text without a declared Content-Type is not silently guessed.
+    const opaque = await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: 'a=1&b=2' }, impl);
+    expect(opaque.isError).toBe(true);
+    expect(opaque.text).toMatch(/non-JSON Content-Type/);
+
     expect(calls).toHaveLength(2);
   });
 

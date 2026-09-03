@@ -27,12 +27,11 @@
  *    rejections. The error framing matters beyond wording: action stop-hook
  *    evidence counts successful calls only, so an API-rejected write must
  *    never satisfy an `api__{server}__request` hook.
- *  - A string `body` rides only under an explicit caller NON-JSON
- *    Content-Type (form-encoded, plain text); without one — or with a JSON
- *    one, which is the same hand-serialized payload wearing a header — it is
- *    refused before any network call. A pre-serialized JSON string is where
- *    corrupt `\u` escapes come from, and the upstream parser answers them
- *    with an HTML stack page.
+ *  - A string `body` rides verbatim only under an explicit caller NON-JSON
+ *    Content-Type (form-encoded, plain text). Any other string body is
+ *    parsed locally and normalized to the structure — upstream only ever
+ *    sees runtime-serialized bytes, so a corrupt `\u` escape fails here as
+ *    a typed policy error instead of an upstream HTML stack page.
  *  - An HTML 4xx/5xx body is reduced to a short sanitized extract (tags
  *    stripped, local filesystem paths redacted, hard byte cap): an error PAGE
  *    is not recovery data. JSON/text error bodies stay verbatim.
@@ -293,7 +292,7 @@ export function buildRestToolInfos(
             query: QUERY_PROP,
             body: {
               description:
-                'Request body. Pass the JSON structure itself (object/array) — the runtime serializes it and sets Content-Type: application/json. A pre-serialized JSON string is rejected even under an explicit JSON Content-Type header; a string body is accepted only alongside an explicit non-JSON Content-Type header (form-encoded, plain text).',
+                'Request body. Pass the JSON structure itself (object/array) — the runtime serializes it and sets Content-Type: application/json. A pre-serialized JSON string is parsed and normalized (a string that is not valid JSON is rejected); a non-JSON string body requires an explicit non-JSON Content-Type header (form-encoded, plain text).',
             },
             headers: HEADERS_PROP,
             timeout_ms: TIMEOUT_PROP,
@@ -442,21 +441,33 @@ export async function executeRestCall(
   }
 
   // body (write tool only) — the structure itself, serialized by the runtime.
-  // A pre-serialized JSON string is refused locally unless the caller declares
-  // an explicit NON-JSON Content-Type: hand-escaped strings are where corrupt
-  // `\u` escapes come from, and the upstream body-parser's answer is an HTML
-  // stack page the model cannot recover from. Merely adding a JSON
-  // Content-Type header is the same hand-serialized payload, not the escape
-  // hatch — only form-encoded / plain-text bodies ride verbatim.
+  // A string body without a non-JSON Content-Type is parsed HERE and
+  // normalized to the structure, so upstream only ever sees runtime-serialized
+  // bytes: a corrupt `\u` escape fails this local parse and returns a typed
+  // policy error instead of an upstream HTML stack page. Refusal alone was
+  // tried and does not converge — a live run burned 24 refused rounds
+  // re-sending hand-serialized strings (icy-milling-flock). Form-encoded /
+  // plain-text bodies declare a non-JSON Content-Type and ride verbatim.
   let body: string | undefined;
   if (toolName === 'request' && args.body !== undefined && args.body !== null) {
     const contentType = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1];
-    if (typeof args.body === 'string' && (contentType === undefined || /json/i.test(contentType))) {
-      return policyError(
-        'Policy: "body" must be a JSON object or array — pass the structure itself, not a pre-serialized JSON string; the runtime serializes it and sets Content-Type: application/json. A string body is accepted only with an explicit non-JSON Content-Type (form-encoded, plain text).',
-      );
+    const nonJsonContentType = contentType !== undefined && !/json/i.test(contentType);
+    let structured: unknown = args.body;
+    if (typeof structured === 'string' && !nonJsonContentType) {
+      try {
+        structured = JSON.parse(structured);
+      } catch (e) {
+        return policyError(
+          `Policy: "body" must be the JSON structure itself (object/array), and the string passed is not valid JSON (${e instanceof Error ? e.message : String(e)}). Resend the body as the structure — not a hand-serialized string. For a form-encoded or plain-text body, set an explicit non-JSON Content-Type header.`,
+        );
+      }
+      if (structured === null || typeof structured !== 'object') {
+        return policyError(
+          'Policy: "body" must be a JSON object or array — the string passed parses to a bare scalar. Pass the structure itself; for a plain-text body, set an explicit non-JSON Content-Type header.',
+        );
+      }
     }
-    body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
+    body = typeof structured === 'string' ? structured : JSON.stringify(structured);
     if (contentType === undefined) headers['Content-Type'] = 'application/json';
   }
   Object.assign(headers, compiled.headers);
