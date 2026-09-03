@@ -68,6 +68,13 @@
   would not disturb ("this agent carries the terms-notice procedure for
   the owner who runs it"), and let the catalog carry which units exist
   today. The test is whether adding one intent would date the sentence.
+  The count test has one false positive to rule out: a roster of the
+  parties who perform the procedure's steps is NOT this list, however
+  many rows it has. Tell them apart by whether the correspondence closes
+  — the intent list has an item for every intent and an intent for every
+  item, while a roster names parties no intent serves and omits the
+  intents nobody hands off to. That roster is required prose, not a
+  violation; see the division of labour below.
   Prose also never states connection status
   ("this agent is not wired to X") — wiring state lives only in the
   dependency report, whose `status:` the wiring turn updates; prose

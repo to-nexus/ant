@@ -30,7 +30,13 @@
   arrives spelled as anything with one item per intent: the situations they
   trigger on, the deliverables they produce, a table with a row each, a
   parenthesised sentence naming them. "Those are outputs, not intent ids"
-  is the phrasing changing, not the list going away — a rule an intent's
+  is the phrasing changing, not the list going away. Rule out one false
+  positive before reporting it: a roster of the parties who perform the
+  procedure's steps is prose the build rules REQUIRE, not this list, so
+  check that the correspondence closes both ways — an item for every
+  intent and an intent for every item. A list that names parties no
+  intent serves, or omits intents nobody hands off to, is the division of
+  labour and passes — a rule an intent's
   procedure already carries duplicated into prose one level above it,
   connection status stated as prose, and a sentence directing the running
   agent to a counterpart the job declares no connection for. Name the file
