@@ -27,6 +27,13 @@
  *    rejections. The error framing matters beyond wording: action stop-hook
  *    evidence counts successful calls only, so an API-rejected write must
  *    never satisfy an `api__{server}__request` hook.
+ *  - A string `body` rides only under an explicit caller Content-Type
+ *    (form-encoded, plain text); without one it is refused before any network
+ *    call — a pre-serialized JSON string is where corrupt `\u` escapes come
+ *    from, and the upstream parser answers them with an HTML stack page.
+ *  - An HTML 4xx/5xx body is reduced to a short sanitized extract (tags
+ *    stripped, local filesystem paths redacted, hard byte cap): an error PAGE
+ *    is not recovery data. JSON/text error bodies stay verbatim.
  *  - `McpConfigError` is thrown at compile (connect) time only — bad baseUrl
  *    — so job-runner keeps classifying definition mistakes as config_invalid.
  */
@@ -50,6 +57,8 @@ export const REST_CALL_TIMEOUT_MIN_MS = 1_000;
 export const REST_CALL_TIMEOUT_MAX_MS = 60_000;
 /** Response-body read cap — beyond this the text is truncated with a note. */
 export const REST_BODY_CAP_BYTES = 2 * 1024 * 1024;
+/** Sanitized extract cap for HTML error pages fed back to the model. */
+export const REST_ERROR_HTML_EXTRACT_BYTES = 512;
 
 const GET_METHODS = ['GET', 'HEAD'] as const;
 const WRITE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -282,7 +291,7 @@ export function buildRestToolInfos(
             query: QUERY_PROP,
             body: {
               description:
-                'Request body. An object/array is serialized as JSON; a string is sent verbatim. Either way Content-Type defaults to application/json unless set in headers — set it explicitly for form-encoded or plain-text bodies.',
+                'Request body. Pass the JSON structure itself (object/array) — the runtime serializes it and sets Content-Type: application/json. A pre-serialized JSON string is rejected; a string body is accepted only alongside an explicit non-JSON Content-Type header (form-encoded, plain text).',
             },
             headers: HEADERS_PROP,
             timeout_ms: TIMEOUT_PROP,
@@ -298,6 +307,25 @@ export function buildRestToolInfos(
 
 function policyError(text: string): McpCallResult {
   return { text, isError: true };
+}
+
+/**
+ * Reduce an HTML error page to a short plain-text extract: tags and entities
+ * stripped, local filesystem paths (stack-trace frames) redacted — URL routes
+ * like "Cannot PUT /definitions/…" survive, they ARE the signal — and hard
+ * byte cap applied.
+ */
+function sanitizeHtmlErrorBody(html: string): string {
+  const stripped = html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/(?:[A-Za-z]:\\|\/(?:Users|home|var|tmp|opt|usr|private|srv|etc)\/)[^\s)"']+/g, '<local-path>')
+    .replace(/\S*node_modules\S*/g, '<local-path>')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped.length > REST_ERROR_HTML_EXTRACT_BYTES
+    ? `${stripped.slice(0, REST_ERROR_HTML_EXTRACT_BYTES)} …`
+    : stripped;
 }
 
 function matchSegments(patternSegs: string[], pathSegs: string[]): boolean {
@@ -411,12 +439,21 @@ export async function executeRestCall(
     }
   }
 
-  // body (write tool only) — Content-Type defaults to JSON for ANY body shape:
-  // a caller-serialized JSON string must not silently ride as text/plain.
+  // body (write tool only) — the structure itself, serialized by the runtime.
+  // A pre-serialized JSON string without an explicit Content-Type is refused
+  // locally: hand-escaped strings are where corrupt `\u` escapes come from,
+  // and the upstream body-parser's answer is an HTML stack page the model
+  // cannot recover from. Form-encoded / plain-text bodies declare their
+  // Content-Type and ride verbatim.
   let body: string | undefined;
   if (toolName === 'request' && args.body !== undefined && args.body !== null) {
-    body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
     const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
+    if (typeof args.body === 'string' && !hasContentType) {
+      return policyError(
+        'Policy: "body" must be a JSON object or array — pass the structure itself, not a pre-serialized JSON string; the runtime serializes it and sets Content-Type: application/json. For a form-encoded or plain-text body, set an explicit Content-Type header.',
+      );
+    }
+    body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
     if (!hasContentType) headers['Content-Type'] = 'application/json';
   }
   Object.assign(headers, compiled.headers);
@@ -451,7 +488,13 @@ export async function executeRestCall(
     }
     let text = buf.toString('utf-8');
     let note = '';
-    if (buf.byteLength > REST_BODY_CAP_BYTES) {
+    if (res.status >= 400 && /html/i.test(contentType)) {
+      // An upstream error PAGE (Express default handler, a proxy) is not
+      // recovery data: strip tags, redact local filesystem paths (stack
+      // traces), cap hard. JSON/text error bodies stay verbatim below.
+      text = sanitizeHtmlErrorBody(text);
+      note = `\n\n[HTML error page reduced: ${buf.byteLength} bytes → sanitized extract (cap ${REST_ERROR_HTML_EXTRACT_BYTES}) — the status line is the signal; the request may not have reached the API handler]`;
+    } else if (buf.byteLength > REST_BODY_CAP_BYTES) {
       text = buf.subarray(0, REST_BODY_CAP_BYTES).toString('utf-8');
       note = `\n\n[... truncated: body is ${buf.byteLength} bytes, cap is ${REST_BODY_CAP_BYTES} ...]`;
     }

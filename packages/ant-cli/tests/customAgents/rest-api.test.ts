@@ -28,6 +28,7 @@ import {
   resolveRestConnectivity,
   resolveSelfApiConfig,
   REST_BODY_CAP_BYTES,
+  REST_ERROR_HTML_EXTRACT_BYTES,
   SELF_API_LABEL,
   type CompiledRestServer,
 } from '../../src/core/customAgents/restApi';
@@ -250,7 +251,7 @@ describe('executor — result framing', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('any body defaults Content-Type to application/json unless headers override; a string rides verbatim', async () => {
+  it('an object body serializes with JSON Content-Type; a string body needs an explicit non-JSON Content-Type', async () => {
     const { impl, calls } = fetchStub(ok());
     await executeRestCall(compiled(), 'request', { method: 'POST', path: '/v', body: { a: 1 } }, impl);
     expect(calls[0].init.body).toBe('{"a":1}');
@@ -260,11 +261,34 @@ describe('executor — result framing', () => {
     expect(calls[1].init.body).toBe('a=1&b=2');
     expect((calls[1].init.headers as Record<string, string>)['Content-Type']).toBe('application/x-www-form-urlencoded');
 
-    // A caller-serialized JSON string must not silently ride as text/plain —
-    // without the default, fetch stamps text/plain and express.json drops the body.
-    await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '{"a":1}' }, impl);
-    expect(calls[2].init.body).toBe('{"a":1}');
-    expect((calls[2].init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    // A pre-serialized JSON string is refused before any network call — a
+    // hand-escaped string is where corrupt \u escapes come from, and the
+    // upstream body-parser answers them with an HTML stack page.
+    const rejected = await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '{"a":1}' }, impl);
+    expect(rejected.isError).toBe(true);
+    expect(rejected.text).toMatch(/pass the structure itself/);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('an HTML error body is sanitized: tags stripped, local paths redacted, URL routes kept, capped', async () => {
+    const stack = `<html><body><pre>SyntaxError: Bad Unicode escape in JSON at position 7695<br> at JSON.parse (&lt;anonymous&gt;)<br> at parse (/Users/probe/dev/ant/node_modules/.pnpm/body-parser@2.3.0/lib/types/json.js:92:19)<br>Cannot PUT /definitions/agents/x/file</pre>${'<p>pad</p>'.repeat(300)}</body></html>`;
+    const { impl } = fetchStub(() => new Response(stack, { status: 400, headers: { 'content-type': 'text/html; charset=utf-8' } }));
+    const res = await executeRestCall(compiled(), 'request', { method: 'POST', path: '/v', body: { a: 1 } }, impl);
+    expect(res.isError).toBe(true);
+    expect(res.text).toMatch(/^HTTP 400/);
+    expect(res.text).not.toContain('<pre>');
+    expect(res.text).not.toContain('/Users/');
+    expect(res.text).not.toContain('node_modules');
+    expect(res.text).toContain('Cannot PUT /definitions/agents/x/file');
+    expect(res.text).toMatch(/HTML error page reduced/);
+    expect(res.text.length).toBeLessThan(REST_ERROR_HTML_EXTRACT_BYTES + 400);
+  });
+
+  it('a JSON error body stays verbatim — it is recovery data', async () => {
+    const { impl } = fetchStub(() => new Response('{"error":"Path is outside the definition whitelist"}', { status: 400, headers: { 'content-type': 'application/json' } }));
+    const res = await executeRestCall(compiled(), 'request', { method: 'POST', path: '/v', body: { a: 1 } }, impl);
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('Path is outside the definition whitelist');
   });
 
   it('a write method can never ride the get tool', async () => {
