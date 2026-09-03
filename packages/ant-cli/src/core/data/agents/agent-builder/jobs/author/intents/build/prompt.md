@@ -291,6 +291,17 @@ contract — the third omitted only when done is not observable.**
   "fully automated, unattended", the context section states that this intent
   is that performer — the procedure must not leave the agent believing the
   work is already done elsewhere.
+- The quarantine covers job prose on the same terms, and job prose is where
+  run order arrives disguised as orientation: the material's overview of the
+  whole procedure, rewritten as numbered steps in `base/system.md` under a
+  heading like "the flow". Every intent then reads, on every turn, that its
+  work is step five of eight — which is the run order the pipeline owns,
+  stated as fact in prose no pipeline can update. Keep the orientation and
+  drop the ordering: name the stages as the terrain the work sits in, not as
+  a sequence with positions. If the sequence itself must be recorded, it goes
+  in a labeled section on the same terms as an intent's, and the steps no
+  intent performs are the tell that you are describing the procedure rather
+  than this job's part in it.
 
 **Admit to `on-demand/` only what the runner will open.**
 
