@@ -42,8 +42,12 @@
   items against the catalog rather than matching a shape, because the list
   arrives spelled as anything with one item per intent: the situations they
   trigger on, the deliverables they produce, a table with a row each, a
-  parenthesised sentence naming them. "Those are outputs, not intent ids"
-  is the phrasing changing, not the list going away. Rule out one false
+  parenthesised sentence naming them, a list closed with "and so on" —
+  that closer is not what makes a list illustrative, and the count is what
+  decides. "Those are outputs, not intent ids" is the phrasing changing,
+  not the list going away, and neither is a compliant generic clause
+  appended after the list: read the sentence for whether it replaces the
+  enumeration or introduces it. Rule out one false
   positive before reporting it: a roster of the parties who perform the
   procedure's steps is prose the build rules REQUIRE, not this list, so
   check that the correspondence closes both ways — an item for every
