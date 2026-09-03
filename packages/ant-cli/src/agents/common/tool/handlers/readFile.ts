@@ -258,7 +258,10 @@ export async function handleReadFile(
       return { content: errorMsg, error: `File not found: ${resolved.displayPath}` };
     }
 
-    console.log(`[readFile] ✅ Read from disk: ${resolved.displayPath} (${fileContent.length} bytes)`);
+    // `chars`, not bytes: the byte ceilings above are enforced on the stat size,
+    // and labelling this count "bytes" under-reports a CJK file by ~2x, which
+    // reads as a truncated read that never happened.
+    console.log(`[readFile] ✅ Read from disk: ${resolved.displayPath} (${fileContent.length} chars)`);
 
     let result: string;
     if (hasRange) {
