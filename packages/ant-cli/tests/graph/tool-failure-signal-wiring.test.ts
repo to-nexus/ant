@@ -97,6 +97,23 @@ describe('D1 — formatToolResultContent (message layer) preserves authored fail
     ]);
     expect(toolResultBlocks[0].content).toBe('Error: boom');
   });
+
+  // The persisted failure verdict (major-loading-floor RCA): without
+  // `is_error` a sealed session shows a 404 and a 201 as the same shape.
+  it.each([
+    ['error result carries is_error: true', { content: 'HTTP 404 Not Found', error: 'HTTP 404 Not Found' }, true],
+    ['gate-denied result carries is_error: true', { content: 'Error: blocked by policy', error: 'blocked by policy' }, true],
+    ['success result omits the field entirely', { content: 'HTTP 201 Created' }, false],
+  ] as const)('%s', (_name, result, expectFlag) => {
+    const { toolResultBlocks } = buildToolResultMessage([
+      { toolCallId: 'c1', toolName: 'api__ant__request', args: {}, result, cached: false } as any,
+    ]);
+    if (expectFlag) {
+      expect(toolResultBlocks[0].is_error).toBe(true);
+    } else {
+      expect('is_error' in toolResultBlocks[0]).toBe(false);
+    }
+  });
 });
 
 // ─── 2. D2 — appendCommandHistory (pure) ───

@@ -135,6 +135,58 @@ describe('universal MCP dispatch — registry instance identity', () => {
     expect(result.content).toBe('(empty MCP result)');
     expect(result.error).toBeUndefined();
   });
+
+  // Failed api__/mcp__ calls get a terminal error status line — without it the
+  // pre-flight tool_action card is the only chat.jsonl trace and a 404/400 is
+  // invisible to the user (major-loading-floor RCA).
+  function statusCapturingCtx(): { ctx: ToolExecutionContext; shown: Array<{ key: string; data: Record<string, any> }> } {
+    const shown: Array<{ key: string; data: Record<string, any> }> = [];
+    const ctx = {
+      chatStatus: {
+        showStatus: async (key: string, data: Record<string, any>) => {
+          shown.push({ key, data });
+          return undefined;
+        },
+      },
+    } as unknown as ToolExecutionContext;
+    return { ctx, shown };
+  }
+
+  it('an isError result emits ONE failed tool_action status carrying the head line only', async () => {
+    buildUniversalRegistry(fakeMcp({ text: 'HTTP 404 Not Found\ncontent-type: text/html\n\n<pre>stack</pre>', isError: true }).mcp);
+    const { ctx, shown } = statusCapturingCtx();
+
+    const result = await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
+
+    expect(result.error).toBeTruthy();
+    expect(shown).toHaveLength(1);
+    expect(shown[0].key).toBe('tool_action');
+    expect(shown[0].data.status).toBe('failed');
+    expect(shown[0].data.content).toContain(READ_TOOL);
+    expect(shown[0].data.content).toContain('HTTP 404 Not Found');
+    expect(shown[0].data.content).not.toContain('<pre>');
+  });
+
+  it('a success result emits no status card', async () => {
+    buildUniversalRegistry(fakeMcp({ text: 'ok', isError: false }).mcp);
+    const { ctx, shown } = statusCapturingCtx();
+
+    await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
+
+    expect(shown).toEqual([]);
+  });
+
+  it('a chatStatus throw does not change the error result', async () => {
+    buildUniversalRegistry(fakeMcp({ text: 'quota exceeded', isError: true }).mcp);
+    const ctx = {
+      chatStatus: { showStatus: async () => { throw new Error('SSE down'); } },
+    } as unknown as ToolExecutionContext;
+
+    const result = await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
+
+    expect(result.error).toBe('quota exceeded');
+    expect(result.content).toBe('quota exceeded');
+  });
 });
 
 /**

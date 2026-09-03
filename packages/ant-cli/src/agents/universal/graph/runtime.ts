@@ -134,6 +134,22 @@ export function buildUniversalRegistry(mcp: McpConnectionManager | null): ToolRe
       registry.register(info.name as ToolName, async (ctx, args) => {
         const result = await mcp.callTool(info.name, args as Record<string, unknown>);
         if (result.isError) {
+          // api__/mcp__ calls get only a pre-flight tool_action card — without
+          // a terminal error line a 404/400 is invisible in chat.jsonl
+          // (major-loading-floor RCA). File/command tools own dedicated fail
+          // cards; this covers the remote-call family. Best-effort: a status
+          // emit failure must not change the tool result.
+          try {
+            const headLine = (result.text || '').split('\n', 1)[0].slice(0, 200);
+            await ctx.chatStatus.showStatus('tool_action', {
+              toolName: info.name,
+              actionIcon: '❌',
+              status: 'failed',
+              content: `${info.name} failed${headLine ? `: ${headLine}` : ''}`,
+            });
+          } catch (e) {
+            console.warn(`⚠️ [UniversalMCP] error-status emit failed for ${info.name}:`, (e as Error)?.message);
+          }
           return {
             content: result.text || '(empty MCP result)',
             error: result.text || 'MCP tool returned an error',

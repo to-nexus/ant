@@ -107,6 +107,9 @@ export function buildToolResultMessage(events: ToolExecutionEvent[]): ToolResult
       tool_use_id: event.toolCallId,
       tool_name: event.toolName,
       content: formatToolResultContent(event.result),
+      // Persist the failure verdict: without it a sealed session shows a 404
+      // and a 201 as the same shape, and an auditor must re-read bodies.
+      ...(event.result.error ? { is_error: true } : {}),
     });
   }
 
