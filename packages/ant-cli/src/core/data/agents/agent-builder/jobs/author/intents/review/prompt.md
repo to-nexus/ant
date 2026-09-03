@@ -25,8 +25,12 @@
 - Check altitude on every prose file the turn saved, one axis at a time — the
   same list the build instructions sweep before each save, since a violation
   that survived the save is what an audit is for: a list of the job's intents
-  in the agent's `base/*.md` or in the job's `base/system.md` (an output table
-  with one row per intent is that list under another name), a rule an intent's
+  in the agent's `base/*.md` or in the job's `base/system.md` — count the
+  items against the catalog rather than matching a shape, because the list
+  arrives spelled as anything with one item per intent: the situations they
+  trigger on, the deliverables they produce, a table with a row each, a
+  parenthesised sentence naming them. "Those are outputs, not intent ids"
+  is the phrasing changing, not the list going away — a rule an intent's
   procedure already carries duplicated into prose one level above it,
   connection status stated as prose, and a sentence directing the running
   agent to a counterpart the job declares no connection for. Name the file

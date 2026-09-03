@@ -56,7 +56,12 @@
   keeps one home. Agent prose AND job prose never enumerate the job's
   intents (the list is stale the moment one is added — the catalog renders
   them; moving the list from `base/role.md` into `base/system.md` is the
-  same list one level down) and never state connection status
+  same list one level down). What makes it that list is one item per
+  intent, not the words it is spelled with: intent ids, the situations
+  they trigger on, the deliverables they produce, a table with a row
+  each, a sentence naming them in parentheses — all the same list, and
+  all stale on the same edit. Count the items against the catalog before
+  deciding a phrasing is exempt. Prose also never states connection status
   ("this agent is not wired to X") — wiring state lives only in the
   dependency report, whose `status:` the wiring turn updates; prose
   stating it is stale the moment the user wires the system. What the reader
