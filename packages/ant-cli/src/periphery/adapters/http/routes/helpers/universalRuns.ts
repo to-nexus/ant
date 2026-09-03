@@ -209,6 +209,35 @@ export async function readUniversalRunOverlay(sessionPath: string): Promise<Part
 }
 
 /**
+ * Run-record fields derivable from the sealed universal session `state` at
+ * finalize — the audit trail the run record was missing (blazing-crushing-
+ * dream: the only evidence a stop-hook gate ran was a transient chat line,
+ * and `runs[].input.summary` was hardcoded empty).
+ *
+ * `hookReport` is a record, never a gate input — the gate feeds on the
+ * sealed `hookLedger` only. `input` is derived from the sealed main
+ * conversation's first user message, clipped to the schema's 200-char cap.
+ * Best-effort: a missing / malformed file yields `{}`.
+ */
+export async function readUniversalRunExtras(sessionPath: string): Promise<Partial<SessionRun>> {
+  const session = await readSessionJson(sessionPath);
+  const state = session?.state;
+  if (!state) return {};
+  const extras: Partial<SessionRun> = {};
+  if (Array.isArray(state.lastTurnHooks) && state.lastTurnHooks.length > 0) {
+    extras.hookReport = state.lastTurnHooks;
+  }
+  const mainConv = state.conversations?.['session:main'];
+  const firstUser = Array.isArray(mainConv)
+    ? mainConv.find((m: any) => m?.role === 'user' && typeof m.content === 'string')
+    : undefined;
+  if (typeof firstUser?.content === 'string' && firstUser.content.trim().length > 0) {
+    extras.input = { type: 'text', summary: firstUser.content.trim().slice(0, 200) };
+  }
+  return extras;
+}
+
+/**
  * Remove one run's footprint from its universal session file — the universal
  * counterpart of `deleteJobRunFromSession`. Deliberately does NOT inject the
  * canonical state-reset fields (taskQueue / completedTasks / currentTask):

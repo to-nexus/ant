@@ -25,7 +25,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../src/periphery/adapters/http/routes/helpers/sessionCleanup';
 import { getSessionFilePathByJob } from '../../src/core/utils/sessionPaths';
-import { readUniversalRunOverlay } from '../../src/periphery/adapters/http/routes/helpers/universalRuns';
+import { readUniversalRunOverlay, readUniversalRunExtras } from '../../src/periphery/adapters/http/routes/helpers/universalRuns';
 import { safeParseSession } from '../../src/core/schemas/session.schema';
 import type { SessionRun } from '../../src/core/types/session';
 import type { KanbanData } from '@ant/shared';
@@ -223,6 +223,44 @@ describe('universal run seal (Job-tab persistence, per-(agentId, customJobId) fi
     fs.mkdirSync(path.dirname(sessionPath()), { recursive: true });
     fs.writeFileSync(sessionPath(), '{ not json');
     expect(await readUniversalRunOverlay(sessionPath())).toEqual({});
+  });
+
+  // Audit-trail extras (blazing-crushing-dream): the run record used to carry
+  // `input.summary: ''` and no trace that a stop-hook gate ever ran — the
+  // only evidence was a transient chat line. `readUniversalRunExtras` lifts
+  // both from the sealed state into `runs[]`, and the schema declares
+  // `hookReport` so a later load does not strip (or worse, unlink on) it.
+  it('extras lift hookReport and the directive summary into the sealed run', async () => {
+    const lastTurnHooks = [
+      { intentId: 'build', hook: { action: 'api__ant__request' }, met: true },
+      { intentId: 'build', hook: { artifact: 'dependency-report/*.md' }, met: true, matchedWrites: ['dependency-report/terms-notice.md'] },
+    ];
+    seedSession({
+      state: {
+        customJobRef: 'agent-builder/author',
+        conversations: { 'session:main': [{ role: 'user', content: `agent를 만들어라 ${'x'.repeat(300)}` }] },
+        lastTurnHooks,
+      },
+    });
+    const extras = await readUniversalRunExtras(sessionPath());
+    expect(extras.hookReport).toEqual(lastTurnHooks);
+    expect(extras.input?.type).toBe('text');
+    expect(extras.input?.summary).toHaveLength(200); // schema cap, clipped not rejected
+    await appendRunToSessionFile(
+      sessionPath(), 'universal', 'j-5', emptyBoard('j-5'), 'completed',
+      { runExtras: { customJobRef: 'agent-builder/author', ...extras } },
+    );
+    const run = readSession().runs[0];
+    expect(run.hookReport).toEqual(lastTurnHooks);
+    expect(run.input.summary.startsWith('agent를 만들어라')).toBe(true);
+    // The persisted run must survive a schema parse (unlink hazard).
+    const { SessionSchema } = await import('../../src/core/schemas/session.schema');
+    expect(SessionSchema.safeParse(readSession()).success).toBe(true);
+  });
+
+  it('extras are empty when the seal carried no hooks and no user message', async () => {
+    seedSession({ state: { customJobRef: 'assistant/chat', conversations: { 'session:main': [] } } });
+    expect(await readUniversalRunExtras(sessionPath())).toEqual({});
   });
 
   // Unlink-hazard regression: FileSessionAdapter.load DELETES a session file

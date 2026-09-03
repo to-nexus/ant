@@ -240,6 +240,18 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         }),
         ...(state._clarifyPause &&
           hookChecks.some((c) => c.met) && { hookLedger: buildStopHookLedger(hookChecks) }),
+        // Audit record of THIS turn's hook evaluation — until now the only
+        // evidence a gate ran was a transient chat line. Record only:
+        // `hookLedger` above stays the single gate-feeding state. Self-clears
+        // on hook-less seals (state is replaced whole), like `verdict`.
+        ...(hookChecks.length > 0 && {
+          lastTurnHooks: hookChecks.map((c) => ({
+            intentId: c.intentId,
+            hook: c.hook,
+            met: c.met,
+            ...(c.matchedWrites.length > 0 && { matchedWrites: c.matchedWrites }),
+          })),
+        }),
       };
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });
       console.log('💾 [Universal:Respond] Session sealed');

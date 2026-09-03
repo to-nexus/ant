@@ -100,6 +100,19 @@ export interface SessionRun {
 
   /** Universal only — `{agentId}/{jobId}` of the definition this run executed (FE labeling / DELETE routing). */
   customJobRef?: string;
+
+  /**
+   * Universal only — the final seal's stop-hook evaluation, persisted so an
+   * auditor can see the gate ran (its only trace used to be a transient chat
+   * line). A record, never a gate input: the gate feeds on the sealed
+   * `hookLedger` alone.
+   */
+  hookReport?: Array<{
+    intentId: string;
+    hook: { artifact: string } | { action: string };
+    met: boolean;
+    matchedWrites?: string[];
+  }>;
 }
 
 // ============================================

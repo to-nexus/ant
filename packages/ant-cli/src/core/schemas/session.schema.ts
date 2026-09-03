@@ -78,6 +78,15 @@ export const SessionRunSchema = z.object({
   status: z.enum(['completed', 'failed', 'canceled', 'paused']).optional(),
   completedAt: z.string().datetime().optional(),
   customJobRef: z.string().optional(),
+  // Universal only — audit record of the final seal's stop-hook evaluation.
+  // Declared (not passthrough-reliant) because a stripped or failing run
+  // parse is destructive here: FileSessionAdapter.load unlinks on failure.
+  hookReport: z.array(z.object({
+    intentId: z.string(),
+    hook: z.union([z.object({ artifact: z.string() }), z.object({ action: z.string() })]),
+    met: z.boolean(),
+    matchedWrites: z.array(z.string()).optional(),
+  })).optional(),
 });
 
 /**
