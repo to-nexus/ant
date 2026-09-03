@@ -37,7 +37,14 @@
   and quote the sentence for each.
 - When the material the definition was authored from is still on the plane,
   read it and check the partition against it: work the material describes
-  with its own trigger and its own output that no intent performs; an intent
+  with its own trigger and its own output that no intent performs — walk the
+  material's work units, not its section headings, since one section usually
+  holds several, and reject "that step is performed by a person" as the
+  reason one is absent: it is true of nearly every step in a procedure,
+  including the ones the intents you just passed do serve, whose deliverable
+  is the request the human step consumes. A unit missing from BOTH columns of
+  the report's mapping is the finding, and job prose carrying a rule for work
+  no intent performs is where it shows from inside the definition; an intent
   whose deliverable describes the work instead of being the work product; an
   `infer.md` that lists alternative tasks instead of naming one arriving
   situation, which is several intents under one name; and pieces the material

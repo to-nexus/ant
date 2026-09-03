@@ -90,6 +90,17 @@
   text, or by how the collection sets it aside — that piece maps to nothing:
   no intent, no prose, no reference copy. Drop it and record the drop in the
   mapping.
+- That the step itself is taken by a person is NOT a reason to drop the work
+  unit. Nearly every step in a described procedure is performed by someone —
+  a team publishes, another extracts, a third presses send — and the agent's
+  deliverable for such a step is the request that step consumes, prepared to
+  its stated form. When the material gives a step its own trigger, its own
+  required form, and its own lead time, it has handed you an intent, and
+  "a person does that one" would drop the intents you are keeping for the
+  same reason. Two tells that a work unit went missing rather than being
+  decided against: job prose carrying a rule for work no intent performs —
+  the material was read, the rule shipped, the unit vanished — and a step
+  named in a schedule the agent produces but owned by no procedure.
 
 **Design each deliverable's contract with the partition.**
 
@@ -481,7 +492,13 @@ contract — the third omitted only when done is not observable.**
   dependency report — the definition's `on-demand/` keeps to what the
   running agent opens mid-task.
 - The report repeats the mapping as built: which sources became which intents,
-  what merged, what split, what was dropped and why.
+  what merged, what split, what was dropped and why. It accounts for every
+  work unit the material carries, not every section heading: one document
+  section often holds several units, each with its own trigger and required
+  form, and each is mapped or dropped on its own row. A unit that appears in
+  neither column is not a scoping decision the reader can see — it reads as
+  complete coverage, which is the one claim the mapping exists to let them
+  check.
 - The report states each job's hook decision — which intents carry a
   completion contract, or that none do and why (e.g. no observable done in
   the material). A correct "no hooks" is invisible without this line, and an
