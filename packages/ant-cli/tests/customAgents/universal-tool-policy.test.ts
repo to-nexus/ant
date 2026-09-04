@@ -324,6 +324,22 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
     await expect(build().listFiles(p)).resolves.toEqual([expected]);
   });
 
+  it('root listing surfaces the listable mount roots', async () => {
+    // Reachable-but-undiscoverable: a root listing showed only the artifacts
+    // dir, so a job told to read `pipeline-runs/…` listed the root, did not
+    // see it and skipped the read (two pipeline-builder review rounds did
+    // exactly that). `_agents/` stays out — its root cannot be listed.
+    await expect(build().listFiles('')).resolves.toEqual([
+      'artifacts:',
+      '_agent-definition/',
+      'pipeline-runs/',
+    ]);
+  });
+
+  it('a non-root artifacts listing is untouched by the mount roots', async () => {
+    await expect(build().listFiles('plan')).resolves.toEqual(['artifacts:plan']);
+  });
+
   it('bare _agents root is a mount error, never a fall-through to the artifacts root', () => {
     // Peer listing needs an agent id; the honest answer is the mount's own
     // refusal, not the artifacts adapter's "missing".

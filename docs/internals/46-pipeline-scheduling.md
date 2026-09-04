@@ -827,6 +827,18 @@ The obligations live at authoring time, in the pipeline builder's contract:
   regulator filing needed", and `recipient-extract` decided individual-notice
   applicability inside its own artifact, while the deciding intent's
   `outcomes` sat unrouted. `onMissingVerdict` is what makes the edge safe.
+- **Routing one outcome is half the work.** The round after that one added the
+  edges and hung the chain's tail off them: with `verdict: standard` sealed,
+  six of twelve steps skipped — including the one that applies the amended
+  terms to the system — and the run still sealed `completed`. Skips cascade, so
+  whatever must happen for every outcome belongs downstream of a step that
+  always runs. The authoring check is to walk the graph once per declared
+  outcome.
+- **A pin's `*` is not run-scoped.** Globs expand against the whole artifacts
+  tree at dispatch (newest-first, per-glob capped), so a `*` where a case key
+  belongs matches every case the project ever ran — and past the cap the run's
+  own case is the one dropped. Per-case work partitions under a static
+  variable (`{{run.id}}`) and repeats that prefix in every pin.
 
 ---
 

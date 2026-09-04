@@ -55,6 +55,12 @@
   `onMissingVerdict: <outcome>` on the deciding step when a run that seals
   nothing must continue instead of failing — that is what makes routing safe,
   not a reason to avoid it.
+- Routing one outcome is half the work: walk the graph again for EVERY other
+  outcome and check that the steps which must run regardless are still
+  reached. A skipped need is neither success nor failure, so skips cascade —
+  hang a chain's tail off a branch and the whole tail dies with it, while the
+  run still seals `completed`. Whatever must always happen belongs downstream
+  of a step that always runs, never downstream of the branch.
 - `defaults.onStepFailure` decides the rest of the run on a failure: `abort`
   (default) cancels what is still pending; `continue` lets independent
   branches finish.
@@ -76,9 +82,8 @@
 - A gate that asks the approver to confirm a step's inputs must come BEFORE
   that step. Placed after it, the step has already run on whatever it could
   find, and the confirmation decides nothing.
-- A tool the step's intent gates with `approval: always` pauses the run for
-  per-call approval on its own; do not add an approval step to guard a write
-  its intent already gates.
+- An intent that gates a tool with `approval: always` already pauses the run
+  per call, so never add an approval step to guard a write it gates.
 - A gate holds a run for a person's decision, never for their labor. When the
   chain crosses work a person performs outside any step — relaying a
   deliverable into a system no agent reaches, fetching something only they
@@ -142,6 +147,13 @@
   (`{{trigger.*}}` / `{{run.*}}`) — `{{steps.*}}` is directive-only.
   `sessions/` cannot be pinned, and a glob that matches nothing at dispatch
   fails the step.
+- A pin expands against the WHOLE artifacts tree at dispatch, so a `*` where
+  the case's own key belongs matches every case the project ever ran — newest
+  first, and past the per-glob cap the run's own case can be the one dropped.
+  When the work is per-case rather than per-schedule, partition it: the intake
+  step writes under a prefix carrying a static variable (`{{run.id}}` is the
+  one every run has), and every pin repeats that prefix. Then a pin means
+  "this case", not "some case".
 
 **Save, verify, decode failures.**
 
@@ -163,9 +175,8 @@
 
 **Report.**
 
-- Show the id and name, the trigger with its next fires, each step (what it
-  runs, on what condition, with which directive or the default), each gate
-  with its timeout, and the failure policy.
+- Show the id and name, the trigger with its next fires, every step with its
+  condition and directive, every gate with its timeout, and the failure policy.
 - Name any step that runs on a substitute and any seam left to a person —
   what this pipeline delivers for real, and where its output waits on hands.
 - End with the hand-over line, and with what a person must decide that you

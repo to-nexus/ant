@@ -60,7 +60,8 @@ steps:
   out this intent" statement — omit it when the pinned intent's definition
   already is the specification.
 - Template variables: `{{trigger.fireDate}}` (ISO time of the fire),
-  `{{trigger.fireEpoch}}`, `{{run.id}}`, `{{run.prevSuccess.fireDate}}` /
+  `{{trigger.fireEpoch}}`, `{{run.id}}` (this run's identifier — a name, never
+  a date), `{{run.prevSuccess.fireDate}}` /
   `{{run.prevSuccess.fireEpoch}}` (the previous COMPLETED run of this
   activation — empty on the first run; the natural "process everything since
   the last successful run" watermark), plus step-output references —

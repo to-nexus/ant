@@ -340,7 +340,29 @@ export function createUniversalFileSystem(
     readFile: (p, opts) => read(p, (fs, rel) => fs.readFile(rel, opts), () => artifactsFs.readFile(p, opts)),
     fileExists: (p) => read(p, (fs, rel) => fs.fileExists(rel), () => artifactsFs.fileExists(p)),
     readDirectory: (p) => read(p, (fs, rel) => fs.readDirectory(rel), () => artifactsFs.readDirectory(p)),
-    listFiles: (p, exclude) => read(p, (fs, rel) => fs.listFiles(rel, exclude), () => artifactsFs.listFiles(p, exclude)),
+    // Deliberately not `async`: an unlistable mount root must keep throwing
+    // SYNCHRONOUSLY (`_agents` with no agent id), the contract its test pins.
+    listFiles: (p, exclude) => {
+      const m = mountFor(p);
+      if (m) {
+        const t = target(m, p);
+        return t.fs.listFiles(t.path, exclude);
+      }
+      return artifactsFs.listFiles(p, exclude).then((own) => {
+        if (!(p === '' || p === '.' || p === '/')) return own;
+        // A root listing answered with the artifacts dir alone, so every
+        // read-only mount was reachable-but-undiscoverable: a job told to read
+        // `pipeline-runs/…` listed the root, did not see it, and skipped the
+        // read. Mounts whose root cannot be listed at all (`_agents/` needs an
+        // agent id) stay out.
+        const listed = new Set(own.map((entry) => entry.replace(/\/$/, '')));
+        const roots = mounts.flatMap((mount) => {
+          const name = mount.prefix.replace(/\/$/, '');
+          return mount.resolve('') === null || listed.has(name) ? [] : [`${name}/`];
+        });
+        return [...own, ...roots];
+      });
+    },
     isDirectory: (p) => read(p, (fs, rel) => fs.isDirectory(rel), () => artifactsFs.isDirectory(p)),
     writeFile: (p, c) => write([p], 'writeFile', () => artifactsFs.writeFile(p, c)),
     deleteFile: (p) => write([p], 'deleteFile', () => artifactsFs.deleteFile(p)),
