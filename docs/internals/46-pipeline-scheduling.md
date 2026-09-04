@@ -450,6 +450,27 @@ shape is what makes the extension migration-free.
 
 ## 5b. Clarify HITL — jobId re-pointing, open-ended wait
 
+> **The clarify budget bounds one dispatched turn-chain, not a session.**
+> `UNIVERSAL_CLARIFY_BUDGET` (3) is a loop guard against an agent asking
+> instead of working, so `inheritedClarifyRounds` carries the count only into
+> the RESUME of a still-paused turn (`awaitingClarify`); a fresh turn — a new
+> user message, a new step dispatch — starts at zero. Restoring it
+> unconditionally turned it into a lifetime cap, and because every step of a
+> pipeline shares ONE (agent, job) session across every run, three questions
+> exhausted it permanently: on 2026-09-04 a run's `recipient-extract`,
+> `publishing`, `mail-send` and `regulator-report` each recorded in its own
+> deliverable that clarify was disabled and it had judged without user
+> confirmation — `mail-send` listing the recipient count and send-HTML details
+> as "needs operator correction". That silently voids the authoring pattern
+> this contract recommends (the consuming step asks for the person's product
+> through clarify).
+>
+> The shared session is itself unresolved: a step job inherits every previous
+> RUN's conversation, so a new case's intake can skip its questions because
+> the answers to a *different* case are already in context (same date, same
+> project). Per-run isolation is a product decision, not a bug fix — see the
+> loop's notes before changing it.
+
 A step job that ends with a sealed `awaitingClarify` (universal
 end-and-resume, doc 44) did not fail and did not succeed — it asked a
 question. The coordinator reads the seal (`getSessionFilePath` — never a

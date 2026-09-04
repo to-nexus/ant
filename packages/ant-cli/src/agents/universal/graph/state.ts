@@ -69,6 +69,25 @@ export type InheritedTurnContext = Pick<UniversalTurnContext, 'intents' | 'conte
  * re-derive deterministically, and dropping it keeps the `unpinned` banner
  * (with its catalog choice list) instead of a meaningless `inherited`.
  */
+/**
+ * Clarify rounds a NEW turn inherits from the session seal.
+ *
+ * The budget is a loop guard for ONE dispatched turn-chain — it stops an agent
+ * asking instead of working — not a lifetime cap on a session. It is carried
+ * only into the RESUME of a still-paused turn (`awaitingClarify`); a fresh
+ * turn starts at zero. Restoring it unconditionally made it a lifetime cap,
+ * and because every step of a pipeline shares one (agent, job) session across
+ * every run, three questions exhausted it for good: later steps authored to
+ * ask ("receive the reply through clarify") silently self-decided instead and
+ * said so in their own deliverables ("clarify disabled, judged without user
+ * confirmation" — observed 2026-09-04 on four steps of one run).
+ */
+export function inheritedClarifyRounds(sessionState: { clarifyRoundsUsed?: unknown; awaitingClarify?: unknown } | undefined): number {
+  const used = sessionState?.clarifyRoundsUsed;
+  if (typeof used !== 'number' || used <= 0) return 0;
+  return sessionState?.awaitingClarify === true ? used : 0;
+}
+
 export function parseSealedTurnContext(raw: unknown): InheritedTurnContext | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const o = raw as Record<string, unknown>;

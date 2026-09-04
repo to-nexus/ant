@@ -12,7 +12,7 @@
 
 import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { buildUniversalGraph } from './graph';
-import { createInitialUniversalState, parseSealedTurnContext, type InheritedTurnContext, type UniversalGraphState } from './state';
+import { createInitialUniversalState, inheritedClarifyRounds, parseSealedTurnContext, type InheritedTurnContext, type UniversalGraphState } from './state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph/conversations';
 import { buildUniversalErrorSealState } from './session/sealConversation';
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
@@ -109,9 +109,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         if (Array.isArray(sessionState.checklist?.items) && sessionState.checklist.items.length > 0) {
           restoredChecklist = sessionState.checklist;
         }
-        if (typeof sessionState.clarifyRoundsUsed === 'number' && sessionState.clarifyRoundsUsed > 0) {
-          restoredClarifyRounds = sessionState.clarifyRoundsUsed;
-        }
+        restoredClarifyRounds = inheritedClarifyRounds(sessionState);
         restoredClarifyContext = parseSealedTurnContext(sessionState.clarifyTurnContext);
         // Stop-hook continuity — the ledger (hooks already met on a prior
         // turn of the paused sequence) rides both pause seals; the turn

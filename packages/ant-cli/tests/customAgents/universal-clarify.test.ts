@@ -29,6 +29,7 @@ import { respondNode } from '../../src/agents/universal/graph/nodes/respond';
 import { parseSealedTurnContext } from '../../src/agents/universal/graph/state';
 import { _resetUniversalRuntimeForTests } from '../../src/agents/universal/graph/runtime';
 import { CONV_KEYS } from '../../src/agents/common/graph/conversations';
+import { inheritedClarifyRounds } from '../../src/agents/universal/graph/state';
 
 function makeResolved(overrides?: Partial<Pick<ResolvedCustomJob, 'clarifyDefault' | 'intents' | 'builtinTools'>>): ResolvedCustomJob {
   return {
@@ -225,6 +226,21 @@ describe('buildClarifyToolResultTurn', () => {
 });
 
 // ── routing + seal ───────────────────────────────────────────────────────────
+
+describe('inheritedClarifyRounds — budget scope', () => {
+  // The budget bounds one dispatched turn-chain, not a session's lifetime.
+  // Pipeline steps share one (agent, job) session across every run, so an
+  // unconditional restore exhausted it after three questions for good and
+  // later steps authored to ask self-decided instead.
+  it.each([
+    ['a still-paused turn carries its rounds', { clarifyRoundsUsed: 2, awaitingClarify: true }, 2],
+    ['a fresh turn after a completed one starts at zero', { clarifyRoundsUsed: 3 }, 0],
+    ['a stale non-paused seal never caps a new turn', { clarifyRoundsUsed: 3, awaitingClarify: false }, 0],
+    ['no seal at all', undefined, 0],
+  ] as const)('%s', (_label, sealed, expected) => {
+    expect(inheritedClarifyRounds(sealed as any)).toBe(expected);
+  });
+});
 
 describe('routeAfterTool — pure predicate', () => {
   it('routes respond on a clarify pause, agent otherwise', () => {
