@@ -173,6 +173,12 @@
   (`{{trigger.*}}` / `{{run.*}}`) — `{{steps.*}}` is directive-only.
   `sessions/` cannot be pinned, and a glob that matches nothing at dispatch
   fails the step.
+- A pin inherits its producer's condition. A glob that matches nothing fails
+  the step, so pinning an artifact whose producing step only runs on one
+  outcome makes the pinning step fail on every other one — at the very end of
+  the run, where the failure costs the most. Pin what your own branch
+  guarantees; if you need the other branch's output, the step belongs on that
+  branch.
 - A pin expands against the WHOLE artifacts tree at dispatch, so a `*` where
   the case's own key belongs matches every case the project ever ran — newest
   first, and past the per-glob cap the run's own case can be the one dropped.

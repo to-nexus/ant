@@ -928,6 +928,13 @@ The obligations live at authoring time, in the pipeline builder's contract:
   whatever must happen for every outcome belongs downstream of a step that
   always runs. The authoring check is to walk the graph once per declared
   outcome.
+- **A pin inherits its producer's condition.** A glob matching nothing fails
+  the step, so a step pinning an artifact whose producer runs on one outcome
+  only fails on every other outcome. Round 7's `regulator-report` pinned
+  `mail-send-request.md` while `mail-send` was adverse-only: every standard run
+  would have failed at the last step, with `abort` taking the run down after
+  all its work. Found by the review lane reading the run log and the graph
+  together; the loop's audit tool grew the same check (C3b).
 - **A pin's `*` is not run-scoped.** Globs expand against the whole artifacts
   tree at dispatch (newest-first, per-glob capped), so a `*` where a case key
   belongs matches every case the project ever ran — and past the cap the run's
