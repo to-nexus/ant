@@ -239,6 +239,15 @@ contract — the third omitted only when done is not observable.**
   consumes is a step you dropped while transcribing, not a spare input, and
   a step whose data appears in no input is the same omission from the other
   end. Read the two lists against each other before saving.
+- What the material flags as costly is what goes missing first. Its exception
+  cases ("the issue button was clicked by mistake — ask the dev team to void
+  it"), and any list it keeps of points that cannot be undone, are the parts
+  a distillation drops, and they are the parts whose absence costs the most:
+  the procedure still reads complete without them. Carry each one into the
+  intent that performs the work it guards. A merge is where they vanish
+  quietest — when two units become one intent, the exception both sources
+  described is the one nobody notices is gone, so check the merged file
+  against BOTH originals, not against the one you worked from.
 - The material's own numbers and its own open questions are load-bearing.
   A count you carry over is checked against the list you actually wrote —
   "nine files to download" above eight bullets is one lost item, and the
