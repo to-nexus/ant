@@ -33,12 +33,20 @@ step, and say which:
 
 - An upstream intent declares `outcomes` and no edge routes on them. The run
   seals a verdict regardless, so the branch was discarded — name the steps
-  that now run on every outcome instead of one.
+  that now run on every outcome instead of one. Where the report defends the
+  choice with a reason the material carries (an outcome the declared
+  vocabulary cannot express, so routing would drop a case the procedure
+  requires), that is a judgment call, not a finding: name its cost — the steps
+  that burn a job to record "not applicable" — and route the vocabulary gap to
+  the agent that owns the intent.
 - A step whose upstream declares an `artifact:` stop glob pins no `context`.
   The pin is the dispatch-time existence guarantee; without it a step that
   should fail fast instead runs on whatever it can find.
 - A gate with neither `timeout` nor `remindAfter` — nothing ever re-surfaces
   it, so the run waits forever with no reminder.
+- A gate no step `needs`, or one whose downstream work is reachable without
+  it: approving and rejecting lead to the same run, so the decision is
+  decoration.
 - A gate that waits for a person's labor rather than their decision. An
   approval carries one bit and no payload, so check what the downstream step
   needs: if it needs the content that labor produced, the gate cannot deliver

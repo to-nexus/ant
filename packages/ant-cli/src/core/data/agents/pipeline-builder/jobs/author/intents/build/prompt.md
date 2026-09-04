@@ -85,6 +85,11 @@
   with nobody having looked, so use it only when the user asks for that.
 - `remindAfter` re-surfaces an unresolved gate on that cadence — use it on
   gates whose timeout is long or absent, so a waiting run is never forgotten.
+- A gate decides for the steps that `needs` it. A gate no step depends on
+  decides nothing — approving and rejecting it lead to the same run — and a
+  step that reaches its work without passing through the gate is not gated by
+  it either. Before writing a gate, name the steps it holds back, and check
+  that every step whose work the decision governs is downstream of it.
 - A gate may assert only what its own `needs` guarantee, and it arms the
   moment they are satisfied — a sibling branch still in flight does not hold
   it. So a prompt claiming "the mail request is ready too" while that branch
@@ -152,6 +157,12 @@
   Such a step does not ask — it judges from what it can already see, or leaves
   the field blank and calls it done. Name the input the step must obtain, and
   from whom; that is the directive's whole job there.
+- Do not read an intent's own judgement as covering that. An intent whose
+  prompt says "record 'not applicable' when it does not apply" can DECIDE
+  whether its work applies — from the artifacts it was pinned. It cannot
+  OBTAIN what only a person holds: the count someone read out of a system, the
+  file someone was handed, the answer someone got back. The first is the
+  intent's; the second is the directive's, every time.
 - The template variables are the format contract's list; anything else is
   rejected at save. Two authoring rules: a `{{steps.<id>.…}}` reference must
   name an upstream step in this step's `needs` chain, and substituted text is

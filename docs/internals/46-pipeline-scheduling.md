@@ -850,6 +850,20 @@ The obligations live at authoring time, in the pipeline builder's contract:
   intent whose judgment nothing routes on has had its decision discarded, and
   the steps that apply to one outcome run on every outcome. Routing no branch
   is a choice the report defends.
+- **A gate decides for the steps that need it.** Round 6 authored a
+  send-approval gate that no step depends on, while the enactment steps it was
+  meant to hold reached their work through a sibling branch: approving and
+  rejecting led to the same run. The contract requires a gate to have an
+  upstream step; it now also requires naming what the gate holds back, and the
+  review lane counts a needs-nothing gate as decoration.
+- **An intent decides, a directive obtains.** The round-5 rule (a directive is
+  owed where a person owes the input) was answered in round 6 by omitting six
+  of nine directives, on the reasoning that each intent's prompt already says
+  to record "not applicable" when its work does not apply. That conflates two
+  axes: an intent can DECIDE applicability from its pinned artifacts, but it
+  cannot OBTAIN what only a person holds — the count read out of a system, the
+  file handed over, the answer that came back. The contract now separates them
+  by name.
 - **A directive is not optional where a person owes the input.** "The intent is
   already the specification" does not reach a step whose input has to come
   from a person: with no directive the runtime dispatches a bare "carry out
