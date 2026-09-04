@@ -41,7 +41,11 @@
   the tell.
 - Check altitude on every prose file the turn saved, one axis at a time — the
   same list the build instructions sweep before each save, since a violation
-  that survived the save is what an audit is for: a list of the job's intents
+  that survived the save is what an audit is for. Read the headings on the
+  same terms as the sentences: a step number or a schedule label in a title
+  carries the run order the prose beneath it is forbidden to state, and a
+  sweep that reads only paragraphs passes it.
+  The axes: a list of the job's intents
   in the agent's `base/*.md` or in the job's `base/system.md` — count the
   items against the catalog rather than matching a shape, because the list
   arrives spelled as anything with one item per intent: the situations they
