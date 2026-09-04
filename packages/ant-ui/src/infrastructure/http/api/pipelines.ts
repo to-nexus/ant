@@ -58,11 +58,18 @@ export function fetchPipeline(pipelineId: string): Promise<PipelineDetail> {
   return apiGet(`${base()}/${encodeURIComponent(pipelineId)}`);
 }
 
-export function createPipeline(def: PipelineDef, id?: string): Promise<{ id: string; entry: PipelineListEntry }> {
+export interface PipelineSaveResult {
+  id: string;
+  entry: PipelineListEntry;
+  /** Non-blocking catalog-binding findings (unknown agent/job/intent, unsatisfiable verdict edge). */
+  catalogWarnings?: string[];
+}
+
+export function createPipeline(def: PipelineDef, id?: string): Promise<PipelineSaveResult> {
   return apiPost(base(), { def, ...(id ? { id } : {}) });
 }
 
-export function updatePipeline(pipelineId: string, def: PipelineDef): Promise<{ id: string; entry: PipelineListEntry }> {
+export function updatePipeline(pipelineId: string, def: PipelineDef): Promise<PipelineSaveResult> {
   return apiPut(`${base()}/${encodeURIComponent(pipelineId)}`, { def });
 }
 

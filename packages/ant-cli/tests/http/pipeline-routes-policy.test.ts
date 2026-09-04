@@ -62,6 +62,22 @@ function makeUniversalProject(id: string): void {
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ projectType: 'universal' }));
 }
 
+/**
+ * Enable/activate hard-fail on catalog binding, so the DEF()'s
+ * `research/collect` ref must resolve in the caller's agent catalog.
+ * `triage` carries outcomes for the verdict-edge rows.
+ */
+function scaffoldAgentCatalog(agentsRoot: string): void {
+  const jobDir = path.join(agentsRoot, 'research', 'jobs', 'collect');
+  fs.mkdirSync(path.join(jobDir, 'intents', 'triage'), { recursive: true });
+  fs.writeFileSync(path.join(agentsRoot, 'research', 'agent.yaml'), 'id: research\nname: Research\nversion: 1\n');
+  fs.writeFileSync(path.join(jobDir, 'job.yaml'), 'id: collect\nname: Collect\n');
+  fs.writeFileSync(
+    path.join(jobDir, 'intents', 'triage', 'infer.md'),
+    '---\noutcomes: [ok, needs-review]\n---\nTriage the collected sources.\n',
+  );
+}
+
 beforeAll(async () => {
   wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-pipeline-routes-'));
   process.env.ANT_LOCAL_ORG = 'localorg';
@@ -134,6 +150,7 @@ beforeEach(() => {
   for (const entry of fs.readdirSync(userDir)) {
     if (entry !== '.ant') fs.rmSync(path.join(userDir, entry), { recursive: true, force: true });
   }
+  scaffoldAgentCatalog(path.join(userDir, '.ant', 'agents'));
 });
 
 async function createPipeline(id = 'digest'): Promise<void> {
@@ -197,6 +214,64 @@ describe('availability state machine', () => {
     expect(body.activations).toEqual([{ userId: 'localuser', projectId: 'proj-a' }]);
     // The activation survives — nothing was force-deactivated.
     expect(fs.existsSync(path.join(userDir, '.ant/pipeline-activations/proj-a/activation.json'))).toBe(true);
+  });
+});
+
+describe('catalog binding — enable/activate hard-fail, save is advisory', () => {
+  const GHOST_DEF = {
+    version: 2,
+    name: 'Ghost',
+    on: { schedule: { cron: '0 9 * * 1' } },
+    steps: [{ id: 'collect', customJobRef: 'ghost/collect', directive: 'x' }],
+  };
+
+  it('save stays permissive and returns catalogWarnings for an unresolvable ref', async () => {
+    const res = await api('', { method: 'POST', body: JSON.stringify({ id: 'ghosted', def: GHOST_DEF }) });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.catalogWarnings.join('\n')).toMatch(/agent "ghost" is not in your agent catalog/);
+  });
+
+  it('save of a fully resolvable def carries no catalogWarnings key', async () => {
+    const res = await api('', { method: 'POST', body: JSON.stringify({ id: 'digest', def: DEF() }) });
+    expect(res.status).toBe(201);
+    expect('catalogWarnings' in (await res.json())).toBe(false);
+  });
+
+  it('enable hard-fails an unresolvable ref, naming the agent (the remedy path)', async () => {
+    await api('', { method: 'POST', body: JSON.stringify({ id: 'ghosted', def: GHOST_DEF }) });
+    const res = await api('/ghosted/enable', { method: 'POST' });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe('invalid-pipeline-def');
+    expect(body.errors.join('\n')).toMatch(/agent "ghost"/);
+  });
+
+  it('activate re-judges the activator catalog — an agent deleted after enable fails HERE, not at dispatch', async () => {
+    await createPipeline();
+    await enable();
+    makeUniversalProject('proj-a');
+    fs.rmSync(path.join(userDir, '.ant/agents/research'), { recursive: true, force: true });
+    const res = await activate('digest', 'proj-a');
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('invalid-pipeline-def');
+  });
+
+  it('a verdict edge naming an outcome the pinned intent does not declare fails enable', async () => {
+    const def = {
+      version: 2,
+      name: 'Verdict typo',
+      on: { schedule: { cron: '0 9 * * 1' } },
+      steps: [
+        { id: 'judge', customJobRef: 'research/collect', intent: 'triage' },
+        { id: 'x', customJobRef: 'research/collect', needs: ['judge'], on: 'verdict:nope' },
+      ],
+    };
+    const created = await api('', { method: 'POST', body: JSON.stringify({ id: 'typo', def }) });
+    expect(created.status).toBe(201);
+    const res = await api('/typo/enable', { method: 'POST' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).errors.join('\n')).toMatch(/would always skip/);
   });
 });
 
@@ -351,6 +426,8 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
     ]);
     const alice = await teamApp(memberships, 'alice');
     try {
+      // Enable judges the enabler's catalog — the org root resolves for every member.
+      scaffoldAgentCatalog(path.join(wsRoot, 'localorg', '.ant', 'agents'));
       const created = await fetch(alice.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -411,6 +488,7 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
       ['bob', 'member'],
     ]);
     // Org-scope def on disk directly (promote is covered above).
+    scaffoldAgentCatalog(path.join(wsRoot, 'localorg', '.ant', 'agents'));
     const orgDefDir = path.join(wsRoot, 'localorg', '.ant/pipelines/shared');
     fs.mkdirSync(orgDefDir, { recursive: true });
     fs.writeFileSync(path.join(orgDefDir, 'pipeline.yaml'), `version: 2\nname: Shared\non:\n  schedule:\n    cron: '0 9 * * 1'\nsteps:\n  - id: collect\n    customJobRef: research/collect\n    directive: x\n`);

@@ -52,6 +52,7 @@ import {
 } from './helpers/orgAclStore';
 import { resolveLiveTeamMembership } from './helpers/teamRole';
 import { getNextFires, checkMinInterval } from '../../../../core/pipelines/cron';
+import { validatePipelineCatalogServer } from '../../../../core/pipelines/catalogBinding';
 import {
   deriveActivationsRoot,
   derivePipelinesRoot,
@@ -468,9 +469,13 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       });
       await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId: requestedId });
       const userRoot = scopeRoots.find((r) => r.scope === 'user')!;
+      // Advisory, never blocking: a draft may reference agents not authored
+      // yet. Enable/activate are where the same findings hard-fail.
+      const catalogWarnings = validatePipelineCatalogServer(def, ctxOf(owner));
       res.status(201).json({
         id: requestedId,
         entry: await buildListEntry(owner, null, userRoot, requestedId, def, new Map()),
+        ...(catalogWarnings.length > 0 && { catalogWarnings }),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
@@ -764,9 +769,11 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       await savePipeline(found.scopeRoot.root, pipelineId, def);
       await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId });
       const gate = found.scopeRoot.aclGoverned ? await orgGateFor(req)() : null;
+      const catalogWarnings = validatePipelineCatalogServer(def, ctxOf(owner));
       res.json({
         id: pipelineId,
         entry: await buildListEntry(owner, gate, found.scopeRoot, pipelineId, def, new Map()),
+        ...(catalogWarnings.length > 0 && { catalogWarnings }),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
@@ -810,10 +817,18 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       const found = await findWritablePipeline(res, req, owner, pipelineId);
       if (!found) return;
       // Publish requires a valid definition — a broken draft never activates.
+      let def: PipelineDef;
       try {
-        loadPipeline(found.scopeRoot.root, pipelineId);
+        def = loadPipeline(found.scopeRoot.root, pipelineId);
       } catch (e) {
         res.status(400).json({ error: e instanceof Error ? e.message : String(e), code: 'invalid-pipeline-def' });
+        return;
+      }
+      // Publish also requires the steps to resolve against the enabler's agent
+      // catalog — a typo'd ref or verdict outcome fails HERE, not at dispatch.
+      const catalogErrors = validatePipelineCatalogServer(def, ctxOf(owner));
+      if (catalogErrors.length > 0) {
+        res.status(400).json({ error: catalogErrors[0], errors: catalogErrors, code: 'invalid-pipeline-def' });
         return;
       }
       await saveAvailability(found.scopeRoot.root, pipelineId, {
@@ -1049,6 +1064,13 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         def = loadPipeline(defRoot, pipelineId);
       } catch (e) {
         res.status(400).json({ error: e instanceof Error ? e.message : String(e), code: 'invalid-pipeline-def' });
+        return;
+      }
+      // The ACTIVATOR's catalog is what dispatch resolves against — re-judge
+      // it here (the enabler's catalog may differ, or agents were deleted).
+      const catalogErrors = validatePipelineCatalogServer(def, ctxOf(owner));
+      if (catalogErrors.length > 0) {
+        res.status(400).json({ error: catalogErrors[0], errors: catalogErrors, code: 'invalid-pipeline-def' });
         return;
       }
 
