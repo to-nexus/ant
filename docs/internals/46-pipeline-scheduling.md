@@ -885,8 +885,21 @@ The obligations live at authoring time, in the pipeline builder's contract:
 - **A pin's `*` is not run-scoped.** Globs expand against the whole artifacts
   tree at dispatch (newest-first, per-glob capped), so a `*` where a case key
   belongs matches every case the project ever ran — and past the cap the run's
-  own case is the one dropped. Per-case work partitions under a static
-  variable (`{{run.id}}`) and repeats that prefix in every pin.
+  own case is the one dropped. Two rounds of authoring guidance did not fix
+  this because the remedy it named was not available: a `{{run.id}}` prefix
+  partitions a run only if the PRODUCING intent writes there, and the intents
+  own their output paths (`terms/{contract key}/…`). Round 4 answered the
+  guidance by widening the pin to `terms/**` instead, handing every step every
+  case's every file (measured: one step's context grew 5 → 13 files across a
+  run, five of them another case's). What authoring can do today is pin the
+  narrowest path per consumed output and NAME the cross-case exposure as agent
+  work. The structural answer, not yet built, is to let a pin carry
+  `{{steps.<id>.artifacts}}` — the run's own captured output list, which the
+  coordinator already records per step and which is refused in pins today only
+  because pins expand once at dispatch (by which time an upstream `needs` step
+  has completed by construction). That is a `PipelineStepDef` contract change:
+  validator, the pin renderer's 1→N expansion, the format contract, and both
+  BE and FE consumers in one change.
 
 ---
 

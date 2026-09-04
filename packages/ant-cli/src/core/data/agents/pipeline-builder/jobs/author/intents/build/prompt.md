@@ -22,9 +22,8 @@
 **Design the trigger.**
 
 - The trigger is optional: omit `on` entirely for a manual-only pipeline that
-  fires only through Run now. A schedule is a 5-field cron with an explicit
-  IANA timezone whenever the request implies local time — an unstated `tz` is
-  UTC. Fires closer than five minutes apart are refused at save.
+  fires only through Run now. A schedule needs an explicit IANA timezone
+  whenever the request implies local time — an unstated `tz` is UTC.
 - `on.runCompleted` chains this pipeline onto another's terminal status, and
   may coexist with `schedule` — an error-handler pipeline is one that waits on
   `['failed']`. Choose `onMissed` and `overlap` from what the work tolerates,
@@ -150,10 +149,18 @@
 - A pin expands against the WHOLE artifacts tree at dispatch, so a `*` where
   the case's own key belongs matches every case the project ever ran — newest
   first, and past the per-glob cap the run's own case can be the one dropped.
-  When the work is per-case rather than per-schedule, partition it: the intake
-  step writes under a prefix carrying a static variable (`{{run.id}}` is the
-  one every run has), and every pin repeats that prefix. Then a pin means
-  "this case", not "some case".
+  Two things follow, and the second is the one authors skip.
+  - **Pin the narrowest path the contract allows.** One pin per upstream
+    output you actually consume (`terms/*/comparison-table.md`), never a
+    directory sweep (`terms/**`) that hands the step every case's every file
+    and calls it context.
+  - **Run isolation is only yours to give when the paths are yours.** A
+    prefix carrying a static variable (`{{run.id}}`) partitions a run — but
+    only if the producing intent writes there. When the intents own their
+    output paths (a domain key like a contract id), the pipeline cannot
+    partition them, so say that in the report: name the cross-case exposure,
+    and name what would remove it as agent work — an intent that accepts a
+    path prefix. Do not present a narrowed pin as isolation it does not give.
 
 **Save, verify, decode failures.**
 

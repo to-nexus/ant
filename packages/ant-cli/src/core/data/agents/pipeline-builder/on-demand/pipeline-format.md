@@ -140,8 +140,11 @@ write that its own intent already gates per call.
 - **Verdict routing** (`on: verdict:<outcome>`): when an upstream step's
   pinned intent declares an `outcomes` vocabulary (in that intent's `infer.md`
   frontmatter — read it via the agents API), the run seals one verdict and
-  branches route on it — the switch pattern: one downstream step per outcome,
-  each `needs` the deciding step with its `on: verdict:…`. A run that seals no
+  branches route on it — the switch pattern: a downstream step per outcome that
+  needs its own steps, each `needs` the deciding step with its
+  `on: verdict:…`. An outcome whose only consequence is that the OTHER
+  outcome's steps do not run needs no edge of its own: absence is its branch,
+  and what matters is that every step which must run for it stays reachable. A run that seals no
   valid verdict FAILS the deciding step (`missing-verdict`, retryable) unless
   that step declares `onMissingVerdict: <outcome>` (or `fail`, the default).
   Only compose verdict edges against intents that actually declare the named
