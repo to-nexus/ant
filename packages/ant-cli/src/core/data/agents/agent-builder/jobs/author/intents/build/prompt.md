@@ -256,7 +256,11 @@ contract — the third omitted only when done is not observable.**
   identity and where its scope ends, never on the state that selected it.
   State that boundary as what this work produces and what it does not
   ("this produces the reconciliation and the voucher draft; issuing the
-  invoice is the operator's"), never as its position among other work:
+  invoice is the operator's"). Name the owner of the excluded half only when
+  it is a person or another team; when it is a sibling intent, say nothing
+  about it — "the voucher draft is the next step's" is the run order again,
+  and the output line has already drawn the line. Never state the boundary
+  as a position among other work:
   where scope and run order compete for the same sentence the quarantine
   wins, and a predecessor named, a stage counted, or the material's own
   step number is that position wherever it sits — a heading carries it as
