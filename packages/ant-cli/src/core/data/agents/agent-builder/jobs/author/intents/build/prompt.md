@@ -235,7 +235,10 @@ contract — the third omitted only when done is not observable.**
   touches, the steps in order, the output it produces, and what done looks
   like. Write it as your own distilled prose, carrying everything the material
   knows about that task; `prompt.md` has no size limit, so richness belongs
-  there. An intent without a `prompt.md` shows up in the running agent's
+  there. The inputs and the steps are one list read twice: an input no step
+  consumes is a step you dropped while transcribing, not a spare input, and
+  a step whose data appears in no input is the same omission from the other
+  end. Read the two lists against each other before saving. An intent without a `prompt.md` shows up in the running agent's
   catalog as carrying no instructions — a trigger with no procedure is not a
   unit of work.
 - `infer.md` names ONE arriving situation, and the authored file is where
