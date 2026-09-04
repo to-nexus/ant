@@ -429,7 +429,11 @@ contract — the third omitted only when done is not observable.**
   `create_file` draft of a definition file is a second copy the save does not
   supersede: it diverges from what you saved, it survives the agent's
   deletion, and the next build reads it as material. Of your own writes the
-  artifact plane holds the dependency report and nothing else.
+  artifact plane holds the dependency report and nothing else. Writing there
+  INSTEAD of saving is the same mistake with a worse ending: the files look
+  written, the checklist closes on them, and the agent you were asked to
+  build has nothing in it — `create_file` cannot reach a definition, only
+  the save can.
 - A rename moves the directory and, for an agent, its data across projects. Use
   the rename endpoint; never simulate one by creating a copy and deleting the
   original.
