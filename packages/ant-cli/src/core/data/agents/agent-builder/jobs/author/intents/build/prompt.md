@@ -375,6 +375,11 @@ contract — the third omitted only when done is not observable.**
 - One file, one write. Saving a file replaces it, so a second save of the same
   path destroys the first — there is no way to write a file in pieces. Send the
   whole text at once, and never let a refused write be read as "too large".
+- Compose each file and send it; do not stage it in artifacts first. A
+  `create_file` draft of a definition file is a second copy the save does not
+  supersede: it diverges from what you saved, it survives the agent's
+  deletion, and the next build reads it as material. Of your own writes the
+  artifact plane holds the dependency report and nothing else.
 - A rename moves the directory and, for an agent, its data across projects. Use
   the rename endpoint; never simulate one by creating a copy and deleting the
   original.
