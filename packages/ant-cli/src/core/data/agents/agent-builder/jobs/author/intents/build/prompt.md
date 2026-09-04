@@ -537,7 +537,11 @@ contract — the third omitted only when done is not observable.**
     definition's prose is the entry set's ceiling as well as its floor: a
     name no intent uses earns no entry, and an empty `used-by:` is the tell
     — every field below it then has nothing to say and fills with "not
-    applicable" in a row. A name that IS in some intent's inputs has an
+    applicable" in a row. Where the material names that counterpart for work
+    an intent does perform, the empty `used-by:` is the intent's gap and not
+    the entry's: give the intent the input, then write the entry off it.
+    Neither writing the entry with nobody in it nor dropping a counterpart
+    the work needs is the answer. A name that IS in some intent's inputs has an
     entry of its own, which is what splitting a bundled heading means:
     dropping the bundle without promoting the used member loses it}
   - substitute: {the text deliverable standing in — one line}
