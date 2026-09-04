@@ -198,7 +198,13 @@
     "needs": "Depends on",
     "needsHint": "This step runs after every selected step finished. Pick several for a fan-in; several steps depending on one make a fan-out. No selection makes it a root.",
     "needsReset": "Default (previous step)",
-    "gateNeedsUpstream": "An approval gate needs an upstream step — pick at least one."
+    "gateNeedsUpstream": "An approval gate needs an upstream step — pick at least one.",
+    "expectedOutputs": "Expected outputs",
+    "expectedOutputsHint": "The intent's declared stop-hook artifact contract — downstream steps can pin these globs as context.",
+    "expectedOutputsNone": "This intent declares no artifact contract — action-only or free-form output.",
+    "onMissingVerdict": "If the run seals no verdict",
+    "onMissingVerdictFail": "Fail the step (default)",
+    "onMissingVerdictAssume": "Assume \"{{o}}\""
   },
   "gate": {
     "prompt": "Approval prompt",

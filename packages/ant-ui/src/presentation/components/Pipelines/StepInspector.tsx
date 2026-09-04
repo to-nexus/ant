@@ -269,7 +269,7 @@ function JobStepPanel({
     jobs: Array<{
       id: string;
       name: string;
-      intents?: Array<{ id: string; hooks?: { stop: Array<{ artifact: string } | { action: string }> } }>;
+      intents?: Array<{ id: string; outcomes?: string[]; hooks?: { stop: Array<{ artifact: string } | { action: string }> } }>;
     }>;
   }>;
 }) {
@@ -278,6 +278,12 @@ function JobStepPanel({
   const agent = customAgents.find((a) => a.id === ref?.agentId);
   const job = agent?.jobs.find((j) => j.id === ref?.jobId);
   const intentsBroken = !!job && job.intents === undefined;
+  // The pinned intent's declared contracts — outputs (5a) and verdict vocabulary.
+  const pinnedIntent = step.intent && step.intent !== GENERAL_INTENT
+    ? job?.intents?.find((i) => i.id === step.intent)
+    : undefined;
+  const expectedOutputGlobs = (pinnedIntent?.hooks?.stop ?? []).flatMap((h) => ('artifact' in h ? [h.artifact] : []));
+  const pinnedOutcomes = pinnedIntent?.outcomes ?? [];
 
   const patch = (p: Partial<JobStepDef>) => onChange(updateStep(def, step.id, p));
 
@@ -310,6 +316,16 @@ function JobStepPanel({
     () => upstreamOutputSuggestions(def, step.id, customAgents),
     [def, step.id, customAgents],
   );
+  // Grouped by producing STEP — the outputs are the step's, derived from its pinned intent.
+  const suggestionGroups = useMemo(() => {
+    const groups = new Map<string, typeof suggestions>();
+    for (const sug of suggestions) {
+      const group = groups.get(sug.sourceStepId) ?? [];
+      group.push(sug);
+      groups.set(sug.sourceStepId, group);
+    }
+    return [...groups.entries()];
+  }, [suggestions]);
 
   // Upstream JOB steps (transitive needs closure) — the legal {{steps.*}} refs.
   const upstreamJobSteps = useMemo(() => {
@@ -337,7 +353,7 @@ function JobStepPanel({
           onChange={(agentId) => {
             const nextAgent = customAgents.find((a) => a.id === agentId);
             const firstJob = nextAgent?.jobs[0]?.id ?? '';
-            patch({ customJobRef: firstJob ? `${agentId}/${firstJob}` : '', intent: undefined });
+            patch({ customJobRef: firstJob ? `${agentId}/${firstJob}` : '', intent: undefined, onMissingVerdict: undefined });
           }}
           placeholder={t('step.pickAgent', 'Choose an agent')}
           options={customAgents.map((a) => ({ value: a.id, label: a.name }))}
@@ -348,7 +364,7 @@ function JobStepPanel({
         <AuroraSelect
           value={ref?.jobId ?? ''}
           onChange={(jobId) => {
-            if (ref) patch({ customJobRef: `${ref.agentId}/${jobId}`, intent: undefined });
+            if (ref) patch({ customJobRef: `${ref.agentId}/${jobId}`, intent: undefined, onMissingVerdict: undefined });
           }}
           disabled={!agent}
           placeholder={t('step.pickJob', 'Choose a job')}
@@ -364,7 +380,7 @@ function JobStepPanel({
         ) : (
           <AuroraSelect
             value={step.intent ?? ''}
-            onChange={(v) => patch({ intent: v || undefined })}
+            onChange={(v) => patch({ intent: v || undefined, onMissingVerdict: undefined })}
             disabled={!job}
             options={[
               { value: '', label: t('step.noIntent', 'None (job decides)') },
@@ -373,6 +389,42 @@ function JobStepPanel({
           />
         )}
       </div>
+      {pinnedIntent && (
+        <div>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <FieldLabel optional>{t('step.expectedOutputs', 'Expected outputs')}</FieldLabel>
+            <HintBadge
+              isCompact
+              label={t('step.expectedOutputs', 'Expected outputs')}
+              tooltip={t('step.expectedOutputsHint', "The intent's declared stop-hook artifact contract — downstream steps can pin these globs as context.")}
+            />
+          </span>
+          {expectedOutputGlobs.length > 0 ? (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {expectedOutputGlobs.map((glob) => (
+                <span key={glob} style={{ ...varChipStyle, cursor: 'default' }}>{glob}</span>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+              {t('step.expectedOutputsNone', 'This intent declares no artifact contract — action-only or free-form output.')}
+            </div>
+          )}
+        </div>
+      )}
+      {pinnedOutcomes.length > 0 && (
+        <div>
+          <FieldLabel optional>{t('step.onMissingVerdict', 'If the run seals no verdict')}</FieldLabel>
+          <AuroraSelect
+            value={step.onMissingVerdict ?? 'fail'}
+            onChange={(v) => patch({ onMissingVerdict: v === 'fail' ? undefined : v })}
+            options={[
+              { value: 'fail', label: t('step.onMissingVerdictFail', 'Fail the step (default)') },
+              ...pinnedOutcomes.map((o) => ({ value: o, label: t('step.onMissingVerdictAssume', 'Assume "{{o}}"', { o }) })),
+            ]}
+          />
+        </div>
+      )}
       <div>
         <FieldLabel optional>{t('step.directive', 'Directive')}</FieldLabel>
         <Textarea
@@ -462,22 +514,28 @@ function JobStepPanel({
                 tooltip={t('step.upstreamOutputsHint', "Each glob is that step intent's stop-hook output contract — needs-ordering and stop-hook enforcement guarantee it exists before this step runs; it expands to the actual files at fire time.")}
               />
             </div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {suggestions.map((sug) => {
-                const pinned = (step.context ?? []).includes(sug.glob);
-                return (
-                  <button
-                    key={`${sug.sourceStepId}:${sug.glob}`}
-                    disabled={pinned}
-                    onClick={() => patch({ context: [...(step.context ?? []), sug.glob] })}
-                    style={{ ...varChipStyle, opacity: pinned ? 0.45 : 1, cursor: pinned ? 'default' : 'pointer' }}
-                  >
-                    {sug.glob}
-                    <span style={{ opacity: 0.65, marginLeft: 4, fontFamily: 'inherit' }}>· {sug.sourceStepId}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {suggestionGroups.map(([sourceStepId, group]) => (
+              <div key={sourceStepId} style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', marginBottom: 3 }}>
+                  {sourceStepId} · {group[0].intentId}
+                </div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {group.map((sug) => {
+                    const pinned = (step.context ?? []).includes(sug.glob);
+                    return (
+                      <button
+                        key={sug.glob}
+                        disabled={pinned}
+                        onClick={() => patch({ context: [...(step.context ?? []), sug.glob] })}
+                        style={{ ...varChipStyle, opacity: pinned ? 0.45 : 1, cursor: pinned ? 'default' : 'pointer' }}
+                      >
+                        {sug.glob}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

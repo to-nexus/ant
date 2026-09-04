@@ -198,7 +198,13 @@
     "needs": "의존 스텝",
     "needsHint": "선택한 스텝이 전부 끝난 뒤 이 스텝이 실행됩니다. 여러 개를 고르면 합류(fan-in), 여러 스텝이 한 스텝에 의존하면 분기(fan-out)가 됩니다. 아무것도 선택하지 않으면 루트가 됩니다.",
     "needsReset": "기본값 (직전 스텝)",
-    "gateNeedsUpstream": "승인 게이트는 선행 스텝이 필요합니다 — 하나 이상 선택하세요."
+    "gateNeedsUpstream": "승인 게이트는 선행 스텝이 필요합니다 — 하나 이상 선택하세요.",
+    "expectedOutputs": "예상 산출물",
+    "expectedOutputsHint": "이 인텐트가 선언한 stop-hook 아티팩트 계약 — 하위 스텝이 이 glob을 컨텍스트로 핀할 수 있습니다.",
+    "expectedOutputsNone": "이 인텐트는 아티팩트 계약을 선언하지 않습니다 — 액션 전용 또는 자유 형식 출력.",
+    "onMissingVerdict": "실행이 verdict를 남기지 않으면",
+    "onMissingVerdictFail": "스텝 실패 (기본)",
+    "onMissingVerdictAssume": "\"{{o}}\"로 간주"
   },
   "gate": {
     "prompt": "승인 문구",
