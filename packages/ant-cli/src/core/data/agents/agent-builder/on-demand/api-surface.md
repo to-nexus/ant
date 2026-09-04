@@ -26,6 +26,13 @@ Structure is created by its own endpoints; content is saved file by file.
 | `GET /definitions/agents/{agentId}/jobs/{jobId}/prompt-preview` | the composed system block; add `?intents=a,b` to see it with intents active |
 | `GET /definitions/agents/{agentId}/permissions` | who owns and may edit an organization agent |
 
+Any agent's definition files are also readable with `read_file` at
+`_agents/{agentId}/{path}` — the same bytes as the `file?path=` call, one
+round trip cheaper, and with line numbers. The mount is read-only and does
+NOT appear in `list_files` output, so ask for a path rather than looking for
+the directory; a bare `{agentId}/…` path is the artifacts tree and will not
+resolve. Writes have no mount: they go through `PUT` below.
+
 ## Writes
 
 | Call | Body | Effect |
