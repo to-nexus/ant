@@ -326,6 +326,10 @@ contract — the third omitted only when done is not observable.**
   When this runs is the pipeline definition's to say, not this file's.
   ```
 
+  The quarantine is that heading, not that position: a section beside it at
+  the same end of the file — an exit criterion naming what runs next, an
+  input note naming what ran before — is outside it.
+
   Write it as description of the world the
   work sits in — its cadence, the automation this intent now performs, what
   its output feeds — never as steps, and never as dispatch machinery (a
