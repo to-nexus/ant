@@ -1067,3 +1067,107 @@ export function validatePipelineDef(
 
   return errors;
 }
+
+// ============================================
+// Catalog binding — the definition against the caller's agent catalog
+// ============================================
+
+/**
+ * Structural subset of `CustomAgentSummary` (a `CustomAgentSummary[]` is
+ * directly assignable). `intents === undefined` means the job's intent
+ * catalog failed lenient discovery parsing — distinct from "no intents".
+ */
+export interface PipelineCatalogIntent {
+  id: string;
+  outcomes?: string[];
+}
+export interface PipelineCatalogJob {
+  id: string;
+  intents?: PipelineCatalogIntent[];
+}
+export interface PipelineCatalogAgent {
+  id: string;
+  jobs: PipelineCatalogJob[];
+}
+
+/**
+ * Catalog-binding rules — assumes `validatePipelineDef` already passed. Plain
+ * messages, empty = valid. The catalog is the CALLER's (enable = enabler's,
+ * activate = activator's — the one dispatch will resolve against); dispatch
+ * stays the final authority. Verdict-edge satisfiability mirrors the
+ * executor's switch semantics: a `verdict:<x>` edge can only ever match when
+ * a DIRECT need is a job step whose pinned intent declares `<x>`.
+ */
+export function validatePipelineCatalogBinding(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
+  const errors: string[] = [];
+  const agentById = new Map(agents.map((a) => [a.id, a]));
+  const remedy = 'import or create it in Agent Settings first';
+
+  /** Pinned-intent resolution per step: the intent's outcomes, or why they are unknowable. */
+  const intentOf = (step: JobStepDef): { intent?: PipelineCatalogIntent; unknown: boolean } => {
+    const ref = parseCustomJobRef(step.customJobRef);
+    if (ref === null) return { unknown: true };
+    const job = agentById.get(ref.agentId)?.jobs.find((j) => j.id === ref.jobId);
+    if (job === undefined) return { unknown: true };
+    if (step.intent === undefined || step.intent === GENERAL_INTENT) return { unknown: false };
+    if (job.intents === undefined) return { unknown: true };
+    return { intent: job.intents.find((i) => i.id === step.intent), unknown: false };
+  };
+
+  def.steps.forEach((step, index) => {
+    if (!isApprovalStep(step)) {
+      const ref = parseCustomJobRef(step.customJobRef);
+      if (ref !== null) {
+        const agent = agentById.get(ref.agentId);
+        const job = agent?.jobs.find((j) => j.id === ref.jobId);
+        if (agent === undefined) {
+          errors.push(`step "${step.id}": agent "${ref.agentId}" is not in your agent catalog — ${remedy}`);
+        } else if (job === undefined) {
+          errors.push(`step "${step.id}": agent "${ref.agentId}" has no job "${ref.jobId}" — ${remedy}, or fix its definition in Agent Settings`);
+        } else if (step.intent !== undefined && step.intent !== GENERAL_INTENT) {
+          if (job.intents === undefined) {
+            errors.push(`step "${step.id}": the intent catalog of "${step.customJobRef}" failed to parse — fix the agent definition in Agent Settings`);
+          } else if (!job.intents.some((i) => i.id === step.intent)) {
+            errors.push(`step "${step.id}": job "${step.customJobRef}" declares no intent "${step.intent}"`);
+          }
+        }
+        // onMissingVerdict names an outcome of the step's OWN pinned intent.
+        if (job !== undefined && step.onMissingVerdict !== undefined && step.onMissingVerdict !== 'fail') {
+          const { intent, unknown } = intentOf(step);
+          if (!unknown && intent !== undefined) {
+            if (intent.outcomes === undefined || intent.outcomes.length === 0) {
+              errors.push(`step "${step.id}": onMissingVerdict is meaningless — intent "${intent.id}" declares no outcomes`);
+            } else if (!intent.outcomes.includes(step.onMissingVerdict)) {
+              errors.push(`step "${step.id}": onMissingVerdict "${step.onMissingVerdict}" is not an outcome of intent "${intent.id}" (declared: ${intent.outcomes.join(', ')})`);
+            }
+          }
+        }
+      }
+    }
+
+    // A verdict edge must be statically satisfiable: at least one DIRECT need
+    // pins an intent that declares the named outcome. Needs whose catalog is
+    // unresolvable are skipped — their own rule already errored.
+    if (step.on !== undefined && step.on.startsWith('verdict:')) {
+      const outcome = step.on.slice('verdict:'.length);
+      const effectiveNeeds = step.needs ?? (index > 0 ? [def.steps[index - 1].id] : []);
+      let satisfiable = false;
+      let unknowable = false;
+      for (const needId of effectiveNeeds) {
+        const need = def.steps.find((s) => s.id === needId);
+        if (need === undefined || isApprovalStep(need)) continue;
+        const { intent, unknown } = intentOf(need);
+        if (unknown || (need.intent !== undefined && need.intent !== GENERAL_INTENT && intent === undefined)) {
+          unknowable = true;
+          continue;
+        }
+        if (intent?.outcomes?.includes(outcome)) satisfiable = true;
+      }
+      if (!satisfiable && !unknowable) {
+        errors.push(`step "${step.id}": on: verdict:${outcome} — no direct dependency pins an intent that declares outcome "${outcome}" (the branch would always skip)`);
+      }
+    }
+  });
+
+  return errors;
+}

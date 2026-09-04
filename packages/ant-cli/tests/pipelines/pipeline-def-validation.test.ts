@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import type { PipelineCatalogAgent, PipelineDef } from '@ant/shared';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
 function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -338,5 +339,87 @@ describe('validatePipelineActivation — the self-describing scheduling record',
     const errors = validatePipelineActivation(raw);
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.join('\n')).toMatch(pattern);
+  });
+});
+
+describe('validatePipelineCatalogBinding — the definition against the agent catalog', () => {
+  // Also the regression test for the shared PipelineCatalog* types (BE↔FE contract).
+  const CATALOG: PipelineCatalogAgent[] = [
+    {
+      id: 'research',
+      jobs: [
+        { id: 'collect', intents: [{ id: 'gather' }, { id: 'triage', outcomes: ['ok', 'needs-review'] }] },
+        { id: 'broken', intents: undefined },
+      ],
+    },
+    { id: 'writer', jobs: [{ id: 'digest', intents: [] }] },
+  ];
+  const def = (steps: unknown[]): PipelineDef =>
+    ({ version: PIPELINE_DEF_VERSION, name: 'n', steps } as unknown as PipelineDef);
+
+  const valid: Array<[string, unknown[]]> = [
+    ['known agent/job, no intent', [{ id: 'a', customJobRef: 'research/collect' }]],
+    ['known pinned intent', [{ id: 'a', customJobRef: 'research/collect', intent: 'gather' }]],
+    ['general intent is reserved, never in the catalog', [{ id: 'a', customJobRef: 'research/collect', intent: 'general' }]],
+    ['unparsed intent catalog without an intent pin stays valid', [{ id: 'a', customJobRef: 'research/broken' }]],
+    ['verdict edge satisfied by an explicit direct need', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage' },
+      { id: 'ok', customJobRef: 'writer/digest', needs: ['judge'], on: 'verdict:ok' },
+    ]],
+    ['verdict edge satisfied by the IMPLICIT previous-step need', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage' },
+      { id: 'ok', customJobRef: 'writer/digest', on: 'verdict:ok' },
+    ]],
+    ['onMissingVerdict names a declared outcome', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage', onMissingVerdict: 'needs-review' },
+    ]],
+    ['onMissingVerdict "fail" always passes', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage', onMissingVerdict: 'fail' },
+    ]],
+    ['zero intent features against an empty catalog-shape def', []],
+  ];
+  it.each(valid)('accepts: %s', (_label, steps) => {
+    expect(validatePipelineCatalogBinding(def(steps), CATALOG)).toEqual([]);
+  });
+
+  const invalid: Array<[string, unknown[], RegExp]> = [
+    // The message MUST name the agent id — an org activator's remedy path.
+    ['unknown agent', [{ id: 'a', customJobRef: 'ghost/collect' }], /agent "ghost" is not in your agent catalog/],
+    ['unknown job', [{ id: 'a', customJobRef: 'research/publish' }], /agent "research" has no job "publish"/],
+    ['unknown pinned intent', [{ id: 'a', customJobRef: 'research/collect', intent: 'nope' }], /no intent "nope"/],
+    ['unparsed intent catalog + intent pin', [{ id: 'a', customJobRef: 'research/broken', intent: 'gather' }], /failed to parse/],
+    ['verdict edge naming an undeclared outcome', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage' },
+      { id: 'x', customJobRef: 'writer/digest', needs: ['judge'], on: 'verdict:nope' },
+    ], /would always skip/],
+    ['verdict edge whose only need is an approval gate', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage' },
+      { id: 'g', type: 'approval', prompt: 'p', needs: ['judge'] },
+      { id: 'x', customJobRef: 'writer/digest', needs: ['g'], on: 'verdict:ok' },
+    ], /no direct dependency pins an intent/],
+    ['verdict edge whose only need pins no intent', [
+      { id: 'a', customJobRef: 'research/collect' },
+      { id: 'x', customJobRef: 'writer/digest', needs: ['a'], on: 'verdict:ok' },
+    ], /no direct dependency pins an intent/],
+    ['onMissingVerdict naming an undeclared outcome', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage', onMissingVerdict: 'nope' },
+    ], /not an outcome of intent "triage"/],
+    ['onMissingVerdict on an outcome-less intent', [
+      { id: 'judge', customJobRef: 'research/collect', intent: 'gather', onMissingVerdict: 'ok' },
+    ], /declares no outcomes/],
+  ];
+  it.each(invalid)('rejects: %s', (_label, steps, pattern) => {
+    const errors = validatePipelineCatalogBinding(def(steps), CATALOG);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.join('\n')).toMatch(pattern);
+  });
+
+  it('a need whose own catalog rule already errored does not double-error the verdict edge', () => {
+    const errors = validatePipelineCatalogBinding(def([
+      { id: 'judge', customJobRef: 'ghost/collect', intent: 'triage' },
+      { id: 'x', customJobRef: 'writer/digest', needs: ['judge'], on: 'verdict:ok' },
+    ]), CATALOG);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/agent "ghost"/);
   });
 });
