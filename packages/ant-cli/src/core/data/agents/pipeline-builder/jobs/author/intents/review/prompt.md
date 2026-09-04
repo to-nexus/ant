@@ -8,6 +8,13 @@
 - Check the graph: every `needs` names an existing step, no cycles, every
   approval gate has an upstream step, and each `on` condition can actually be
   reached.
+- When the pipeline has already run, read the run log before judging it:
+  `pipeline-runs/` in this project's artifacts tree holds one `{runId}.jsonl`
+  per run plus `index.jsonl`. The definition cannot tell you what the run did —
+  which verdict sealed and whether anything routed on it, which steps stopped
+  for `clarify` and what they had to ask for, which gate approvals the
+  downstream steps then treated as established fact. Reviewing a pipeline that
+  has run against the definition alone reads half the evidence.
 - When behaviour is the question, separate the halves: what a step DOES lives
   in the agent's definition (the Agent Builder's surface); when it runs and
   what follows it lives here. Route each finding to the surface that owns it.
