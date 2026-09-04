@@ -967,6 +967,17 @@ describe('gateDefinitionSave — per-file byte budget', () => {
     ['too few hex digits', '- value u12 짧음', true],
     ['windows path', '- C:\\Users\\probe', true],
     ['uuid beside Hangul', '- uuid를 쓴다', true],
+    // More of the escape eaten: `\uBA74` for 면 came back as "일치하a74" —
+    // three hex digits, no `u`, welded to the preceding syllable
+    // (fern-camping-prowl). A codepoint's hex mixes digits and a-f, which is
+    // what separates it from the strings that must still save.
+    ['hex residue after Hangul', '- 금액이 일치하a74 반대계정을 지정한다', false],
+    ['four-digit residue', '- 값을 하c99d 확인한다', false],
+    ['uppercase model name', '- 삼성A74 단말 목록', true],
+    ['non-hex model name', '- 갤럭시S23 출시분', true],
+    ['letters only, no digit', '- 테스트abc 케이스', true],
+    ['digits only, no a-f', '- 금액 123 원', true],
+    ['hex-looking word', '- 테스트deed 값', true],
   ])('%s → ok=%s', (_label, content, ok) => {
     const gate = gateDefinitionSave('ops', 'on-demand/spec.md', content);
     expect(gate.ok).toBe(ok);

@@ -267,6 +267,24 @@ export function definitionWhitelistGuidance(relPath: string): string {
 const ORPHANED_UNICODE_ESCAPE =
   /\\u[0-9a-fA-F]{4}|[^\x00-\x7F]u[0-9a-fA-F]{4}|u[0-9a-fA-F]{4}[^\x00-\x7F]/;
 
+/**
+ * The same residue with MORE of the escape eaten: `\uBA74` for 면 came back as
+ * "일치하a74", where `\uB` is gone and three hex digits are left welded to the
+ * preceding syllable — too few digits and no `u` for the pattern above.
+ *
+ * Kept narrow so real text survives: the run must sit directly against a
+ * Hangul syllable, be 3-4 characters of LOWERCASE hex holding BOTH a digit and
+ * an a-f letter, and end at a space or another syllable. A codepoint's hex
+ * always mixes the two, while the strings this would otherwise catch do not —
+ * "삼성A74" is uppercase, "갤럭시S23" is not hex, "테스트abc" has no digit.
+ */
+const ORPHANED_ESCAPE_HEX_RESIDUE = new RegExp(
+  '[가-힣]'
+  + '(?=(?:[0-9a-f]{3,4})(?:[\\s가-힣]|$))'
+  + '(?=[0-9a-f]*[a-f])(?=[0-9a-f]*[0-9])'
+  + '[0-9a-f]{3,4}',
+);
+
 export function gateDefinitionSave(
   agentId: string,
   relPath: string,
@@ -324,7 +342,7 @@ export function gateDefinitionSave(
     return { ok: false, status: 400, error: definitionWhitelistGuidance(normalized) };
   }
   {
-    const orphan = ORPHANED_UNICODE_ESCAPE.exec(content);
+    const orphan = ORPHANED_UNICODE_ESCAPE.exec(content) ?? ORPHANED_ESCAPE_HEX_RESIDUE.exec(content);
     if (orphan) {
       return {
         ok: false,
