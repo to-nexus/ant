@@ -253,6 +253,20 @@ export function definitionWhitelistGuidance(relPath: string): string {
   );
 }
 
+/**
+ * A `uXXXX` run sitting immediately against non-ASCII text: a `\uXXXX` escape
+ * whose backslash was lost, leaving the four hex digits as literal prose and
+ * the character they meant absent. Observed live as `평ubc84vs` inside an
+ * authored Korean procedure — well-formed JSON, valid on save, and unreadable
+ * by the agent that later runs it. The adjacency is what makes this safe to
+ * refuse: a word boundary separates real text from a real identifier, so no
+ * legitimate prose puts bare hex digits flush against a Hangul syllable. The
+ * backslash-bearing form is caught too, since that spelling is equally never
+ * intended in a definition.
+ */
+const ORPHANED_UNICODE_ESCAPE =
+  /\\u[0-9a-fA-F]{4}|[^\x00-\x7F]u[0-9a-fA-F]{4}|u[0-9a-fA-F]{4}[^\x00-\x7F]/;
+
 export function gateDefinitionSave(
   agentId: string,
   relPath: string,
@@ -308,6 +322,19 @@ export function gateDefinitionSave(
       };
     }
     return { ok: false, status: 400, error: definitionWhitelistGuidance(normalized) };
+  }
+  {
+    const orphan = ORPHANED_UNICODE_ESCAPE.exec(content);
+    if (orphan) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          `"${orphan[0]}" — a Unicode escape that lost its backslash, so the character it stood for is ` +
+          `missing from the text. Write the text directly; the transport encodes it. Re-send this file with ` +
+          `the intended characters in place of that fragment.`,
+      };
+    }
   }
   {
     const segments = normalized.split('/');

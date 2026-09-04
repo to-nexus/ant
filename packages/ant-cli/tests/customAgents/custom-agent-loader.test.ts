@@ -950,6 +950,29 @@ describe('gateDefinitionSave — per-file byte budget', () => {
     expect(gate.ok).toBe(false);
   });
 
+  // A Unicode escape that lost its backslash leaves the four hex digits as
+  // literal prose and drops the character they stood for. Observed live as
+  // `평ubc84vs` in an authored Korean procedure: well-formed, saved clean, and
+  // unreadable by the agent that later runs it. Adjacency to non-ASCII is what
+  // makes it safe to refuse — a word boundary separates real text from a real
+  // identifier.
+  it.each([
+    ['bare escape wedged after Hangul', '- 정산서 수치(평ubc84vs 항목 포함)', false],
+    ['bare escape before Hangul', '- ubc84평가 기준', false],
+    ['backslash form anywhere', '- 텍스트 \\ubc84 남음', false],
+    ['ordinary Korean prose', '- 담당자가 화면에서 내려받은 자료를 전달한다', true],
+    ['ascii identifier with digits', '- use menu1234 for the list', true],
+    ['secret reference', '- `${secret:JIRA_API_TOKEN}`', true],
+    ['business-key path beside Hangul', '- outputs/data-prep-{정산대상월}.md', true],
+    ['too few hex digits', '- value u12 짧음', true],
+    ['windows path', '- C:\\Users\\probe', true],
+    ['uuid beside Hangul', '- uuid를 쓴다', true],
+  ])('%s → ok=%s', (_label, content, ok) => {
+    const gate = gateDefinitionSave('ops', 'on-demand/spec.md', content);
+    expect(gate.ok).toBe(ok);
+    if (!gate.ok) expect(gate.status).toBe(400);
+  });
+
   // An outcome naming the clarify exit is refused at SAVE only — the loader
   // shares validateInferFile, so a definition already carrying one keeps loading.
   const INFER = (outcomes: string) => `---\noutcomes: [${outcomes}]\n---\napplies when judging\n`;
