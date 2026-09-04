@@ -43,7 +43,10 @@
   performed in succession, each waiting on the last one's output or on a
   date the schedule sets for it, chain between runs by definition. The
   agent's own back-calculation is the evidence to check — units it places
-  on different days are units it cannot perform in a single run.
+  on different days are units it cannot perform in a single run. Where the
+  material already carries that schedule, it is the back-calculation, done:
+  one piece of work appearing on two of its rows is two units, whatever
+  single card the material files them under.
 - Do the counting explicitly, before the partition is chosen. Walk the
   material and list every unit it gives a trigger, a required form and a
   lead time of its own; that list is what the partition answers to, and
