@@ -42,6 +42,12 @@
   (`success` default, `failure`, `always`, or `verdict:<outcome>` against an
   `outcomes` vocabulary the upstream step's pinned intent declares); a step
   whose condition does not match is skipped, and skips cascade.
+- When an upstream step's pinned intent declares an `outcomes` vocabulary,
+  that judgment IS the branch the graph was given: route on it. The run seals
+  a verdict whether or not an edge reads it, so an unread verdict throws away
+  a decision the intent already made — and the steps that apply to only one
+  outcome then run on every outcome. Routing no branch is a choice to defend
+  in the report, never a default.
 - `defaults.onStepFailure` decides the rest of the run on a failure: `abort`
   (default) cancels what is still pending; `continue` lets independent
   branches finish.
@@ -73,6 +79,15 @@
   pipeline, fired manually when the handoff is in hand — `runCompleted` only
   once the seam itself is automated. The split is reversible: when the seam
   is wired later, chain the two pipelines or merge them.
+- Two arguments for holding a labor seam in a gate instead are both settled by
+  facts, not taste. An approval carries **no payload** — approve/reject is one
+  bit, so the gate delivers none of what the person produced (the reply, the
+  file, the extracted count); the downstream step is dispatched without it and
+  either asks for it again through clarify or asserts a receipt it cannot
+  verify. And covering a whole procedure is not an argument against splitting:
+  the whole flow IS covered by several pipelines, one per seam-bounded
+  stretch, so a request to handle everything asks for complete coverage, not
+  for one definition.
 
 **Write each step's directive and pins.**
 
@@ -80,6 +95,17 @@
   definition is written in. Omit it when the pinned intent's definition
   already is the specification — the runtime then dispatches a standard
   "carry out this intent" statement.
+- What a directive carries is what only this RUN knows: the case's
+  identifiers and parameters, the deadline, the watermark. It does not restate
+  the intent's procedure — that prompt is already loaded, so a summary of it
+  spends the step's budget saying nothing and crowds out what is missing. A
+  directive filled the other way round (the procedure repeated, the run's own
+  inputs absent) leaves the step with nothing it did not already have.
+- When the run's inputs cannot be known while you author — a case opened by an
+  event, not by a calendar — do not invent them and do not write a
+  placeholder that looks like a variable. Leave them out, and say in the
+  report which steps will therefore ask for them through their intent's
+  clarify, so nobody expects Run now to complete unattended.
 - Directive template variables: `{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`,
   `{{run.id}}`, `{{run.prevSuccess.fireDate}}` / `{{run.prevSuccess.fireEpoch}}`
   (the previous completed run — the "everything since the last successful run"
@@ -96,23 +122,21 @@
 
 **Save, verify, decode failures.**
 
-- New: `POST /definitions/pipelines` with `{ id, def }` — ids are
-  `[a-z0-9][a-z0-9-]*` and taken across scopes; a collision comes back 409,
-  propose another. Edit: fetch the definition, change it, and `PUT` the whole
-  thing back — a save replaces everything, so anything you did not carry over
-  is gone.
+- Ids are `[a-z0-9][a-z0-9-]*` and taken across scopes; a collision comes back
+  409 (`pipeline-taken`), so propose another.
 - A 400 with code `invalid-pipeline-def` carries `errors[]` — fix every named
   rule, not just the first, and save again. Some keys are refused by design —
   a knob on the wrong step kind (`retry` on a gate, `remindAfter` on a job
   step) or one that is reserved (`{{steps.<id>.verdict}}`,
   `overlap: cancelPrevious`): say the knob does not exist there rather than
   smuggling the behavior into prose.
-- A 409 with code `pipeline-enabled` means the definition is published and
-  immutable. Only a person can disable it in the Pipelines tab; report that
-  and stop — never delete-and-recreate around the lock.
-- After saving, call `preview-fires` and read the fire times back against the
-  user's words — "every Monday 9am in Seoul" must show Mondays 09:00 in
-  `Asia/Seoul`. A trigger you did not preview is not verified.
+- A save may answer 201 and still carry `catalogWarnings` — findings that
+  hard-fail enable later. Read them and fix them now; a draft that cannot be
+  enabled is not a finished draft.
+- A cron trigger you did not `preview-fires` is not verified: read the fire
+  times back against the user's words — "every Monday 9am in Seoul" must show
+  Mondays 09:00 in `Asia/Seoul`. A manual-only pipeline has no fires to
+  preview, and saying so is the verification; never invent a cron to preview.
 
 **Report.**
 
@@ -121,9 +145,9 @@
   with its timeout, and the failure policy.
 - Name any step that runs on a substitute and any seam left to a person —
   what this pipeline delivers for real, and where its output waits on hands.
-- End with the hand-over line: the pipeline is a disabled draft; a person
-  enables it and activates it on a project in the Pipelines tab, and that is
-  where run-now, run history, and approvals live.
+- End with the hand-over line, and with what a person must decide that you
+  could not: the gate policies you left open, and the inputs the run will
+  ask for.
 - If the requested change already holds, do not manufacture a write —
   re-saving identical content is not work. Say so, and on a pinned turn ask
   through clarify whether anything else is wanted.

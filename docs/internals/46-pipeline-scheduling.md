@@ -790,6 +790,24 @@ The obligations live at authoring time, in the pipeline builder's contract:
   wiring the seam later means chaining or merging the two. No inter-pipeline
   ordering machinery exists or is planned; `runCompleted` and manual fire are
   the whole vocabulary.
+  Two rationalizations for keeping a labor seam inside a gate are settled by
+  facts, and the contract states both so the rule is not a preference to trade
+  away: an approval carries **no payload** (one bit — it delivers none of what
+  the person produced, so the downstream step re-asks through clarify or
+  asserts a receipt it cannot verify), and covering a whole procedure is not an
+  argument against splitting, since the whole flow IS covered by several
+  pipelines, one per seam-bounded stretch.
+- **Verdict routing is owed where the vocabulary exists** — a run seals a
+  verdict whether or not an edge reads it, so an upstream `outcomes`-declaring
+  intent whose judgment nothing routes on has had its decision discarded, and
+  the steps that apply to one outcome run on every outcome. Routing no branch
+  is a choice the report defends.
+- **Directive polarity** — a directive carries what only the RUN knows (the
+  case's identifiers and parameters, the deadline, the watermark), never a
+  restatement of the pinned intent's procedure, which is already loaded. When
+  the run's inputs are unknowable at authoring time, they are left out and the
+  report names the steps that will therefore stop for `clarify` — otherwise a
+  person expects Run now to complete unattended.
 
 ---
 
