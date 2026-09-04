@@ -156,6 +156,7 @@ structural), so one pipeline runs concurrently on many projects:
 |---|---|
 | `ant:pipe:run:{runId}` | live RunRecord JSON (single writer under the run lock; 7d past terminal) |
 | `ant:pipe:active:{org}:{user}:{projectId}` | per-ACTIVATION overlap guard, value = runId (NX; released at terminal; reconciler heals a crash-orphaned guard) |
+| `ant:pipe:runslots:{org}:{user}` | account-wide concurrent-run slot ZSET (member = projectId) — the `maxConcurrentRuns` fire gate (`reserveSlot`, count+reserve in one step; released at terminal under the holder check) |
 | `ant:pipe:fired:{org}:{user}:{projectId}:{fireEpoch}` | fire idempotency NX (48h) |
 | `ant:pipe:job:{jobId}` | jobId → (runId, stepId, projectId, owner) reverse mapping for the status consumer |
 | `ant:pipe:hitl:{gateId}` / `ant:pipe:card:{cardId}` | armed gate record / card → gate reverse mapping |
@@ -390,6 +391,15 @@ mutates an in-flight run.
 
 ## 5. HITL gates — one resolve funnel, durable timeout arms, zero polling
 
+Three HITL rails, one taxonomy: an **approval gate** is an AUTHORED decision
+node (a def step — armed eagerly, holds no project slot, binary
+approve/reject routes succeeded/failed); **clarify** (§5b) is a RUNTIME
+information request the executing job raises — the answer re-dispatches the
+SAME step with a new jobId; **tool approval** (§5c) is a RUNTIME grant on an
+approval-gated tool call — approve re-dispatches with a one-turn grant. All
+three park the run `awaiting_human` and resolve through the ONE NX
+choice-resolved funnel.
+
 An approval step suspends the run without holding any worker slot:
 
 ```
@@ -551,13 +561,24 @@ also carries `orphanActivations`, own activations whose pinned def no longer
 resolves; server-computed `nextFireAt` — the FE never parses cron) · create
 (personal root, DISABLED draft, cross-scope id collision 409) / get / put +
 delete (`findWritablePipeline` funnel: 403 `org-pipeline-forbidden` per ACL;
-409 `pipeline-enabled` while enabled) · `enable` (re-validates the def — a
-broken draft never publishes) + `disable` (409 `pipeline-has-activations`
-listing holders; post-write re-scan rollback) · `promote` / `permissions` /
-`editors` (accountAgents mirror) · `activations` · `activate` / `deactivate`
-/ `run-now` (all `{projectId}`-addressed; run-now 409
-`pipeline-not-activated` / `existingRunId`) · `activatable-projects` ·
-`preview-fires` · `runs?projectId=&userId=` (per-activation history; a
+409 `pipeline-enabled` while enabled; create/put responses carry
+non-blocking `catalogWarnings` — the same catalog-binding findings the
+enable gate hard-fails on, so an authoring job (pipeline-builder)
+self-corrects at save time) · `enable` (re-validates the def AND the
+catalog binding — `validatePipelineCatalogBinding` against the ENABLER's
+agent catalog: agent/job/intent existence, verdict-edge vocabulary,
+`onMissingVerdict` vocabulary; a broken draft or a typo'd ref never
+publishes, and a RE-enable after disable re-judges too) + `disable` (409
+`pipeline-has-activations` listing holders; post-write re-scan rollback) ·
+`promote` / `permissions` / `editors` (accountAgents mirror) ·
+`activations` · `activate` (re-judges the catalog binding against the
+ACTIVATOR's catalog — the one dispatch resolves against; catches the
+enabled-then-agent-deleted drift window) / `deactivate` / `run-now` (all
+`{projectId}`-addressed; run-now 409 `pipeline-not-activated` /
+`existingRunId`; run-now is NOT catalog-gated — dispatch stays the
+backstop) · `activatable-projects` · `preview-fires` · `download`
+(rate-limited definition-folder ZIP; `owner.json` excluded) ·
+`runs?projectId=&userId=` (per-activation history; a
 member's `userId` is readable for org-scope pipelines by live members,
 read-only) + `runs/:runId` (own runs only — the caller's own run log must
 exist; `?projectId=` disk fallback) + `runs/:runId/cancel` (own only) ·
@@ -566,8 +587,10 @@ project-scoped read is `GET /api/projects/:projectId/active-pipeline` →
 `{ active: ActivePipelineInfo | null }` — the chat surface's lock signal.
 
 SSE: ONE `pipeline` event, cause-discriminated
-(`runUpdate | approvalRequested | approvalResolved | defChanged |
-availabilityChanged | activationChanged`) — the gitState pattern.
+(`runUpdate | approvalRequested | approvalResolved | clarifyRequested |
+clarifyAnswered | defChanged | availabilityChanged | activationChanged`) —
+the gitState pattern. Clarify rows ride the same inbox fold as gates
+(`approvalRequested` adds, `clarifyAnswered` removes by clarifyId).
 `activationChanged` carries `activation | null` + `activatedBy` plus the
 projectId (on deactivate: the PREVIOUS project, so the FE can clear its
 lock). Published **user-scoped** (no projectId on the envelope) so the

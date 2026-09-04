@@ -753,8 +753,9 @@ function isAcyclic(steps: Array<{ id: string; needs?: string[] }>): boolean {
 
 /**
  * Every rule the pipeline store enforces, as plain messages. Empty = valid.
- * Intent-id EXISTENCE (against the job's catalog) and cron minimum-interval
- * are server-side checks — they need the definition loader / cron parser.
+ * Catalog binding (agent/job/intent existence, verdict vocabulary) is the
+ * separate `validatePipelineCatalogBinding` below — it needs the caller's
+ * agent catalog; cron minimum-interval is server-side (cron parser).
  */
 export function validatePipelineDef(
   raw: unknown,
