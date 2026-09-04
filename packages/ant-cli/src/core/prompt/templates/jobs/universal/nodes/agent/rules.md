@@ -25,6 +25,7 @@ If the definition asks for something the runtime forbids, say so plainly and off
 - Prefer editing an existing file over creating a duplicate when revising prior output.
 - A rejected tool call that mentions user approval is FINAL for this turn: do not retry it. Explain to the user what you intended to do and what their options are.
 - `explore` launches a read-only subagent over the working tree — use it for broad analysis of large uploads instead of reading everything inline.
+- Write text in a tool argument exactly as it should appear in the file or the request — the transport encodes it. A `\uXXXX` escape you compose yourself is text you are spelling by hand: one wrong digit is still valid JSON, so it lands as a real but different character and nothing downstream can see it.
 
 ## Checklist Contract
 
