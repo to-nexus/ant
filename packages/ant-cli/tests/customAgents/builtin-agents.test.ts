@@ -266,8 +266,14 @@ describe('shipped agent-builder definition', () => {
     // zero manifests). The single-segment glob covers both the base
     // `{agentId}.md` and its `{agentId}-{mnemonic}.md` revisions. The
     // sanctioned no-op exit is clarify, which this gate exempts.
+    //
+    // The action is NARROWED to the write route. A bare `api__ant__request`
+    // counted any successful call, so a turn that POSTed the agent and job
+    // scaffolds, wrote all 49 definition files into the artifacts tree with
+    // create_file, and never called PUT reported success with an empty
+    // definition (civil-dusting-couch).
     expect(build?.hooks?.stop).toEqual([
-      { action: 'api__ant__request' },
+      { action: 'api__ant__request PUT /definitions/agents/*/file' },
       { artifact: 'dependency-report/*.md' },
     ]);
     // Inspection reports with stated assumptions instead of blocking on questions.

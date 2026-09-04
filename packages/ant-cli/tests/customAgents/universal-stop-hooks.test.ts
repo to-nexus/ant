@@ -99,6 +99,32 @@ describe('activeStopHooksOf', () => {
   });
 });
 
+describe('checkStopHooks — narrowed api-request action', () => {
+  // A bare tool name counted any successful call, so a build turn that POSTed
+  // the agent and job scaffolds satisfied a contract asking for a definition
+  // WRITE (civil-dusting-couch: 49 files went to the artifacts tree instead).
+  const hooks = [
+    { intentId: 'build', hook: { action: 'api__ant__request PUT /definitions/agents/*/file' } },
+  ] as any;
+  const tok = (m: string, p: string) => `api__ant__request ${m} ${p}`;
+
+  it.each([
+    [['api__ant__request', tok('PUT', '/definitions/agents/a/file')], true, 'the write route'],
+    [['api__ant__request', tok('POST', '/definitions/agents')], false, 'the agent scaffold POST'],
+    [['api__ant__request', tok('POST', '/definitions/agents/a/jobs')], false, 'the job scaffold POST'],
+    [['api__ant__request', tok('PUT', '/definitions/agents/a/b/file')], false, '* stays in one segment'],
+    [['api__ant__request'], false, 'a bare token carries no method or path'],
+    [[tok('PUT', '/definitions/pipelines/x/file')], false, 'another resource'],
+  ])('%j -> %s (%s)', (actions, met) => {
+    expect(checkStopHooks(hooks, { writes: [], actions: actions as string[] })[0].met).toBe(met);
+  });
+
+  it('a bare action keeps its any-call meaning', () => {
+    const bare = [{ intentId: 'x', hook: { action: 'api__ant__request' } }] as any;
+    expect(checkStopHooks(bare, { writes: [], actions: ['api__ant__request'] })[0].met).toBe(true);
+  });
+});
+
 describe('checkStopHooks — truth table', () => {
   it('artifact hook: met only by a matching real write', () => {
     const hooks = [hook({ artifact: 'reports/*.md' })];

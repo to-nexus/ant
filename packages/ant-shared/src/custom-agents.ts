@@ -137,6 +137,48 @@ export const API_ACTION_PATTERN = new RegExp(
   `^${API_TOOL_PREFIX}[a-z0-9]+(?:-[a-z0-9]+)*__(?:${API_TOOL_VERBS.join('|')})$`,
 );
 
+/**
+ * An `action:` hook naming a generic HTTP tool asserts only that the tool ran,
+ * which is why a build turn that POSTed a scaffold and wrote no definition file
+ * satisfied a contract whose own comment demanded "a definition write actually
+ * went through the API". An api-request action may therefore carry a narrowing
+ * suffix — `api__ant__request PUT /definitions/agents/*&#47;file` — and a call
+ * counts only when its method and path match. A bare tool name keeps its old
+ * meaning: any successful call.
+ *
+ * `*` matches within one path segment, `**` matches across segments.
+ */
+export const API_ACTION_NARROWED_PATTERN = new RegExp(
+  `^(${API_TOOL_PREFIX}[a-z0-9]+(?:-[a-z0-9]+)*__${API_TOOL_VERBS.filter((v) => v === 'request').join('|') || 'request'})`
+  + ` (GET|POST|PUT|PATCH|DELETE) (/[^\\s]*)$`,
+);
+
+/** Evidence token for one api-request call: `<tool> <METHOD> <path>`. */
+export function apiActionEvidenceToken(tool: string, method: unknown, path: unknown): string | undefined {
+  if (typeof method !== 'string' || typeof path !== 'string') return undefined;
+  const m = method.trim().toUpperCase();
+  const q = path.trim().split('?')[0];
+  if (!m || !q.startsWith('/')) return undefined;
+  return `${tool} ${m} ${q}`;
+}
+
+/**
+ * True when `token` (from {@link apiActionEvidenceToken}) satisfies a narrowed
+ * hook value. Narrowing is method-exact and path-glob.
+ */
+export function matchesNarrowedApiAction(hookValue: string, token: string): boolean {
+  const h = API_ACTION_NARROWED_PATTERN.exec(hookValue.trim());
+  const t = API_ACTION_NARROWED_PATTERN.exec(token.trim());
+  if (!h || !t) return false;
+  if (h[1] !== t[1] || h[2] !== t[2]) return false;
+  const rx = new RegExp(
+    '^' + h[3].split('**').map((seg) =>
+      seg.split('*').map((lit) => lit.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'),
+    ).join('.*') + '$',
+  );
+  return rx.test(t[3]);
+}
+
 export interface IntentHooksValidationOptions {
   /**
    * Predicate for H6's builtin-tool arm. The BE loader injects the universal
@@ -221,16 +263,24 @@ export function validateStopHookEntry(
   // control tool outside the preset, so it is naturally excluded. Without a
   // builtin predicate the judgement is deferred: only mcp/api-shaped names
   // are pattern-checked.
+  // A narrowed api-request action is valid on its own terms; the bare-name
+  // checks below would reject it for carrying a method and a path.
+  if (API_ACTION_NARROWED_PATTERN.test(v)) {
+    return { normalized: { action: v } };
+  }
   if (opts.isKnownBuiltinAction) {
     if (!opts.isKnownBuiltinAction(v) && !MCP_ACTION_PATTERN.test(v) && !API_ACTION_PATTERN.test(v)) {
       return {
-        error: `hooks.stop action "${v}" is neither a universal builtin tool, a full mcp__{server}__{tool} name, nor an api__{server}__{get|request} name`,
+        error: `hooks.stop action "${v}" is neither a universal builtin tool, a full mcp__{server}__{tool} name, an api__{server}__{get|request} name, nor an api__{server}__request narrowed as \`{METHOD} /path/glob\``,
       };
     }
   } else if (v.startsWith('mcp__') && !MCP_ACTION_PATTERN.test(v)) {
     return { error: `hooks.stop action "${v}" is not a full mcp__{server}__{tool} name` };
   } else if (v.startsWith('api__') && !API_ACTION_PATTERN.test(v)) {
-    return { error: `hooks.stop action "${v}" is not a full api__{server}__{get|request} name` };
+    return {
+      error: `hooks.stop action "${v}" is not a full api__{server}__{get|request} name`
+        + ' (a narrowing suffix is written as `api__{server}__request {METHOD} /path/glob`)',
+    };
   }
   return { normalized: { action: v } };
 }

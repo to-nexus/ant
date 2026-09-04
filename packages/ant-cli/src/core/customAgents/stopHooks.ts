@@ -21,7 +21,7 @@
  */
 
 import type { CustomIntentDef, IntentStopHook } from '@ant/shared';
-import { GENERAL_INTENT } from '@ant/shared';
+import { GENERAL_INTENT, API_ACTION_NARROWED_PATTERN, matchesNarrowedApiAction } from '@ant/shared';
 
 /** Forced agent re-entries per turn before the gate concedes to a pause. */
 export const UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET = 2;
@@ -184,11 +184,16 @@ export function checkStopHooks(
       );
       return { intentId: h.intentId, hook: h.hook, matchedWrites, met: matchedWrites.length > 0 };
     }
+    const action = h.hook.action;
     return {
       intentId: h.intentId,
       hook: h.hook,
       matchedWrites: [],
-      met: actionSet.has(h.hook.action),
+      // A narrowed value never matches the bare tool name, so a scaffold POST
+      // cannot satisfy a hook that asks for a specific write.
+      met: API_ACTION_NARROWED_PATTERN.test(action)
+        ? evidence.actions.some((tok) => matchesNarrowedApiAction(action, tok))
+        : actionSet.has(action),
     };
   });
 }

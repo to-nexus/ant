@@ -7,5 +7,5 @@
 # content.
 hooks:
   stop:
-    - action: api__ant__request
+    - action: api__ant__request PUT /definitions/agents/*/file
     - artifact: dependency-report/*.md

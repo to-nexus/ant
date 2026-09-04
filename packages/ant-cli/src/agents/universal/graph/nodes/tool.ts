@@ -16,7 +16,7 @@
  * ro mount), pathAutoCorrect 'none' (no codebase/ prefixing).
  */
 
-import { UNIVERSAL_FEATURE, isUniversalBuiltinTool } from '@ant/shared';
+import { UNIVERSAL_FEATURE, isUniversalBuiltinTool, apiActionEvidenceToken } from '@ant/shared';
 import type { UniversalGraphState, UniversalToolCall } from '../state';
 import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
 import { createToolNode } from '../../../common/tool/createToolNode';
@@ -336,7 +336,15 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
     // Successful calls only (action stop-hook evidence): a gate-rejected or
     // failed call carries `result.error`, so "advertised but blocked" never
     // counts as performed.
-    const actions = executionEvents.filter((e) => !e.result.error).map((e) => e.toolName);
+    // A narrowed api-request hook matches on method + path, so the evidence
+    // carries both alongside the bare tool name (which keeps its any-call
+    // meaning). See apiActionEvidenceToken.
+    const actions = executionEvents
+      .filter((e) => !e.result.error)
+      .flatMap((e) => {
+        const token = apiActionEvidenceToken(e.toolName, e.args?.method, e.args?.path);
+        return token ? [e.toolName, token] : [e.toolName];
+      });
 
     return {
       conversations: { [CONV_KEYS.SESSION_MAIN]: updatedHistory },

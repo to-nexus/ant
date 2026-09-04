@@ -207,6 +207,7 @@ hooks:
   stop:
     - artifact: reports/*.md          # a file matching this glob was written
     - action: api__my-api__request    # this tool was called successfully
+    - action: api__my-api__request POST /records   # ...with this method+path
 ```
 
 Approval posture: a tool declared `tools.approval: always` is refused
@@ -231,6 +232,14 @@ comes only from the file tools (`create_file`, `edit_file`, `append_file`,
 runtime spooled to disk, satisfy no `artifact:` hook — hold such an intent to
 an `action:` instead. A write into an external system is declared as its tool:
 `action: api__{name}__request` or `action: mcp__{server}__{tool}`.
+
+A bare tool name is satisfied by ANY successful call to it, which is rarely
+what a contract means when the tool is a generic HTTP one: reading and writing
+go through the same `api__{name}__request`. Narrow it by appending the method
+and a path glob — `action: api__crm__request POST /contacts` — and only a call
+matching both counts. The path glob follows the `artifact:` rules (`*` within
+one segment, `**` any depth) and a query string is ignored. Use the bare form
+only when any call to that tool genuinely completes the work.
 
 An intent's stop globs are its output contract: pipeline authoring pins
 exactly these globs as a downstream step's context, so keep them stable and
