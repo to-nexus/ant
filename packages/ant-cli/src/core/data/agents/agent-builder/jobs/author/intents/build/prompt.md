@@ -238,7 +238,16 @@ contract — the third omitted only when done is not observable.**
   there. The inputs and the steps are one list read twice: an input no step
   consumes is a step you dropped while transcribing, not a spare input, and
   a step whose data appears in no input is the same omission from the other
-  end. Read the two lists against each other before saving. An intent without a `prompt.md` shows up in the running agent's
+  end. Read the two lists against each other before saving.
+- The material's own numbers and its own open questions are load-bearing.
+  A count you carry over is checked against the list you actually wrote —
+  "nine files to download" above eight bullets is one lost item, and the
+  count is the only place it shows. An uncertainty the material marks —
+  a figure it records twice with different values and flags as awaiting an
+  answer — belongs in the file whose work depends on it, because a
+  completion condition that reads "all of them" over a disputed total
+  cannot be met, and resolving it silently is the definition asserting
+  something the material does not. An intent without a `prompt.md` shows up in the running agent's
   catalog as carrying no instructions — a trigger with no procedure is not a
   unit of work.
 - `infer.md` names ONE arriving situation, and the authored file is where
