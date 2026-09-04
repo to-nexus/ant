@@ -288,7 +288,13 @@ contract — the third omitted only when done is not observable.**
 - `infer.md` names what arrives or is asked for — "a settlement file for the
   closed month is in hand" — never when a calendar fires it, not even as a
   trailing "typically runs at month-end" clause; a calendar anywhere in
-  `infer.md` is schedule material in the wrong home. Time rules the agent
+  `infer.md` is schedule material in the wrong home. The material's own
+  start sentence usually carries both halves — the date, and the thing
+  whose arrival it waits for ("the 8th–10th, once the extract lands on the
+  dashboard") — so the criterion is that second half and the date goes to
+  the operating-context section. Where the sentence looks like a date
+  alone, the arrival is one step behind it: what the person opens,
+  receives, or checks to know the work can start. Time rules the agent
   applies while working — a filing deadline, a do-not-send window — stay in
   the procedure, because they change what the agent does, not when it is
   started.
