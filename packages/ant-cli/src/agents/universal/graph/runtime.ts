@@ -310,8 +310,19 @@ export function createUniversalFileSystem(
   const mountFor = (p: string): UniversalReadOnlyMount | undefined =>
     mounts.find((m) => p.startsWith(m.prefix) || `${p}/` === m.prefix);
 
+  // A definition mount refuses writes, and saying only that sends the caller
+  // looking for a writable path there is none of: three edit_file attempts in
+  // one build turn each got the bare refusal and retried. Name the route that
+  // does write, since it is the only one.
   const readOnly = (op: string, prefix: string): never => {
-    throw new Error(`${op}: the ${prefix} mount is read-only`);
+    const isDefinition = prefix === DEFINITION_MOUNT_PREFIX || prefix === `${UNIVERSAL_AGENTS_DIRNAME}/`;
+    throw new Error(
+      `${op}: the ${prefix} mount is read-only`
+      + (isDefinition
+        ? ' — definition files are written only by PUT /definitions/agents/{agentId}/file,'
+          + ' which replaces the whole file (there is no partial edit)'
+        : ''),
+    );
   };
 
   /** Resolve a mounted path, or throw the mount's own "cannot serve this" error. */

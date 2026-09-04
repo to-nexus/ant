@@ -388,6 +388,22 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
     expect(() => fs.copyFile('in.md', p)).toThrow(/read-only/);
   });
 
+  // A bare "read-only" sent three edit_file retries looking for a writable
+  // path in a plane that has none. A definition mount names the one route
+  // that writes; the run-log mount has no such route and stays bare.
+  it.each([
+    ['_agent-definition/agent.yaml', true],
+    ['_agents/payments-ops/agent.yaml', true],
+    ['pipeline-runs/r1.jsonl', false],
+  ] as const)('%s refusal names the write route: %s', (p, named) => {
+    const fs = build();
+    const msg = (() => {
+      try { fs.writeFile(p, 'x'); return ''; } catch (e) { return (e as Error).message; }
+    })();
+    expect(msg).toMatch(/read-only/);
+    expect(/PUT \/definitions\/agents/.test(msg)).toBe(named);
+  });
+
   it('readFile forwards FileReadOptions on both branches (M-032 maxBytes backstop)', async () => {
     const calls: Array<{ tag: string; path: string; opts: unknown }> = [];
     const recording = (tag: string): FileSystemPort =>
