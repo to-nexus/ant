@@ -239,11 +239,16 @@ contract — the third omitted only when done is not observable.**
   paraphrases `infer.md` gives the condition two spellings, and they diverge
   on the next edit. The condition has exactly one home; `prompt.md` begins
   at what the agent does once it applies — opening on the work's own
-  identity and where its scope ends ("this covers the stages after the
-  invoice appears; the vendor integration is another team's"), never on the
-  state that selected it. The test is self-applicable: an opening sentence
-  that would still read as an `infer.md` body is the trigger in a second
-  home. The rule runs the other way too,
+  identity and where its scope ends, never on the state that selected it.
+  State that boundary as what this work produces and what it does not
+  ("this produces the reconciliation and the voucher draft; issuing the
+  invoice is the operator's"), never as its position among other work:
+  where scope and run order compete for the same sentence the quarantine
+  wins, and a predecessor named, a stage counted, or the material's own
+  step number is that position wherever it sits — a heading carries it as
+  readily as a sentence does, so the title is prose too. The test is
+  self-applicable: an opening sentence that would still read as an
+  `infer.md` body is the trigger in a second home. The rule runs the other way too,
   and it costs more in that direction: `infer.md` ends once the arriving
   situation is named, so a closing sentence describing the steps, the
   output, or the spec the work follows is the procedure in the trigger's
