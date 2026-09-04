@@ -315,7 +315,10 @@ contract — the third omitted only when done is not observable.**
   dashboard") — so the criterion is that second half and the date goes to
   the operating-context section. Where the sentence looks like a date
   alone, the arrival is one step behind it: what the person opens,
-  receives, or checks to know the work can start. Time rules the agent
+  receives, or checks to know the work can start. Once that section states
+  the cadence, a date still in `infer.md` is the same fact in two homes, and
+  the criterion holds the copy — the two files sitting open together is what
+  makes it easy to miss and easy to check. Time rules the agent
   applies while working — a filing deadline, a do-not-send window — stay in
   the procedure, because they change what the agent does, not when it is
   started.
