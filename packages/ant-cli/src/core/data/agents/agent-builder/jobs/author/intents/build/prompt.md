@@ -315,11 +315,7 @@ contract — the third omitted only when done is not observable.**
   receives, or checks to know the work can start. Time rules the agent
   applies while working — a filing deadline, a do-not-send window — stay in
   the procedure, because they change what the agent does, not when it is
-  started. The procedure is where they stay, though, and the criterion is
-  not: a closing window the work must land inside ("within the 1st-5th")
-  reads as a deadline rather than a firing time, and that is exactly how it
-  arrives in `infer.md`, where it is the calendar case whatever it reads as
-  — the criterion keeps the arrival and nothing else.
+  started.
 - Schedules and cross-intent run order are pipeline authoring's — the Pipeline
   Builder composes a finished agent's intents, and your API cannot write a
   pipeline. Author every intent as startable at any time and able to finish
