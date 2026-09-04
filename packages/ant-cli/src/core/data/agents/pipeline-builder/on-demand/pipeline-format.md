@@ -110,7 +110,10 @@ steps:
   for a note, a value or a file, so a prompt that asks the approver to enter
   something describes a channel that does not exist.
 - A gate must have an upstream step (it cannot be the entry step): its card in
-  chat anchors to the producing job's turn.
+  chat anchors to the producing job's turn. It arms as soon as its `needs` are
+  satisfied — a sibling job step still in flight does not hold it back (the
+  run's one-job-at-a-time rule orders the JOBS, not the gate), so a prompt can
+  only assert what its own needs guarantee.
 - `channels` supports only `inApp` today. `timeout.after` is `{n}m|h|d`;
   `timeout.onTimeout` is `reject` or `approve`. No timeout means the gate
   waits indefinitely.

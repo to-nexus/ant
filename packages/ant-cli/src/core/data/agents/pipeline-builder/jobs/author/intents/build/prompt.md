@@ -78,9 +78,13 @@
   with nobody having looked, so use it only when the user asks for that.
 - `remindAfter` re-surfaces an unresolved gate on that cadence — use it on
   gates whose timeout is long or absent, so a waiting run is never forgotten.
-- A gate that asks the approver to confirm a step's inputs must come BEFORE
-  that step. Placed after it, the step has already run on whatever it could
-  find, and the confirmation decides nothing.
+- A gate may assert only what its own `needs` guarantee, and it arms the
+  moment they are satisfied — a sibling branch still in flight does not hold
+  it. So a prompt claiming "the mail request is ready too" while that branch
+  is a sibling asks for a decision whose premise is not yet true, and a gate
+  confirming a step's INPUTS must come before that step, not after it has
+  already run on whatever it could find. Either the asserted step is in the
+  gate's `needs`, or the prompt does not claim it.
 - An intent that gates a tool with `approval: always` already pauses the run
   per call, so never add an approval step to guard a write it gates.
 - A gate holds a run for a person's decision, never for their labor. When the
@@ -108,10 +112,10 @@
   in, or let the consuming step ask for it. A gate in front of that step adds
   an interruption that carries nothing, and a gate `prompt` inviting the
   approver to enter, paste or summarize anything describes a channel that does
-  not exist: resolving an approval sends `decision` and nothing else. A
-  directive must never claim a gate delivered content — the step then works
-  from an assumption, and the hedge it writes into its own artifact does not
-  survive into its answer, its sealed verdict, or the next step's input.
+  not exist. A directive must never claim a gate delivered content — the step
+  then works from an assumption, and the hedge it writes into its own artifact
+  does not survive into its answer, its sealed verdict, or the next step's
+  input.
 - A clarify answer stays with the step that asked it: `{{steps.<id>.answer}}`
   is that step's final answer text, not its clarify. So whatever LATER steps
   need from the person has to be captured into an artifact by the step that
