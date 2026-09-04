@@ -141,6 +141,10 @@ export interface UniversalGraphState extends ResolvableState {
   hookBounceRounds?: number;
   /** Stop-hook bounce redo flag — routeAfterAgent reads it (join-redo shape). */
   _hookRedo?: boolean;
+  /** Output-cap continuations spent this turn (bounded redo). */
+  truncationRounds?: number;
+  /** Output-cap continuation redo flag — a distinct reason from _hookRedo. */
+  _truncationRedo?: boolean;
   /** Unmet checks after the bounce budget — respond recomputes; runner surfaces. */
   _hooksUnmet?: StopHookCheck[];
   /**
@@ -228,6 +232,8 @@ export const UniversalAnnotation = Annotation.Root({
   _turnToolActions: Annotation<string[]>,
   hookBounceRounds: Annotation<number | undefined>,
   _hookRedo: Annotation<boolean | undefined>,
+  truncationRounds: Annotation<number | undefined>,
+  _truncationRedo: Annotation<boolean | undefined>,
   _hooksUnmet: Annotation<StopHookCheck[] | undefined>,
   restoredHookLedger: Annotation<StopHookLedger | undefined>,
   artifactsOverview: Annotation<string | undefined>,

@@ -26,6 +26,14 @@ import { GENERAL_INTENT, API_ACTION_NARROWED_PATTERN, matchesNarrowedApiAction }
 /** Forced agent re-entries per turn before the gate concedes to a pause. */
 export const UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET = 2;
 
+/**
+ * How many times one turn may be re-entered because the provider cut the reply
+ * at the output cap. Same bounded-redo shape as the hook bounce: a truncated
+ * reply is not a finished one, but a reply that keeps hitting the cap is a
+ * request that will not fit, and the turn ends with a visible marker instead.
+ */
+export const UNIVERSAL_TRUNCATION_CONTINUE_BUDGET = 3;
+
 /** One declared hook flattened with its owning intent. */
 export interface ActiveStopHook {
   intentId: string;

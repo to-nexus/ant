@@ -46,6 +46,7 @@ import { CLARIFY_TOOL_DEFINITION } from '../../../common/clarify/tool';
 import { parseChecklistTag, serializeChecklist } from '../../../../core/customAgents/universalChecklist';
 import {
   UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET,
+  UNIVERSAL_TRUNCATION_CONTINUE_BUDGET,
   activeStopHooksOf,
   buildStopHookGateMessage,
   checkStopHooks,
@@ -287,6 +288,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
   // and only into the outbound copy — session:main history stays text.
   const llmMessages = attachImageBlocksToLastUserMessage(messages, attached.imageBlocks);
 
+  let lastStopReason: string | undefined;
   try {
     try {
       applyEstimatedInputTokensFromMessages(state as any, [
@@ -328,6 +330,9 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
         }
 
         if (event.type === 'done') {
+          // The truncation signal the port documents and nobody read: a reply
+          // cut at the output cap reached the user as a finished answer.
+          if (event.stopReason) lastStopReason = event.stopReason;
           const capturedUsage = extractTokenUsageFromStreamEvent(event);
           if (capturedUsage) {
             accumulateTokenUsage(state as any, capturedUsage, {
@@ -417,11 +422,53 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
           chatMessageStarted: streamedAnything,
           _subagentJoinRedo: true,
           _hookRedo: false,
+          _truncationRedo: false,
           tokenUsage: state.tokenUsage,
           ...checklistPatch,
           ...(joined.tokenDelta as any),
         };
       }
+    }
+
+    // ── Truncation continuation — a reply the provider cut at the output cap
+    // is not a finished reply, and the turn used to end on it and report
+    // success (an audit report stopped mid-sentence two sections in). Same
+    // redo shape as the join barrier and the hook bounce, budgeted the same
+    // way; when the budget runs out the reply carries a visible marker rather
+    // than passing as complete.
+    if (lastStopReason === 'max_tokens' && toolCalls.length === 0) {
+      const cuts = state.truncationRounds ?? 0;
+      if (cuts < UNIVERSAL_TRUNCATION_CONTINUE_BUDGET) {
+        console.log(`✂️  [Universal:Agent] Reply cut at the output cap — continue ${cuts + 1}/${UNIVERSAL_TRUNCATION_CONTINUE_BUDGET}`);
+        const redoHistory: ConversationMessage[] = [...baseHistory];
+        if (responseText) redoHistory.push(buildAssistantMessage({ text: responseText }));
+        redoHistory.push({
+          role: 'user',
+          content:
+            '[runtime] Your reply stopped at the output limit, mid-sentence. Continue from'
+            + ' exactly where it broke off — do not restate what you already sent, and do not'
+            + ' start over. If what remains is long, finish the most important part first.',
+        });
+        return {
+          conversations: { [CONV_KEYS.SESSION_MAIN]: redoHistory },
+          pendingToolCalls: [],
+          response: undefined,
+          streamingCompleted: false,
+          chatMessageStarted: streamedAnything,
+          _truncationRedo: true,
+          _hookRedo: false,
+          _subagentJoinRedo: false,
+          truncationRounds: cuts + 1,
+          tokenUsage: state.tokenUsage,
+          ...checklistPatch,
+        };
+      }
+      await chatAPI.sendLLMEvent({
+        type: 'text',
+        text: state.language === 'ko'
+          ? '\n\n⚠️ 출력 한도에 걸려 답변이 여기서 잘렸습니다. 이어서 받으려면 계속을 요청하세요.'
+          : '\n\n⚠️ This reply was cut off at the output limit. Ask to continue for the rest.',
+      });
     }
 
     // ── Stop-hook gate — the turn's ONLY stop point is this node emitting
@@ -463,6 +510,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
             chatMessageStarted: streamedAnything,
             _hookRedo: true,
             _subagentJoinRedo: false,
+            _truncationRedo: false,
             hookBounceRounds: bounces + 1,
             tokenUsage: state.tokenUsage,
             ...checklistPatch,
@@ -517,6 +565,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
 export function routeAfterAgent(state: UniversalGraphState): 'tool' | 'respond' | 'agent' {
   if (state._subagentJoinRedo) return 'agent';
   if (state._hookRedo) return 'agent';
+  if (state._truncationRedo) return 'agent';
   if (state.pendingToolCalls && state.pendingToolCalls.length > 0) return 'tool';
   return 'respond';
 }

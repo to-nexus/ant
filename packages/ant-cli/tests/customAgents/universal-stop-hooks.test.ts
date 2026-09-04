@@ -16,6 +16,7 @@ import {
   buildStopHookGateMessage,
   buildStopHookLedger,
   checkStopHooks,
+  UNIVERSAL_TRUNCATION_CONTINUE_BUDGET,
   formatStopHookContractLines,
   formatStopHookManifest,
   hookKeyOf,
@@ -96,6 +97,17 @@ describe('activeStopHooksOf', () => {
 
   it('general is reserved — never yields hooks', () => {
     expect(activeStopHooksOf(catalog, ['general'])).toEqual([]);
+  });
+});
+
+describe('bounded-redo budgets', () => {
+  // A truncated reply is not a finished one, and a reply that keeps hitting
+  // the cap is a request that will not fit — so the continuation is budgeted
+  // the same way the hook bounce is (gleam-forging-helix: an audit report
+  // ended mid-sentence two sections in and the job reported success).
+  it('the output-cap continuation is bounded and small', () => {
+    expect(UNIVERSAL_TRUNCATION_CONTINUE_BUDGET).toBeGreaterThan(0);
+    expect(UNIVERSAL_TRUNCATION_CONTINUE_BUDGET).toBeLessThanOrEqual(5);
   });
 });
 
