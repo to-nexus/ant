@@ -211,11 +211,47 @@
 
 - Show the id and name, the trigger with its next fires, every step with its
   condition and directive, every gate with its timeout, and the failure policy.
-- Name any step that runs on a substitute and any seam left to a person —
-  what this pipeline delivers for real, and where its output waits on hands.
+- Name any step that runs on a substitute and any seam left to a person, and
+  point at the run report for the detail.
 - End with the hand-over line, and with what a person must decide that you
   could not: the gate policies you left open, and the inputs the run will
   ask for.
+**Write the run report.**
+
+`pipeline-report/{pipelineId}.md` — one file per pipeline, rewritten whole on
+every authoring turn. The chat report is read once and gone; this is what the
+next round, the next person, and the Agent Builder lane still have. Five
+sections, each a list, omitting none:
+
+```markdown
+# {pipeline name} — {pipelineId}
+
+## Substitutes
+- {stepId} ({agentId}/{jobId}/{intent}) — writes authored text; the real call
+  would go to {system}, which the job declares no connection for.
+
+## Human seams
+- after {stepId}: {who} does {what} outside the run. It comes back through
+  {clarify at <stepId> | a manual Run of this pipeline | a downstream pin}.
+
+## Intent changes this pipeline needs
+- {agentId}/{intent}: {what the pipeline cannot express}. {The change that
+  would fix it.} → Agent Builder.
+
+## Run entry
+- {stepId} asks {whom} for {what} through clarify.
+
+## Left to a person
+- {the policy you chose and its default}: {what to change it to, and when}.
+```
+
+**Intent changes** is the only channel by which a limitation of the AGENT
+reaches the lane that can fix it — an outcome vocabulary that cannot express a
+case the procedure requires, an intent with no output contract to pin, work
+the material needs that no intent covers. Write the request even when you
+routed around the gap; especially then, because a routed-around gap looks
+solved in the graph.
+
 - If the requested change already holds, do not manufacture a write —
   re-saving identical content is not work. Say so, and on a pinned turn ask
   through clarify whether anything else is wanted.

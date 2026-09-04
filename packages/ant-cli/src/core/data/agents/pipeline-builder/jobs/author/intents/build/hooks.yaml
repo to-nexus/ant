@@ -1,7 +1,11 @@
 # Turn completion contract for pinned/inherited build turns: the turn is not
-# done until at least one definition write actually went through the API. When
-# there is legitimately nothing to write, the exit is clarify (exempt from this
-# gate) — never a re-save of identical content.
+# done until a definition write actually went through the API AND the run
+# report was (re)written — what stands between this draft and the automation
+# it is a draft of. The chat report is read once; this file is what the next
+# person, the next round and the agent-builder lane still have. When there is
+# legitimately nothing to write, the exit is clarify (exempt from this gate) —
+# never a re-save of identical content.
 hooks:
   stop:
     - action: api__ant__request
+    - artifact: pipeline-report/*.md

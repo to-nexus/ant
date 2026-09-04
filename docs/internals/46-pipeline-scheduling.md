@@ -821,6 +821,21 @@ already holds: the definition's connection block, and the dispatcher's
 `artifact:` vs `action:` stop-hook partition (today used only to collect
 `{{steps.*.artifacts}}` globs).
 
+The pipeline builder's own run report (`pipeline-report/{pipelineId}.md`,
+contracted by its build intent's `artifact:` stop hook, rewritten whole on
+every authoring turn) is where those obligations land durably. Like the
+dependency report it has ZERO programmatic readers — do not teach the
+scheduler to parse it. Five sections: substitutes, human seams, **intent
+changes this pipeline needs**, run entry, and what was left to a person. The
+third is the load-bearing one: a limitation of the AGENT reaches the lane that
+can fix it only through that list. Six loop rounds in 2026-09 produced the
+motivating case three times — the deciding intent's `outcomes`
+(adverse/standard) cannot express the standard-form-contract case that needs
+seven days AND individual notice, so routing on the verdict drops it and not
+routing burns two steps writing "not applicable" — named by the review lane
+twice and the build lane once, and reaching the Agent Builder never, because
+each naming lived in a chat report.
+
 The obligations live at authoring time, in the pipeline builder's contract:
 
 - **Disclosure** — while gathering definitions, derive which intents run on

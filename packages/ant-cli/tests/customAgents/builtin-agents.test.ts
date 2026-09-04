@@ -415,7 +415,18 @@ describe('shipped pipeline-builder definition', () => {
     const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
     const build = resolved.intents.find((i) => i.id === 'build');
     const review = resolved.intents.find((i) => i.id === 'review');
-    expect(build?.hooks?.stop).toEqual([{ action: 'api__ant__request' }]);
+    // A pinned build turn is done only when a definition write went through
+    // the API AND the run report was (re)written. The report is the only
+    // durable channel for the two things a chat report loses: which steps run
+    // on substitutes behind which human seam, and which limitation of the
+    // AGENT this pipeline needs fixed (an outcome vocabulary that cannot
+    // express a case the procedure requires was named in three consecutive
+    // rounds and reached the Agent Builder lane in none of them). The
+    // sanctioned no-op exit is clarify, which this gate exempts.
+    expect(build?.hooks?.stop).toEqual([
+      { action: 'api__ant__request' },
+      { artifact: 'pipeline-report/*.md' },
+    ]);
     expect(review?.clarify).toBe(false);
     expect(review?.hooks).toBeUndefined();
   });

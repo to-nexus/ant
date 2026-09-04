@@ -8,6 +8,12 @@
 - Check the graph: every `needs` names an existing step, no cycles, every
   approval gate has an upstream step, and each `on` condition can actually be
   reached.
+- Read `pipeline-report/{pipelineId}.md` if the pipeline has one: it is where
+  the build turn recorded the substitutes, the human seams, the intent changes
+  it needs from the Agent Builder, and the policies it left open. Its absence
+  on a pipeline that was authored here is a finding. So is a claim in it that
+  the definition contradicts — and so is a limitation you can see in the
+  definition that the report does not name.
 - List `pipeline-runs/` before judging anything: that folder of this project's
   artifacts tree holds one `{runId}.jsonl` per run plus `index.jsonl`, and if
   it holds a run of this pipeline you read the newest one. "This pipeline has
