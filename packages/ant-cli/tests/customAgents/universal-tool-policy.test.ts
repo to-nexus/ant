@@ -489,4 +489,24 @@ describe('gateCall — approval rejection notice shape', () => {
     expect(result.allowed).toBe(false);
     expect(result.notice).toBeUndefined();
   });
+
+  // A name that is no builtin at all told the author to allowlist it, which
+  // cannot work. `checklist` is the name the runtime's checklist contract
+  // primes the model to try, and it is a text block, never a tool.
+  it.each([
+    ['create_file', /allowlist \(tools\.builtin\)/, 'a real builtin the job did not enable'],
+    ['checklist', /no "checklist" tool.*<checklist>.*text/s, 'the checklist block, not a tool'],
+    ['summarize', /Unknown tool "summarize".*not a builtin/s, 'a name that is no builtin at all'],
+  ])('%s is refused as %s', async (name, pattern) => {
+    const gate = await gateWith({ builtinTools: ['read_file'] });
+    const result = gate(name) as { allowed: false; error: string };
+    expect(result.allowed).toBe(false);
+    expect(result.error).toMatch(pattern);
+  });
+
+  it('a builtin the job did not enable is NOT reported as unknown', async () => {
+    const gate = await gateWith({ builtinTools: ['read_file'] });
+    const result = gate('run_command') as { allowed: false; error: string };
+    expect(result.error).not.toMatch(/Unknown tool/);
+  });
 });

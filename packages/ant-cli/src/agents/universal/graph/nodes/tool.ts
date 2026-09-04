@@ -16,7 +16,7 @@
  * ro mount), pathAutoCorrect 'none' (no codebase/ prefixing).
  */
 
-import { UNIVERSAL_FEATURE } from '@ant/shared';
+import { UNIVERSAL_FEATURE, isUniversalBuiltinTool } from '@ant/shared';
 import type { UniversalGraphState, UniversalToolCall } from '../state';
 import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
 import { createToolNode } from '../../../common/tool/createToolNode';
@@ -177,6 +177,18 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
     }
 
     if (!resolved.builtinTools.includes(call.name)) {
+      // A name that is no builtin at all must not be reported as one the job
+      // merely failed to enable — allowlisting it cannot work. `checklist` is
+      // the name the runtime's own checklist contract primes, so it earns the
+      // one clause that says where the block actually goes.
+      if (!isUniversalBuiltinTool(call.name)) {
+        return {
+          allowed: false,
+          error: call.name === 'checklist'
+            ? 'There is no "checklist" tool — the checklist is a `<checklist>` block in your streamed text, not a tool call. Emit it as text.'
+            : `Unknown tool "${call.name}" — it is not a builtin, an MCP tool, or a declared API. Available: ${resolved.builtinTools.join(', ')}.`,
+        };
+      }
       return {
         allowed: false,
         error: `Tool "${call.name}" is not in this job's allowlist (tools.builtin). Available: ${resolved.builtinTools.join(', ')}.`,
