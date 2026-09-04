@@ -4,6 +4,16 @@
   procedure or a criterion, is an instruction the running agent cannot
   follow, and nothing upstream rejects it — the job still validates. Name
   the file and the line.
+- That reading is a pass of its own, made over every prose file the job
+  carries, and it reports either the words it found or that it found none —
+  a silent report is indistinguishable from one never made, and one round's
+  audit passed a mistyped word repeated nine times while listing findings
+  on six other axes. Two shapes hide from a skim and neither is rare: a
+  corruption built from ordinary syllables reads as a typo worth ignoring
+  until you try to obey it ("늘으면" for "늦으면" inverts the condition), and
+  one inside a proper noun travels ("네이버파이냐션") while the same name
+  stays correct in the files that were copied rather than composed —
+  disagreeing spellings of one name across files is itself the tell.
 - Report what you found, not what you would change. Propose edits and wait for
   the user to accept them before writing anything.
 - When a job fails to validate, give the rule it broke and the file that broke
