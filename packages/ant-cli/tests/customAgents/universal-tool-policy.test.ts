@@ -327,12 +327,22 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
   it('root listing surfaces the listable mount roots', async () => {
     // Reachable-but-undiscoverable: a root listing showed only the artifacts
     // dir, so a job told to read `pipeline-runs/…` listed the root, did not
-    // see it and skipped the read (two pipeline-builder review rounds did
-    // exactly that). `_agents/` stays out — its root cannot be listed.
+    // see it and reported the folder absent (two pipeline-builder review
+    // rounds did exactly that). `_agents/` stays out — its root cannot be
+    // listed.
     await expect(build().listFiles('')).resolves.toEqual([
       'artifacts:',
       '_agent-definition/',
       'pipeline-runs/',
+    ]);
+  });
+
+  it('readDirectory — what the list_files TOOL calls — surfaces them too', async () => {
+    // The first cut of this fix patched listFiles only; the tool goes through
+    // readDirectory, so the mounts stayed invisible where it mattered.
+    await expect(build().readDirectory('.')).resolves.toEqual([
+      { name: '_agent-definition', isDirectory: true },
+      { name: 'pipeline-runs', isDirectory: true },
     ]);
   });
 
