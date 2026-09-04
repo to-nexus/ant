@@ -513,7 +513,12 @@ contract — the third omitted only when done is not observable.**
   `apis`) and the entry's `status:` advances in place.
 
   ## {system or counterpart}
-  - used-by: {intent ids that substitute for this counterpart today}
+  - used-by: {intent ids that substitute for this counterpart today. The
+    definition's prose is the entry set's ceiling as well as its floor: a
+    name no intent uses earns no entry, and an empty `used-by:` is the tell
+    — every field below it then has nothing to say and fills with "not
+    applicable" in a row. One heading covering several names hides whichever
+    of them IS used}
   - substitute: {the text deliverable standing in — one line}
   - missing:
     - interface: {the interface this system already has — a well-known
@@ -573,7 +578,9 @@ contract — the third omitted only when done is not observable.**
       ticket someone can file}
   - on-provided: {the one-line rewiring this job performs once the items
     arrive — the connection block, the intent's final step from text output
-    to the real call, `artifact:` to `action:`, the approval decision}
+    to the real call, `artifact:` to `action:`, the approval decision.
+    Omitted where the counterpart is a person rather than a system: there
+    is no wiring to perform, and the retained step is already in `gate:`}
   - alternative: {only when the counterpart's own work could instead move
     into an agent this builder authors — one line naming that agent's job
     and the access it would still need; delegation shifts the dependency,
