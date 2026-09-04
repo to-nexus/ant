@@ -486,6 +486,21 @@ answer       → applyClarifyAnswer (guard: awaiting_clarify ∧ clarify.jobId m
 
 ## 5c. Tool-approval HITL (L3) — the paused approval-gated call
 
+> **A pause is not an interruption.** `handleJobCompletion` consults the
+> clarify and approval seals only when the job's outcome is `succeeded`, so
+> anything the runtime publishes as an interruption becomes a step FAILURE
+> before the funnels are reached. A universal turn that pauses has by
+> definition not finished its work, so its `artifact:` stop hooks are
+> unreached — and `respond` used to report them as UNMET on an approval pause
+> (clarify was exempt from the start; the hook manifest three lines below
+> already exempted both). The job-runner then published
+> `universal_stop_hook_unmet`, the coordinator failed the step, and
+> `onStepFailure: abort` cancelled the run while the approval card sat live in
+> the inbox — observed 2026-09-04 on an intake step whose intent declared an
+> artifact hook and whose agent reached for `run_command`. Both pauses are now
+> exempt. Any future pause kind must join that exemption, or it inherits this
+> bug: reaching the funnel is conditional on NOT looking like a failure.
+
 The third HITL layer: a step's job that issues an approval-gated tool call
 (`tools.approval: always`, or a non-read-only MCP tool) no longer dies
 fail-closed under the scheduler — pipeline dispatches ride

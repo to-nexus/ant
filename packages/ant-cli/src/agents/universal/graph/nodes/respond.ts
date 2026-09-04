@@ -145,7 +145,16 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
       ? await verifyChecksOnDisk(rawChecks, (p) => fileSystem.fileExists(p))
       : rawChecks;
   }
-  const hooksUnmet = state._clarifyPause ? [] : hookChecks.filter((c) => !c.met);
+  // BOTH pauses are exempt: a paused turn has not finished its work, so its
+  // hooks are not "unmet" — they are unreached. Reporting them made the
+  // job-runner publish a `universal_stop_hook_unmet` interruption, and the
+  // pipeline coordinator classifies an interruption as a step FAILURE before
+  // it consults the clarify/approval seals (`outcome === 'succeeded'` gate) —
+  // so an approval-gated tool call inside a step whose intent declares an
+  // `artifact:` hook killed the whole run while its approval card sat in the
+  // inbox. Clarify was exempt from the start; the manifest below already
+  // exempted both.
+  const hooksUnmet = state._clarifyPause || state._approvalPause ? [] : hookChecks.filter((c) => !c.met);
 
   // 2. Artifact manifest — only when writes happened. Stop-hook verdict
   //    lines share the manifest slot (✓/✗ split, unmet patterns verbatim so

@@ -265,6 +265,18 @@ describe('respond seal — I2-compatible clarify markers', () => {
     expect(sealed.clarifyRoundsUsed).toBe(1);
   });
 
+  it('an approval pause reports no unmet hooks — a paused turn is unreached, not unmet', async () => {
+    // The pipeline coordinator turns an interruption into a step failure
+    // before it looks for the approval seal, so reporting unmet hooks on an
+    // approval pause killed the run while its approval card was still live.
+    activateCustomJob(makeResolved({ intents: [{ id: 'build', hooks: { stop: [{ artifact: 'out/*.md' }] } } as any] }));
+    const updateArtifacts = vi.fn(async (..._args: any[]) => undefined);
+    const state = makeState(undefined, updateArtifacts, { intents: ['build'], context: [], planTurn: false, source: 'explicit' });
+    state._approvalPause = { toolUseId: 'tu_a', tool: 'run_command', argsSummary: '{}' };
+    const patch = await respondNode(state);
+    expect(patch._hooksUnmet).toBeUndefined();
+  });
+
   it('non-paused seal omits awaitingClarify/id/question (stale markers self-clear) but keeps rounds', async () => {
     activateCustomJob(makeResolved());
     const updateArtifacts = vi.fn(async (..._args: any[]) => undefined);
