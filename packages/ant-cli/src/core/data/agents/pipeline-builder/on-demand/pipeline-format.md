@@ -139,7 +139,9 @@ write that its own intent already gates per call.
 - `on` judges the upstream outcome: `success` (default), `failure`, `always`,
   or `verdict:<outcome>`. A step whose condition does not match is
   **skipped**, and a skipped need is neither success nor failure — skips
-  cascade.
+  cascade, `on: always` included. A branch therefore cannot be rejoined: a
+  step needing two arms of a switch never runs, because only one arm ever
+  does.
 - **Verdict routing** (`on: verdict:<outcome>`): when an upstream step's
   pinned intent declares an `outcomes` vocabulary (in that intent's `infer.md`
   frontmatter — read it via the agents API), the run seals one verdict and

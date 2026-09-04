@@ -850,6 +850,14 @@ The obligations live at authoring time, in the pipeline builder's contract:
   intent whose judgment nothing routes on has had its decision discarded, and
   the steps that apply to one outcome run on every outcome. Routing no branch
   is a choice the report defends.
+- **A directive is not optional where a person owes the input.** "The intent is
+  already the specification" does not reach a step whose input has to come
+  from a person: with no directive the runtime dispatches a bare "carry out
+  this intent", and nothing tells the step that the reply, the count, the
+  delivered file is owed by someone. Round 5 omitted those directives and the
+  run showed both failure shapes — `comparison-table` wrote a
+  "legal review reflected" section from the draft alone without asking, and
+  `mail-send` left the recipient counts as `___`, both sealing `succeeded`.
 - **Directive polarity** — a directive carries what only the RUN knows (the
   case's identifiers and parameters, the deadline, the watermark), never a
   restatement of the pinned intent's procedure, which is already loaded. When
@@ -875,7 +883,16 @@ The obligations live at authoring time, in the pipeline builder's contract:
   regulator filing needed", and `recipient-extract` decided individual-notice
   applicability inside its own artifact, while the deciding intent's
   `outcomes` sat unrouted. `onMissingVerdict` is what makes the edge safe.
-- **Routing one outcome is half the work.** The round after that one added the
+- **A switch cannot be joined, and routing one outcome is half the work.**
+  A step needing two arms of a switch never runs on either outcome — exactly
+  one arm ever does, and `on: always` does not rescue it because a skipped
+  need cascades whatever the condition says. Round 5 split `publishing` per
+  outcome and rejoined the shared tail below both arms
+  (`notice-post: needs [mail-send, publishing-standard]`): the live run sealed
+  `completed` having skipped notice, enactment and the regulator filing — the
+  whole tail, on every path. Branch only what differs; keep shared work above
+  the split or hang it off the deciding step.
+- **The other half of that walk.** The round after that one added the
   edges and hung the chain's tail off them: with `verdict: standard` sealed,
   six of twelve steps skipped — including the one that applies the amended
   terms to the system — and the run still sealed `completed`. Skips cascade, so

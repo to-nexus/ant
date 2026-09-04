@@ -60,6 +60,13 @@
   hang a chain's tail off a branch and the whole tail dies with it, while the
   run still seals `completed`. Whatever must always happen belongs downstream
   of a step that always runs, never downstream of the branch.
+- **A switch cannot be joined.** Exactly one arm runs, so a step that `needs`
+  two arms never runs at all — not on either outcome, and `on: always` does
+  not save it, because a skipped need cascades whatever the condition says.
+  Branch only the steps that actually differ and keep the shared work above
+  the split, or hang it off the deciding step. A run whose shared tail was
+  joined below the arms still seals `completed`, having silently dropped every
+  step in that tail.
 - `defaults.onStepFailure` decides the rest of the run on a failure: `abort`
   (default) cancels what is still pending; `continue` lets independent
   branches finish.
@@ -96,15 +103,13 @@
   pipeline, fired manually when the handoff is in hand — `runCompleted` only
   once the seam itself is automated. The split is reversible: when the seam
   is wired later, chain the two pipelines or merge them.
-- Two arguments for holding a labor seam in a gate instead are both settled by
-  facts, not taste. An approval carries **no payload** — approve/reject is one
-  bit, so the gate delivers none of what the person produced (the reply, the
-  file, the extracted count); the downstream step is dispatched without it and
-  either asks for it again through clarify or proceeds on an assumption it
-  presents as fact. And covering a whole procedure is not an argument against
-  splitting: the whole flow IS covered by several pipelines, one per
-  seam-bounded stretch, so a request to handle everything asks for complete
-  coverage, not for one definition.
+- Holding a labor seam in a gate instead is settled by a fact, not by taste:
+  an approval carries **no payload** — approve/reject is one bit, so the gate
+  delivers none of what the person produced (the reply, the file, the
+  extracted count). The downstream step is dispatched without it and either
+  asks again through clarify or proceeds on an assumption it presents as fact.
+  Covering a whole procedure is no argument against splitting either: several
+  pipelines, one per seam-bounded stretch, IS the whole flow.
 - What the person produced reaches the run through the step that CONSUMES it,
   never through a gate: that step's intent asks with `clarify`, and the answer
   rides into the step. So a labor seam has exactly two shapes — end the
@@ -137,9 +142,16 @@
   inputs absent) leaves the step with nothing it did not already have.
 - When the run's inputs cannot be known while you author — a case opened by an
   event, not by a calendar — do not invent them and do not write a
-  placeholder that looks like a variable. Leave them out, and say in the
+  placeholder that looks like a variable. Leave the VALUES out, and say in the
   report which steps will therefore ask for them through their intent's
   clarify, so nobody expects Run now to complete unattended.
+- Which is why "the intent is already the specification" does not reach a step
+  whose input has to come from a person: omitting that step's directive
+  entirely dispatches a bare "carry out this intent", and nothing then tells
+  the step that the reply, the count, the delivered file is owed by someone.
+  Such a step does not ask — it judges from what it can already see, or leaves
+  the field blank and calls it done. Name the input the step must obtain, and
+  from whom; that is the directive's whole job there.
 - The template variables are the format contract's list; anything else is
   rejected at save. Two authoring rules: a `{{steps.<id>.…}}` reference must
   name an upstream step in this step's `needs` chain, and substituted text is
