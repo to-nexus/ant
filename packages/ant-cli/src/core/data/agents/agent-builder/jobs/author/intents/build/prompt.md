@@ -614,6 +614,11 @@ contract — the third omitted only when done is not observable.**
     from {what} to {what}}
   ```
 
+  Read each `consumed by` off that consumer's own declared inputs rather than
+  off what the pairing ought to be: a glob named here and absent from the
+  intent's input list is a contract this report asserts and the definition
+  does not, and the definition is what runs.
+
   The commonest entry is a counterpart that owns no system — a team doing
   the step by hand — which fills fewer of the same fields:
 
