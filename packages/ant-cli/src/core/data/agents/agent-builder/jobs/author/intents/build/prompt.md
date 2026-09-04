@@ -520,12 +520,17 @@ contract — the third omitted only when done is not observable.**
   `apis`) and the entry's `status:` advances in place.
 
   ## {system or counterpart}
-  - used-by: {intent ids that substitute for this counterpart today. The
+  - used-by: {intent ids that substitute for this counterpart today, read
+    off each intent's declared inputs the way `consumed by` is — an id
+    listed here whose `prompt.md` never names this counterpart is the same
+    unbacked claim one field over, and a count stated instead of ids ("the
+    thirteen that draft vouchers") cannot be checked against anything. The
     definition's prose is the entry set's ceiling as well as its floor: a
     name no intent uses earns no entry, and an empty `used-by:` is the tell
     — every field below it then has nothing to say and fills with "not
-    applicable" in a row. One heading covering several names hides whichever
-    of them IS used}
+    applicable" in a row. A name that IS in some intent's inputs has an
+    entry of its own, which is what splitting a bundled heading means:
+    dropping the bundle without promoting the used member loses it}
   - substitute: {the text deliverable standing in — one line}
   - missing:
     - interface: {the interface this system already has — a well-known
