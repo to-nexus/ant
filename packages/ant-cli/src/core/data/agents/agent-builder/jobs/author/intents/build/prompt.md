@@ -540,11 +540,16 @@ contract — the third omitted only when done is not observable.**
   `apis`) and the entry's `status:` advances in place.
 
   ## {system or counterpart}
-  - used-by: {intent ids that substitute for this counterpart today, read
-    off each intent's declared inputs the way `consumed by` is — an id
-    listed here whose `prompt.md` never names this counterpart is the same
-    unbacked claim one field over, and a count stated instead of ids ("the
-    thirteen that draft vouchers") cannot be checked against anything. The
+  - used-by: {intent ids that substitute for this counterpart today, each
+    read off that intent's own file the way `consumed by` is — an id listed
+    here whose `prompt.md` never names this counterpart is the same unbacked
+    claim one field over, and a count stated instead of ids ("the thirteen
+    that draft vouchers") cannot be checked against anything. Substitution
+    runs in whichever direction the counterpart sits: for a source the
+    intent's inputs name it, for a destination the intent's OUTPUT is the
+    text a person carries in, and one counterpart can be both. Read the
+    direction that applies and say which, because a list mixing the two
+    silently is a claim nobody can check either way. The
     definition's prose is the entry set's ceiling as well as its floor: a
     name no intent uses earns no entry, and an empty `used-by:` is the tell
     — every field below it then has nothing to say and fills with "not
