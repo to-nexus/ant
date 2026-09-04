@@ -2078,7 +2078,14 @@ export class PipelineRunCoordinator {
       if (!run) continue;
       for (const s of run.steps) {
         if (s.status === 'awaiting_gate' && s.gate) {
+          // A JOB step parked awaiting_gate is a paused tool call (L3), never
+          // an authored approval step — the SSE payload already says so; the
+          // disk-derived inbox row must not lose the kind. Snapshot-less runs
+          // fall back to the tool-gate id prefix.
+          const stepDef = run.defSnapshot?.steps.find((d) => d.id === s.stepId);
+          const isTool = stepDef ? !isApprovalStep(stepDef) : s.gate.gateId.startsWith('tga-');
           out.push({
+            ...(isTool && { kind: 'tool' as const }),
             gateId: s.gate.gateId,
             cardId: s.gate.cardId,
             runId,
@@ -2089,6 +2096,7 @@ export class PipelineRunCoordinator {
             prompt: s.gate.prompt,
             armedAt: s.gate.armedAt,
             timeoutAt: s.gate.timeoutAt,
+            ...(isTool && s.jobId && { jobId: s.jobId }),
           });
         } else if (s.status === 'awaiting_clarify' && s.clarify) {
           out.push({

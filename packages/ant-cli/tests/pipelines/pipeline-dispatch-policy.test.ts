@@ -252,6 +252,13 @@ describe('tool-approval HITL (L3)', () => {
     const tool = read('agents/universal/graph/nodes/tool.ts');
     expect(tool.match(/_approvalGrantTool === call\.name/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
+
+  it('the REST inbox keeps the tool kind: a job step awaiting_gate is a paused tool call, never an authored gate', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const listSrc = coordinator.slice(coordinator.indexOf('async listPendingApprovals'));
+    expect(listSrc).toMatch(/!isApprovalStep\(stepDef\)/);
+    expect(listSrc).toMatch(/kind: 'tool'/);
+  });
 });
 
 describe('runCompleted chaining', () => {

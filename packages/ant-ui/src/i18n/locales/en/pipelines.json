@@ -92,7 +92,8 @@
     "reject": "Reject",
     "timeout": "Auto-decides {{when}}",
     "clarifyPlaceholder": "Type your answer…",
-    "clarifySubmit": "Answer & resume"
+    "clarifySubmit": "Answer & resume",
+    "toolGate": "Tool approval"
   },
   "editor": {
     "pickOne": "Select a pipeline on the left,\nor create a new one.",

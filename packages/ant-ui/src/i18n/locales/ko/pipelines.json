@@ -92,7 +92,8 @@
     "reject": "거절",
     "timeout": "{{when}}에 자동 결정",
     "clarifyPlaceholder": "답변을 입력하세요…",
-    "clarifySubmit": "답변하고 재개"
+    "clarifySubmit": "답변하고 재개",
+    "toolGate": "툴 승인"
   },
   "editor": {
     "pickOne": "왼쪽에서 파이프라인을 선택하거나\n새로 만들어 보세요.",

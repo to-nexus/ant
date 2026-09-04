@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageCircleQuestion, ShieldCheck } from 'lucide-react';
+import { MessageCircleQuestion, ShieldCheck, Wrench } from 'lucide-react';
 import type { PipelinePendingApproval } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { Button } from '../aurora';
@@ -59,6 +59,7 @@ export function ApprovalInbox() {
           >
             <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-1)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
               {a.kind === 'clarify' && <MessageCircleQuestion size={11} style={{ color: 'var(--amber-500, #f59e0b)', flexShrink: 0 }} />}
+              {a.kind === 'tool' && <Wrench size={11} style={{ color: 'var(--amber-500, #f59e0b)', flexShrink: 0 }} aria-label={t('inbox.toolGate', 'Tool approval')} />}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.pipelineName}</span>
               {/* Inbox is account-wide — the project label keeps a "foreign" gate legible. */}
               <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-3)', flexShrink: 0 }}>{a.projectId}</span>
