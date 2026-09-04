@@ -45,8 +45,8 @@ import { registerChatLogLock } from '../periphery/adapters/session/FileSessionAd
 import { buildRedisTlsOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
 import { resolveKillReason, buildSigtermInterruption } from './sigtermInterruption';
-import { buildInfrastructureInterruption } from '@ant/shared';
-import { isPromptTooLongError } from '../core/utils/apiErrorClassify';
+import { buildInfrastructureInterruption, isMidGraphResumable } from '@ant/shared';
+import { isPromptTooLongError, isProviderUnreachableError } from '../core/utils/apiErrorClassify';
 import { toNfc } from '../core/utils/unicodePath';
 import { isLlmAuthError } from '../core/llm/isLlmAuthError';
 import { isMcpConfigError } from '../core/customAgents/McpConfigError';
@@ -370,6 +370,19 @@ async function runJob(params: JobParams): Promise<void> {
           message: error.message || 'Agent configuration is invalid.',
           timestamp: new Date().toISOString(),
           canResume: false,
+        }
+      // The call never reached the provider (DNS / refused / reset). External
+      // and transient — not this job's process crashing, which is what
+      // `process_crash` says and what the card then shows. Resume stays with
+      // its own owner: only a mid-graph checkpointing job can take one.
+      : isProviderUnreachableError(error)
+      ? {
+          reason: 'api_error' as InterruptionReason,
+          message:
+            'Could not reach the LLM provider — the request failed before it arrived ' +
+            '(network or DNS). Check connectivity, then run the job again.',
+          timestamp: new Date().toISOString(),
+          canResume: isMidGraphResumable(params.jobType),
         }
       : {
           // Infra crash — jobType-gated canResume via the single owner

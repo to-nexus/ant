@@ -82,6 +82,37 @@ export function isPromptTooLongError(error: { message?: string } | string | null
   return /prompt is too long/i.test(msg);
 }
 
+/** Transport-level signatures: the request never reached the provider. */
+const UNREACHABLE_CODES = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH',
+  'ENETUNREACH', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET',
+]);
+const UNREACHABLE_MESSAGE_RE =
+  /APIConnection(Timeout)?Error|Connection error|socket hang up|fetch failed|getaddrinfo|network (error|timeout)/i;
+
+/**
+ * True when the call never reached the provider — DNS failure, refused or reset
+ * connection, connect timeout. External and transient, and specifically NOT this
+ * job's process crashing: classified as `process_crash`, a blip on the way to
+ * `api.anthropic.com` told a user that a forty-minute build had crashed, and
+ * buried the one fact that made it actionable. Auth failures travel over a
+ * working connection and belong to `isLlmAuthError`, so a status-bearing error
+ * is never unreachable.
+ */
+export function isProviderUnreachableError(error: unknown): boolean {
+  if (typeof error === 'string') return UNREACHABLE_MESSAGE_RE.test(error);
+  if (!error || typeof error !== 'object') return false;
+  const e = error as any;
+  if (e.status ?? e.statusCode ?? e.response?.status) return false;
+  const codes = [e.code, e.cause?.code, e.error?.code];
+  if (codes.some((c) => typeof c === 'string' && UNREACHABLE_CODES.has(c))) return true;
+  if (e.name === 'APIConnectionError' || e.name === 'APIConnectionTimeoutError') return true;
+  const msg = [e.message, e.cause?.message]
+    .filter((m): m is string => typeof m === 'string')
+    .join(' ');
+  return UNREACHABLE_MESSAGE_RE.test(msg);
+}
+
 /**
  * Collapse a raw Anthropic error message into a short, user-readable cause.
  * Keeps raw JSON out of the choice card. Falls back to the trimmed message.

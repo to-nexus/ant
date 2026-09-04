@@ -3,6 +3,7 @@ import {
   isOverloadedError,
   isPromptTooLongError,
   isProviderBalanceDepletion,
+  isProviderUnreachableError,
   summarizeFailureCause,
 } from '../../src/core/utils/apiErrorClassify';
 
@@ -112,5 +113,36 @@ describe('summarizeFailureCause', () => {
     );
     const long = 'x'.repeat(200);
     expect(summarizeFailureCause(long).length).toBeLessThanOrEqual(120);
+  });
+
+  describe('isProviderUnreachableError', () => {
+    // Captured live: a DNS blip mid-build surfaced as `process_crash` /
+    // "Process crashed with exit code 1", which says the job died rather than
+    // that the request never left the host.
+    it('detects the SDK connection error and its DNS cause', () => {
+      const err: any = new Error('Connection error.');
+      err.name = 'APIConnectionError';
+      err.cause = Object.assign(new Error('getaddrinfo ENOTFOUND api.anthropic.com'), {
+        code: 'ENOTFOUND',
+        syscall: 'getaddrinfo',
+      });
+      expect(isProviderUnreachableError(err)).toBe(true);
+    });
+
+    it('detects transport codes and undici shapes', () => {
+      expect(isProviderUnreachableError({ code: 'ECONNREFUSED' })).toBe(true);
+      expect(isProviderUnreachableError({ code: 'UND_ERR_CONNECT_TIMEOUT' })).toBe(true);
+      expect(isProviderUnreachableError(new Error('fetch failed'))).toBe(true);
+      expect(isProviderUnreachableError('socket hang up')).toBe(true);
+    });
+
+    it('does NOT claim an error that reached the provider', () => {
+      // A status means the request arrived and was answered — auth, overload
+      // and rate limits are other owners' classifications.
+      expect(isProviderUnreachableError({ status: 401, message: 'Unauthorized' })).toBe(false);
+      expect(isProviderUnreachableError({ status: 529, message: 'overloaded_error' })).toBe(false);
+      expect(isProviderUnreachableError(new Error('prompt is too long'))).toBe(false);
+      expect(isProviderUnreachableError(null)).toBe(false);
+    });
   });
 });
