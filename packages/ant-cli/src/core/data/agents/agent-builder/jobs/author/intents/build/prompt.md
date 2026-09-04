@@ -637,6 +637,8 @@ contract — the third omitted only when done is not observable.**
   | work unit, as the material names it | performed by |
   |---|---|
   | {unit} | {intent id · merged into {id} · split into {ids} · dropped — {why}} |
+  | {a card the schedule places on two dates} | {one row per date, each saying
+    which way it went and why — or one row saying why it stayed whole} |
 
   ## Hook decisions
 
