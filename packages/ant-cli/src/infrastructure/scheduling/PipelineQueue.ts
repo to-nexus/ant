@@ -48,16 +48,37 @@ export class PipelineQueue implements ScheduleQueuePort {
     return schedulers.map((s) => s.key).filter(Boolean);
   }
 
+  /**
+   * Arms are STORED as `{logicalId}#{seq}` — the logical id is the cancel key,
+   * never the BullMQ job id. A fixed job id could not re-arm ITSELF: BullMQ
+   * refuses to remove the job a worker is processing ("locked by another
+   * worker") and then silently ignores an `add` under an id that still
+   * exists, so every self-re-arming control job fired exactly once — gate
+   * reminders after `remindAfter` stopped at the first, and the duplicate-block
+   * retry ladder stopped at round 1, leaving the step `dispatched` with no
+   * error and `MAX_DUPLICATE_RETRIES` unreachable. The `#` delimiter keeps
+   * sibling ids apart (`…-mail#…` never matches `…-mail-send#…`).
+   */
+  private static readonly ARM_STATES = ['delayed', 'waiting', 'wait', 'paused', 'active'] as const;
+
+  private async armsFor(logicalId: string): Promise<Array<{ id?: string; remove: () => Promise<void> }>> {
+    const jobs = await this.queue.getJobs([...PipelineQueue.ARM_STATES], 0, 500);
+    return jobs.filter((j) => j?.id === logicalId || j?.id?.startsWith(`${logicalId}#`));
+  }
+
   async armDelayed(jobId: string, delayMs: number, data: PipelineControlJobData): Promise<void> {
-    // Re-arm semantics: replace any previous arm under the same id.
+    // Re-arm semantics: replace any previous arm under the same logical id.
     await this.cancelDelayed(jobId);
-    await this.queue.add(data.kind, data, { jobId, delay: delayMs, ...CONTROL_JOB_OPTIONS });
+    await this.queue.add(data.kind, data, { jobId: `${jobId}#${Date.now()}`, delay: delayMs, ...CONTROL_JOB_OPTIONS });
   }
 
   async cancelDelayed(jobId: string): Promise<void> {
     try {
-      const existing = await this.queue.getJob(jobId);
-      if (existing) await existing.remove();
+      for (const arm of await this.armsFor(jobId)) {
+        // A locked arm is the handler re-arming itself — it completes on its
+        // own and the new arm carries a different id, so this is not a failure.
+        await arm.remove().catch(() => undefined);
+      }
     } catch (err) {
       logger.warn(`[PipelineQueue] cancelDelayed(${jobId}) failed`, { component: 'PipelineQueue' }, err);
     }

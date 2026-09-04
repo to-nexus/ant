@@ -174,6 +174,18 @@ consistency surface exists to drift.
 
 ## 2. Trigger engine — BullMQ Job Scheduler on a dedicated `ant-pipelines` queue
 
+> **An arm's BullMQ job id is never its logical id.** `armDelayed` stores arms
+> as `{logicalId}#{seq}` and `cancelDelayed` clears every arm of the logical id,
+> because BullMQ refuses to remove the job a worker is processing ("locked by
+> another worker") and then silently ignores an `add` under an id that still
+> exists. With a fixed id, any control job that re-arms ITSELF fired exactly
+> once: `remindAfter` reminders stopped after the first, and the
+> duplicate-block retry ladder stopped at round 1 — leaving the step
+> `dispatched` with no error, no timeout and `MAX_DUPLICATE_RETRIES`
+> unreachable (observed 2026-09-04; both halves reproduced against a scratch
+> queue). The `#` delimiter keeps sibling ids apart, so `…-mail#…` never
+> matches `…-mail-send#…`.
+
 A hand-rolled tick loop (cron math + due-index ZSET + cluster lock) was
 rejected: `Queue.upsertJobScheduler` (BullMQ 5.81.3) is natively
 cluster-safe — the next fire exists as ONE delayed job in Redis and any

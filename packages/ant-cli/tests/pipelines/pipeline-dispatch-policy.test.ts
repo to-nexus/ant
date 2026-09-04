@@ -415,3 +415,23 @@ describe('account concurrent-run cap is reserved atomically', () => {
     expect(releases.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('self-re-arming control jobs', () => {
+  // BullMQ refuses to remove the job a worker is currently processing ("locked
+  // by another worker") and then silently ignores an `add` under an id that
+  // still exists. So an arm whose BullMQ job id IS its logical id can never
+  // replace itself from inside its own handler: gate reminders stopped after
+  // the first `remindAfter`, and the duplicate-block retry ladder stopped at
+  // round 1 with the step left `dispatched` and no error.
+  const queue = () => read('infrastructure/scheduling/PipelineQueue.ts');
+
+  it('armDelayed stores an arm under a suffixed id, never the bare logical id', () => {
+    expect(queue()).toMatch(/jobId: `\$\{jobId\}#\$\{Date\.now\(\)\}`/);
+  });
+
+  it('cancelDelayed clears every arm of a logical id, not one exact-id match', () => {
+    const q = queue();
+    expect(q).toMatch(/armsFor\(/);
+    expect(q).not.toMatch(/getJob\(jobId\)/);
+  });
+});
