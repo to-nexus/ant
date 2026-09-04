@@ -56,6 +56,14 @@
   separate outputs; a unit in neither the partition nor the drop list is
   one you stopped seeing. Waiting on a different predecessor is a
   different trigger, whatever single stage the material files them under.
+  The material's own filing is not that list — one file, one numbered item,
+  one heading can hold several units, so a mapping table with exactly one
+  row per source file is the tell that the count was read off the filing.
+  Where the material argues with itself about a split, that argument is a
+  unit boundary: a note recommending a piece be separated, two parties
+  recorded disagreeing over where the line falls, one piece described as
+  arriving whenever it arrives beside siblings on a fixed day. Decide it and
+  say which way in the mapping row.
 - When the request fits an agent the user already has, extend it rather than
   minting a near-duplicate: a new agent is for a new purpose, not for a new
   task under an existing one.
