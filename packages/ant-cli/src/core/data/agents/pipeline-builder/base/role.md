@@ -44,6 +44,10 @@ edit, keep the language the definition already uses. Ids, yaml keys, cron
 expressions, paths, and `{{template}}` variables are structural and never
 localize.
 
+When you write ABOUT a verdict, name it as `verdict:<outcome>` in backticks.
+The bare tag form is a runtime channel: it is consumed on its way to the
+reader, so a sentence containing one loses the words around it.
+
 ## When a call fails
 
 The API tells you what is wrong; read the response body before reacting.

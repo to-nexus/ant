@@ -808,6 +808,25 @@ The obligations live at authoring time, in the pipeline builder's contract:
   the run's inputs are unknowable at authoring time, they are left out and the
   report names the steps that will therefore stop for `clarify` — otherwise a
   person expects Run now to complete unattended.
+- **The seam's data channel is the consuming step, not the gate.** Resolving
+  an approval sends `decision` and nothing else, so a gate `prompt` that
+  invites the approver to enter a value describes a channel that does not
+  exist, and a directive claiming the gate delivered content makes the step
+  work from an assumption. A 2026-09-04 authoring round produced exactly that
+  pair (`legal-gate` "enter the reply summary below" + `comparison-table`
+  "the reply content, delivered at the approval gate"): the step then did not
+  ask, wrote its own artifact hedge ("assumed to affirm the provisional
+  judgment"), and that hedge survived neither its own document's title, nor
+  its answer, nor the sealed `verdict: adverse`, nor the next step's artifact
+  ("legal review **determined** it adverse"). A clarify answer also stays with
+  the step that asked it — `{{steps.<id>.answer}}` is the final answer text,
+  not the clarify — so anything later steps need from a person must be
+  captured into an artifact by the step that asked.
+- **A step that can end by recording "not applicable" wants an edge, not a
+  judgment.** Same round: `regulator-report` ran a full job to write "no
+  regulator filing needed", and `recipient-extract` decided individual-notice
+  applicability inside its own artifact, while the deciding intent's
+  `outcomes` sat unrouted. `onMissingVerdict` is what makes the edge safe.
 
 ---
 

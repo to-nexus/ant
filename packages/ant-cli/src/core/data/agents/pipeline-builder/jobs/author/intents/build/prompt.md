@@ -25,11 +25,9 @@
   fires only through Run now. A schedule is a 5-field cron with an explicit
   IANA timezone whenever the request implies local time — an unstated `tz` is
   UTC. Fires closer than five minutes apart are refused at save.
-- `on.runCompleted` chains pipelines: this one fires when the named pipeline's
-  run seals one of the listed terminal statuses (`['failed']` makes an
-  error-handler pipeline). It may coexist with `schedule`.
-- Choose `onMissed` (skip a stale fire, or run once on recovery) and `overlap`
-  (skip while a run is live, or queue behind it) from what the work tolerates,
+- `on.runCompleted` chains this pipeline onto another's terminal status, and
+  may coexist with `schedule` — an error-handler pipeline is one that waits on
+  `['failed']`. Choose `onMissed` and `overlap` from what the work tolerates,
   and say which you chose.
 
 **Decompose into steps.**
@@ -48,14 +46,22 @@
   a decision the intent already made — and the steps that apply to only one
   outcome then run on every outcome. Routing no branch is a choice to defend
   in the report, never a default.
+- The test is a step's own output. If a step can legitimately finish by
+  recording that it did not apply — "individual notice not required, extraction
+  skipped", "no regulator filing needed" — then the condition that made it
+  inapplicable belongs on its edge. Leaving that judgment inside the step pays
+  a job to write a document saying it should not have run, and the intent
+  prose that promises to record the skip is the tell. Declare
+  `onMissingVerdict: <outcome>` on the deciding step when a run that seals
+  nothing must continue instead of failing — that is what makes routing safe,
+  not a reason to avoid it.
 - `defaults.onStepFailure` decides the rest of the run on a failure: `abort`
   (default) cancels what is still pending; `continue` lets independent
   branches finish.
-- `retry` re-dispatches a job step on a retryable failure and `timeout` bounds
-  its wall clock. Declare `retry` only on intents written to be re-entrant — a
-  failed attempt may already have completed side effects, so the intent's
-  prompt must say to check current state before acting. Shapes and bounds live
-  in the format contract.
+- Declare `retry` only on intents written to be re-entrant: a failed attempt
+  may already have completed side effects, so the intent's prompt must say to
+  check current state before acting. `timeout` bounds a step's wall clock;
+  shapes and bounds live in the format contract.
 
 **Place approval gates where a person decides.**
 
@@ -67,6 +73,9 @@
   with nobody having looked, so use it only when the user asks for that.
 - `remindAfter` re-surfaces an unresolved gate on that cadence — use it on
   gates whose timeout is long or absent, so a waiting run is never forgotten.
+- A gate that asks the approver to confirm a step's inputs must come BEFORE
+  that step. Placed after it, the step has already run on whatever it could
+  find, and the confirmation decides nothing.
 - A tool the step's intent gates with `approval: always` pauses the run for
   per-call approval on its own; do not add an approval step to guard a write
   its intent already gates.
@@ -83,11 +92,28 @@
   facts, not taste. An approval carries **no payload** — approve/reject is one
   bit, so the gate delivers none of what the person produced (the reply, the
   file, the extracted count); the downstream step is dispatched without it and
-  either asks for it again through clarify or asserts a receipt it cannot
-  verify. And covering a whole procedure is not an argument against splitting:
-  the whole flow IS covered by several pipelines, one per seam-bounded
-  stretch, so a request to handle everything asks for complete coverage, not
-  for one definition.
+  either asks for it again through clarify or proceeds on an assumption it
+  presents as fact. And covering a whole procedure is not an argument against
+  splitting: the whole flow IS covered by several pipelines, one per
+  seam-bounded stretch, so a request to handle everything asks for complete
+  coverage, not for one definition.
+- What the person produced reaches the run through the step that CONSUMES it,
+  never through a gate: that step's intent asks with `clarify`, and the answer
+  rides into the step. So a labor seam has exactly two shapes — end the
+  pipeline at the handoff deliverable and let the next Run carry the handoff
+  in, or let the consuming step ask for it. A gate in front of that step adds
+  an interruption that carries nothing, and a gate `prompt` inviting the
+  approver to enter, paste or summarize anything describes a channel that does
+  not exist: resolving an approval sends `decision` and nothing else. A
+  directive must never claim a gate delivered content — the step then works
+  from an assumption, and the hedge it writes into its own artifact does not
+  survive into its answer, its sealed verdict, or the next step's input.
+- A clarify answer stays with the step that asked it: `{{steps.<id>.answer}}`
+  is that step's final answer text, not its clarify. So whatever LATER steps
+  need from the person has to be captured into an artifact by the step that
+  asked — the case's own parameters included. An intake step that collects
+  identifiers and writes only a schedule leaves every later step to ask again,
+  or to assume.
 
 **Write each step's directive and pins.**
 
@@ -106,14 +132,11 @@
   placeholder that looks like a variable. Leave them out, and say in the
   report which steps will therefore ask for them through their intent's
   clarify, so nobody expects Run now to complete unattended.
-- Directive template variables: `{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`,
-  `{{run.id}}`, `{{run.prevSuccess.fireDate}}` / `{{run.prevSuccess.fireEpoch}}`
-  (the previous completed run — the "everything since the last successful run"
-  watermark), and the step-output references `{{steps.<stepId>.answer}}` /
-  `{{steps.<stepId>.artifacts}}`, which must name an upstream step in this
-  step's `needs` chain. Anything else — `{{steps.<id>.verdict}}` included — is
-  rejected at save. Substituted text is a summary channel: structured data
-  still flows between steps as artifacts and `context` pins.
+- The template variables are the format contract's list; anything else is
+  rejected at save. Two authoring rules: a `{{steps.<id>.…}}` reference must
+  name an upstream step in this step's `needs` chain, and substituted text is
+  a SUMMARY channel — structured data still moves as artifacts and `context`
+  pins.
 - Pin `context` from the upstream intent's `hooks.stop` globs, or concrete
   container-relative artifact paths. Pins accept the static variables
   (`{{trigger.*}}` / `{{run.*}}`) — `{{steps.*}}` is directive-only.

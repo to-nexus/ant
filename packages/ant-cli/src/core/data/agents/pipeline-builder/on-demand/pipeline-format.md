@@ -104,7 +104,10 @@ steps:
 `{ id, type: approval, prompt, needs?, on?, channels?, timeout? }`
 
 - `prompt` is what the approver reads — say what happened upstream and what
-  approving will run. Same length ceiling as a directive.
+  approving will run. Same length ceiling as a directive. Resolving a gate
+  sends `decision` (`approve` | `reject`) and nothing else: there is no field
+  for a note, a value or a file, so a prompt that asks the approver to enter
+  something describes a channel that does not exist.
 - A gate must have an upstream step (it cannot be the entry step): its card in
   chat anchors to the producing job's turn.
 - `channels` supports only `inApp` today. `timeout.after` is `{n}m|h|d`;
