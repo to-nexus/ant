@@ -238,7 +238,12 @@ contract — the third omitted only when done is not observable.**
 - `prompt.md` never restates the trigger — an opening section that
   paraphrases `infer.md` gives the condition two spellings, and they diverge
   on the next edit. The condition has exactly one home; `prompt.md` begins
-  at what the agent does once it applies. The rule runs the other way too,
+  at what the agent does once it applies — opening on the work's own
+  identity and where its scope ends ("this covers the stages after the
+  invoice appears; the vendor integration is another team's"), never on the
+  state that selected it. The test is self-applicable: an opening sentence
+  that would still read as an `infer.md` body is the trigger in a second
+  home. The rule runs the other way too,
   and it costs more in that direction: `infer.md` ends once the arriving
   situation is named, so a closing sentence describing the steps, the
   output, or the spec the work follows is the procedure in the trigger's
@@ -302,10 +307,17 @@ contract — the third omitted only when done is not observable.**
   Builder composes a finished agent's intents, and your API cannot write a
   pipeline. Author every intent as startable at any time and able to finish
   unattended. Calendars, cadence, the legacy automation a task replaces, and
-  run order between tasks are still not discarded — they are quarantined: one labeled
-  section at the end of `prompt.md` (e.g. "Operating context — reference,
-  not instructions") whose first line says scheduling truth lives in the
-  pipeline definition, not here. Write it as description of the world the
+  run order between tasks are still not discarded — they are quarantined: one
+  section at the end of `prompt.md`, headed and opened like this, because a
+  heading on its own gets copied while the sentence under it gets skipped:
+
+  ```markdown
+  ## Operating context — reference, not instructions
+
+  When this runs is the pipeline definition's to say, not this file's.
+  ```
+
+  Write it as description of the world the
   work sits in — its cadence, the automation this intent now performs, what
   its output feeds — never as steps, and never as dispatch machinery (a
   timer, a sent marker, a fallback task) the agent might mistake for
