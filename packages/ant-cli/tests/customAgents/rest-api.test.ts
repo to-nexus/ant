@@ -282,6 +282,13 @@ describe('executor — result framing', () => {
     const corrupt = await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '{"a": "\\uZZZZ"}' }, impl);
     expect(corrupt.isError).toBe(true);
     expect(corrupt.text).toMatch(/not valid JSON/);
+    // The retry is where the damage lands: told only that the escape was
+    // malformed, the caller rewrites the text and the rewrite carries new
+    // corruptions (noble-crating-ember: the three rejected saves produced
+    // the three most garbled files). So the refusal says to copy, verbatim.
+    expect(corrupt.text).toMatch(/SAME text/);
+    expect(corrupt.text).toMatch(/character for character/);
+    expect(corrupt.text).toMatch(/do not rewrite the content/);
 
     // A string parsing to a bare scalar is not a structure.
     const scalar = await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '"plain"' }, impl);

@@ -457,8 +457,12 @@ export async function executeRestCall(
       try {
         structured = JSON.parse(structured);
       } catch (e) {
+        // The retry is where the damage happens: told only that its escape
+        // was malformed, the caller rewrites the text and the rewrite lands
+        // new corruptions (a build turn's three rejected saves produced its
+        // three most garbled files). Copying is lossless — say to copy.
         return policyError(
-          `Policy: "body" must be the JSON structure itself (object/array), and the string passed is not valid JSON (${e instanceof Error ? e.message : String(e)}). Resend the body as the structure — not a hand-serialized string. For a form-encoded or plain-text body, set an explicit non-JSON Content-Type header.`,
+          `Policy: "body" must be the JSON structure itself (object/array), and the string passed is not valid JSON (${e instanceof Error ? e.message : String(e)}). Resend the body as the structure — not a hand-serialized string. Reuse the SAME text you just composed, character for character, and write every non-ASCII character as itself: do not re-escape it, and do not rewrite the content, which is how a rejected save comes back with different words in it. For a form-encoded or plain-text body, set an explicit non-JSON Content-Type header.`,
         );
       }
       if (structured === null || typeof structured !== 'object') {
