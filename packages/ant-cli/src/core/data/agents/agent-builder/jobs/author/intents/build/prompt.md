@@ -107,14 +107,18 @@
   mail attachments, an office document someone maintains by hand. Both
   directions count — a consumer whose expected format constrains this
   agent's output is a dependency as much as a source. Name them as
-  reference, never as procedure: prose must not direct the running agent to
-  consult a counterpart the job has no connection for — the substitute
-  snapshot is the runtime instruction, and the master source it stands in
-  for is context, recorded in the dependency report's entry. This outranks
-  fidelity to the material: when the material's own principle says "X is the
-  source of truth — consult it", the authored sentence is REWRITTEN to name
-  the substitute as the runtime reference and X as its origin, never carried
-  as given. Legitimate, but never silent: the report lists each such
+  reference, never as procedure: prose must not direct the running agent at
+  a counterpart the job has no connection for — neither to consult it nor to
+  operate it. The material's own verbs are how this arrives, because they
+  were written for the person who does the work: "download the month's
+  transactions", "click issue", "sign in and export" become the agent's own
+  steps the moment they are carried as given, and so does a source of truth
+  the material says to go read. Both are REWRITTEN, never carried over: name
+  what the agent receives and who hands it over, with the master source as
+  that hand-off's origin — the substitute snapshot is the runtime
+  instruction, the origin is context recorded in the dependency report's
+  entry, and the step keeps every detail it had. This outranks fidelity to
+  the material. Legitimate, but never silent: the report lists each such
   counterpart as a surface the agent cannot reach until it is resolved.
 - When the material itself marks a piece as no longer in force — in its own
   text, or by how the collection sets it aside — that piece maps to nothing:
