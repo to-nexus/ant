@@ -2,8 +2,10 @@
  * Universal Graph Runner
  *
  * Entry point for the universal job. Lifecycle:
- *   1. Restore the (agent, job) session (conversation = the job's only memory).
- *   2. Append the new user turn to session:main.
+ *   1. Restore the (agent, job) session (conversation = the job's only memory)
+ *      from THIS turn's channel — run-scoped for a pipeline step, so a new
+ *      case never inherits another run's answers (universalConversation.ts).
+ *   2. Append the new user turn to the in-memory session:main.
  *   3. Connect MCP servers declared by the active definition; build registry.
  *   4. invokeGraph with the recursion backstop.
  *   5. Session persistence happens in respond; on failure the runner makes a
@@ -21,6 +23,7 @@ import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJ
 import { buildClarifyToolResultTurn, buildToolResultTurn, findDanglingToolUse } from '../../common/clarify/toolResume';
 import { CLARIFY_TOOL_NAME } from '../../common/clarify/tool';
 import { parseSealedHookLedger, type StopHookCheck, type StopHookLedger } from '../../../core/customAgents/stopHooks';
+import { carriedSealChannels, universalConversationChannel } from '../../../core/customAgents/universalConversation';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
 import { buildUniversalRegistry, setUniversalMcp } from './runtime';
@@ -40,6 +43,8 @@ export interface UniversalRunnerParams {
   planRequested?: boolean;
   /** Scheduler-owned run — approval-gated tool calls pause instead of fail-closed. */
   unattended?: boolean;
+  /** The pipeline run this turn belongs to — its conversation channel (F22). */
+  pipelineRunId?: string;
   /** One-turn approval grant (approve re-dispatch), by tool name. */
   approvalGrantTool?: string;
   deps: {
@@ -98,12 +103,17 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let sealedAwaitingStopHooks = false;
   let sealedApprovalToolUseId: string | undefined;
   let restoredApprovalContext: InheritedTurnContext | undefined;
+  // The stored channel for this turn; the graph works on session:main in
+  // memory and the seal maps back (nodes stay channel-blind).
+  const sessionChannel = universalConversationChannel(params.pipelineRunId);
+  let carriedChannels: Record<string, ConversationMessage[]> = {};
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
       const sessionState = session?.state;
-      if (sessionState?.conversations?.[CONV_KEYS.SESSION_MAIN]?.length) {
-        restoredConversations = { [CONV_KEYS.SESSION_MAIN]: sessionState.conversations[CONV_KEYS.SESSION_MAIN] };
+      carriedChannels = carriedSealChannels<ConversationMessage>(sessionState?.conversations, sessionChannel);
+      if (sessionState?.conversations?.[sessionChannel]?.length) {
+        restoredConversations = { [CONV_KEYS.SESSION_MAIN]: sessionState.conversations[sessionChannel] };
         restoredTokenUsage = sessionState.tokenUsage;
         restoredTokenUsageByModel = sessionState.tokenUsageByModel;
         if (Array.isArray(sessionState.checklist?.items) && sessionState.checklist.items.length > 0) {
@@ -125,7 +135,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
           sealedApprovalToolUseId = sessionState.approvalToolUseId;
           restoredApprovalContext = parseSealedTurnContext(sessionState.approvalTurnContext);
         }
-        console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
+        console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns (${sessionChannel})`);
       }
     } catch (e) {
       console.warn('⚠️ [Universal] Session restore failed (fresh session):', e instanceof Error ? e.message : String(e));
@@ -267,6 +277,8 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     restoredHookLedger: adoptedHookLedger,
     unattended: params.unattended,
     approvalGrantTool: params.approvalGrantTool,
+    sessionChannel,
+    carriedChannels,
   });
   if (restoredTokenUsage) (initialState as any).tokenUsage = restoredTokenUsage;
   if (restoredTokenUsageByModel) (initialState as any).tokenUsageByModel = restoredTokenUsageByModel;
@@ -301,6 +313,8 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
             customJobRef: `${resolved.agentId}/${resolved.jobId}`,
             restoredClarifyRounds,
             restoredChecklist,
+            sessionChannel,
+            carriedChannels,
           }),
         });
       } catch (e) {

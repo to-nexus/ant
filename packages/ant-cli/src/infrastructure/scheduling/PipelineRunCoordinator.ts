@@ -67,6 +67,7 @@ import { generateTurnId } from '../../composition/recordUserTurn';
 import { logger } from '../../utils/logger';
 import { buildInitialSteps, planAdvance, applyStepOutcome, deriveRunStatus, effectiveNeeds, type StepDispatch } from '../../core/pipelines/ChainExecutor';
 import { getSessionFilePath, readSessionTextBounded } from '../../core/utils/sessionPaths';
+import { selectSealedConversation } from '../../core/customAgents/universalConversation';
 import { deriveActivationsRoot, type PipelineTenantContext } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import {
@@ -541,6 +542,9 @@ export class PipelineRunCoordinator {
           ...(meta.meta?.plan && { plan: true }),
           unattended: true,
           ...(approvalGrantTool && { approvalGrantTool }),
+          // Memory boundary: this run's steps share a conversation channel,
+          // and no other run's.
+          runId: run.runId,
         },
         firedBy: 'schedule',
         pipelineRunId: run.runId,
@@ -1357,7 +1361,7 @@ export class PipelineRunCoordinator {
         // every step of the same customJobRef.
         if (state?.jobId === jobId) {
           if (typeof state.verdict === 'string') sealVerdict = state.verdict;
-          const main = state?.conversations?.['session:main'];
+          const main = selectSealedConversation<any>(state);
           if (Array.isArray(main)) {
             for (let i = main.length - 1; i >= 0; i -= 1) {
               const msg = main[i];

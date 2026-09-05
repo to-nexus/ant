@@ -199,8 +199,16 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         ? [...finalAssistant.content.matchAll(/<verdict>\s*([a-z0-9-]+)\s*<\/verdict>/g)]
         : [];
       const verdict = verdictMatches.length > 0 ? verdictMatches[verdictMatches.length - 1][1] : undefined;
+      // The stored channel is run-scoped under a pipeline (F22) while the
+      // graph works on session:main; siblings ride through untouched because
+      // this state object replaces the file's whole state.
+      const channel = state._sessionChannel ?? CONV_KEYS.SESSION_MAIN;
       const sessionState = {
-        conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(getConv(state.conversations, CONV_KEYS.SESSION_MAIN)) },
+        conversations: {
+          ...(state._carriedChannels ?? {}),
+          [channel]: sealUniversalConversation(getConv(state.conversations, CONV_KEYS.SESSION_MAIN)),
+        },
+        conversationChannel: channel,
         ...(verdict && !state._clarifyPause && !state._approvalPause && { verdict }),
         tokenUsage: state.tokenUsage,
         tokenUsageByModel: state.tokenUsageByModel,

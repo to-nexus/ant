@@ -30,6 +30,11 @@ import { parseSealedTurnContext } from '../../src/agents/universal/graph/state';
 import { _resetUniversalRuntimeForTests } from '../../src/agents/universal/graph/runtime';
 import { CONV_KEYS } from '../../src/agents/common/graph/conversations';
 import { inheritedClarifyRounds } from '../../src/agents/universal/graph/state';
+import {
+  carriedSealChannels,
+  selectSealedConversation,
+  universalConversationChannel,
+} from '../../src/core/customAgents/universalConversation';
 
 function makeResolved(overrides?: Partial<Pick<ResolvedCustomJob, 'clarifyDefault' | 'intents' | 'builtinTools'>>): ResolvedCustomJob {
   return {
@@ -242,6 +247,48 @@ describe('inheritedClarifyRounds — budget scope', () => {
   });
 });
 
+describe('conversation channels — a pipeline run is a memory boundary', () => {
+  // Same axis as the budget above: every step of every run appended to ONE
+  // `session:main`, so a new case's intake inherited another case's answers.
+  it.each([
+    ['a pipeline step is run-scoped', 'sandy-mending-cabin', 'session:run:sandy-mending-cabin'],
+    ['an interactive turn stays on the shared channel', undefined, 'session:main'],
+  ] as const)('%s', (_label, runId, expected) => {
+    expect(universalConversationChannel(runId)).toBe(expected);
+  });
+
+  it('a run seal carries the interactive channel and drops finished runs', () => {
+    const carried = carriedSealChannels(
+      {
+        'session:main': [{ role: 'user', content: 'chat', timestamp: '2026-09-01T00:00:00.000Z' }],
+        'session:run:old': [{ role: 'user', content: 'previous case', timestamp: '2026-09-02T00:00:00.000Z' }],
+        'session:run:new': [{ role: 'user', content: 'this case', timestamp: '2026-09-03T00:00:00.000Z' }],
+        'node:agent': [{ role: 'user', content: 'ephemeral' }],
+      } as any,
+      'session:run:new',
+    );
+    expect(Object.keys(carried)).toEqual(['session:main']);
+  });
+
+  it('an interactive seal keeps the newest run channel (a live run must not lose its memory)', () => {
+    const carried = carriedSealChannels(
+      {
+        'session:run:old': [{ role: 'user', content: 'a', timestamp: '2026-09-02T00:00:00.000Z' }],
+        'session:run:new': [{ role: 'user', content: 'b', timestamp: '2026-09-03T00:00:00.000Z' }],
+      } as any,
+      'session:main',
+    );
+    expect(Object.keys(carried)).toEqual(['session:run:new']);
+  });
+
+  it.each([
+    ['the stamped channel wins', { conversationChannel: 'session:run:r1', conversations: { 'session:main': [{ role: 'user', content: 'chat' }], 'session:run:r1': [{ role: 'user', content: 'step' }] } }, 'step'],
+    ['a legacy seal falls back to session:main', { conversations: { 'session:main': [{ role: 'user', content: 'chat' }] } }, 'chat'],
+  ] as const)('selectSealedConversation — %s', (_label, sealed, expected) => {
+    expect((selectSealedConversation<any>(sealed as any)[0] as any).content).toBe(expected);
+  });
+});
+
 describe('routeAfterTool — pure predicate', () => {
   it('routes respond on a clarify pause, agent otherwise', () => {
     expect(routeAfterTool({ _clarifyPause: { toolUseId: 'tu_1', question: 'q' } } as any)).toBe('respond');
@@ -310,6 +357,19 @@ describe('respond seal — I2-compatible clarify markers', () => {
     const tc = { intents: ['writing'], context: ['plan/notes.md'], planTurn: true, source: 'pinned' };
     await respondNode(makeState({ toolUseId: 'tu_9', question: 'q' }, updateArtifacts, tc));
     expect(updateArtifacts.mock.calls[0][3].state.clarifyTurnContext).toEqual(tc);
+  });
+
+  it('a pipeline turn seals into its run channel and carries the interactive one', async () => {
+    activateCustomJob(makeResolved());
+    const updateArtifacts = vi.fn(async (..._args: any[]) => undefined);
+    const state = makeState(undefined, updateArtifacts);
+    state._sessionChannel = 'session:run:r7';
+    state._carriedChannels = { 'session:main': [{ role: 'user', content: 'chat memory' }] };
+    await respondNode(state);
+    const sealed = updateArtifacts.mock.calls[0][3].state;
+    expect(sealed.conversationChannel).toBe('session:run:r7');
+    expect(sealed.conversations['session:run:r7']).toHaveLength(1);
+    expect(sealed.conversations['session:main'][0].content).toBe('chat memory');
   });
 
   it('non-paused seal omits clarifyTurnContext (stale continuity self-clears)', async () => {

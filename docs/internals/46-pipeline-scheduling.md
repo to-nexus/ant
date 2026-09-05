@@ -484,11 +484,25 @@ shape is what makes the extension migration-free.
 > this contract recommends (the consuming step asks for the person's product
 > through clarify).
 >
-> The shared session is itself unresolved: a step job inherits every previous
-> RUN's conversation, so a new case's intake can skip its questions because
-> the answers to a *different* case are already in context (same date, same
-> project). Per-run isolation is a product decision, not a bug fix — see the
-> loop's notes before changing it.
+> **A run is a memory boundary (fixed 2026-09-05).** The shared session had a
+> second half: a step job inherited every previous RUN's conversation, so a new
+> case's intake skipped its questions because the answers to a *different* case
+> were already in context (same date, same project) — a run adopted another
+> case's effective date, statute id and terms key without asking. The cross-run
+> channels this design declares are explicit — the `{{run.prevSuccess.*}}`
+> watermark and pinned artifacts — and a transcript is not one of them. So the
+> STORED conversation channel is keyed by the run (`session:run:{runId}`,
+> `core/customAgents/universalConversation.ts`), selected from
+> `UniversalTurnMeta.runId` which ONLY the coordinator sets (the HTTP accept
+> gate builds turn meta from the validator's `{intents, context, plan}`). The
+> graph keeps working on `session:main` in memory — nodes stay channel-blind;
+> the runner maps the stored channel in at restore and the seal maps it back
+> out, carrying the interactive channel through untouched (the session state is
+> replaced wholesale, so an omitted channel is deleted) and stamping
+> `conversationChannel` for the out-of-process readers (the coordinator's
+> `{{steps.*.answer}}` capture, the run-history input summary). Steps of the
+> SAME run still share their channel — one run is one case; what a step owes
+> the next is still artifacts + pins.
 
 A step job that ends with a sealed `awaitingClarify` (universal
 end-and-resume, doc 44) did not fail and did not succeed — it asked a

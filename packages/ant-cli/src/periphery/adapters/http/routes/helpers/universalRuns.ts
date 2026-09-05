@@ -12,6 +12,7 @@
  */
 
 import * as path from 'path';
+import { selectSealedConversation } from '../../../../../core/customAgents/universalConversation';
 import type { KanbanData } from '@ant/shared';
 import type { KanbanService } from '../../services';
 import type { SessionRun } from '../../../../../core/types/session';
@@ -233,10 +234,9 @@ export async function readUniversalRunExtras(sessionPath: string): Promise<Parti
         ? state.lastTurnHooks.map((h: Record<string, unknown>) => ({ ...h, exempt: 'clarify' }))
         : state.lastTurnHooks;
   }
-  const mainConv = state.conversations?.['session:main'];
-  const firstUser = Array.isArray(mainConv)
-    ? mainConv.find((m: any) => m?.role === 'user' && typeof m.content === 'string')
-    : undefined;
+  const firstUser = selectSealedConversation<any>(state).find(
+    (m: any) => m?.role === 'user' && typeof m.content === 'string',
+  );
   if (typeof firstUser?.content === 'string' && firstUser.content.trim().length > 0) {
     extras.input = { type: 'text', summary: firstUser.content.trim().slice(0, 200) };
   }

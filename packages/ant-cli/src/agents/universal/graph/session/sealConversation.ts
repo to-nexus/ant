@@ -47,9 +47,15 @@ export function buildUniversalErrorSealState<T extends { role: string; content: 
   customJobRef: string;
   restoredClarifyRounds?: number;
   restoredChecklist?: UniversalChecklist;
+  /** Stored channel for this turn (run-scoped under a pipeline run). */
+  sessionChannel?: string;
+  /** Channels this seal must carry through — state is replaced wholesale. */
+  carriedChannels?: Record<string, T[]>;
 }): Record<string, unknown> {
+  const channel = args.sessionChannel ?? CONV_KEYS.SESSION_MAIN;
   return {
-    conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(args.main) },
+    conversations: { ...(args.carriedChannels ?? {}), [channel]: sealUniversalConversation(args.main) },
+    conversationChannel: channel,
     customJobRef: args.customJobRef,
     ...(args.restoredClarifyRounds !== undefined && { clarifyRoundsUsed: args.restoredClarifyRounds }),
     ...(args.restoredChecklist && { checklist: args.restoredChecklist }),

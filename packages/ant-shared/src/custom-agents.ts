@@ -887,6 +887,15 @@ export interface UniversalTurnMeta {
    * coordinator on the approve re-dispatch.
    */
   approvalGrantTool?: string;
+  /**
+   * The pipeline RUN this turn belongs to. It selects the turn's stored
+   * conversation channel, so one run's memory never becomes another run's
+   * inherited context (the cross-run channels are the `{{run.prevSuccess.*}}`
+   * watermark and pinned artifacts, never the transcript). Set ONLY by the
+   * pipeline coordinator — the HTTP accept gate builds turn meta from the
+   * validator's `{intents, context, plan}` and never from the request body.
+   */
+  runId?: string;
 }
 
 // ── Definition file surface (account-scoped agent settings API) ─────────────

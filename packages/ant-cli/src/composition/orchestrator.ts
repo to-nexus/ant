@@ -699,6 +699,7 @@ export async function orchestrator(params: {
         planRequested: universalTurnMeta?.plan === true,
         unattended: universalTurnMeta?.unattended === true,
         approvalGrantTool: universalTurnMeta?.approvalGrantTool,
+        pipelineRunId: universalTurnMeta?.runId,
         deps: { llm, session, promptBuilder, fileSystem, command: new NodeCommandAdapter(), kanbanUpdate, workflowUpdate, fileTreeUpdate, mcpCredentialResolver },
         _httpJobId: jobId,
       });

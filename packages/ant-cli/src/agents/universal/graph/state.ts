@@ -14,7 +14,7 @@ import { ResolvableFields } from '../../common/graph/annotationHelpers';
 import type { ResolvableState } from '../../common/graph/annotationHelpers';
 import { GENERAL_INTENT } from '@ant/shared';
 import type { UniversalChecklist } from '@ant/shared';
-import type { Conversations } from '../../common/graph/conversations';
+import type { ConversationMessage, Conversations } from '../../common/graph/conversations';
 import type { StopHookCheck, StopHookLedger } from '../../../core/customAgents/stopHooks';
 
 /** Tool call record for debugging / observability. */
@@ -215,6 +215,18 @@ export interface UniversalGraphState extends ResolvableState {
    * approval — routes tool→respond and shapes the seal. Per-run only.
    */
   _approvalPause?: { toolUseId: string; toolName: string; argsSummary: string };
+  /**
+   * The STORED conversation channel for this turn — `session:run:{runId}` under
+   * a pipeline run, `session:main` otherwise. The graph always works on
+   * `session:main` in memory; only restore and seal know the mapping
+   * (core/customAgents/universalConversation.ts).
+   */
+  _sessionChannel?: string;
+  /**
+   * Sibling channels the seal must re-emit unchanged — the session state is
+   * replaced wholesale, so an omitted channel is deleted from disk.
+   */
+  _carriedChannels?: Record<string, ConversationMessage[]>;
 }
 
 export const UniversalAnnotation = Annotation.Root({
@@ -253,6 +265,8 @@ export const UniversalAnnotation = Annotation.Root({
   _unattended: Annotation<boolean | undefined>,
   _approvalGrantTool: Annotation<string | undefined>,
   _approvalPause: Annotation<{ toolUseId: string; toolName: string; argsSummary: string } | undefined>,
+  _sessionChannel: Annotation<string | undefined>,
+  _carriedChannels: Annotation<Record<string, ConversationMessage[]> | undefined>,
 } as const);
 
 export function createInitialUniversalState(params: {
@@ -283,6 +297,10 @@ export function createInitialUniversalState(params: {
   unattended?: boolean;
   /** One-turn approval grant (approve re-dispatch), by tool name. */
   approvalGrantTool?: string;
+  /** Stored conversation channel for this turn (run-scoped under a pipeline). */
+  sessionChannel?: string;
+  /** Sibling channels the seal carries through untouched. */
+  carriedChannels?: Record<string, ConversationMessage[]>;
 }): UniversalGraphState {
   return {
     featurePath: params.containerPath,
@@ -314,5 +332,7 @@ export function createInitialUniversalState(params: {
     inheritedTurnContext: params.inheritedTurnContext,
     _unattended: params.unattended,
     _approvalGrantTool: params.approvalGrantTool,
+    _sessionChannel: params.sessionChannel,
+    _carriedChannels: params.carriedChannels,
   } as unknown as UniversalGraphState;
 }
