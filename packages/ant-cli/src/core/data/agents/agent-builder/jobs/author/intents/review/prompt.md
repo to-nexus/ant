@@ -97,7 +97,12 @@
   their own inputs and outputs, and the definition's OWN back-calculated
   schedule puts those units on days no single run can span. Report it as
   structural, not as wording. Also findings: pieces the material marks as
-  no longer in force that were carried in anyway. The report's mapping
+  no longer in force that were carried in anyway — and the same marker read
+  the other way, because it governs this sweep's own output too: a piece the
+  material itself sets aside, in its own text or by where the collection
+  files it, is not missing when the definition leaves it out, and reporting
+  it as a gap is a finding the author can refute from the source you read.
+  The report's mapping
   claim — what merged, what split, what was dropped — is a claim to verify
   against that material, not a finding to accept.
 - Check hook coverage. An intent that produces nothing at all — no file, no
