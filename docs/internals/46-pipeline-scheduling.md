@@ -412,7 +412,15 @@ ADDITIONAL subscriber on `job:status:updates` (note: no `ant:` prefix —
 `ant:pipe:job:{jobId}`, takes the per-run lock, applies the executor's plan,
 dispatches what unblocked, appends JSONL, publishes SSE. An interruption
 (pause) on a pipeline job is a step **failure** (`interrupted: {reason}`) —
-unattended chains have nobody to resume. A job that completes but sealed
+unattended chains have nobody to resume — and the coordinator KILLS the
+parked job (`killStepJob`): a paused job blocks the project's next dispatch
+(the S7 signature), and the run already owns the verdict. One exception
+earns a round instead of failing outright: `universal_stop_hook_unmet` gets
+a single nudged re-dispatch (`HOOK_UNMET_RETRY` — budget floor 1, no
+declared `retry` needed, preamble telling the model to ask through the
+clarify tool or finish the artifact); it is interactive chat's "Resume to
+continue", automated once, for the model that asked in prose and ended the
+turn. A job that completes but sealed
 `awaitingClarify` is NOT an outcome: the step parks `awaiting_clarify` until
 a human answers (§5b). The DAG the run executes is the
 **frozen `defSnapshot`** compiled at fire time — editing the YAML never

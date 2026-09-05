@@ -101,6 +101,23 @@ const RUN_LOCK_RETRIES = 20;
 const RUN_LOCK_RETRY_DELAY_MS = 250;
 /** Interruption reasons that are infrastructure's fault — retry-eligible. A human stop/pause is not. */
 const INFRA_INTERRUPTION_REASONS: ReadonlySet<string> = new Set(['worker_stalled', 'server_shutdown']);
+/** One free nudged round for a step that ended with its stop hooks unmet (no declared `retry` needed). */
+const HOOK_UNMET_RETRY: StepRetryOpts = {
+  budgetFloor: 1,
+  delayMsDefault: 5_000,
+  nudge:
+    'It ended without writing its required artifact. If input is missing, ask through the clarify tool — never end the turn on a prose question; otherwise finish the work and save the artifact.',
+};
+
+/** failStepOrRetry knobs for reasons that earn a round the step did not declare. */
+interface StepRetryOpts {
+  /** Retry budget floor — grants rounds even when the step declares no `retry`. */
+  budgetFloor?: number;
+  /** Replaces the re-entrancy sentence in the retry preamble. */
+  nudge?: string;
+  /** Backoff when the step declares none (default 60s). */
+  delayMsDefault?: number;
+}
 
 export interface PipelineCoordinatorDeps {
   stateStore: StateStorePort;
@@ -962,6 +979,11 @@ export class PipelineRunCoordinator {
     if (interruption) {
       outcome = 'failed';
       error = `interrupted: ${interruption.reason ?? 'unknown'}`;
+      // An interrupted job parks itself paused/resumable, but nobody resumes a
+      // pipeline step — and a paused job blocks the project's next dispatch
+      // (the S7 signature). The run treats the interruption as the step's
+      // outcome, so the job must not outlive that verdict.
+      await this.killStepJob(data.jobId, projectId);
     }
     // Clarify seal: the job ended awaiting a human answer (universal
     // end-and-resume). Not an outcome — the step parks `awaiting_clarify`
@@ -1018,16 +1040,21 @@ export class PipelineRunCoordinator {
 
     // Plain job failures, infra interruptions and missing verdicts are
     // RETRYABLE; a human stop/pause is not (nobody asked the scheduler to
-    // redo what they stopped).
+    // redo what they stopped). Unmet stop hooks get one nudged round even
+    // without a declared retry: the model asked in prose instead of calling
+    // clarify (or stopped short of the artifact), and a fresh round with the
+    // hook named recovers it — interactive chat's "Resume to continue",
+    // automated once, because a pipeline has no human to resume it.
+    const hookUnmet = interruption != null && String(interruption.reason ?? '') === 'universal_stop_hook_unmet';
     const retryable =
       outcome === 'failed' &&
-      (!interruption || INFRA_INTERRUPTION_REASONS.has(String(interruption.reason ?? '')));
+      (!interruption || hookUnmet || INFRA_INTERRUPTION_REASONS.has(String(interruption.reason ?? '')));
 
     // A retryable failure consumes a retry round when the step declares one
     // (step_retry event + re-dispatch arm); otherwise it falls through to the
     // normal failed outcome inside the funnel.
     if (retryable) {
-      const handled = await this.failStepOrRetry(owner, runId, stepId, error ?? 'job-failed', data.jobId);
+      const handled = await this.failStepOrRetry(owner, runId, stepId, error ?? 'job-failed', data.jobId, hookUnmet ? HOOK_UNMET_RETRY : undefined);
       if (handled) {
         await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
         return;
@@ -1096,7 +1123,13 @@ export class PipelineRunCoordinator {
     const patch = { ...(data.error && { error: data.error }), ...(data.output && { output: data.output }) };
     const applied =
       data.outcome === 'failed' && data.retryable
-        ? await this.failStepOrRetry(data.owner, data.runId, data.stepId, data.error ?? 'job-failed', data.jobId)
+        ? await this.failStepOrRetry(
+            data.owner, data.runId, data.stepId, data.error ?? 'job-failed', data.jobId,
+            // The replay path re-derives the hook-unmet floor from the error —
+            // the arm payload does not carry opts, and losing the floor on a
+            // lock-starved re-apply would fail a step the live path nudges.
+            data.error?.includes('universal_stop_hook_unmet') ? HOOK_UNMET_RETRY : undefined,
+          )
         : await this.applyOutcome(
             data.owner, data.runId, data.stepId, data.outcome,
             Object.keys(patch).length > 0 ? patch : undefined,
@@ -1164,6 +1197,7 @@ export class PipelineRunCoordinator {
     stepId: string,
     error: string,
     expectedJobId?: string,
+    opts?: StepRetryOpts,
   ): Promise<boolean> {
     interface RetryArm {
       delayMs: number;
@@ -1193,7 +1227,7 @@ export class PipelineRunCoordinator {
         return { run: live, dispatches: [] };
       }
       const used = record.retriesUsed ?? 0;
-      const max = Math.min(stepDef.retry?.max ?? 0, MAX_STEP_RETRY);
+      const max = Math.min(Math.max(stepDef.retry?.max ?? 0, opts?.budgetFloor ?? 0), MAX_STEP_RETRY);
       if (used >= max) return { run: live, dispatches: [] }; // no budget — fall through below
       const round = used + 1;
       const attempts = [
@@ -1203,10 +1237,11 @@ export class PipelineRunCoordinator {
       const template = stepDef.directive?.trim() ? stepDef.directive : defaultStepDirective(stepDef.intent);
       const directiveOverride =
         `[Retry ${round}/${max}] The previous attempt failed: "${error}". ` +
-        `Before doing anything else, check which side effects the failed attempt already completed, then perform ONLY the remaining work.\n\n` +
+        (opts?.nudge ?? `Before doing anything else, check which side effects the failed attempt already completed, then perform ONLY the remaining work.`) +
+        `\n\n` +
         this.renderDirective(template, live);
       armed = {
-        delayMs: parsePipelineDuration(stepDef.retry?.backoff) ?? 60_000,
+        delayMs: parsePipelineDuration(stepDef.retry?.backoff) ?? opts?.delayMsDefault ?? 60_000,
         round,
         max,
         directiveOverride,

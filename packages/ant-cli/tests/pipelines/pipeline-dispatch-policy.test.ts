@@ -346,6 +346,21 @@ describe('retry / timeout / remind arms', () => {
     expect(coordinator).toMatch(/INFRA_INTERRUPTION_REASONS/);
   });
 
+  it('an interrupted step job is killed — the run owns the verdict, the paused job must not block the project (S12)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    // The interruption branch of the job-event outcome handler kills the parked job.
+    expect(coordinator).toMatch(/error = `interrupted: \$\{interruption\.reason \?\? 'unknown'\}`;[\s\S]{0,600}?killStepJob\(data\.jobId, projectId\)/);
+  });
+
+  it('unmet stop hooks earn ONE nudged round without a declared retry (S13), on the live and replay paths', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/HOOK_UNMET_RETRY: StepRetryOpts = \{\s*\n\s*budgetFloor: 1/);
+    // Live path keys on the interruption reason; the lock-starved replay re-derives it from the error.
+    expect(coordinator.match(/HOOK_UNMET_RETRY : undefined/g)?.length ?? 0).toBe(2);
+    // The floor never exceeds the global cap.
+    expect(coordinator).toMatch(/Math\.min\(Math\.max\(stepDef\.retry\?\.max \?\? 0, opts\?\.budgetFloor \?\? 0\), MAX_STEP_RETRY\)/);
+  });
+
   it('a superseded round cannot be clobbered: applyOutcome guards on expectedJobId', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
     expect(coordinator).toMatch(/expectedJobId !== undefined && already\.jobId !== expectedJobId/);
