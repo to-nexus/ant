@@ -138,10 +138,11 @@ write that its own intent already gates per call.
   name an existing step.
 - `on` judges the upstream outcome: `success` (default), `failure`, `always`,
   or `verdict:<outcome>`. A step whose condition does not match is
-  **skipped**, and a skipped need is neither success nor failure — skips
-  cascade, `on: always` included. A branch therefore cannot be rejoined: a
-  step needing two arms of a switch never runs, because only one arm ever
-  does.
+  **skipped**, and a need that did not happen — skipped, or cancelled by an
+  abort — is neither success nor failure. Non-occurrence cascades, `on:
+  always` included: `always` means "whatever the outcome", never "even if it
+  never ran". A branch therefore cannot be rejoined: a step needing two arms
+  of a switch never runs, because only one arm ever does.
 - **Verdict routing** (`on: verdict:<outcome>`): when an upstream step's
   pinned intent declares an `outcomes` vocabulary (in that intent's `infer.md`
   frontmatter — read it via the agents API), the run seals one verdict and
@@ -155,7 +156,9 @@ write that its own intent already gates per call.
   Only compose verdict edges against intents that actually declare the named
   outcome — a typo'd name is a branch that always skips.
 - `defaults.onStepFailure: abort` cancels everything still pending on the
-  first failure; `continue` lets independent branches finish.
+  first failure — including an already-armed gate whose `on` consumes success,
+  because the work it guarded is cancelled and the run must be free to seal;
+  `continue` lets independent branches finish.
 - Branches never run concurrently: at most one job step is in flight per run,
   so fan-out siblings execute one at a time in file order. Branch for
   routing (`on:`) and failure isolation, not for speed.

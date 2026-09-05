@@ -10,11 +10,16 @@
  * - A step becomes READY when every need is terminal. Its `on` condition then
  *   judges the needs' outcomes: `success` (default) requires ALL succeeded;
  *   `failure` requires at least one failed; `always` runs regardless.
- *   A non-matching condition SKIPS the step — skips cascade (a skipped need
- *   is neither success nor failure).
+ *   A non-matching condition SKIPS the step — non-occurrence cascades: a
+ *   skipped or cancelled need is neither success nor failure, and `always`
+ *   judges the OUTCOME of a need that happened, so it cascades too (a branch
+ *   cannot be rejoined by declaring `on: always`).
  * - `defaults.onStepFailure: abort` (default): the first failure cancels all
  *   still-pending steps except explicit `on: failure`/`always` consumers of
- *   already-terminal needs, and the run seals `failed`.
+ *   already-terminal needs, cancels an ARMED gate that consumes success (the
+ *   decision it asks for can no longer change anything, and an unresolved
+ *   gate would hold the run in `awaiting_human` forever), and the run seals
+ *   `failed`.
  *   `continue`: independent branches keep going; a finished run with both
  *   successes and failures seals `partial`.
  * - At most ONE job step is in flight per run (dispatched / running /
@@ -82,6 +87,23 @@ export function planAdvance(def: PipelineDef, run: RunRecord): ChainPlan {
     (s) => s.status === 'dispatched' || s.status === 'running' || s.status === 'awaiting_clarify',
   );
 
+  // Abort also ends the HUMAN waits it orphans. A gate that armed on success
+  // guards steps this cascade just cancelled, so its approve/reject decides
+  // nothing — and while it sits `awaiting_gate` the run stays
+  // `awaiting_human` and never seals (the coordinator disarms the card/arms
+  // for every step this turns `cancelled`). Gates that explicitly consume
+  // failure are the failure path itself and stay armed.
+  if (policy === 'abort' && anyFailed()) {
+    for (let i = 0; i < def.steps.length; i += 1) {
+      const stepDef = def.steps[i];
+      const record = byId.get(stepDef.id);
+      if (!record || record.status !== 'awaiting_gate') continue;
+      const condition = stepDef.on ?? 'success';
+      if (condition === 'failure' || condition === 'always') continue;
+      record.status = 'cancelled';
+    }
+  }
+
   let changed = true;
   while (changed) {
     changed = false;
@@ -102,9 +124,15 @@ export function planAdvance(def: PipelineDef, run: RunRecord): ChainPlan {
       const needs = effectiveNeeds(def, i).map((id) => byId.get(id)).filter((s): s is StepRecord => !!s);
       if (!needs.every((s) => TERMINAL.has(s.status))) continue;
 
+      // `always` judges an OUTCOME, and a skipped or cancelled need has none:
+      // it did not happen. Matching it unconditionally made `always` the one
+      // edge that rejoins a branch and the one edge an abort cascade cannot
+      // stop — an aborting run dispatched a fresh job off a cancelled need
+      // and then asked a human a question it could not act on.
+      const happened = (s: StepRecord) => s.status === 'succeeded' || s.status === 'failed';
       const matches =
         condition === 'always'
-          ? true
+          ? needs.length === 0 || needs.every(happened)
           : condition === 'failure'
             ? needs.some((s) => s.status === 'failed')
             : condition.startsWith('verdict:')

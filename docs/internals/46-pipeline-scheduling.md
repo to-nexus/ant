@@ -352,6 +352,25 @@ success nor failure). `defaults.onStepFailure: abort` (default) cancels
 still-pending steps on the first failure and seals `failed`; `continue`
 lets independent branches finish and seals `partial` on mixed outcomes.
 
+> **Non-occurrence is not an outcome, and abort ends the waits it orphans.**
+> `always` judges the OUTCOME of a need, so a need that was skipped or
+> cancelled does not satisfy it — matching it unconditionally made `always`
+> the one edge that rejoins a branch and the one edge an abort cascade cannot
+> stop: on 2026-09-04 an aborting run's `on: always` step consumed a
+> *cancelled* need, dispatched a fresh job, and asked a human a question the
+> run could no longer act on. `failure` keeps its "at least one need failed"
+> shape (that is the error-handler edge); `always` now requires every need to
+> have actually happened (succeeded or failed), and a root `always` step still
+> runs. In the same cascade an ARMED gate stayed `awaiting_gate` while every
+> step it guarded was cancelled — the inbox showed a decision with no
+> consequence and the run could not seal (`awaiting_human` forever), so abort
+> now cancels armed gates too, except those whose own `on` consumes failure
+> (they ARE the failure path). The executor owns the state change; the
+> coordinator's `mutateRun` funnel takes down the timeout/remind arms, the
+> HITL record and the card for every step a plan turns `cancelled` while it
+> still held an undecided gate, and appends a `step_completed`
+> (`outcome: 'cancelled'`, `reason: 'gate-orphaned-by-abort'`) audit line.
+
 **Verdict routing** (`on: verdict:<name>`): the decision vocabulary is
 declared on the INTENT (`infer.md` frontmatter `outcomes: [..]` — the
 business knowledge lives in the agent definition, never per-pipeline). The

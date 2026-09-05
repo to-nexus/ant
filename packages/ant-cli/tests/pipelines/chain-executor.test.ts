@@ -125,6 +125,51 @@ describe('planAdvance — advance, skip cascade, gates', () => {
     expect(s2.dispatches.map((x) => x.stepId)).toEqual(['cleanup']);
   });
 
+  it('on: always does NOT consume a need that never happened (skip cascades through always)', () => {
+    // `always` judges an outcome; a skipped need has none. Matching it would
+    // make `always` the one edge that rejoins a branch.
+    const d = def(
+      [job('judge'), job('arm-a', { needs: ['judge'], on: 'verdict:a' }), job('after', { needs: ['arm-a'], on: 'always' })],
+      'continue',
+    );
+    const s1 = planAdvance(d, freshRun(d));
+    const s2 = applyStepOutcome(d, s1.run, 'judge', 'succeeded', { verdict: 'b' });
+    expect(s2.run.steps.find((s) => s.stepId === 'arm-a')?.status).toBe('skipped');
+    expect(s2.run.steps.find((s) => s.stepId === 'after')?.status).toBe('skipped');
+    expect(s2.dispatches).toEqual([]);
+  });
+
+  it('on: always does NOT consume a CANCELLED need — an aborting run starts no new job', () => {
+    const d = def([job('a'), job('b', { needs: ['a'] }), job('report', { needs: ['b'], on: 'always' })]);
+    const s1 = planAdvance(d, freshRun(d));
+    const s2 = applyStepOutcome(d, s1.run, 'a', 'failed');
+    expect(s2.run.steps.find((s) => s.stepId === 'b')?.status).toBe('cancelled');
+    expect(s2.run.steps.find((s) => s.stepId === 'report')?.status).toBe('skipped');
+    expect(s2.dispatches).toEqual([]);
+    expect(s2.run.status).toBe('failed');
+  });
+
+  it('abort cancels an ARMED gate that guards cancelled work — the run seals instead of waiting', () => {
+    const d = def([job('a', { needs: [] }), gate('g', { needs: ['a'] }), job('after-gate', { needs: ['g'] }), job('b', { needs: [] })]);
+    const s1 = planAdvance(d, freshRun(d));
+    const armed = applyStepOutcome(d, s1.run, 'a', 'succeeded');
+    expect(armed.run.steps.find((s) => s.stepId === 'g')?.status).toBe('awaiting_gate');
+    expect(armed.run.status).toBe('running'); // 'b' dispatched
+    const aborted = applyStepOutcome(d, armed.run, 'b', 'failed');
+    expect(aborted.run.steps.find((s) => s.stepId === 'g')?.status).toBe('cancelled');
+    expect(aborted.run.status).toBe('failed');
+  });
+
+  it('abort leaves an armed gate that explicitly consumes failure', () => {
+    const d = def([job('a', { needs: [] }), job('b', { needs: [] }), gate('g', { needs: ['a'], on: 'always' })]);
+    const s1 = planAdvance(d, freshRun(d));
+    const armed = applyStepOutcome(d, s1.run, 'a', 'succeeded');
+    expect(armed.run.steps.find((s) => s.stepId === 'g')?.status).toBe('awaiting_gate');
+    const aborted = applyStepOutcome(d, armed.run, 'b', 'failed');
+    expect(aborted.run.steps.find((s) => s.stepId === 'g')?.status).toBe('awaiting_gate');
+    expect(aborted.run.status).toBe('awaiting_human');
+  });
+
   it('an awaiting_clarify step keeps the run awaiting_human and blocks dependents', () => {
     const d = def([job('a'), job('b')]);
     const started = planAdvance(d, freshRun(d));

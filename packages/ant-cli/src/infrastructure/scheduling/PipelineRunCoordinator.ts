@@ -2035,6 +2035,28 @@ export class PipelineRunCoordinator {
     await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.RUN(run.runId), JSON.stringify(run), ttl);
   }
 
+  /**
+   * Take down one armed-but-orphaned gate: timeout/remind arms, HITL record,
+   * card key, and a run-log line so the audit trail says why the card
+   * vanished. Idempotent — every key delete tolerates absence.
+   */
+  private async disarmGate(owner: PipelineOwner, run: RunRecord, step: StepRecord): Promise<void> {
+    const gate = step.gate;
+    if (!gate) return;
+    await this.deps.scheduleQueue.cancelDelayed(`gto-${gate.gateId}`);
+    await this.deps.scheduleQueue.cancelDelayed(`gre-${gate.gateId}`);
+    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gate.gateId)).catch(() => {});
+    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(gate.cardId)).catch(() => {});
+    await this.appendEvent(owner, run.projectId, {
+      ts: new Date().toISOString(),
+      event: 'step_completed',
+      runId: run.runId,
+      stepId: step.stepId,
+      gateId: gate.gateId,
+      detail: { outcome: 'cancelled', reason: 'gate-orphaned-by-abort' },
+    });
+  }
+
   private async mutateRun(
     owner: PipelineOwner,
     runId: string,
@@ -2043,15 +2065,29 @@ export class PipelineRunCoordinator {
     const lockKey = REDIS_KEYS.PIPE.RUN_LOCK(runId);
     for (let attempt = 0; attempt < RUN_LOCK_RETRIES; attempt += 1) {
       if (await this.deps.stateStore.acquireLock(lockKey, REDIS_TTL.PIPE.RUN_LOCK)) {
+        let result: { run: RunRecord; dispatches: StepDispatch[] } | null = null;
+        let orphanedGates: StepRecord[] = [];
         try {
           const live = await this.getRun(runId);
           if (!live) return null;
-          const result = await fn(live, live.defSnapshot);
+          result = await fn(live, live.defSnapshot);
           await this.saveRun(result.run);
-          return result;
+          // Any step this mutation turned `cancelled` while it still held an
+          // undecided gate is an orphaned human wait (the abort cascade's
+          // armed gate, §5). The executor owns the state change; the arms,
+          // the HITL record and the card are ours to take down — otherwise
+          // the inbox keeps a decision nobody can act on.
+          const wasWaiting = new Set(
+            live.steps.filter((s) => s.status === 'awaiting_gate').map((s) => s.stepId),
+          );
+          orphanedGates = result.run.steps.filter(
+            (s) => s.status === 'cancelled' && wasWaiting.has(s.stepId) && s.gate && !s.gate.decision,
+          );
         } finally {
           await this.deps.stateStore.releaseLock(lockKey).catch(() => {});
         }
+        for (const step of orphanedGates) await this.disarmGate(owner, result!.run, step);
+        return result;
       }
       await new Promise((r) => setTimeout(r, RUN_LOCK_RETRY_DELAY_MS));
     }
