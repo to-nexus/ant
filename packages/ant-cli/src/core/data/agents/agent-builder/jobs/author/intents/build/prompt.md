@@ -77,33 +77,30 @@
   name; principles that hold only for one procedure live in that job's
   `base/system.md` or its intents, never in the agent's `base/*.md`. The
   intent is the triggered unit. Lifting the sole job's procedure name — or
-  its rules — up to the agent collapses the hierarchy: the next request in
-  the same domain then has no home and mints a near-duplicate agent, which
-  the extend-first rule exists to prevent. A single-job agent is normal; an
-  agent whose identity is one procedure is not. Duplicating a procedure's
-  rules into agent prose is the same violation as lifting them — each rule
-  keeps one home. Agent prose AND job prose never enumerate the job's
-  intents (the list is stale the moment one is added — the catalog renders
-  them; moving the list from `base/role.md` into `base/system.md` is the
-  same list one level down). It is that list whenever there is one item per
-  intent, whatever the items are called — ids, trigger situations,
-  deliverables, table rows — so count them against the catalog rather than
-  judging the phrasing. Write in its place what the sentence was reaching
-  for, one altitude up: the body of work the agent holds and who it holds
-  it for, such that adding an intent would not date it, leaving the catalog
-  to carry which units exist today. A roster of the parties who perform the
-  steps is not this list and is required prose — its correspondence does
-  not close, naming parties no intent serves and omitting intents nobody
-  hands off to. Prose also never states connection status
-  ("this agent is not wired to X") — wiring state lives only in the
-  dependency report, whose `status:` the wiring turn updates; prose
-  stating it is stale the moment the user wires the system. What the reader
-  does need is the division of labour, and it is a different sentence: name
-  who performs the step ("the owner files the ticket"; "the team sends the
-  mail"), never the absence of a connection as the reason. The positive form
-  survives wiring; the negative one becomes a lie the moment the connection
-  lands, and every prose file is subject to it — an intent's
-  operating-context section included.
+  its rules — up to the agent, or duplicating them there, collapses the
+  hierarchy: the next request in the same domain then has no home and mints
+  the near-duplicate agent the extend-first rule exists to prevent. A
+  single-job agent is normal; an agent whose identity is one procedure is
+  not. Each rule keeps one home.
+- Agent prose AND job prose never enumerate the job's intents — the catalog
+  renders them, and the list is stale the moment one is added; moving it
+  from `base/role.md` into `base/system.md` is the same list one level down.
+  It is that list whenever there is one item per intent, whatever the items
+  are called — ids, trigger situations, deliverables, table rows — so count
+  the items against the catalog rather than judging the phrasing. Write in
+  its place what the sentence was reaching for, one altitude up: the body of
+  work the agent holds and who it holds it for, such that adding an intent
+  would not date it. A roster of the parties who perform the steps is not
+  this list and is required prose — its correspondence does not close,
+  naming parties no intent serves and omitting intents nobody hands off to.
+- Prose never states connection status ("this agent is not wired to X") —
+  wiring state lives only in the dependency report, whose `status:` the
+  wiring turn updates, and every prose file is subject to the ban, an
+  intent's operating-context section included. What the reader needs is the
+  division of labour, and it is a different sentence: name who performs the
+  step ("the owner files the ticket"), never the absence of a connection as
+  the reason. The positive form survives wiring; the negative one becomes a
+  lie the moment the connection lands.
 - Prose may name counterparts the job has no connection for — a system with
   no endpoint or credential to declare, or a practice outside any system: a
   team that hands over or receives the work's deliverables as local files,
@@ -239,8 +236,8 @@ contract — the third omitted only when done is not observable.**
   a step whose data appears in no input is the same omission from the other
   end. Read the two lists against each other before saving.
 - What the material flags as costly is what goes missing first. Its exception
-  cases ("the issue button was clicked by mistake — ask the dev team to void
-  it"), and any list it keeps of points that cannot be undone, are the parts
+  cases (the mis-step another party must void or reverse), and any list it
+  keeps of points that cannot be undone, are the parts
   a distillation drops, and they are the parts whose absence costs the most:
   the procedure still reads complete without them. Carry each one into the
   intent that performs the work it guards. A merge is where they vanish
@@ -266,30 +263,26 @@ contract — the third omitted only when done is not observable.**
   guess, and the one stop hook proves only that some file was written. A
   criterion that needs "or" between task names, or a "one or more of" clause,
   is a split; two criteria that differ only in wording are a merge.
-- `prompt.md` never restates the trigger — an opening section that
-  paraphrases `infer.md` gives the condition two spellings, and they diverge
-  on the next edit. The condition has exactly one home; `prompt.md` begins
-  at what the agent does once it applies — opening on the work's own
-  identity and where its scope ends, never on the state that selected it.
-  State that boundary as what this work produces and what it does not
-  ("this produces the reconciliation and the voucher draft; issuing the
-  invoice is the operator's"). Name the owner of the excluded half only when
-  it is a person or another team; when it is a sibling intent, say nothing
-  about it — "the voucher draft is the next step's" is the run order again,
-  and the output line has already drawn the line. Never state the boundary
-  as a position among other work:
-  where scope and run order compete for the same sentence the quarantine
-  wins, and a predecessor named, a stage counted, or the material's own
-  step number is that position wherever it sits — a heading carries it as
-  readily as a sentence does, so the title is prose too. The test is
-  self-applicable: an opening sentence that would still read as an
-  `infer.md` body is the trigger in a second home. The rule runs the other way too,
-  and it costs more in that direction: `infer.md` ends once the arriving
-  situation is named, so a closing sentence describing the steps, the
-  output, or the spec the work follows is the procedure in the trigger's
-  home. Every turn renders the whole catalog to decide one intent, so that
-  sentence is paid on every turn of every intent while informing none of
-  them — and it is a second place the procedure can drift from.
+- `prompt.md` never restates the trigger — an opening that paraphrases
+  `infer.md` gives the condition two spellings, and they diverge on the next
+  edit. `prompt.md` begins at what the agent does once it applies: the
+  work's own identity and where its scope ends, never the state that
+  selected it. State the boundary as what this work produces and what it
+  does not ("this produces the reconciliation and the voucher draft;
+  issuing the invoice is the operator's"). Name the owner of the excluded
+  half only when it is a person or another team; when it is a sibling
+  intent, say nothing — "the voucher draft is the next step's" is run
+  order, and the output line has already drawn the line. Where scope and
+  run order compete for the same sentence the quarantine wins: a
+  predecessor named, a stage counted, or the material's own step number is
+  run order wherever it sits, and a heading carries it as readily as a
+  sentence does. The test is self-applicable: an opening sentence that
+  would still read as an `infer.md` body is the trigger in a second home.
+  The rule runs the other way at higher cost: `infer.md` ends once the
+  arriving situation is named — a closing sentence describing the steps,
+  the output, or the spec the work follows is the procedure in the
+  trigger's home, paid on every turn of every intent (the whole catalog
+  renders each turn) while informing none of them.
 - `hooks.yaml` is the completion contract, owed whenever done is
   observable: an intent whose `prompt.md` names a stable output path owes
   that pattern as an `artifact:` glob (the turn's writes must match it); an
@@ -557,8 +550,8 @@ contract — the third omitted only when done is not observable.**
   - used-by: {intent ids that substitute for this counterpart today, each
     read off that intent's own file the way `consumed by` is — an id listed
     here whose `prompt.md` never names this counterpart is the same unbacked
-    claim one field over, and a count stated instead of ids ("the thirteen
-    that draft vouchers") cannot be checked against anything. Substitution
+    claim one field over, and a count stated instead of ids cannot be
+    checked against anything. Substitution
     runs in whichever direction the counterpart sits: for a source the
     intent's inputs name it, for a destination the intent's OUTPUT is the
     text a person carries in, and one counterpart can be both. Read the
@@ -570,8 +563,7 @@ contract — the third omitted only when done is not observable.**
     applicable" in a row. Where the material names that counterpart for work
     an intent does perform, the empty `used-by:` is the intent's gap and not
     the entry's: give the intent the input, then write the entry off it.
-    Neither writing the entry with nobody in it nor dropping a counterpart
-    the work needs is the answer. A name that IS in some intent's inputs has an
+    A name that IS in some intent's inputs has an
     entry of its own, which is what splitting a bundled heading means:
     dropping the bundle without promoting the used member loses it}
   - substitute: {the text deliverable standing in — one line}
