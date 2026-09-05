@@ -135,6 +135,19 @@ describe('checkStopHooks — narrowed api-request action', () => {
     const bare = [{ intentId: 'x', hook: { action: 'api__ant__request' } }] as any;
     expect(checkStopHooks(bare, { writes: [], actions: ['api__ant__request'] })[0].met).toBe(true);
   });
+
+  // Create and update are different verbs on one resource, and entries are
+  // conjunctive — the method slot's `|` alternation is the only way to say
+  // "either write" (the pipeline-builder's own contract needs POST|PUT).
+  it.each([
+    [tok('POST', '/definitions/pipelines'), true],
+    [tok('PUT', '/definitions/pipelines/monthly-close'), true],
+    [tok('GET', '/definitions/pipelines'), false],
+    [tok('DELETE', '/definitions/pipelines/monthly-close'), false],
+  ])('POST|PUT alternation: %s -> %s', (action, met) => {
+    const alt = [{ intentId: 'x', hook: { action: 'api__ant__request POST|PUT /definitions/pipelines**' } }] as any;
+    expect(checkStopHooks(alt, { writes: [], actions: [action] })[0].met).toBe(met);
+  });
 });
 
 describe('checkStopHooks — truth table', () => {

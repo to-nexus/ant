@@ -146,11 +146,16 @@ export const API_ACTION_PATTERN = new RegExp(
  * counts only when its method and path match. A bare tool name keeps its old
  * meaning: any successful call.
  *
+ * The method slot accepts `|`-joined alternatives (`POST|PUT`) for resources
+ * whose create and update are different verbs — entries are conjunctive, so a
+ * second entry cannot express the disjunction.
+ *
  * `*` matches within one path segment, `**` matches across segments.
  */
+const API_ACTION_METHOD = '(?:GET|POST|PUT|PATCH|DELETE)';
 export const API_ACTION_NARROWED_PATTERN = new RegExp(
   `^(${API_TOOL_PREFIX}[a-z0-9]+(?:-[a-z0-9]+)*__${API_TOOL_VERBS.filter((v) => v === 'request').join('|') || 'request'})`
-  + ` (GET|POST|PUT|PATCH|DELETE) (/[^\\s]*)$`,
+  + ` (${API_ACTION_METHOD}(?:\\|${API_ACTION_METHOD})*) (/[^\\s]*)$`,
 );
 
 /** Evidence token for one api-request call: `<tool> <METHOD> <path>`. */
@@ -164,13 +169,14 @@ export function apiActionEvidenceToken(tool: string, method: unknown, path: unkn
 
 /**
  * True when `token` (from {@link apiActionEvidenceToken}) satisfies a narrowed
- * hook value. Narrowing is method-exact and path-glob.
+ * hook value. Narrowing is method-exact (one of the hook's `|`-joined
+ * alternatives) and path-glob.
  */
 export function matchesNarrowedApiAction(hookValue: string, token: string): boolean {
   const h = API_ACTION_NARROWED_PATTERN.exec(hookValue.trim());
   const t = API_ACTION_NARROWED_PATTERN.exec(token.trim());
   if (!h || !t) return false;
-  if (h[1] !== t[1] || h[2] !== t[2]) return false;
+  if (h[1] !== t[1] || !h[2].split('|').includes(t[2])) return false;
   const rx = new RegExp(
     '^' + h[3].split('**').map((seg) =>
       seg.split('*').map((lit) => lit.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'),

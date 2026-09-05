@@ -422,9 +422,11 @@ describe('shipped pipeline-builder definition', () => {
     // AGENT this pipeline needs fixed (an outcome vocabulary that cannot
     // express a case the procedure requires was named in three consecutive
     // rounds and reached the Agent Builder lane in none of them). The
-    // sanctioned no-op exit is clarify, which this gate exempts.
+    // sanctioned no-op exit is clarify, which this gate exempts. The action is
+    // NARROWED to the definition writes (create POST, update PUT) — a bare
+    // tool name is satisfied by any successful call, a catalog GET included.
     expect(build?.hooks?.stop).toEqual([
-      { action: 'api__ant__request' },
+      { action: 'api__ant__request POST|PUT /definitions/pipelines**' },
       { artifact: 'pipeline-report/*.md' },
     ]);
     expect(review?.clarify).toBe(false);
