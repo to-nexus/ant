@@ -198,6 +198,9 @@
   times back against the user's words — "every Monday 9am in Seoul" must show
   Mondays 09:00 in `Asia/Seoul`. A manual-only pipeline has no fires to
   preview, and saying so is the verification; never invent a cron to preview.
+- If the requested change already holds, do not manufacture a write —
+  re-saving identical content is not work. Say so, and on a pinned turn ask
+  through clarify whether anything else is wanted.
 
 **Report.**
 
@@ -208,6 +211,7 @@
 - End with the hand-over line, and with what a person must decide that you
   could not: the gate policies you left open, and the inputs the run will
   ask for.
+
 **Write the run report.**
 
 `pipeline-report/{pipelineId}.md` — one file per pipeline, rewritten whole on
@@ -243,7 +247,3 @@ worse than no section at all.
 reaches the lane that can fix it. Write the request even when you routed
 around the gap; especially then, because a routed-around gap looks solved in
 the graph.
-
-- If the requested change already holds, do not manufacture a write —
-  re-saving identical content is not work. Say so, and on a pinned turn ask
-  through clarify whether anything else is wanted.
