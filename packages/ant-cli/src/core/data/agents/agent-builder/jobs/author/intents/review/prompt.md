@@ -35,7 +35,11 @@
   conditional wiring line ("if an API exists, a base URL and a token") is
   that contradiction, not an exemption from it, and an `interface: none`
   that names no operations and no party to provide them is an unanswered
-  field rather than a request. Check the fields' placement too, not only
+  field rather than a request. A field answered with a refusal — "none",
+  "unknown", "undecided" standing alone — is that same unanswered field in
+  a shorter spelling, and `substitute:` cannot carry one at all: an entry
+  that has users has a deliverable standing in, the agent's own output when
+  the counterpart is a destination. Check the fields' placement too, not only
   their values: `gate:` and `on-provided:` belong to the entry, so a
   `gate:` indented under `missing:` files a step the counterpart keeps as
   something to go obtain, and an entry whose `missing:` holds only

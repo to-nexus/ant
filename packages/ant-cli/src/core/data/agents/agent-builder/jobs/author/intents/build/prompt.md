@@ -588,7 +588,12 @@ contract — the third omitted only when done is not observable.**
     A name that IS in some intent's inputs has an
     entry of its own, which is what splitting a bundled heading means:
     dropping the bundle without promoting the used member loses it}
-  - substitute: {the text deliverable standing in — one line}
+  - substitute: {the text deliverable standing in — one line, read in the
+    direction `used-by` just declared: for a source, what the person hands
+    the agent; for a destination, the agent's OWN output that the person
+    carries in. An entry with users therefore never answers "none" here —
+    the deliverable named in the clause that explains the "none" is the
+    substitute, and writing both on one line is the tell}
   - missing:
     - interface: {the interface this system already has — a well-known
       public API or an existing MCP server, named; or "none — a private API
