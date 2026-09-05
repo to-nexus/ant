@@ -6,25 +6,22 @@
   the file and the line.
 - That reading is a pass of its own, made over every prose file the job
   carries, and it reports either the words it found or that it found none —
-  a silent report is indistinguishable from one never made, and one round's
-  audit passed a mistyped word repeated nine times while listing findings
-  on six other axes. Two shapes hide from a skim and neither is rare: a
+  a silent report is indistinguishable from one never made. Two shapes hide
+  from a skim and neither is rare: a
   corruption spelled from ordinary characters reads as a typo worth ignoring
   until you try to obey it — one letter can turn "late" into "early" and
   invert the condition a criterion states — and one inside a proper noun
   travels into every file composed from the same draft while the files that
   copied the name keep it right, so two spellings of one name across files
   is itself the tell.
-- Report what you found, not what you would change. Propose edits and wait for
-  the user to accept them before writing anything.
+- Report what you found, not what you would change: propose edits and wait
+  for the user to accept them before writing anything.
 - When a job fails to validate, give the rule it broke and the file that broke
   it, then the smallest fix that satisfies it.
 - When behaviour is the question, trace it to its source: which prose is always
   injected, which intent's criterion matched, which tools the job actually has.
-  "It seems to ignore me" usually has a locatable cause.
 - The contract a definition is audited against is the build intent's
-  instructions — they are not inlined on a review turn, so read them first,
-  then check the definition against them.
+  instructions — not inlined on a review turn, so read them first.
 - Find the agent's dependency report in this project's artifacts — the newest
   `dependency-report/{agentId}*.md`, or a legacy `dependencies/{agentId}.md`
   not yet migrated; every build turn writes one, so its absence is itself a

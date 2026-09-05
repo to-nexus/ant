@@ -57,9 +57,7 @@
   …") is that many intents wearing one name, and its `prompt.md` will
   already have them as numbered sub-procedures with separate inputs and
   separate outputs; a unit in neither the partition nor the drop list is
-  one you stopped seeing. Waiting on a different predecessor is a
-  different trigger, whatever single stage the material files them under.
-  The material's own filing is not that list — one file, one numbered item,
+  one you stopped seeing. The material's own filing is not that list — one file, one numbered item,
   one heading can hold several units, so a mapping table with exactly one
   row per source file is the tell that the count was read off the filing.
   Where the material argues with itself about a split, that argument is a
@@ -108,9 +106,9 @@
   directions count — a consumer whose expected format constrains this
   agent's output is a dependency as much as a source. Name them as
   reference, never as procedure: prose must not direct the running agent at
-  a counterpart the job has no connection for — neither to consult it nor to
-  operate it. The material's own verbs are how this arrives, because they
-  were written for the person who does the work: "download the month's
+  such a counterpart — neither to consult it nor to operate it. The
+  material's verbs are how this arrives, written for the person who does the
+  work: "download the month's
   transactions", "click issue", "sign in and export" become the agent's own
   steps the moment they are carried as given, and so does a source of truth
   the material says to go read. Both are REWRITTEN, never carried over: name
@@ -298,9 +296,8 @@ contract — the third omitted only when done is not observable.**
   run order compete for the same sentence the quarantine wins: a
   predecessor named, a stage counted, or the material's own step number is
   run order wherever it sits, and a heading carries it as readily as a
-  sentence does. The test is self-applicable: an opening sentence that
-  would still read as an `infer.md` body is the trigger in a second home.
-  The rule runs the other way at higher cost: `infer.md` ends once the
+  sentence does. An opening that would still read as an `infer.md` body is
+  the trigger in a second home. The rule runs the other way at higher cost: `infer.md` ends once the
   arriving situation is named — a closing sentence describing the steps,
   the output, or the spec the work follows is the procedure in the
   trigger's home, paid on every turn of every intent (the whole catalog
@@ -323,13 +320,12 @@ contract — the third omitted only when done is not observable.**
   because a hook the runtime cannot observe is a turn that can never end —
   and the report states why. An ending that means "the inputs are missing"
   is a clarify exit, never a verdict: clarify is exempt from the hook gate,
-  so the artifact hook stays safe on a turn that legitimately produces
-  nothing.
+  so the artifact hook is safe on a turn that legitimately produces nothing.
 - An intent whose work is a judgment — look at evidence, reach one named
   conclusion — declares its decision vocabulary as `outcomes` in `infer.md`
   frontmatter, and its `prompt.md` states what each outcome means and what
   evidence supports it; pipeline steps route on the verdict, and the
-  vocabulary lives on the intent because the business knowledge lives there
+  vocabulary lives on the intent, where the business knowledge is
   (bounds and mechanics are the format contract's,
   `on-demand/definition-format.md`). `outcomes` never stands in for the
   hook — a judgment intent that writes its findings to a file still owes
@@ -349,9 +345,7 @@ contract — the third omitted only when done is not observable.**
   dashboard") — so the criterion is that second half and the date goes to
   the operating-context section. Where the sentence looks like a date
   alone, the arrival is one step behind it: what the person opens,
-  receives, or checks to know the work can start. Once that section states
-  the cadence, a date still in `infer.md` is the same fact in two homes, and
-  the criterion holds the copy. Time rules the agent
+  receives, or checks to know the work can start. Time rules the agent
   applies while working — a filing deadline, a do-not-send window — stay in
   the procedure, because they change what the agent does, not when it is
   started.
@@ -360,8 +354,7 @@ contract — the third omitted only when done is not observable.**
   pipeline. Author every intent as startable at any time and able to finish
   unattended. Calendars, cadence, the legacy automation a task replaces, and
   run order between tasks are still not discarded — they are quarantined: one
-  section at the end of `prompt.md`, headed and opened like this, because a
-  heading on its own gets copied while the sentence under it gets skipped:
+  section at the end of `prompt.md`, headed and opened like this:
 
   ```markdown
   ## Operating context — reference, not instructions
@@ -502,11 +495,11 @@ contract — the third omitted only when done is not observable.**
   every one named without a connection gets an entry (human relays stay
   `virtual` with a `gate:`). Sweep for the NAMES, not for the systems: a
   report whose headings are an inventory of systems has no bucket for the
-  counterpart that owns no system, and that is the one whose entry matters
-  most — its rung is "adopt an addressable home, or renegotiate the
-  channel", which nobody will ever propose from a section that does not
-  exist. A team named in the prose as performing a step, or as receiving the
-  output, is an entry even when the work reaches it by no system at all.
+  counterpart that owns no system — a team named in the prose as performing
+  a step or receiving the output is an entry even where the work reaches it
+  by no system at all, and that is the entry that matters most: its rung is
+  "adopt an addressable home, or renegotiate the channel", which nobody
+  proposes from a section that does not exist.
 - Read the newest existing report first and carry its entries forward — the
   fixed structure below exists so a later turn can do exactly that; a
   from-memory regeneration loses what earlier turns recorded. A legacy
@@ -571,14 +564,12 @@ contract — the third omitted only when done is not observable.**
   ## {system or counterpart}
   - used-by: {intent ids that substitute for this counterpart today, each
     read off that intent's own file the way `consumed by` is — an id listed
-    here whose `prompt.md` never names this counterpart is the same unbacked
-    claim one field over, and a count stated instead of ids cannot be
-    checked against anything. Substitution
-    runs in whichever direction the counterpart sits: for a source the
-    intent's inputs name it, for a destination the intent's OUTPUT is the
-    text a person carries in, and one counterpart can be both. Read the
-    direction that applies and say which, because a list mixing the two
-    silently is a claim nobody can check either way. The
+    here whose `prompt.md` never names this counterpart, or a count stated
+    instead of ids, is unbacked. Substitution runs in whichever direction the
+    counterpart sits: for a source the intent's inputs name it, for a
+    destination the intent's OUTPUT is the text a person carries in, and one
+    counterpart can be both. Say which, because a list mixing the two is a
+    claim nobody can check. The
     definition's prose is the entry set's ceiling as well as its floor: a
     name no intent uses earns no entry, and an empty `used-by:` is the tell
     — every field below it then has nothing to say and fills with "not
@@ -598,8 +589,7 @@ contract — the third omitted only when done is not observable.**
     - interface: {the interface this system already has — a well-known
       public API or an existing MCP server, named; or "none — a private API
       or MCP server must be provided, supporting: {operations read off the
-      substitute deliverable's own fields}", stated so the user can hand
-      this entry to the team that will build it; or, when the deliverable
+      substitute deliverable's own fields}"; or, when the deliverable
       lives in no system at all — local files, mail attachments, a document
       kept by hand — the choice the owning team must make: adopt an
       addressable home for it, or renegotiate its format and channel, with
@@ -619,15 +609,13 @@ contract — the third omitted only when done is not observable.**
       namespace choice, not information you lack), so "undecided" is never
       a wiring value; a fact you genuinely lack — a base URL, an auth
       scheme — is stated as an item to obtain, named with the party who
-      knows it, never left blank — and never filled with a likely-looking
-      guess: a host inferred from the company name, a vendor's default
-      domain. This entry gets forwarded and acted on, so an invented value
-      is worse than an admitted gap: the gap gets asked about, the
-      plausible value gets a ticket filed against it. Appending "or their
-      internal URL" to something you wrote is the tell that you lack it.
-      Values the material carries are yours — including ones only its
-      markup holds, like the host inside a link — so read before
-      concluding you lack one — and the operations the intents need,
+      knows it, never left blank and never guessed — a host inferred from
+      the company name, a vendor's default domain. This entry gets forwarded
+      and acted on: the admitted gap gets asked about, the plausible value
+      gets a ticket filed against it. Appending "or their internal URL" is
+      the tell that you lack it. Values the material carries are yours,
+      including ones only its markup holds like the host inside a link, so
+      read before concluding you lack one — and the operations the intents need,
       which become the `allow` lines. A CONDITIONAL is the contradiction in
       disguise: "if that system has an API, then a base URL and a token"
       reads as unfilled and is really the interface question, unanswered,
@@ -737,8 +725,7 @@ contract — the third omitted only when done is not observable.**
   report's path. A build turn has always written one, so a chat report with
   no dependency-report line is a forgotten one, never an exempt one.
 - When the dependency report carries `virtual` entries, the chat report frames them as the
-  user's remaining work: restate the promotion loop (provide the items,
-  register the `${secret:}` key names, ask this builder to wire it) and name
+  user's remaining work: restate the report's promotion loop and name
   the declaration channel each entry's wiring lands in — `mcp.servers` or
   `apis`. Say which entries are tickets and which are conversations: an
   entry whose counterpart must first change — adopt a home for the
