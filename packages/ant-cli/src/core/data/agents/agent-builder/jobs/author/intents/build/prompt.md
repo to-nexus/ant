@@ -164,9 +164,8 @@
   Y", "second of three" — is the run order the pipeline owns, asserted where
   no pipeline can correct it, and it carries nothing the glob does not.
   Paths in a definition are plane-relative — the same root the hook globs
-  resolve against — never prefixed `artifacts/`: a prompt that names
-  `artifacts/x` beside a hook that declares `x/*` is a producer whose
-  contract can never be met.
+  resolve against — never prefixed `artifacts/` (the format contract states
+  the mismatch that prefix creates).
 - Give every producing intent a run manifest: a small file at a stable path,
   written on every run, listing what the run produced — records created,
   counts, paths — an empty list when there was nothing to do. The manifest is
@@ -230,7 +229,7 @@
 contract — the third omitted only when done is not observable.**
 
 - `infer.md` is the trigger criterion — the condition under which the intent
-  applies, at most 1000 characters. `prompt.md` is the procedure — what the
+  applies (its size bound is the format contract's). `prompt.md` is the procedure — what the
   agent does once it applies: the inputs it starts from, the systems it
   touches, the steps in order, the output it produces, and what done looks
   like. Write it as your own distilled prose, carrying everything the material
@@ -295,10 +294,9 @@ contract — the third omitted only when done is not observable.**
   observable: an intent whose `prompt.md` names a stable output path owes
   that pattern as an `artifact:` glob (the turn's writes must match it); an
   intent whose work records into a declared connection owes that `action:`
-  (the tool must have been successfully called). An `action` can only name
-  a tool the job actually carries (a builtin in its allowlist, or a tool
-  from a connection it declares), so a job with no connections can be held
-  only to `artifact:` evidence. The obligation runs both ways: a producing
+  (the tool must have been successfully called). An `action` names a tool
+  the job actually carries, so a job with no connections can be held only
+  to `artifact:` evidence. The obligation runs both ways: a producing
   intent's deliverable IS a file, so its `prompt.md` names the write step
   that satisfies the glob — a `create_file` to a business-keyed path in the
   same family (`x/{business-key}.md` for `artifact: x/*.md`). A deliverable
@@ -314,23 +312,19 @@ contract — the third omitted only when done is not observable.**
   nothing.
 - An intent whose work is a judgment — look at evidence, reach one named
   conclusion — declares its decision vocabulary as `outcomes` in `infer.md`
-  frontmatter (2–5 kebab-case ids), and its `prompt.md` states what each
-  outcome means and what evidence supports it. A turn under it ends with one
-  `<verdict>` from that vocabulary, and pipeline steps route on it — the
-  vocabulary lives on the intent because the business knowledge lives there.
-  Declaring `outcomes` never discharges the hook obligation: the verdict
-  picks which result, the hook proves the deliverable exists — a judgment
-  intent that writes its findings to a file still owes that file's glob.
-  Every member is a conclusion the work reached. So no member means the
-  work could not run — "insufficient-input", "needs-clarification",
-  "cannot-determine" — because not being able to start is the clarify
-  exit, and dressing it as a verdict gives every pipeline branching on
-  this intent a route for an answer that was never given. Nor is a member
-  an attribute of what was examined ("adverse-found") when the decision
-  the work reaches is which period applies: name the decisions, not the
-  findings behind them. And an intent that is not a judgment at all
-  declares no `outcomes` — a producing intent's result is its file.
-  The exact contract is in `on-demand/definition-format.md`.
+  frontmatter, and its `prompt.md` states what each outcome means and what
+  evidence supports it; pipeline steps route on the verdict, and the
+  vocabulary lives on the intent because the business knowledge lives there
+  (bounds and mechanics are the format contract's,
+  `on-demand/definition-format.md`). `outcomes` never stands in for the
+  hook — a judgment intent that writes its findings to a file still owes
+  that file's glob. Every member is a conclusion the work reached: a member
+  meaning the work could not run ("insufficient-input", "cannot-determine")
+  dresses the clarify exit as a verdict and gives every pipeline branching
+  here a route for an answer that was never given, and a member naming an
+  attribute of what was examined rather than the decision reached names the
+  findings behind the decisions. An intent that is not a judgment declares
+  no `outcomes` — a producing intent's result is its file.
 - `infer.md` names what arrives or is asked for — "a settlement file for the
   closed month is in hand" — never when a calendar fires it, not even as a
   trailing "typically runs at month-end" clause; a calendar anywhere in
@@ -342,8 +336,7 @@ contract — the third omitted only when done is not observable.**
   alone, the arrival is one step behind it: what the person opens,
   receives, or checks to know the work can start. Once that section states
   the cadence, a date still in `infer.md` is the same fact in two homes, and
-  the criterion holds the copy — the two files sitting open together is what
-  makes it easy to miss and easy to check. Time rules the agent
+  the criterion holds the copy. Time rules the agent
   applies while working — a filing deadline, a do-not-send window — stay in
   the procedure, because they change what the agent does, not when it is
   started.

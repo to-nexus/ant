@@ -156,8 +156,9 @@ answer rather than declaring the connection anyway.
 ## Prose
 
 `base/*.md` files are concatenated in filename order and injected on every
-turn. Agent and job prose share an 8000-character budget; past it the text is
-truncated with a visible footer, so keep standing instructions tight. Long
+turn. Agent and job prose share an 8000-character budget (counted in
+characters, not tokens); past it the text is truncated with a visible
+footer, so keep standing instructions tight. Long
 material has two homes by kind: a task's full procedure goes in that intent's
 `prompt.md` — no size limit, inlined only while the intent is active — and
 lookup reference the agent opens itself goes in `on-demand/`.
@@ -173,8 +174,7 @@ Prose has no required language: the `base/*.md` bodies, `infer.md`, `prompt.md`,
 owner reads. Structural tokens are not prose and are never localized — ids, yaml
 keys, paths under the whitelist, tool names in `tools.builtin` / `approval` /
 `hooks.yaml`, and `${secret:KEY}` names stay exactly as this contract defines
-them. Note that the 8000-character prose budget is counted in characters, not
-tokens.
+them.
 
 ## Intents
 
