@@ -928,6 +928,15 @@ The obligations live at authoring time, in the pipeline builder's contract:
   whatever must happen for every outcome belongs downstream of a step that
   always runs. The authoring check is to walk the graph once per declared
   outcome.
+- **Every step that consumes an upstream output pins it**, and the obligation
+  is stated as one: `needs` orders steps, it does not carry files, so a step
+  with no `context` is dispatched with its intent's prose and its directive and
+  nothing else — however plainly its own prompt names the document it wants.
+  Round 8 shipped a ten-step chain with zero pins and a report claiming routing
+  the graph did not contain, six rounds after that axis had closed, and it
+  closed again only when the rule led its section instead of describing the
+  mechanism from the middle of it. A contract that keeps growing loses its
+  older rules first: the same round's compression pass is part of the fix.
 - **A pin inherits its producer's condition.** A glob matching nothing fails
   the step, so a step pinning an artifact whose producer runs on one outcome
   only fails on every other outcome. Round 7's `regulator-report` pinned

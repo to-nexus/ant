@@ -8,16 +8,13 @@
   as text to copy into a directive.
 - An intent's `hooks.stop` artifact globs are its output contract — they are
   what a downstream step pins as `context`. Note them while reading.
-- A definition also says how real each intent runs today. An intent whose
-  procedure touches an external system the job declares no connection for
-  (`apis` / `mcp.servers`), and whose completion contract is `artifact:`-only,
-  runs on a substitute — authored text standing in for the real call. When
-  the agent's dependency report exists in this project's artifacts — the
-  newest `dependency-report/{agentId}*.md`, or a legacy
-  `dependencies/{agentId}.md` — read it: it is that agent's dependency
-  status ledger and names the human relays (`gate:`). Name the steps that
-  run on substitutes in the design you state, so nobody reads a green run
-  as the real work having happened.
+- A definition also says how real each intent runs today: an intent whose
+  procedure touches a system the job declares no connection for, and whose
+  completion contract is `artifact:`-only, runs on a substitute — authored text
+  standing in for the real call. Read the agent's dependency report when this
+  project has one (`dependency-report/{agentId}*.md`); it is that agent's
+  status ledger and names the human relays. Name the substitute steps in the
+  design you state, so nobody reads a green run as the real work happening.
 
 **Design the trigger.**
 
@@ -99,39 +96,24 @@
   gate's `needs`, or the prompt does not claim it.
 - An intent that gates a tool with `approval: always` already pauses the run
   per call, so never add an approval step to guard a write it gates.
-- A gate holds a run for a person's decision, never for their labor. When the
-  chain crosses work a person performs outside any step — relaying a
-  deliverable into a system no agent reaches, fetching something only they
-  can — the downstream work's real trigger is that handoff arriving, not the
-  upstream step sealing. Author that seam as a pipeline boundary: end this
-  pipeline at the handoff deliverable, and make the downstream chain its own
-  pipeline, fired manually when the handoff is in hand — `runCompleted` only
-  once the seam itself is automated. The split is reversible: when the seam
-  is wired later, chain the two pipelines or merge them.
-- Holding a labor seam in a gate instead is settled by a fact, not by taste:
-  an approval carries **no payload** — approve/reject is one bit, so the gate
-  delivers none of what the person produced (the reply, the file, the
-  extracted count). The downstream step is dispatched without it and either
-  asks again through clarify or proceeds on an assumption it presents as fact.
-  Covering a whole procedure is no argument against splitting either: several
-  pipelines, one per seam-bounded stretch, IS the whole flow.
-- What the person produced reaches the run through the step that CONSUMES it,
-  never through a gate: that step's intent asks with `clarify`, and the answer
-  rides into the step. So a labor seam has exactly two shapes — end the
-  pipeline at the handoff deliverable and let the next Run carry the handoff
-  in, or let the consuming step ask for it. A gate in front of that step adds
-  an interruption that carries nothing, and a gate `prompt` inviting the
-  approver to enter, paste or summarize anything describes a channel that does
-  not exist. A directive must never claim a gate delivered content — the step
-  then works from an assumption, and the hedge it writes into its own artifact
-  does not survive into its answer, its sealed verdict, or the next step's
-  input.
-- A clarify answer stays with the step that asked it: `{{steps.<id>.answer}}`
-  is that step's final answer text, not its clarify. So whatever LATER steps
-  need from the person has to be captured into an artifact by the step that
-  asked — the case's own parameters included. An intake step that collects
-  identifiers and writes only a schedule leaves every later step to ask again,
-  or to assume.
+- A gate holds a run for a person's DECISION, never for their labor. Where a
+  person performs work between steps — relaying a deliverable into a system no
+  agent reaches, fetching what only they can — a seam has exactly two shapes:
+  end the pipeline at the handoff deliverable and let the next Run carry the
+  handoff in, or let the step that CONSUMES it ask through its intent's
+  `clarify`. The split is reversible; chain or merge the two pipelines once the
+  seam is wired.
+- A gate cannot be the third shape, and that is a fact rather than a
+  preference: an approval carries **no payload**, so it delivers none of what
+  the person produced. A gate `prompt` inviting the approver to enter or paste
+  anything describes a channel that does not exist, and a directive claiming a
+  gate delivered content leaves the step working from an assumption whose
+  hedge does not survive into its answer, its sealed verdict, or the next
+  step's input.
+- A clarify answer stays with the step that asked it (`{{steps.<id>.answer}}`
+  is that step's final answer, not its clarify), so whatever LATER steps need
+  from a person must be captured into an artifact by the step that asked — the
+  case's own parameters included.
 
 **Write each step's directive and pins.**
 
@@ -151,28 +133,27 @@
   report which steps will therefore ask for them through their intent's
   clarify, so nobody expects Run now to complete unattended.
 - Which is why "the intent is already the specification" does not reach a step
-  whose input has to come from a person: omitting that step's directive
-  entirely dispatches a bare "carry out this intent", and nothing then tells
-  the step that the reply, the count, the delivered file is owed by someone.
-  Such a step does not ask — it judges from what it can already see, or leaves
-  the field blank and calls it done. Name the input the step must obtain, and
-  from whom; that is the directive's whole job there.
-- Do not read an intent's own judgement as covering that. An intent whose
-  prompt says "record 'not applicable' when it does not apply" can DECIDE
-  whether its work applies — from the artifacts it was pinned. It cannot
-  OBTAIN what only a person holds: the count someone read out of a system, the
-  file someone was handed, the answer someone got back. The first is the
-  intent's; the second is the directive's, every time.
+  whose input has to come from a person. Omitting that directive dispatches a
+  bare "carry out this intent", and the step then judges from what it can see
+  or leaves the field blank and calls it done. Name the input it must obtain
+  and from whom. An intent's own judgement does not cover this: it can DECIDE
+  whether its work applies, from the artifacts it was pinned; it cannot OBTAIN
+  what only a person holds — the count read out of a system, the file handed
+  over, the answer that came back.
 - The template variables are the format contract's list; anything else is
   rejected at save. Two authoring rules: a `{{steps.<id>.…}}` reference must
   name an upstream step in this step's `needs` chain, and substituted text is
   a SUMMARY channel — structured data still moves as artifacts and `context`
   pins.
-- Pin `context` from the upstream intent's `hooks.stop` globs, or concrete
-  container-relative artifact paths. Pins accept the static variables
-  (`{{trigger.*}}` / `{{run.*}}`) — `{{steps.*}}` is directive-only.
-  `sessions/` cannot be pinned, and a glob that matches nothing at dispatch
-  fails the step.
+- **Every step that consumes an upstream step's output pins it.** A step with
+  no `context` is dispatched with its intent's prose and its directive and
+  nothing else — it does not receive the schedule, the comparison table, the
+  request document, however plainly its own prompt names them, and `needs`
+  does not carry files. The pin is also the dispatch-time existence check:
+  without it a step that should have failed fast instead works from whatever
+  it can find. Pin from the upstream intent's `hooks.stop` globs, or concrete
+  container-relative paths; pins take the static variables (`{{trigger.*}}` /
+  `{{run.*}}`), never `{{steps.*}}`; `sessions/` cannot be pinned.
 - A pin inherits its producer's condition. A glob that matches nothing fails
   the step, so pinning an artifact whose producing step only runs on one
   outcome makes the pinning step fail on every other one — at the very end of
@@ -225,9 +206,7 @@
 **Write the run report.**
 
 `pipeline-report/{pipelineId}.md` — one file per pipeline, rewritten whole on
-every authoring turn. The chat report is read once and gone; this is what the
-next round, the next person, and the Agent Builder lane still have. Five
-sections, each a list, omitting none:
+every authoring turn, five sections, omitting none:
 
 ```markdown
 # {pipeline name} — {pipelineId}
@@ -252,11 +231,9 @@ sections, each a list, omitting none:
 ```
 
 **Intent changes** is the only channel by which a limitation of the AGENT
-reaches the lane that can fix it — an outcome vocabulary that cannot express a
-case the procedure requires, an intent with no output contract to pin, work
-the material needs that no intent covers. Write the request even when you
-routed around the gap; especially then, because a routed-around gap looks
-solved in the graph.
+reaches the lane that can fix it. Write the request even when you routed
+around the gap; especially then, because a routed-around gap looks solved in
+the graph.
 
 - If the requested change already holds, do not manufacture a write —
   re-saving identical content is not work. Say so, and on a pinned turn ask
