@@ -888,19 +888,27 @@ describe('loadCustomJob — stop hooks (H7/H8 cross-file + happy path)', () => {
   // recognisable without reading the prose: the producer's glob IS the
   // declared interface, and the quarantine is by contract the LAST section
   // (true of 75/75 authored prompts across five rounds). Advisory like H9.
-  const h10Cases: Array<[string, string, boolean]> = [
-    // [case, intent `a`'s prompt body, expect advisory]
-    ['sibling id in a path → clean', '입력은 `settlement/2026-01/b.md`를 읽는다.', false],
-    ['sibling id bare in prose → advisory', '이 산출물은 전표 작성(b)의 입력이 된다.', true],
-    ['sibling id in the closing section → clean', 'Do the work.\n\n## Operating context\n\n이후 b가 이어받는다.', false],
-    ['sibling named in an exit criterion → advisory', 'Steps.\n\n## 완료 조건\n\n결과는 b의 입력이 된다.\n\n## Operating context\n\nx', true],
-    ['own id is not a sibling → clean', '이 인텐트 a는 대사를 수행한다.', false],
-    ['path plus prose mention → advisory', '`settlement/x/b.md`를 읽고, 이후 b가 처리한다.', true],
+  // `infer.md` is scanned on the same terms: same ban, and neither exception
+  // applies to it (no closing section, same path test). A live round had the
+  // criterion name its producer while the prompt one file over was corrected
+  // at the same save.
+  const h10Cases: Array<[string, { prompt?: string; infer?: string }, boolean]> = [
+    // [case, intent `a`'s prose files, expect advisory]
+    ['sibling id in a path → clean', { prompt: '입력은 `settlement/2026-01/b.md`를 읽는다.' }, false],
+    ['sibling id bare in prose → advisory', { prompt: '이 산출물은 전표 작성(b)의 입력이 된다.' }, true],
+    ['sibling id in the closing section → clean', { prompt: 'Do the work.\n\n## Operating context\n\n이후 b가 이어받는다.' }, false],
+    ['sibling named in an exit criterion → advisory', { prompt: 'Steps.\n\n## 완료 조건\n\n결과는 b의 입력이 된다.\n\n## Operating context\n\nx', }, true],
+    ['own id is not a sibling → clean', { prompt: '이 인텐트 a는 대사를 수행한다.' }, false],
+    ['path plus prose mention → advisory', { prompt: '`settlement/x/b.md`를 읽고, 이후 b가 처리한다.' }, true],
+    ['sibling id bare in infer.md → advisory', { infer: 'b의 가공 엑셀이 준비된 상태에서 대사를 수행해야 할 때.' }, true],
+    ['sibling id in a path in infer.md → clean', { infer: '`settlement/2026-01/b.md`가 놓인 상태에서 대사를 수행해야 할 때.' }, false],
+    ['work name instead of the id → clean', { infer: '전표 작성이 끝난 상태에서 대사를 수행해야 할 때.' }, false],
+    ['clean prompt but the criterion names the sibling → advisory', { prompt: '입력은 `settlement/2026-01/b.md`를 읽는다.', infer: 'b가 끝난 뒤.' }, true],
   ];
-  it.each(h10Cases)('H10: %s', (_name, prompt, expected) => {
+  it.each(h10Cases)('H10: %s', (_name, files, expected) => {
     const agentDir = writeAgent(roots()[0].root, 'ops', {}, { base: { 'system.md': 'Persona.' } });
     writeJob(agentDir, 'weekly', {});
-    writeIntent(agentDir, 'weekly', 'a', { prompt });
+    writeIntent(agentDir, 'weekly', 'a', files);
     writeIntent(agentDir, 'weekly', 'b', { prompt: 'Unrelated work.' });
     const named = (loadCustomJob(roots(), 'ops', 'weekly').advisories ?? [])
       .filter((x) => x.includes('names sibling intent'));

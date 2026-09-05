@@ -602,33 +602,43 @@ export function loadCustomJob(
   // body is excluded. Whatever is left is the intent placing itself among
   // its neighbours. Advisory like H9 — the save funnel surfaces it, a
   // running agent stays loadable.
+  // `infer.md` carries the same ban and has neither exception to honour — it
+  // ends at the arriving situation, so it has no closing section, and the path
+  // test is the same one. Scanning only `prompt.md` let a criterion name its
+  // producer by id while the sibling prose one file over was corrected at the
+  // same save.
   const intentIds = intents.map((i) => i.id);
   for (const intent of intents) {
     const prompt = intentPrompts[intent.id];
-    if (!prompt) continue;
-    const lastHeading = prompt.lastIndexOf('\n## ');
-    const scanned = lastHeading > 0 ? prompt.slice(0, lastHeading) : prompt;
-    for (const sib of intentIds) {
-      if (sib === intent.id) continue;
-      // Identifier boundaries: an id is only named when it stands alone. A
-      // short id ("a") otherwise matches inside any word that contains it.
-      const isIdChar = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_-]/.test(c);
-      let at = scanned.indexOf(sib);
-      while (at !== -1) {
-        const before = at === 0 ? undefined : scanned[at - 1];
-        const after = scanned[at + sib.length];
-        if (before !== '/' && !isIdChar(before) && !isIdChar(after)) {
-          const line = scanned.slice(scanned.lastIndexOf('\n', at) + 1, at + sib.length + 30)
-            .replace(/\s+/g, ' ').trim();
-          advisories.push(
-            `${INTENTS_DIR_NAME}/${intent.id}/${INTENT_PROMPT_FILE_NAME}: names sibling intent `
-            + `"${sib}" outside a path and outside the closing section ("${line}") — the`
-            + ` producer's glob is the whole of what an intent says about its neighbours;`
-            + ` run order belongs to the pipeline, or to the closing section if it must be recorded`,
-          );
-          break;
+    const prose: Array<[string, string]> = [];
+    if (prompt) {
+      const lastHeading = prompt.lastIndexOf('\n## ');
+      prose.push([INTENT_PROMPT_FILE_NAME, lastHeading > 0 ? prompt.slice(0, lastHeading) : prompt]);
+    }
+    if (intent.infer) prose.push([INTENT_INFER_FILE_NAME, intent.infer]);
+    for (const [proseFile, scanned] of prose) {
+      for (const sib of intentIds) {
+        if (sib === intent.id) continue;
+        // Identifier boundaries: an id is only named when it stands alone. A
+        // short id ("a") otherwise matches inside any word that contains it.
+        const isIdChar = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_-]/.test(c);
+        let at = scanned.indexOf(sib);
+        while (at !== -1) {
+          const before = at === 0 ? undefined : scanned[at - 1];
+          const after = scanned[at + sib.length];
+          if (before !== '/' && !isIdChar(before) && !isIdChar(after)) {
+            const line = scanned.slice(scanned.lastIndexOf('\n', at) + 1, at + sib.length + 30)
+              .replace(/\s+/g, ' ').trim();
+            advisories.push(
+              `${INTENTS_DIR_NAME}/${intent.id}/${proseFile}: names sibling intent `
+              + `"${sib}" outside a path and outside the closing section ("${line}") — the`
+              + ` producer's glob is the whole of what an intent says about its neighbours;`
+              + ` run order belongs to the pipeline, or to the closing section if it must be recorded`,
+            );
+            break;
+          }
+          at = scanned.indexOf(sib, at + sib.length);
         }
-        at = scanned.indexOf(sib, at + sib.length);
       }
     }
   }
