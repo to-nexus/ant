@@ -367,9 +367,12 @@ contract — the third omitted only when done is not observable.**
   correctly whose first line says something else has kept the label and
   dropped the rule.
 
-  The quarantine is that heading, not that position: a section beside it at
-  the same end of the file — an exit criterion naming what runs next, an
-  input note naming what ran before — is outside it.
+  The quarantine is that one section and it is the file's LAST — the
+  validator excludes exactly the closing section, so anything placed after
+  it is scanned as ordinary prose. A sibling section at the same end of the
+  file — an exit criterion naming what runs next, an input note naming what
+  ran before — is outside the quarantine, not an annex to it: fold what
+  belongs there under the heading and delete the rest.
 
   Write it as description of the world the
   work sits in — its cadence, the automation this intent now performs, what
