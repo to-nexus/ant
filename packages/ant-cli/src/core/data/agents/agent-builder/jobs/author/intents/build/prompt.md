@@ -291,14 +291,16 @@ contract — the third omitted only when done is not observable.**
   does not ("this produces the reconciliation and the voucher draft;
   issuing the invoice is the operator's"). Name the owner of the excluded
   half only when it is a person or another team; when it is a sibling
-  intent, say nothing — the output line has already drawn the line. Where scope and
+  intent, say nothing — "the voucher draft is the next step's" is run
+  order, and the output line has already drawn the line. Where scope and
   run order compete for the same sentence the quarantine wins: a
   predecessor named, a stage counted, or the material's own step number is
   run order wherever it sits, and a heading carries it as readily as a
   sentence does — and an intent id carries it further than either:
   every catalog, board and pipeline render repeats the id. The material's
   numbering never enters an id ("4-extpay", "9a-…") — name the work; the
-  mapping row exists to hold the source card's number. The rule runs the other way at higher cost: `infer.md` ends once the
+  mapping row exists to hold the source card's number. An opening that would still read as an `infer.md` body is
+  the trigger in a second home. The rule runs the other way at higher cost: `infer.md` ends once the
   arriving situation is named — a closing sentence describing the steps,
   the output, or the spec the work follows is the procedure in the
   trigger's home, paid on every turn of every intent (the whole catalog
@@ -388,7 +390,8 @@ contract — the third omitted only when done is not observable.**
   run order arrives disguised as orientation — the material's overview of
   the whole procedure, rewritten as numbered steps in `base/system.md`.
   Every intent then reads on every turn that its work is step five of
-  eight. Keep the orientation, drop the positions: name
+  eight, which is the run order the pipeline owns, asserted where no
+  pipeline can correct it. Keep the orientation, drop the positions: name
   the stages as terrain, not as a sequence. Steps in it that no intent
   performs are the tell.
 
