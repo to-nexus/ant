@@ -26,7 +26,7 @@ vi.mock('../../src/infrastructure/state/RedisStateStore', () => ({
   RedisStateStore: class {},
 }));
 
-import { JobWorker } from '../../src/infrastructure/worker/JobWorker.js';
+import { JobWorker, settledLogLine } from '../../src/infrastructure/worker/JobWorker.js';
 import { REDIS_CHANNELS } from '../../src/infrastructure/state/redisConstants';
 
 let callOrder: string[];
@@ -72,6 +72,21 @@ beforeEach(() => {
   callOrder = [];
   publishArgs = [];
   vi.clearAllMocks();
+});
+
+describe('settledLogLine — BullMQ "completed" is not "finished"', () => {
+  // A gracefully interrupted run resolves the processor, so BullMQ fires
+  // `completed` and the summary line used to read "Job completed" for a job
+  // killed mid-run. Four sleep-killed builds were scored as finished that way.
+  it.each([
+    ['sleep kill', { output: { interruption: { reason: 'system_sleep' } } }, /settled without finishing \(system_sleep\)/],
+    ['user stop', { interruption: { reason: 'user_stopped' } }, /settled without finishing \(user_stopped\)/],
+    ['real completion', { output: { success: true } }, /^Job completed: j1$/],
+    ['no return value', undefined, /^Job completed: j1$/],
+    ['empty reason is not a reason', { interruption: { reason: '' } }, /^Job completed: j1$/],
+  ])('%s', (_label, rv, pattern) => {
+    expect(settledLogLine('j1', rv)).toMatch(pattern);
+  });
 });
 
 describe('JobWorker.shutdown() — server_shutdown interruption publish', () => {

@@ -123,6 +123,21 @@ export interface JobWorkerOptions {
   concurrency?: number;
 }
 
+/**
+ * Summary line for BullMQ's `completed` event. BullMQ calls a job completed
+ * whenever the processor resolves, and a gracefully interrupted run resolves
+ * with its interruption in the return value — so the line has to say which,
+ * or the log's last word on a job killed mid-run is "completed". Read that
+ * way once, four sleep-killed builds were scored as finished.
+ */
+export function settledLogLine(jobId: string | undefined, returnValue: unknown): string {
+  const rv = returnValue as any;
+  const reason = rv?.output?.interruption?.reason ?? rv?.interruption?.reason;
+  return typeof reason === 'string' && reason
+    ? `Job settled without finishing (${reason}): ${jobId}`
+    : `Job completed: ${jobId}`;
+}
+
 export class JobWorker {
   private worker: Worker | null = null;
   private stateStore: StateStorePort;
@@ -216,8 +231,13 @@ export class JobWorker {
     );
 
     // Setup event handlers
+    // BullMQ calls a job "completed" whenever the processor resolves, and a
+    // gracefully interrupted run resolves with its interruption in the return
+    // value. The summary line has to say which, or the log's last word on a
+    // job killed mid-run is "completed" — read that way once here, four
+    // sleep-killed builds were scored as finished.
     this.worker.on('completed', (job: Job) => {
-      logger.info(`Job completed: ${job.id}`, { component: 'JobWorker', jobId: job.id });
+      logger.info(settledLogLine(job.id, job.returnvalue), { component: 'JobWorker', jobId: job.id });
     });
 
     this.worker.on('failed', (job: Job | undefined, err: Error) => {
