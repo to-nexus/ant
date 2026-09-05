@@ -244,6 +244,18 @@ describe('planAdvance — advance, skip cascade, gates', () => {
     expect(s3.dispatches.map((x) => x.stepId)).toEqual(['after-anomaly']);
   });
 
+  it('a disjunction edge (verdict:a|b) matches any member and skips the rest', () => {
+    const d = def([
+      job('judge'),
+      job('either', { needs: ['judge'], on: 'verdict:ok|anomaly' }),
+      job('only-ok', { needs: ['judge'], on: 'verdict:ok' }),
+    ], 'continue');
+    const s1 = planAdvance(d, freshRun(d));
+    const s2 = applyStepOutcome(d, s1.run, 'judge', 'succeeded', { verdict: 'anomaly' });
+    expect(s2.dispatches.map((x) => x.stepId)).toEqual(['either']);
+    expect(s2.run.steps.find((s) => s.stepId === 'only-ok')?.status).toBe('skipped');
+  });
+
   it('a verdict edge never matches a FAILED need (no verdict survives failure)', () => {
     const d = def([job('judge'), job('handle-ok', { needs: ['judge'], on: 'verdict:ok' })], 'continue');
     const s1 = planAdvance(d, freshRun(d));

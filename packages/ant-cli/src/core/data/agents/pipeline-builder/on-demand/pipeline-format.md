@@ -148,13 +148,17 @@ write that its own intent already gates per call.
   frontmatter — read it via the agents API), the run seals one verdict and
   branches route on it — the switch pattern: a downstream step per outcome that
   needs its own steps, each `needs` the deciding step with its
-  `on: verdict:…`. An outcome whose only consequence is that the OTHER
+  `on: verdict:…`. A step owed to MORE than one outcome takes the disjunction
+  `on: verdict:a|b` (matches any member) — never a duplicated step per arm,
+  and never an unconditional step that re-judges what the verdict already
+  decided. An outcome whose only consequence is that the OTHER
   outcome's steps do not run needs no edge of its own: absence is its branch,
   and what matters is that every step which must run for it stays reachable. A run that seals no
   valid verdict FAILS the deciding step (`missing-verdict`, retryable) unless
   that step declares `onMissingVerdict: <outcome>` (or `fail`, the default).
-  Only compose verdict edges against intents that actually declare the named
-  outcome — a typo'd name is a branch that always skips.
+  Only compose verdict edges against intents that actually declare every named
+  outcome — a typo'd name, in a single edge or one `|` member, is a branch (or
+  half a branch) that always skips.
 - `defaults.onStepFailure: abort` cancels everything still pending on the
   first failure — including an already-armed gate whose `on` consumes success,
   because the work it guarded is cancelled and the run must be free to seal;

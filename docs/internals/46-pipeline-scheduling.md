@@ -380,9 +380,16 @@ output-tag matrix); `captureStepOutput` validates it against the declared
 vocabulary and stamps `StepRecord.verdict`. No valid verdict = the step FAILS
 (`missing-verdict`, retryable) unless the step's `onMissingVerdict` names a
 fallback outcome. The executor's `verdict:` predicate matches a need that
-SUCCEEDED with that verdict — non-matching branches skip and skips cascade,
-which is the whole switch semantics ("new chain edge predicates = executor-
-only changes", §8 Correct).
+SUCCEEDED with a verdict the edge names — `verdict:a|b` is the disjunction
+form (`verdictEdgeOutcomes` in `@ant/shared` is the one parse site; the
+catalog gate judges EVERY member, so a typo'd member errors as half a branch
+that always skips). Non-matching branches skip and skips cascade, which is
+the whole switch semantics ("new chain edge predicates = executor-only
+changes", §8 Correct). The disjunction exists because a step owed to two of
+three outcomes otherwise forces either step replication (two ids, one output
+name — the F30 trap) or an unconditional step that re-judges what the
+verdict already decided (observed live: a builder dropped ALL verdict edges
+rather than replicate).
 
 **At most ONE job step is in flight per run** (dispatched / running /
 awaiting_clarify). Every step dispatches into the same project, so the

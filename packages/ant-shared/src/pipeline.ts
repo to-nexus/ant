@@ -57,11 +57,18 @@ export type StepFailurePolicy = 'abort' | 'continue';
  * Edge condition against the `needs` outcomes. `verdict:<name>` matches when
  * a need SUCCEEDED with that sealed verdict (an outcome-declaring intent's
  * decision) — the switch semantics: non-matching branches skip and skips
- * cascade.
+ * cascade. `verdict:a|b` is the disjunction: it matches on ANY of the listed
+ * outcomes, so a step owed to more than one arm needs neither replication
+ * nor an unconditional escape.
  */
 export type StepEdgeCondition = 'success' | 'failure' | 'always' | `verdict:${string}`;
 
-export const VERDICT_EDGE_PATTERN = /^verdict:[a-z0-9][a-z0-9-]*$/;
+export const VERDICT_EDGE_PATTERN = /^verdict:[a-z0-9][a-z0-9-]*(\|[a-z0-9][a-z0-9-]*)*$/;
+
+/** The outcomes a `verdict:` edge names — the ONE parse site for the `a|b` disjunction form. */
+export function verdictEdgeOutcomes(on: string): string[] {
+  return on.slice('verdict:'.length).split('|');
+}
 export type GateTimeoutAction = 'reject' | 'approve';
 /** v1 ships in-app only; `slack` / `email` are reserved channel kinds. */
 export type PipelineApprovalChannel = 'inApp';
@@ -885,7 +892,7 @@ export function validatePipelineDef(
       rawStep.on !== 'always' &&
       !(typeof rawStep.on === 'string' && VERDICT_EDGE_PATTERN.test(rawStep.on))
     ) {
-      errors.push(`step "${stepId}": on must be "success", "failure", "always" or "verdict:<outcome>" (got: ${String(rawStep.on)})`);
+      errors.push(`step "${stepId}": on must be "success", "failure", "always", "verdict:<outcome>" or "verdict:<a|b>" (got: ${String(rawStep.on)})`);
     }
 
     if (rawStep.type === 'approval') {
@@ -1147,25 +1154,28 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
     }
 
     // A verdict edge must be statically satisfiable: at least one DIRECT need
-    // pins an intent that declares the named outcome. Needs whose catalog is
-    // unresolvable are skipped — their own rule already errored.
+    // pins an intent that declares the named outcome. EVERY member of an
+    // `a|b` disjunction is judged — a typo'd member is a silently dead half
+    // of the branch. Needs whose catalog is unresolvable are skipped — their
+    // own rule already errored.
     if (step.on !== undefined && step.on.startsWith('verdict:')) {
-      const outcome = step.on.slice('verdict:'.length);
       const effectiveNeeds = step.needs ?? (index > 0 ? [def.steps[index - 1].id] : []);
-      let satisfiable = false;
-      let unknowable = false;
-      for (const needId of effectiveNeeds) {
-        const need = def.steps.find((s) => s.id === needId);
-        if (need === undefined || isApprovalStep(need)) continue;
-        const { intent, unknown } = intentOf(need);
-        if (unknown || (need.intent !== undefined && need.intent !== GENERAL_INTENT && intent === undefined)) {
-          unknowable = true;
-          continue;
+      for (const outcome of verdictEdgeOutcomes(step.on)) {
+        let satisfiable = false;
+        let unknowable = false;
+        for (const needId of effectiveNeeds) {
+          const need = def.steps.find((s) => s.id === needId);
+          if (need === undefined || isApprovalStep(need)) continue;
+          const { intent, unknown } = intentOf(need);
+          if (unknown || (need.intent !== undefined && need.intent !== GENERAL_INTENT && intent === undefined)) {
+            unknowable = true;
+            continue;
+          }
+          if (intent?.outcomes?.includes(outcome)) satisfiable = true;
         }
-        if (intent?.outcomes?.includes(outcome)) satisfiable = true;
-      }
-      if (!satisfiable && !unknowable) {
-        errors.push(`step "${step.id}": on: verdict:${outcome} — no direct dependency pins an intent that declares outcome "${outcome}" (the branch would always skip)`);
+        if (!satisfiable && !unknowable) {
+          errors.push(`step "${step.id}": on: ${step.on} — no direct dependency pins an intent that declares outcome "${outcome}" (that arm of the branch would always skip)`);
+        }
       }
     }
   });

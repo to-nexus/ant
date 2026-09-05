@@ -29,6 +29,7 @@
 
 import {
   isApprovalStep,
+  verdictEdgeOutcomes,
   type PipelineDef,
   type PipelineRunStatus,
   type PipelineStepDef,
@@ -136,9 +137,10 @@ export function planAdvance(def: PipelineDef, run: RunRecord): ChainPlan {
           : condition === 'failure'
             ? needs.some((s) => s.status === 'failed')
             : condition.startsWith('verdict:')
-              // Switch semantics: a need SUCCEEDED with that sealed verdict.
-              // Non-matching branches skip; skips cascade (doc 46 §4).
-              ? needs.some((s) => s.status === 'succeeded' && s.verdict === condition.slice('verdict:'.length))
+              // Switch semantics: a need SUCCEEDED with a sealed verdict the
+              // edge names (`a|b` matches any member). Non-matching branches
+              // skip; skips cascade (doc 46 §4).
+              ? needs.some((s) => s.status === 'succeeded' && s.verdict !== undefined && verdictEdgeOutcomes(condition).includes(s.verdict))
               : needs.length === 0 || needs.every((s) => s.status === 'succeeded');
 
       if (!matches) {

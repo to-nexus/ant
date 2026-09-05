@@ -32,9 +32,10 @@
   never one step whose directive asks for both.
 - `needs` omitted means "after the previous step in file order", so a linear
   chain declares no `needs` at all. `on` judges the upstream outcome
-  (`success` default, `failure`, `always`, or `verdict:<outcome>` against an
-  `outcomes` vocabulary the upstream step's pinned intent declares); a step
-  whose condition does not match is skipped, and skips cascade.
+  (`success` default, `failure`, `always`, or `verdict:<outcome>` — `a|b`
+  for a step owed to more than one outcome — against an `outcomes` vocabulary
+  the upstream step's pinned intent declares); a non-match skips, and skips
+  cascade.
 - When an upstream step's pinned intent declares an `outcomes` vocabulary,
   that judgment IS the branch the graph was given: route on it. The run seals
   a verdict whether or not an edge reads it, so an unread verdict throws away
@@ -126,23 +127,21 @@
   "carry out this intent" statement.
 - What a directive carries is what only this RUN knows: the case's
   identifiers and parameters, the deadline, the watermark. It does not restate
-  the intent's procedure — that prompt is already loaded, so a summary of it
-  spends the step's budget saying nothing and crowds out what is missing. A
-  directive filled the other way round (the procedure repeated, the run's own
-  inputs absent) leaves the step with nothing it did not already have.
+  the intent's procedure — that prompt is already loaded; a directive filled
+  the other way round (procedure repeated, the run's own inputs absent) gives
+  the step nothing it did not already have.
 - When the run's inputs cannot be known while you author — a case opened by an
   event, not by a calendar — do not invent them and do not write a
   placeholder that looks like a variable. Leave the VALUES out, and say in the
   report which steps will therefore ask for them through their intent's
   clarify, so nobody expects Run now to complete unattended.
 - Which is why "the intent is already the specification" does not reach a step
-  whose input has to come from a person. Omitting that directive dispatches a
-  bare "carry out this intent", and the step then judges from what it can see
-  or leaves the field blank and calls it done. Name the input it must obtain
-  and from whom. An intent's own judgement does not cover this: it can DECIDE
-  whether its work applies, from the artifacts it was pinned; it cannot OBTAIN
-  what only a person holds — the count read out of a system, the file handed
-  over, the answer that came back.
+  whose input has to come from a person: omitted, the step judges from what it
+  can see or leaves the field blank and calls it done. Name the input it must
+  obtain and from whom. An intent's own judgement does not cover this: it can
+  DECIDE whether its work applies, from the artifacts it was pinned; it cannot
+  OBTAIN what only a person holds — the count read out of a system, the file
+  handed over, the answer that came back.
 - The template variables are the format contract's list; anything else is
   rejected at save. Two authoring rules: a `{{steps.<id>.…}}` reference must
   name an upstream step in this step's `needs` chain, and substituted text is
@@ -167,7 +166,8 @@
   outcome makes the pinning step fail on every other one — at the very end of
   the run, where the failure costs the most. Pin what your own branch
   guarantees; if you need the other branch's output, the step belongs on that
-  branch.
+  branch. And what you pin, you `needs`: a producer outside your needs chain
+  reaches you only by the accident of file order — wire it in.
 - A pin expands against the WHOLE artifacts tree at dispatch, so a `*` where
   the case's own key belongs matches every case the project ever ran — newest
   first, and past the per-glob cap the run's own case can be the one dropped.

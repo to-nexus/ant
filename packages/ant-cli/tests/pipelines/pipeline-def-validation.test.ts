@@ -114,6 +114,12 @@ describe('validatePipelineDef — structural rules', () => {
         { id: 'review', customJobRef: 'x/review', needs: ['judge'], on: 'verdict:needs-review' },
       ],
     })],
+    ['verdict disjunction edge (a|b) — a step owed to more than one outcome', baseDef({
+      steps: [
+        { id: 'judge', customJobRef: 'x/judge', intent: 'triage' },
+        { id: 'either', customJobRef: 'x/e', needs: ['judge'], on: 'verdict:ok|needs-review' },
+      ],
+    })],
     // Retry / timeout / remindAfter on their legal step kinds.
     ['job step with retry + timeout, gate with remindAfter', baseDef({
       steps: [
@@ -174,10 +180,14 @@ describe('validatePipelineDef — structural rules', () => {
     ['bad retry.backoff', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 1, backoff: 'soon' } }] }), /retry\.backoff must be a duration/],
     ['job timeout with onTimeout key', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', timeout: { after: '1h', onTimeout: 'reject' } }] }), /unknown key "onTimeout"/],
     ['bad job timeout duration', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', timeout: { after: 'later' } }] }), /timeout\.after must be a duration/],
+    ['malformed verdict disjunction (trailing |)', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a' },
+      { id: 'b', customJobRef: 'x/b', needs: ['a'], on: 'verdict:ok|' },
+    ] }), /on must be "success", "failure", "always", "verdict:<outcome>" or "verdict:<a\|b>"/],
     ['malformed verdict edge', baseDef({ steps: [
       { id: 'a', customJobRef: 'x/a', directive: 'a' },
       { id: 'b', customJobRef: 'x/b', needs: ['a'], on: 'verdict:' },
-    ] }), /on must be "success", "failure", "always" or "verdict:<outcome>"/],
+    ] }), /on must be "success", "failure", "always", "verdict:<outcome>" or "verdict:<a\|b>"/],
     ['onMissingVerdict without a pinned intent', baseDef({ steps: [
       { id: 'a', customJobRef: 'x/a', directive: 'a', onMissingVerdict: 'ok' },
     ] }), /onMissingVerdict needs a pinned intent/],
@@ -421,6 +431,23 @@ describe('validatePipelineCatalogBinding — the definition against the agent ca
     ]), CATALOG);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/agent "ghost"/);
+  });
+
+  it('a disjunction edge is satisfiable when every member is declared', () => {
+    const errors = validatePipelineCatalogBinding(def([
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage' },
+      { id: 'either', customJobRef: 'writer/digest', needs: ['judge'], on: 'verdict:ok|needs-review' },
+    ]), CATALOG);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("a typo'd disjunction member errors by name — half a branch that always skips", () => {
+    const errors = validatePipelineCatalogBinding(def([
+      { id: 'judge', customJobRef: 'research/collect', intent: 'triage' },
+      { id: 'either', customJobRef: 'writer/digest', needs: ['judge'], on: 'verdict:ok|typo' },
+    ]), CATALOG);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/declares outcome "typo"/);
   });
 });
 
