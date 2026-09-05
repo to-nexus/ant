@@ -41,10 +41,12 @@
   something to go obtain, and an entry whose `missing:` holds only
   `interface: none` is where both slide inward. If the report
   is out of reach — authored in another project — say so rather than guessing.
-- Two checks on the intents themselves. An intent whose work reaches one
-  named conclusion — a verdict, a classification, an approve-or-reject —
-  and declares no `outcomes` in `infer.md` has no vocabulary for a pipeline
-  to route on. And the run-order quarantine reaches `base/system.md`: the
+- Two checks on the intents themselves, each reporting what it found or that
+  it found none. An intent whose work reaches one named conclusion — a
+  verdict, a classification, an approve-or-reject — and declares no
+  `outcomes` in `infer.md` has no vocabulary for a pipeline to route on;
+  a definition with no `outcomes` anywhere is that check's loudest result,
+  not its absence. And the run-order quarantine reaches `base/system.md`: the
   procedure's stages written there as a numbered sequence are the position
   claim the build rules ban, and steps in that sequence which no intent
   performs are the tell.
@@ -81,7 +83,10 @@
   human step consumes. The findings: a unit with its own trigger and its
   own output that no intent performs — missing from BOTH columns of the
   report's mapping, and showing from inside the definition as job prose
-  carrying a rule for work no intent performs; an intent whose deliverable
+  carrying a rule for work no intent performs; a question the material's own
+  form answers in every source file that no authored intent carries, which
+  the unit count cannot show because every unit is present — read the
+  material's headings, not only its units; an intent whose deliverable
   describes the work instead of being the work product; an `infer.md` that
   lists alternative tasks instead of naming one arriving situation —
   several intents under one name, where the merge clause is not the
