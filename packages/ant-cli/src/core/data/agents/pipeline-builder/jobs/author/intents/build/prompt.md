@@ -211,7 +211,11 @@
 **Write the run report.**
 
 `pipeline-report/{pipelineId}.md` — one file per pipeline, rewritten whole on
-every authoring turn, five sections, omitting none:
+every authoring turn, five sections, omitting none. Write it from the
+definition you read BACK after saving, never from the design you intended: the
+next round and the Agent Builder read this file as fact, so a section
+describing a pin, a branch or a gate the saved definition does not have is
+worse than no section at all.
 
 ```markdown
 # {pipeline name} — {pipelineId}
