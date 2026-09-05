@@ -882,6 +882,30 @@ describe('loadCustomJob — stop hooks (H7/H8 cross-file + happy path)', () => {
       expect(resolved.advisories).toBeUndefined();
     }
   });
+
+  // H10 — a sibling intent named in prose is run order asserted where no
+  // pipeline can correct it. Two placements are legitimate and both are
+  // recognisable without reading the prose: the producer's glob IS the
+  // declared interface, and the quarantine is by contract the LAST section
+  // (true of 75/75 authored prompts across five rounds). Advisory like H9.
+  const h10Cases: Array<[string, string, boolean]> = [
+    // [case, intent `a`'s prompt body, expect advisory]
+    ['sibling id in a path → clean', '입력은 `settlement/2026-01/b.md`를 읽는다.', false],
+    ['sibling id bare in prose → advisory', '이 산출물은 전표 작성(b)의 입력이 된다.', true],
+    ['sibling id in the closing section → clean', 'Do the work.\n\n## Operating context\n\n이후 b가 이어받는다.', false],
+    ['sibling named in an exit criterion → advisory', 'Steps.\n\n## 완료 조건\n\n결과는 b의 입력이 된다.\n\n## Operating context\n\nx', true],
+    ['own id is not a sibling → clean', '이 인텐트 a는 대사를 수행한다.', false],
+    ['path plus prose mention → advisory', '`settlement/x/b.md`를 읽고, 이후 b가 처리한다.', true],
+  ];
+  it.each(h10Cases)('H10: %s', (_name, prompt, expected) => {
+    const agentDir = writeAgent(roots()[0].root, 'ops', {}, { base: { 'system.md': 'Persona.' } });
+    writeJob(agentDir, 'weekly', {});
+    writeIntent(agentDir, 'weekly', 'a', { prompt });
+    writeIntent(agentDir, 'weekly', 'b', { prompt: 'Unrelated work.' });
+    const named = (loadCustomJob(roots(), 'ops', 'weekly').advisories ?? [])
+      .filter((x) => x.includes('names sibling intent'));
+    expect(named.length > 0).toBe(expected);
+  });
 });
 
 describe('loadCustomJob — clarify knob (agent / job / intent)', () => {

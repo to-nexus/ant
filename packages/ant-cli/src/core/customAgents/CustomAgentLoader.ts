@@ -594,6 +594,45 @@ export function loadCustomJob(
     }
   }
 
+  // H10 — a sibling intent named in prose is run order asserted where no
+  // pipeline can correct it. Two placements are legitimate and both are
+  // recognisable without reading the prose: the producer's glob IS the
+  // declared interface, so an id inside a path passes; and the run-order
+  // quarantine is, by contract, the LAST section of `prompt.md`, so its
+  // body is excluded. Whatever is left is the intent placing itself among
+  // its neighbours. Advisory like H9 — the save funnel surfaces it, a
+  // running agent stays loadable.
+  const intentIds = intents.map((i) => i.id);
+  for (const intent of intents) {
+    const prompt = intentPrompts[intent.id];
+    if (!prompt) continue;
+    const lastHeading = prompt.lastIndexOf('\n## ');
+    const scanned = lastHeading > 0 ? prompt.slice(0, lastHeading) : prompt;
+    for (const sib of intentIds) {
+      if (sib === intent.id) continue;
+      // Identifier boundaries: an id is only named when it stands alone. A
+      // short id ("a") otherwise matches inside any word that contains it.
+      const isIdChar = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_-]/.test(c);
+      let at = scanned.indexOf(sib);
+      while (at !== -1) {
+        const before = at === 0 ? undefined : scanned[at - 1];
+        const after = scanned[at + sib.length];
+        if (before !== '/' && !isIdChar(before) && !isIdChar(after)) {
+          const line = scanned.slice(scanned.lastIndexOf('\n', at) + 1, at + sib.length + 30)
+            .replace(/\s+/g, ' ').trim();
+          advisories.push(
+            `${INTENTS_DIR_NAME}/${intent.id}/${INTENT_PROMPT_FILE_NAME}: names sibling intent `
+            + `"${sib}" outside a path and outside the closing section ("${line}") — the`
+            + ` producer's glob is the whole of what an intent says about its neighbours;`
+            + ` run order belongs to the pipeline, or to the closing section if it must be recorded`,
+          );
+          break;
+        }
+        at = scanned.indexOf(sib, at + sib.length);
+      }
+    }
+  }
+
   return {
     agentId,
     jobId,
