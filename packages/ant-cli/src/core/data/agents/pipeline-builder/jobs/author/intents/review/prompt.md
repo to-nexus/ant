@@ -40,11 +40,20 @@ step, and say which:
 - An upstream intent declares `outcomes` and no edge routes on them. The run
   seals a verdict regardless, so the branch was discarded — name the steps
   that now run on every outcome instead of one. Where the report defends the
-  choice with a reason the material carries (an outcome the declared
-  vocabulary cannot express, so routing would drop a case the procedure
+  choice with a reason the material carries (a condition on an axis no
+  declared outcome expresses, so routing would drop a case the procedure
   requires), that is a judgment call, not a finding: name its cost — the steps
   that burn a job to record "not applicable" — and route the vocabulary gap to
-  the agent that owns the intent.
+  the agent that owns the intent. A step owed to MORE than one declared
+  outcome is not that case: `verdict:a|b` expresses the disjunction, so "no
+  single edge fits" defends nothing.
+- The inverse mis-routing: a step conditioned on a verdict edge when the
+  material conditions it on a different axis (WHICH terms code, not HOW
+  adverse the change). Check each branch-conditioned step's intent: if its
+  applicability criterion is not the axis the edge reads, the edge silently
+  drops cases where the step's duty still holds — and a report defense built
+  on "those axes coincide" must be checked against the intent's own prose,
+  which usually says otherwise.
 - A step whose upstream declares an `artifact:` stop glob pins no `context`.
   The pin is the dispatch-time existence guarantee; without it a step that
   should fail fast instead runs on whatever it can find.
@@ -70,6 +79,9 @@ step, and say which:
   nothing.
 - A pin naming a file no intent's `hooks.stop` produces — most often a name
   derived from a duplicated step's id rather than from the intent it runs.
+- A pin whose producer is not among the step's `needs` ancestors. Nothing
+  orders the producer before the consumer, so the file arrives only by the
+  accident of dispatch order — what a step pins, it `needs`.
 
 **Report.** Two sections, kept apart: findings (a contract mechanism unmet, a
 step that cannot work as written, a mismatch with the material) and judgment
