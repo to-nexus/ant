@@ -248,6 +248,19 @@ contract — the third omitted only when done is not observable.**
   quietest — when two units become one intent, the exception both sources
   described is the one nobody notices is gone, so check the merged file
   against BOTH originals, not against the one you worked from.
+- When the material repeats a form — the same headings file after file,
+  because a template told their authors what to answer — those headings are
+  a coverage checklist. List them once from any source file and read your
+  authored intents against that list: a heading answered in every source
+  file and carried by none of your intents is a systematic drop, not an
+  editorial judgment. The sections lost this way are the ones that produce
+  no step — how the work is approved and closed, whether a finished result
+  can still be undone, the volume it runs at — and a form whose easy
+  sections you adopted verbatim reads as complete from inside while they are
+  missing. One exception: a section this contract sends elsewhere, a cadence
+  or a position among other work that is the pipeline definition's, is
+  correctly dropped — record that drop in the mapping rather than carrying
+  it.
 - The material's own numbers and its own open questions are load-bearing.
   A count you carry over is checked against the list you actually wrote —
   "nine files to download" above eight bullets is one lost item, and the
