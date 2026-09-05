@@ -117,7 +117,12 @@
   what the agent receives and who hands it over, with the master source as
   that hand-off's origin — the substitute snapshot is the runtime
   instruction, the origin is context recorded in the dependency report's
-  entry, and the step keeps every detail it had. This outranks fidelity to
+  entry, and the step keeps every detail it had. Dropping the step is the
+  failure that rewrite prevents, and it is the one that happens: "click
+  issue on every line, then download the completed list" comes back as
+  "once the person has issued every line and hands over the completed
+  list" — two acts in, two acts out, with the hand-off named. Required
+  shape, not wording to copy. This outranks fidelity to
   the material. Legitimate, but never silent: the report lists each such
   counterpart as a surface the agent cannot reach until it is resolved.
 - When the material itself marks a piece as no longer in force — in its own
