@@ -643,8 +643,11 @@ resolves; server-computed `nextFireAt` — the FE never parses cron) · create
 (personal root, DISABLED draft, cross-scope id collision 409) / get / put +
 delete (`findWritablePipeline` funnel: 403 `org-pipeline-forbidden` per ACL;
 409 `pipeline-enabled` while enabled; create/put responses carry
-non-blocking `catalogWarnings` — the same catalog-binding findings the
-enable gate hard-fails on, so an authoring job (pipeline-builder)
+non-blocking `catalogWarnings` — the catalog-binding findings the
+enable gate hard-fails on, PLUS def-structural advisories
+(`collectPipelineDefAdvisories`: an approval gate no step needs — a
+decision the run does not execute is a seam, not a gate) that stay
+advisory even at enable, so an authoring job (pipeline-builder)
 self-corrects at save time) · `enable` (re-validates the def AND the
 catalog binding — `validatePipelineCatalogBinding` against the ENABLER's
 agent catalog: agent/job/intent existence, verdict-edge vocabulary,

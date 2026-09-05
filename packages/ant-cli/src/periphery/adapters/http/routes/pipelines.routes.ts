@@ -52,7 +52,7 @@ import {
 } from './helpers/orgAclStore';
 import { resolveLiveTeamMembership } from './helpers/teamRole';
 import { getNextFires, checkMinInterval } from '../../../../core/pipelines/cron';
-import { validatePipelineCatalogServer } from '../../../../core/pipelines/catalogBinding';
+import { collectPipelineSaveWarnings, validatePipelineCatalogServer } from '../../../../core/pipelines/catalogBinding';
 import {
   deriveActivationsRoot,
   derivePipelinesRoot,
@@ -471,7 +471,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       const userRoot = scopeRoots.find((r) => r.scope === 'user')!;
       // Advisory, never blocking: a draft may reference agents not authored
       // yet. Enable/activate are where the same findings hard-fail.
-      const catalogWarnings = validatePipelineCatalogServer(def, ctxOf(owner));
+      const catalogWarnings = collectPipelineSaveWarnings(def, ctxOf(owner));
       res.status(201).json({
         id: requestedId,
         entry: await buildListEntry(owner, null, userRoot, requestedId, def, new Map()),
@@ -769,7 +769,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       await savePipeline(found.scopeRoot.root, pipelineId, def);
       await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId });
       const gate = found.scopeRoot.aclGoverned ? await orgGateFor(req)() : null;
-      const catalogWarnings = validatePipelineCatalogServer(def, ctxOf(owner));
+      const catalogWarnings = collectPipelineSaveWarnings(def, ctxOf(owner));
       res.json({
         id: pipelineId,
         entry: await buildListEntry(owner, gate, found.scopeRoot, pipelineId, def, new Map()),

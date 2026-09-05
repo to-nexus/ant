@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisories, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
 import type { PipelineCatalogAgent, PipelineDef } from '@ant/shared';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
@@ -421,5 +421,27 @@ describe('validatePipelineCatalogBinding — the definition against the agent ca
     ]), CATALOG);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/agent "ghost"/);
+  });
+});
+
+describe('collectPipelineDefAdvisories — save-time structural advisories (never the hard gate)', () => {
+  const def = (steps: unknown[]): PipelineDef =>
+    ({ version: PIPELINE_DEF_VERSION, name: 'n', steps } as unknown as PipelineDef);
+  const gate = (id: string, extra: object = {}) => ({ id, type: 'approval', prompt: 'p', ...extra });
+  const job = (id: string, extra: object = {}) => ({ id, customJobRef: 'research/collect', ...extra });
+
+  it('flags an approval gate no step needs (terminal gate = seam, not gate)', () => {
+    const advisories = collectPipelineDefAdvisories(def([job('a'), gate('g', { needs: ['a'] })]));
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]).toMatch(/approval step "g" holds back nothing/);
+  });
+
+  it('a gate depended on explicitly, or implicitly as the previous step in file order, is silent', () => {
+    expect(collectPipelineDefAdvisories(def([job('a'), gate('g', { needs: ['a'] }), job('b', { needs: ['g'] })]))).toHaveLength(0);
+    expect(collectPipelineDefAdvisories(def([job('a'), gate('g'), job('b')]))).toHaveLength(0);
+  });
+
+  it('a terminal JOB step is not flagged — the rule is about undecided decisions, not leaves', () => {
+    expect(collectPipelineDefAdvisories(def([job('a'), job('b')]))).toHaveLength(0);
   });
 });

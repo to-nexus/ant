@@ -1172,3 +1172,28 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
 
   return errors;
 }
+
+/**
+ * Definition-structural advisories — catalog-free findings that ride the save
+ * response's `catalogWarnings` so an authoring job self-corrects. Advisory by
+ * design: never fed to the enable/activate hard gate (a terminal gate still
+ * differentiates the run's final status, which a `runCompleted` chain may
+ * consume — a person, not a validator, decides whether that is enough).
+ */
+export function collectPipelineDefAdvisories(def: PipelineDef): string[] {
+  const advisories: string[] = [];
+  // Effective needs: omitted = the previous step in file order.
+  const dependedOn = new Set<string>();
+  def.steps.forEach((step, i) => {
+    const needs = step.needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
+    for (const need of needs) dependedOn.add(need);
+  });
+  for (const step of def.steps) {
+    if (isApprovalStep(step) && !dependedOn.has(step.id)) {
+      advisories.push(
+        `approval step "${step.id}" holds back nothing: no step needs it, so its decision only sets the run's final status. A decision the run does not execute is a human seam for the report, not a gate — wire the steps it should hold back, or record the seam and drop the gate`,
+      );
+    }
+  }
+  return advisories;
+}
