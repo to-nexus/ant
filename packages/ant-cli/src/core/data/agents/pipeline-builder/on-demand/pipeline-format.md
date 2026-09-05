@@ -127,9 +127,7 @@ A step's job that issues a tool declared `tools.approval: always` PAUSES the
 run: the exact call appears in the pipeline inbox and a person approves
 (the run resumes and performs it) or rejects (the step fails —
 `on: failure` consumes it). This is per-CALL approval inside a step; an
-approval STEP gates the transition BETWEEN steps. Prefer intents whose
-approval posture matches the wiring: don't add an approval step to guard a
-write that its own intent already gates per call.
+approval STEP gates the transition BETWEEN steps.
 
 ## The graph
 
