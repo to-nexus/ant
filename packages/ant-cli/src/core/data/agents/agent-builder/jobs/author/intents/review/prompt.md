@@ -43,68 +43,58 @@
   is out of reach — authored in another project — say so rather than guessing.
 - Two checks on the intents themselves. An intent whose work reaches one
   named conclusion — a verdict, a classification, an approve-or-reject —
-  and declares no `outcomes` in `infer.md` has no vocabulary for a
-  pipeline to route on, and a sibling round often shows the same intent
-  declaring them. And the run-order quarantine reaches `base/system.md`:
-  the procedure's stages written there as a numbered sequence tell every
-  intent, on every turn, which position its work occupies — that is the
-  pipeline's to say. Steps in that sequence which no intent performs are
-  the tell.
+  and declares no `outcomes` in `infer.md` has no vocabulary for a pipeline
+  to route on. And the run-order quarantine reaches `base/system.md`: the
+  procedure's stages written there as a numbered sequence are the position
+  claim the build rules ban, and steps in that sequence which no intent
+  performs are the tell.
 - Check altitude on every prose file the turn saved, one axis at a time — the
   same list the build instructions sweep before each save, since a violation
   that survived the save is what an audit is for. Read the headings on the
   same terms as the sentences: a step number or a schedule label in a title
   carries the run order the prose beneath it is forbidden to state, and a
-  sweep that reads only paragraphs passes it.
-  The axes: a list of the job's intents
-  in the agent's `base/*.md` or in the job's `base/system.md` — count the
-  items against the catalog rather than matching a shape, because the list
-  arrives spelled as anything with one item per intent: the situations they
-  trigger on, the deliverables they produce, a table with a row each, a
-  parenthesised sentence naming them, a list closed with "and so on" —
-  that closer is not what makes a list illustrative, and the count is what
-  decides. "Those are outputs, not intent ids" is the phrasing changing,
-  not the list going away, and neither is a compliant generic clause
-  appended after the list: read the sentence for whether it replaces the
-  enumeration or introduces it. Rule out one false
-  positive before reporting it: a roster of the parties who perform the
-  procedure's steps is prose the build rules REQUIRE, not this list, so
-  check that the correspondence closes both ways — an item for every
-  intent and an intent for every item. A list that names parties no
-  intent serves, or omits intents nobody hands off to, is the division of
-  labour and passes — a rule an intent's
-  procedure already carries duplicated into prose one level above it,
-  connection status stated as prose, and a sentence directing the running
-  agent to a counterpart the job declares no connection for. Name the file
-  and quote the sentence for each.
+  sweep that reads only paragraphs passes it. Name the file and quote the
+  sentence for each finding. The axes:
+  - an intent enumeration in the agent's `base/*.md` or the job's
+    `base/system.md` — count the items against the catalog rather than
+    matching a shape: the list arrives spelled as anything with one item
+    per intent (trigger situations, deliverables, a table with a row each,
+    a parenthesised sentence), an "and so on" closer does not make it
+    illustrative, and a rephrasing ("those are outputs, not intent ids") or
+    a compliant generic clause appended AFTER the list is the phrasing
+    changing, not the list going away. Rule out the one false positive: a
+    roster of the parties who perform the steps is prose the build rules
+    REQUIRE — it is the division of labour, not this list, exactly when the
+    correspondence fails to close both ways (parties no intent serves,
+    intents nobody hands off to);
+  - a rule an intent's procedure already carries, duplicated into prose one
+    level above it;
+  - connection status stated as prose;
+  - a sentence directing the running agent to a counterpart the job
+    declares no connection for.
 - When the material the definition was authored from is still on the plane,
-  read it and check the partition against it: work the material describes
-  with its own trigger and its own output that no intent performs — walk the
-  material's work units, not its section headings, since one section usually
-  holds several, and reject "that step is performed by a person" as the
-  reason one is absent: it is true of nearly every step in a procedure,
-  including the ones the intents you just passed do serve, whose deliverable
-  is the request the human step consumes. A unit missing from BOTH columns of
-  the report's mapping is the finding, and job prose carrying a rule for work
-  no intent performs is where it shows from inside the definition; an intent
-  whose deliverable describes the work instead of being the work product; an
-  `infer.md` that lists alternative tasks instead of naming one arriving
-  situation, which is several intents under one name — and the merge
-  clause is not the exemption it looks like: pieces merge when ONE
-  trigger drives them, so deliverables that each wait on a different
-  predecessor (a draft once the revision is settled, an extraction once
-  the notice date is fixed, a dispatch just before sending) are separate
-  triggers however single the stage sounds. Where both rules seem to fit,
-  the chaining rule decides — "a run binds exactly one intent; work that
-  depends on other work chains between runs" — so "one kickoff starts all
-  of it" settles nothing. Two tells, and neither is a matter of degree:
-  `prompt.md` carries N numbered sub-procedures with their own inputs and
-  outputs, and the definition's OWN back-calculated schedule puts those
-  units on different days, which no single run can span. Report it as
-  structural, not as wording; and pieces the material
-  marks as no longer in force that were carried in anyway. The report's mapping claim — what merged, what split, what was
-  dropped — is a claim to verify against that material, not a finding to
-  accept.
+  read it and check the partition against it — walk the material's work
+  units, not its section headings (one section usually holds several), and
+  reject "that step is performed by a person" as the reason one is absent:
+  it is true of nearly every step in a procedure, including the ones the
+  intents you just passed do serve, whose deliverable is the request the
+  human step consumes. The findings: a unit with its own trigger and its
+  own output that no intent performs — missing from BOTH columns of the
+  report's mapping, and showing from inside the definition as job prose
+  carrying a rule for work no intent performs; an intent whose deliverable
+  describes the work instead of being the work product; an `infer.md` that
+  lists alternative tasks instead of naming one arriving situation —
+  several intents under one name, where the merge clause is not the
+  exemption it looks like (deliverables that each wait on a different
+  predecessor are separate triggers however single the stage sounds, and
+  the build rules' chaining arbiter decides). Two tells, and neither is a
+  matter of degree: `prompt.md` carries N numbered sub-procedures with
+  their own inputs and outputs, and the definition's OWN back-calculated
+  schedule puts those units on days no single run can span. Report it as
+  structural, not as wording. Also findings: pieces the material marks as
+  no longer in force that were carried in anyway. The report's mapping
+  claim — what merged, what split, what was dropped — is a claim to verify
+  against that material, not a finding to accept.
 - Check hook coverage. An intent that produces nothing at all — no file, no
   call — is itself the finding, not an exempt case: hooklessness is for work
   whose outcome only a person can judge, while a turn that answers from
