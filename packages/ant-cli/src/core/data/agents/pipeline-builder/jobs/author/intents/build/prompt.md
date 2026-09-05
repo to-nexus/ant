@@ -154,6 +154,11 @@
   it can find. Pin from the upstream intent's `hooks.stop` globs, or concrete
   container-relative paths; pins take the static variables (`{{trigger.*}}` /
   `{{run.*}}`), never `{{steps.*}}`; `sessions/` cannot be pinned.
+- The path comes from the INTENT, never from your step id. Two steps running
+  the same intent on different branches write the SAME artifact — duplicating
+  a step does not duplicate its output name — so pin the intent's own glob.
+  A pin invented from the step's id matches nothing and the step fails at
+  dispatch, taking the run with it.
 - A pin inherits its producer's condition. A glob that matches nothing fails
   the step, so pinning an artifact whose producing step only runs on one
   outcome makes the pinning step fail on every other one — at the very end of

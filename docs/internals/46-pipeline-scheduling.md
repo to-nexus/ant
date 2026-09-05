@@ -937,6 +937,13 @@ The obligations live at authoring time, in the pipeline builder's contract:
   closed again only when the rule led its section instead of describing the
   mechanism from the middle of it. A contract that keeps growing loses its
   older rules first: the same round's compression pass is part of the fix.
+- **An artifact path belongs to the intent, not to the step.** A three-way
+  switch that duplicates a step per outcome runs the same intent twice, and
+  both copies write the intent's one `hooks.stop` path. Round 9 pinned
+  `recipient-extract-notice-request.md` from the duplicated step's id; nothing
+  produces that file, and the consuming step failed at dispatch with
+  "Context file not found for glob", aborting a run that had already cleared
+  five gates.
 - **A pin inherits its producer's condition.** A glob matching nothing fails
   the step, so a step pinning an artifact whose producer runs on one outcome
   only fails on every other outcome. Round 7's `regulator-report` pinned

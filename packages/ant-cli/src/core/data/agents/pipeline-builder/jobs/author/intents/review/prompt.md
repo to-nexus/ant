@@ -68,6 +68,8 @@ step, and say which:
 - A pin whose producing step is conditional, on a step that is not: walk each
   outcome and say which step fails at dispatch because its glob can match
   nothing.
+- A pin naming a file no intent's `hooks.stop` produces — most often a name
+  derived from a duplicated step's id rather than from the intent it runs.
 
 **Report.** Two sections, kept apart: findings (a contract mechanism unmet, a
 step that cannot work as written, a mismatch with the material) and judgment
