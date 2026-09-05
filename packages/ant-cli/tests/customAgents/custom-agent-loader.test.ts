@@ -914,6 +914,25 @@ describe('loadCustomJob — stop hooks (H7/H8 cross-file + happy path)', () => {
       .filter((x) => x.includes('names sibling intent'));
     expect(named.length > 0).toBe(expected);
   });
+
+  // A letterless id is a numeral, and the check cannot tell a reference from a
+  // quantity. A live round with ids "4"/"5"/"8-1" flagged a step number, a date
+  // range and a company count, and the author rewrote its own prose to pass.
+  const h10NumericCases: Array<[string, { prompt?: string; infer?: string }]> = [
+    ['a step number is not a reference', { prompt: 'Steps.\n\n4. 전표를 작성한다.' }],
+    ['a date range is not a reference', { prompt: '마감은 1~5일이다.', infer: '3~4일 안에 시작해야 할 때.' }],
+    ['a quantity is not a reference', { prompt: '대상은 6개사다.' }],
+    ['a parenthesised numeral is not a reference', { prompt: '통신사 정산(5)과 범위가 겹친다.' }],
+  ];
+  it.each(h10NumericCases)('H10: letterless sibling id stays silent — %s', (_name, files) => {
+    const agentDir = writeAgent(roots()[0].root, 'ops', {}, { base: { 'system.md': 'Persona.' } });
+    writeJob(agentDir, 'weekly', {});
+    writeIntent(agentDir, 'weekly', '3-a', files);
+    for (const id of ['4', '5', '6', '8-1']) writeIntent(agentDir, 'weekly', id, { prompt: 'Unrelated work.' });
+    const named = (loadCustomJob(roots(), 'ops', 'weekly').advisories ?? [])
+      .filter((x) => x.includes('names sibling intent'));
+    expect(named).toEqual([]);
+  });
 });
 
 describe('loadCustomJob — clarify knob (agent / job / intent)', () => {

@@ -619,6 +619,14 @@ export function loadCustomJob(
     for (const [proseFile, scanned] of prose) {
       for (const sib of intentIds) {
         if (sib === intent.id) continue;
+        // An id with no letter is indistinguishable from an ordinary numeral,
+        // and prose about money and dates is full of them. A live round whose
+        // ids were the material's work numbers ("4", "5", "8-1") had this fire
+        // on a step number, on "3~4일", on "6개사" and on "1~5일" — the author
+        // then rewrote its own content to get past the gate, saving "1~오일"
+        // (not a word) into eight files. A gate that cannot tell a reference
+        // from a quantity must not speak; the id shape is the whole test.
+        if (!/[A-Za-z]/.test(sib)) continue;
         // Identifier boundaries: an id is only named when it stands alone. A
         // short id ("a") otherwise matches inside any word that contains it.
         const isIdChar = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_-]/.test(c);
