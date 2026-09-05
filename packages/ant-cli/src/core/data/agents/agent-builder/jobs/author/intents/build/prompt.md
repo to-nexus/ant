@@ -57,8 +57,9 @@
   …") is that many intents wearing one name, and its `prompt.md` will
   already have them as numbered sub-procedures with separate inputs and
   separate outputs; a unit in neither the partition nor the drop list is
-  one you stopped seeing. The material's own filing is not that list — one file, one numbered item,
-  one heading can hold several units, so a mapping table with exactly one
+  one you stopped seeing. The material's own filing is not that list —
+  one file, one numbered item, one heading can hold several units, so a
+  mapping table with exactly one
   row per source file is the tell that the count was read off the filing.
   Where the material argues with itself about a split, that argument is a
   unit boundary: a note recommending a piece be separated, two parties
@@ -272,8 +273,8 @@ contract — the third omitted only when done is not observable.**
   answer — belongs in the file whose work depends on it, because a
   completion condition that reads "all of them" over a disputed total
   cannot be met, and resolving it silently is the definition asserting
-  something the material does not. An intent without a `prompt.md` shows up in the running agent's
-  catalog as carrying no instructions — a trigger with no procedure is not a
+  something the material does not. An intent without a `prompt.md` shows
+  up in the running agent's catalog as carrying no instructions — a trigger with no procedure is not a
   unit of work.
 - `infer.md` names ONE arriving situation, and the authored file is where
   that is checked — the count you designed means nothing if the criterion you
@@ -299,8 +300,9 @@ contract — the third omitted only when done is not observable.**
   sentence does — and an intent id carries it further than either:
   every catalog, board and pipeline render repeats the id. The material's
   numbering never enters an id ("4-extpay", "9a-…") — name the work; the
-  mapping row exists to hold the source card's number. An opening that would still read as an `infer.md` body is
-  the trigger in a second home. The rule runs the other way at higher cost: `infer.md` ends once the
+  mapping row exists to hold the source card's number. An opening that
+  would still read as an `infer.md` body is the trigger in a second home.
+  The rule runs the other way at higher cost: `infer.md` ends once the
   arriving situation is named — a closing sentence describing the steps,
   the output, or the spec the work follows is the procedure in the
   trigger's home, paid on every turn of every intent (the whole catalog
