@@ -98,11 +98,10 @@
   their own inputs and outputs; the definition's OWN back-calculated
   schedule puts those units on days no single run can span; and the
   material itself argues the split — a note recommending a piece be
-  separated, two parties recorded disagreeing where the line falls. Report
-  it as structural, not as wording. One row per source file is not the
-  answer to any of them: the material's filing is not the unit list — one
-  file, one numbered item, one heading can hold several — so citing the
-  filing to justify a 1:1 restates the tell instead of rebutting it. Also findings: pieces the material marks as
+  separated, or two parties disagreeing where the line falls. Report it as
+  structural, not as wording. The material's filing is not the unit list
+  (one file or heading can hold several), so citing the filing to justify
+  a one-row-per-file mapping restates that tell instead of rebutting it. Also findings: pieces the material marks as
   no longer in force that were carried in anyway — and the same marker read
   the other way, because it governs this sweep's own output too: a piece the
   material itself sets aside, in its own text or by where the collection
