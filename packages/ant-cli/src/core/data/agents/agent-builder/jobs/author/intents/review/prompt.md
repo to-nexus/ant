@@ -93,11 +93,16 @@
   several intents under one name, where the merge clause is not the
   exemption it looks like (deliverables that each wait on a different
   predecessor are separate triggers however single the stage sounds, and
-  the build rules' chaining arbiter decides). Two tells, and neither is a
+  the build rules' chaining arbiter decides). Three tells, and none is a
   matter of degree: `prompt.md` carries N numbered sub-procedures with
-  their own inputs and outputs, and the definition's OWN back-calculated
-  schedule puts those units on days no single run can span. Report it as
-  structural, not as wording. Also findings: pieces the material marks as
+  their own inputs and outputs; the definition's OWN back-calculated
+  schedule puts those units on days no single run can span; and the
+  material itself argues the split — a note recommending a piece be
+  separated, two parties recorded disagreeing where the line falls. Report
+  it as structural, not as wording. One row per source file is not the
+  answer to any of them: the material's filing is not the unit list — one
+  file, one numbered item, one heading can hold several — so citing the
+  filing to justify a 1:1 restates the tell instead of rebutting it. Also findings: pieces the material marks as
   no longer in force that were carried in anyway — and the same marker read
   the other way, because it governs this sweep's own output too: a piece the
   material itself sets aside, in its own text or by where the collection
