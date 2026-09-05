@@ -722,8 +722,13 @@ verdicts, each load-bearing:
   "disabled wins" — but a run binds at most one intent, so the multi-input
   branch only serves pre-cutover restores.) `clarify: false` means "this job is intended
   autonomous/unattended" — the loader's validation message states that
-  semantic. Budget: `UNIVERSAL_CLARIFY_BUDGET = 3` pauses per (agent, job)
-  session, `clarifyRoundsUsed` sealed/restored alongside the checklist.
+  semantic. Budget: `UNIVERSAL_CLARIFY_BUDGET = 3` pauses bound one
+  TURN-CHAIN (a turn and its clarify resumes) as a loop guard — never the
+  session's lifetime. Restored as a lifetime count it starved every later
+  job in a long-lived session: a pipeline's later steps recorded "clarify
+  is disabled" in their own outputs after earlier runs had spent the cap
+  (9c89fbf8c). `clarifyRoundsUsed` is sealed/restored alongside the
+  checklist but resets when a fresh chain opens.
 - **Sole-call rule.** The pause path runs only when clarify is the round's
   ONLY pending call (tool.ts wrapper). Mixed rounds, unavailable-but-called
   (stale session memory), invalid args, and double-clarify rounds all fall to
@@ -1323,6 +1328,23 @@ case); and `gateDefinitionSave` staying advisory (`success:true` +
 `valid:false` persisted) is by design — an invalid definition cannot run
 (load fails at accept), and blocking saves would fight multi-file authoring.
 
+**Amendment — H10, sibling naming gets the same machine seat** (agent-builder
+quality loop, 2026-09-05): the prose ban on naming a sibling intent outside
+the closing section closed twice and reopened twice across fourteen cleanroom
+rounds (9/18 violations → 1/13 → back to 10/15) — a prose prescription decays
+even after it lands. `CustomAgentLoader` now emits an advisory (H10, beside
+H9) when an intent's `prompt.md` names a sibling intent id outside a path
+token and outside the file's closing `## ` section: the producer's glob is
+the whole of what an intent says about its neighbours; run order belongs to
+the pipeline, or to the closing section when the material's schedule must be
+recorded. The two legitimate placements are identifiable without reading
+prose — a path (the id preceded by `/`) and the run-order quarantine, which
+is by contract the file's LAST section: the heading localizes with the
+definition's language, so position, not heading text, is what a machine can
+key on (the invariant held in 75/75 files across five audited rounds).
+Advisory like H9 — the save funnel surfaces it, a running agent stays
+loadable. Guard: `custom-agent-loader.test.ts` (H10 rows).
+
 **Extension — deliverables are design space too** (2026-09-01). The
 no-authority principle originally covered only structure (partition) and
 scheduling (quarantine); the material's *deliverable shapes* — file formats,
@@ -1501,6 +1523,13 @@ Declaration → evidence → gate → bounded bounce → interruption:
   (no predicate → builtin judgement deferred to the save gate); cross-file
   satisfiability (artifact hook ⇒ a write tool in `tools.builtin`; action ⇒
   builtin allowlisted / MCP server declared) validates in `loadCustomJob`.
+  An api-request `action:` may carry a narrowing suffix —
+  `api__ant__request PUT /definitions/agents/*&#47;file`, methods
+  `|`-joinable (`POST|PUT`) where create and update are different verbs —
+  because a bare generic-HTTP name is satisfied by ANY successful call: a
+  build turn once met its completion contract with two scaffold POSTs and
+  an empty definition (5b8f5f3a4). Matching is method-exact and path-glob
+  (`matchesNarrowedApiAction` in `@ant/shared`).
   Hooks are per-intent BY DESIGN — no job/agent level, which would bind
   `general` turns; a lane that needs a contract on every run pins its intent
   explicitly (`@intent:` / `UniversalTurnMeta.intents` — there is no catalog
@@ -1527,6 +1556,13 @@ Declaration → evidence → gate → bounded bounce → interruption:
   turn re-arms the same intents with a fresh budget; the ledger keeps met
   hooks met (cross-job loop enforcement without re-demanding done work).
   The ledger also rides a clarify pause (mid-sequence confirmation case).
+- **Truncation is not completion**: a reply the provider cut at the output
+  cap (`stop_reason: max_tokens`) is continued in place, bounded by
+  `UNIVERSAL_TRUNCATION_CONTINUE_BUDGET` the way the hook bounce is; when
+  that budget is spent the reply carries a visible truncation marker rather
+  than reading as finished. Before this, nothing consumed the stop reason
+  and an audit report that ended mid-sentence was reported as a completed
+  job (7c27129e3).
 
 Exemptions (all pure code): plan turns (plan_complete owns their contract;
 writes are plan/-confined), clarify pauses (deferred — the answer turn
