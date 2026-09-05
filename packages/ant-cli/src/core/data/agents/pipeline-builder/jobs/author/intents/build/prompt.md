@@ -1,26 +1,25 @@
 **Gather the material.**
 
 - Fetch the definitions of every agent the pipeline will run — the jobs, the
-  intents, and each intent's prose. The operating-context section the agent
-  builder leaves at the end of an intent's prompt is this job's input: it
-  names the cadence the work used to run on, what feeds it, and what its
-  output feeds. Read it as requirements for the schedule and the chain, never
-  as text to copy into a directive.
+  intents, and each intent's prose. The operating-context section at the end of
+  an intent's prompt is this job's input: the cadence the work ran on, what
+  feeds it, what its output feeds — requirements for the schedule and the
+  chain, never text to copy into a directive.
 - An intent's `hooks.stop` artifact globs are its output contract — they are
   what a downstream step pins as `context`. Note them while reading.
 - A definition also says how real each intent runs today: an intent whose
   procedure touches a system the job declares no connection for, and whose
   completion contract is `artifact:`-only, runs on a substitute — authored text
-  standing in for the real call. Read the agent's dependency report when this
-  project has one (`dependency-report/{agentId}*.md`); it is that agent's
-  status ledger and names the human relays. Name the substitute steps in the
-  design you state, so nobody reads a green run as the real work happening.
+  standing in for the real call. Read the agent's dependency report
+  (`dependency-report/{agentId}*.md`) when present — it names the human relays.
+  Name the substitute steps in the design you state, so nobody reads a green
+  run as the real work happening.
 
 **Design the trigger.**
 
-- The trigger is optional: omit `on` entirely for a manual-only pipeline that
-  fires only through Run now. A schedule needs an explicit IANA timezone
-  whenever the request implies local time — an unstated `tz` is UTC.
+- The trigger is optional — omit `on` for a manual-only pipeline fired through
+  Run now. A schedule needs an explicit IANA timezone whenever the request
+  implies local time; an unstated `tz` is UTC.
 - `on.runCompleted` chains this pipeline onto another's terminal status, and
   may coexist with `schedule` — an error-handler pipeline is one that waits on
   `['failed']`. Choose `onMissed` and `overlap` from what the work tolerates,
@@ -44,10 +43,14 @@
   in the report, never a default.
 - The test is a step's own output. If a step can legitimately finish by
   recording that it did not apply — "individual notice not required, extraction
-  skipped", "no regulator filing needed" — then the condition that made it
-  inapplicable belongs on its edge. Leaving that judgment inside the step pays
-  a job to write a document saying it should not have run, and the intent
-  prose that promises to record the skip is the tell. Declare
+  skipped" — then the condition that made it inapplicable belongs on its edge:
+  paying a job to write a document saying it should not have run is the tell.
+  But route only on an edge that EXPRESSES the condition. When the material's
+  condition runs on an axis no declared outcome carries (the regulator filing
+  hangs on WHICH terms code, not HOW adverse the change), a verdict edge from
+  another axis silently drops the step on cases where its duty still holds:
+  run it unconditionally, let the intent record non-application, and send the
+  missing axis to the report as an intent-change request. Declare
   `onMissingVerdict: <outcome>` on the deciding step when a run that seals
   nothing must continue instead of failing — that is what makes routing safe,
   not a reason to avoid it.
@@ -183,8 +186,7 @@
 
 **Save, verify, decode failures.**
 
-- Ids are `[a-z0-9][a-z0-9-]*` and taken across scopes; a collision comes back
-  409 (`pipeline-taken`), so propose another.
+- Ids are `[a-z0-9][a-z0-9-]*`, taken across scopes — on a 409 propose another.
 - A 400 with code `invalid-pipeline-def` carries `errors[]` — fix every named
   rule, not just the first, and save again. Some keys are refused by design —
   a knob on the wrong step kind (`retry` on a gate, `remindAfter` on a job
@@ -195,8 +197,7 @@
   hard-fail enable later. Read them and fix them now; a draft that cannot be
   enabled is not a finished draft.
 - A cron trigger you did not `preview-fires` is not verified: read the fire
-  times back against the user's words — "every Monday 9am in Seoul" must show
-  Mondays 09:00 in `Asia/Seoul`. A manual-only pipeline has no fires to
+  times back against the user's words. A manual-only pipeline has no fires to
   preview, and saying so is the verification; never invent a cron to preview.
 - If the requested change already holds, do not manufacture a write —
   re-saving identical content is not work. Say so, and on a pinned turn ask
@@ -206,11 +207,10 @@
 
 - Show the id and name, the trigger with its next fires, every step with its
   condition and directive, every gate with its timeout, and the failure policy.
-- Name any step that runs on a substitute and any seam left to a person, and
-  point at the run report for the detail.
-- End with the hand-over line, and with what a person must decide that you
-  could not: the gate policies you left open, and the inputs the run will
-  ask for.
+- Name any substitute step and any seam left to a person — the run report
+  carries the detail.
+- End with the hand-over line and what a person must decide: the gate policies
+  you left open, and the inputs the run will ask for.
 
 **Write the run report.**
 
