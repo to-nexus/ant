@@ -159,12 +159,12 @@ wins over the wildcard parent.
 | Concern | Path |
 |---|---|
 | Shared types | `packages/ant-shared/src/deploy.ts`, `sse-events.ts` |
-| Registry (Redis) | `packages/ant-cli/src/infrastructure/state/RedisStateStore.ts` |
+| Registry (Redis) | `packages/ant-cli/src/infrastructure/state/redisStore/RedisDeployRegistryStore.ts` (custom-domain layer of `RedisStateStore`) |
 | Verification (TXT) | `packages/ant-cli/src/infrastructure/deploy/customDomain/verification.ts` |
 | Management service | `.../deploy/customDomain/CustomDomainService.ts` |
 | Enable gate (env SSOT) | `.../deploy/customDomain/config.ts` |
 | Host routing | `DeployService.resolveCustomDomain` + `middleware/deployProxy.ts` |
-| Routes + ask + WS | `infrastructure/preview/PreviewServer.ts` |
+| Routes + ask + WS | `infrastructure/preview/PreviewServer.ts` (handler bodies: `controlRoutes/deployHandlers.ts`, WS: `upgradeHandler.ts`) |
 | FE panel | `packages/ant-ui/.../PreviewConfigEditor/sections/CustomDomainSection.tsx` |
 | Tests | `packages/ant-cli/tests/preview/customDomain.test.ts` |
 

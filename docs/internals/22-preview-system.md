@@ -241,7 +241,7 @@ idle -> installing -> starting -> running -> stopped
 
 ### Status Summary Line Contract (contract with the FE state machine)
 
-The FE preview state machine ([packages/ant-ui/.../FeatureSection/utils/preview.ts](../../packages/ant-ui/src/presentation/components/FeatureSection/utils/preview.ts)) matches the `'All preview servers started'` substring in the log stream to transition package state to `'running'`. Because this line is gated to emit only when all packages are healthy, the FE does not incorrectly go to `'running'` in a partial-failure state where some packages died within the settling window (the per-package `'❌ <pkg> crashed within ${SETTLING_MS}ms (code N)'` lines are tracked separately by the FE). The SSOT for the emit decision is [`summarizePreviewSpawnOutcome`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/PreviewService.ts).
+The FE preview state machine ([packages/ant-ui/.../FeatureSection/utils/preview.ts](../../packages/ant-ui/src/presentation/components/FeatureSection/utils/preview.ts)) matches the `'All preview servers started'` substring in the log stream to transition package state to `'running'`. Because this line is gated to emit only when all packages are healthy, the FE does not incorrectly go to `'running'` in a partial-failure state where some packages died within the settling window (the per-package `'❌ <pkg> crashed within ${SETTLING_MS}ms (code N)'` lines are tracked separately by the FE). The SSOT for the emit decision is [`summarizePreviewSpawnOutcome`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/PreviewStartLayer.ts) (re-exported from `PreviewService.ts`).
 
 ### Stop Flow
 
