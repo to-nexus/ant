@@ -350,6 +350,35 @@ describe('validatePipelineActivation — the self-describing scheduling record',
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.join('\n')).toMatch(pattern);
   });
+
+  // ── approvers map — key = gate stepId, value = lowercase member ids ──
+  it('accepts a per-gate approver map; keys checked against gateStepIds when given', () => {
+    const raw = { ...BASE, approvers: { 'budget-gate': ['finance@corp.com'], 'publish-gate': ['lead@corp.com', 'finance@corp.com'] } };
+    expect(validatePipelineActivation(raw)).toEqual([]);
+    expect(validatePipelineActivation(raw, { gateStepIds: ['budget-gate', 'publish-gate'] })).toEqual([]);
+  });
+
+  it('a key outside the def gate set fails ONLY when gateStepIds is provided (loads stay lenient)', () => {
+    const raw = { ...BASE, approvers: { 'ghost-gate': ['a@corp.com'] } };
+    expect(validatePipelineActivation(raw)).toEqual([]);
+    const errors = validatePipelineActivation(raw, { gateStepIds: ['budget-gate'] });
+    expect(errors.join('\n')).toMatch(/"ghost-gate" is not an approval step/);
+  });
+
+  const badApprovers: Array<[string, unknown, RegExp]> = [
+    ['non-map approvers', { ...BASE, approvers: ['a@corp.com'] }, /approvers must be a map/],
+    ['non-array roster', { ...BASE, approvers: { g1: 'a@corp.com' } }, /must be an array/],
+    ['empty-string member', { ...BASE, approvers: { g1: [' '] } }, /non-empty strings/],
+    ['non-lowercase member', { ...BASE, approvers: { g1: ['Finance@Corp.com'] } }, /lowercase member id/],
+    ['duplicate member in one gate', { ...BASE, approvers: { g1: ['a@corp.com', 'a@corp.com'] } }, /duplicate approver/],
+    ['per-gate cap', { ...BASE, approvers: { g1: Array.from({ length: 11 }, (_v, i) => `u${i}@corp.com`) } }, /at most 10 approvers/],
+    ['invalid step-id key', { ...BASE, approvers: { 'Bad Gate': ['a@corp.com'] } }, /not a valid step id/],
+  ];
+  it.each(badApprovers)('rejects approvers: %s', (_label, raw, pattern) => {
+    const errors = validatePipelineActivation(raw);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.join('\n')).toMatch(pattern);
+  });
 });
 
 describe('validatePipelineCatalogBinding — the definition against the agent catalog', () => {

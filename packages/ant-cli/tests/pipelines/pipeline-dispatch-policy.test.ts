@@ -193,6 +193,33 @@ describe('approval funnel', () => {
     const seal = gates.slice(gates.indexOf('const applied = await ctx.applyOutcome('), gates.indexOf('if (!applied)'));
     expect(seal).toMatch(/event: 'human_resolved'/);
   });
+
+  it('gate arm/remind/resolved notices have ONE publish owner: the notification port, never inline SSE', () => {
+    // Every approval-STEP notice in gates.ts goes through notifyGateAudience →
+    // ctx.notify (the NotificationChannelPort). An inline approvalRequested
+    // publish would silently drop the approver audience.
+    const gates = read('infrastructure/scheduling/pipelineRun/gates.ts');
+    expect(gates).not.toMatch(/cause: 'approvalRequested'/);
+    expect(gates).toMatch(/notifyGateAudience/);
+    // The audience is re-read LIVE from the owner's activation.json per emission.
+    expect(gates).toMatch(/loadActivationByProject[\s\S]*?approvers\?\.\[stepId\]/);
+  });
+
+  it('the approver inbox scan serves gate rows only — clarify and tool waits stay activator-scoped (v1)', () => {
+    const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
+    const scan = runStore.slice(runStore.indexOf('export async function listApproverPendingApprovals'));
+    expect(scan).toMatch(/if \(isTool\) continue;/);
+    expect(scan).not.toMatch(/kind: 'clarify'/);
+    expect(scan).toMatch(/role: 'approver'/);
+  });
+
+  it('the resolve route re-judges the roster LIVE against the owner activation, and tool gates refuse approvers', () => {
+    const routes = pipeRoutesAll();
+    expect(routes).toMatch(/hitl\.kind !== 'tool'/);
+    expect(routes).toMatch(/loadActivationByProject\(actRootOf\(hitl\.owner\), hitl\.projectId\)/);
+    // The chat path context is the RUN OWNER's — never the approver caller's.
+    expect(routes).toMatch(/userContext: hitl\.owner/);
+  });
 });
 
 describe('clarify funnel', () => {

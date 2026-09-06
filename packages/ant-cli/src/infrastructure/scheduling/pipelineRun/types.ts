@@ -19,6 +19,7 @@ import type {
   ScheduleQueuePort,
 } from '../../../core/ports/scheduler';
 import type { StepDispatch } from '../../../core/pipelines/ChainExecutor';
+import type { NotificationChannelPort, PipelineNotice } from '../../../core/pipelines/notifications';
 
 export const COMPONENT = 'PipelineCoordinator';
 export const MAX_OUTCOME_RETRIES = 5; // × 30s — lock-starved outcome re-applies
@@ -74,6 +75,8 @@ export interface PipelineCoordinatorDeps {
   /** Injected from the periphery helpers so the rule owners stay single. */
   checkApproval(userContext: { userId: string; organizationId: string }): Promise<{ status: string } | null>;
   checkTeamMembership(userContext: { userId: string; organizationId: string; organizationKind?: any }): Promise<boolean>;
+  /** Gate-notice fan-out channel. Absent = the default InAppChannel (SSE). */
+  notificationChannel?: NotificationChannelPort;
 }
 
 /**
@@ -118,6 +121,8 @@ export interface PipelineRunOps {
   killStepJob(jobId: string, projectId: string): Promise<void>;
   enterAwaitingClarify(data: PipelineClarifyEnterJobData): Promise<void>;
   enterAwaitingToolApproval(data: PipelineApprovalEnterJobData): Promise<void>;
+  /** Gate-notice fan-out (fire-and-forget; the channel logs its own failures). */
+  notify(notice: PipelineNotice): Promise<void>;
 }
 
 export interface HitlRecord {

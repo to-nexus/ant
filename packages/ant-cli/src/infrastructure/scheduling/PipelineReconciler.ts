@@ -20,6 +20,7 @@ import { logger } from '../../utils/logger';
 import type { StateStorePort } from '../../core/ports/stateStore';
 import type { ScheduleQueuePort, PipelineOwner, PipelineFireJobData } from '../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
+import { approverIndexEntry, approverUnion, replaceApproverIndex } from '../../core/pipelines/approverIndex';
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import { loadActivationByProject, loadAvailability, loadPipeline } from '../../core/pipelines/store';
@@ -85,10 +86,20 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
       { fire: PipelineFireJobData; schedule?: { cron: string; tz?: string }; activatedAt: string }
     >();
 
+    // Approver-of discovery index rebuild — collected across the same scan,
+    // written after it (`{org}\n{approverId}` → activation entries).
+    const approverIndex = new Map<string, Set<string>>();
+
     for (const { dir, owner, projectId } of scanActivationDirs(deps.workspacesPath)) {
       try {
         const activation = loadActivationByProject(path.dirname(dir), projectId);
         if (!activation) continue;
+        for (const approverId of approverUnion(activation)) {
+          const key = `${owner.organizationId}\n${approverId}`;
+          const set = approverIndex.get(key) ?? new Set<string>();
+          set.add(approverIndexEntry(owner.userId, projectId));
+          approverIndex.set(key, set);
+        }
         const defRoot = resolveDefRoot({ workspacesPath: deps.workspacesPath, ...owner }, activation.pipelineScope);
         const def = loadPipeline(defRoot, activation.pipelineId);
         if (!loadAvailability(defRoot, activation.pipelineId).enabled) {
@@ -145,6 +156,13 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
       // Overlap-guard healing: a coordinator crash between acquire and
       // finalize would otherwise block the activation until the 30d TTL.
       await healOverlapGuard(deps.stateStore, owner, projectId);
+    }
+
+    // Approver-of index refresh (TTL-bounded like ACTIVATION — a roster whose
+    // activation vanished simply lapses; entries are re-verified live anyway).
+    for (const [key, entries] of approverIndex) {
+      const [organizationId, approverId] = key.split('\n');
+      await replaceApproverIndex(deps.stateStore, organizationId, approverId, [...entries]);
     }
 
     // Sweep against what was actually UPSERTED — a manual-only activation is

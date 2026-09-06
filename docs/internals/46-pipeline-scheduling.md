@@ -480,11 +480,60 @@ hence the validator's "no rootless gates" rule).
 Timeout arms are delayed jobs on `ant-pipelines` (`gto-{gateId}`), cancelled
 on resolve. There is no polling sweep anywhere in this feature.
 
-The reserved v2 contract (user-locked as backlog): a
-`NotificationChannelPort { kind: 'inApp'|'slack'|'email' }` whose inbound leg
-(HMAC magic-link `{cardId, choiceId, exp}`) lands in the same choice-resolved
-funnel with `via: 'magic-link'`. No implementation ships in v1; the funnel
-shape is what makes the extension migration-free.
+### 5a. Per-gate approvers — non-activator resolution (doc 48 D3 gap ①)
+
+**Approval authority is PER GATE, and it lives on the ACTIVATION** —
+`PipelineActivation.approvers?: Record<stepId, userId[]>` (lowercase org-member
+ids, cap `DEFAULT_PIPELINE_CAPS.maxApproversPerGate`). Never the definition:
+definitions are shared org templates, frozen while activated (which also pins
+the gate-id key set for the activation's lifetime), and a name in the template
+would force an org-wide deactivate to swap one approver. A gate absent from
+the map = activator-only, exactly the pre-approver behavior.
+
+- **Write funnel**: the `activate` body's optional `approvers`, and
+  `PUT /definitions/pipelines/activations/:projectId/approvers` (activator
+  only, no deactivate needed). Both validate keys against the def's approval
+  step ids (`validatePipelineActivation(raw, { gateStepIds })` — loads WITHOUT
+  gateStepIds stay lenient, sidecar restores must not throw) and re-check
+  every listed member's LIVE org membership. A successful PUT re-fires
+  `approvalRequested` for currently-armed gates to the new roster (S9). The
+  route is OUTSIDE the self-api pin's allow list, and `activations` is a
+  reserved `:id` literal — a job never grants approval rights.
+- **Resolve authority** (`POST …/approvals/:gateId`): owner as before; a
+  non-owner passes ONLY when the HITL is not `kind:'tool'`, same org, on the
+  gate's roster **re-read live from the owner's activation.json**, and still a
+  live member (fail-open on repo error, the `checkApproval` posture). Tool
+  approval and clarify stay activator-scoped in v1. The chat leg still runs
+  with `userContext: hitl.owner` (the card lives in the owner's project); the
+  decider rides `decidedBy` + `resolvedLabel: "Approved by {caller}"`. The NX
+  loser's 409 carries `decidedBy`; an optional `note`
+  (≤ `PIPELINE_GATE_NOTE_MAX_CHARS`) lands on `gate.decisionNote` and the
+  `human_resolved` line — the reject-reason channel.
+- **Notice fan-out has ONE owner**: `NotificationChannelPort`
+  (`core/pipelines/notifications.ts`), called by the gate arm/remind/resolved
+  legs per recipient — audience = {activator} ∪ approvers[stepId], the roster
+  re-read from disk at every emission. v1 ships `InAppChannel` (the Transfer
+  precedent: user-scoped SSE publish, fire-and-forget, `GET /approvals`
+  refetch is the durability); Phase C adds Slack/email adapters whose inbound
+  leg (HMAC magic-link `{cardId, choiceId, exp}`) lands in the same
+  choice-resolved funnel with `via: 'magic-link'` — channel adapters never
+  touch permission code.
+- **Discovery, not authority**: `ant:pipe:approver-of:{org}:{userId}` (JSON
+  array of `{ownerUserId}|{projectId}`, TTL-bounded, reconciler-rebuilt,
+  synced on activate/PUT/deactivate) feeds the approver's inbox scan
+  (`listApproverPendingApprovals` — gate rows only, `role:'approver'` +
+  `ownerUserId`) and the read-only run-detail branch
+  (`approverRunAccess`: on any roster of the owning activation ∧ the owner's
+  dir holds the run log). Every consumer re-verifies against the live
+  activation, so a stale index entry grants nothing.
+- **Observer surfaces**: `PipelineActivationView.approvers` (org-visible by
+  design), `PipelineRunSummary.gates` (`{stepId, decision, decidedBy}` written
+  at finalize — approval steps only, tool gates stay off the summary line).
+
+Guards: `tests/http/pipeline-routes-policy.test.ts` (resolve decision table
+S2/S6/S7/S8/S9 + roster ingresses), `tests/pipelines/pipeline-activation.test.ts`
+(index sync/rebuild + `InAppChannel`), `tests/pipelines/pipeline-def-validation.test.ts`
+(approver-map rows), `tests/http/account-agent-routes.test.ts` (self-api pin).
 
 ---
 

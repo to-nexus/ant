@@ -76,7 +76,7 @@ const SELF_API_FAMILY_PREFIX = '/definitions';
  * this by registration order; this guard matches independently, so the
  * exclusion has to be explicit.
  */
-const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projects', 'approvals', 'runs']);
+const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projects', 'approvals', 'runs', 'activations']);
 
 /**
  * The pipeline routes a definition-authoring job may reach, as METHOD + the
@@ -89,6 +89,8 @@ const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projec
  *   run-now                     fires unattended work and spends credits
  *   promote / editors           organization publish + edit rights
  *   approvals/**                a job must not resolve its own HITL gate
+ *   activations/**              the per-gate approver roster is the activator's
+ *                               decision — a job must not grant approval rights
  *   runs/**                     operational history; a job's own run log is
  *                               already grafted read-only into its plane
  *   download                    bulk export; `GET /pipelines/:id` carries the def

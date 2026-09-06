@@ -33,6 +33,8 @@ const api = vi.hoisted(() => ({
   cancelPipelineRun: vi.fn(),
   fetchPipelineApprovals: vi.fn().mockResolvedValue({ approvals: [] }),
   resolvePipelineApproval: vi.fn(),
+  answerPipelineClarify: vi.fn(),
+  updateActivationApprovers: vi.fn(),
 }));
 vi.mock('@/infrastructure/http/api/pipelines', () => api);
 
@@ -227,5 +229,99 @@ describe('selectors — the chat lock derivation', () => {
     expect(selectActivationByProject(state, 'other')).toBeNull();
     expect(selectActivationByProject({ selectedProject: null } as any, null)).toBeNull();
     expect(selectActivePipelineForSelectedProject({ selectedProject: 'x' } as any)).toBeNull();
+  });
+});
+
+describe('approver rosters + role-aware inbox rows (doc 48 in-app approver)', () => {
+  const GATE_ROW = (over: Record<string, unknown> = {}) => ({
+    gateId: 'gate-r1-g1',
+    cardId: 'pipe-gate-r1-g1',
+    runId: 'r1',
+    pipelineId: 'p1',
+    pipelineName: 'Digest',
+    projectId: 'proj-a',
+    stepId: 'g1',
+    prompt: 'Approve?',
+    armedAt: '2026-09-06T00:00:00.000Z',
+    ...over,
+  });
+
+  it('activate forwards a non-empty roster and keeps the 2-arg call shape without one', async () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelines: [ENTRY()] });
+    api.activatePipeline.mockResolvedValue({ id: 'p1', activation: ACTIVATION });
+    api.fetchActivePipeline.mockResolvedValue({ active: null });
+    await useStore.getState().activatePipelineTo('p1', 'proj-a', { g1: ['bob@x.io'] });
+    expect(api.activatePipeline).toHaveBeenCalledWith('p1', 'proj-a', { g1: ['bob@x.io'] });
+    await useStore.getState().activatePipelineTo('p1', 'proj-a', {});
+    expect(api.activatePipeline).toHaveBeenLastCalledWith('p1', 'proj-a');
+  });
+
+  it('updateActivationApproversTo patches ONLY the own row of that project', async () => {
+    const other = { ...ACTIVATION_VIEW, projectId: 'proj-b', activatedBy: 'peer@x.io', mine: false };
+    const useStore = buildStore();
+    useStore.setState({ pipelines: [ENTRY({ activations: [ACTIVATION_VIEW, other] })] });
+    api.updateActivationApprovers.mockResolvedValue({ projectId: 'proj-a', approvers: { g1: ['bob@x.io'] } });
+    const ok = await useStore.getState().updateActivationApproversTo('p1', 'proj-a', { g1: ['bob@x.io'] });
+    expect(ok).toBe(true);
+    const [mineRow, otherRow] = useStore.getState().pipelines[0].activations;
+    expect(mineRow.approvers).toEqual({ g1: ['bob@x.io'] });
+    expect(otherRow.approvers).toBeUndefined();
+  });
+
+  it('resolve success folds the row and passes the note through; a plain failure keeps the row', async () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelineApprovals: [GATE_ROW()] });
+    api.resolvePipelineApproval.mockResolvedValue({ success: true });
+    await useStore.getState().resolvePipelineApprovalById('gate-r1-g1', 'reject', 'not this month');
+    expect(api.resolvePipelineApproval).toHaveBeenCalledWith('gate-r1-g1', 'reject', 'not this month');
+    expect(useStore.getState().pipelineApprovals).toEqual([]);
+
+    useStore.setState({ pipelineApprovals: [GATE_ROW()] });
+    api.resolvePipelineApproval.mockRejectedValue(new Error('network'));
+    await expect(useStore.getState().resolvePipelineApprovalById('gate-r1-g1', 'approve')).rejects.toThrow('network');
+    expect(useStore.getState().pipelineApprovals).toHaveLength(1);
+  });
+
+  it('409 (raced — S7) and 404 (authority revoked — S6) fold the dead row AND rethrow for the surface message', async () => {
+    const { ApiError } = await import('../../src/infrastructure/http/api/client');
+    for (const status of [409, 404]) {
+      const useStore = buildStore();
+      useStore.setState({ pipelineApprovals: [GATE_ROW()] });
+      api.resolvePipelineApproval.mockRejectedValue(new ApiError('gate already resolved', status, { decidedBy: 'carol' }));
+      await expect(useStore.getState().resolvePipelineApprovalById('gate-r1-g1', 'approve')).rejects.toMatchObject({ status });
+      expect(useStore.getState().pipelineApprovals).toEqual([]);
+    }
+  });
+
+  it('approvalRequested folds role-stamped approver rows idempotently (reminder re-fires dedupe on gateId)', () => {
+    const useStore = buildStore();
+    const row = GATE_ROW({ role: 'approver', ownerUserId: 'alice' });
+    useStore.getState().applyPipelineEvent({ cause: 'approvalRequested', projectId: 'proj-a', approval: row } as any);
+    useStore.getState().applyPipelineEvent({ cause: 'approvalRequested', projectId: 'proj-a', approval: row } as any);
+    expect(useStore.getState().pipelineApprovals).toEqual([row]);
+    // approvalResolved folds it for every audience member, decider or not.
+    useStore.getState().applyPipelineEvent({
+      cause: 'approvalResolved',
+      projectId: 'proj-a',
+      pipelineId: 'p1',
+      runId: 'r1',
+      gateId: 'gate-r1-g1',
+      decision: 'approved',
+      decidedBy: 'carol',
+    } as any);
+    expect(useStore.getState().pipelineApprovals).toEqual([]);
+  });
+
+  it('openApproverPanel loads the run context; close clears it', async () => {
+    const useStore = buildStore();
+    const run = { runId: 'r1', pipelineId: 'p1', projectId: 'proj-a', firedBy: 'cron', fireEpoch: 1, status: 'awaiting_human', startedAt: 'now', steps: [] };
+    api.fetchPipelineRun.mockResolvedValue({ run });
+    useStore.getState().openApproverPanel(GATE_ROW({ role: 'approver', ownerUserId: 'alice' }) as any);
+    expect(useStore.getState().approverPanel?.gateId).toBe('gate-r1-g1');
+    await vi.waitFor(() => expect(useStore.getState().approverPanelRun).toEqual(run));
+    useStore.getState().closeApproverPanel();
+    expect(useStore.getState().approverPanel).toBeNull();
+    expect(useStore.getState().approverPanelRun).toBeNull();
   });
 });

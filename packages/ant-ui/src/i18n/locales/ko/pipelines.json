@@ -93,7 +93,17 @@
     "timeout": "{{when}}에 자동 결정",
     "clarifyPlaceholder": "답변을 입력하세요…",
     "clarifySubmit": "답변하고 재개",
-    "toolGate": "툴 승인"
+    "toolGate": "툴 승인",
+    "groupApprover": "승인 요청",
+    "groupMine": "내 파이프라인",
+    "ownerLine": "{{who}}의 활성화",
+    "details": "자세히",
+    "rejectNotePlaceholder": "거부 사유 (선택) — 소유자가 다음 조치를 정하는 데 쓰입니다",
+    "rejectConfirm": "거부 확정",
+    "rejectCancel": "뒤로",
+    "alreadyDecided": "이미 결정된 게이트입니다.",
+    "alreadyDecidedBy": "이미 {{who}}이(가) 결정했습니다.",
+    "authorityRevoked": "이 게이트에 대한 승인 권한이 회수되었습니다."
   },
   "editor": {
     "pickOne": "왼쪽에서 파이프라인을 선택하거나\n새로 만들어 보세요.",
@@ -117,7 +127,11 @@
     "unconfigured": "잡을 선택하세요…",
     "noTimeout": "타임아웃 없음",
     "addJobStep": "잡 스텝",
-    "addGate": "승인 게이트"
+    "addGate": "승인 게이트",
+    "gateApprovedBy": "✓ {{who}} 승인",
+    "gateRejectedBy": "✗ {{who}} 거부",
+    "gateAutoApproved": "⏱ 자동 승인",
+    "gateAutoRejected": "⏱ 자동 거부"
   },
   "inspector": {
     "trigger": "트리거·정책",
@@ -219,7 +233,8 @@
     "inApp": "인앱",
     "comingSoon": "곧 제공됩니다",
     "remindAfter": "미결 시 리마인드",
-    "remindAfterPlaceholder": "없음 — 예: 4h, 24h"
+    "remindAfterPlaceholder": "없음 — 예: 4h, 24h",
+    "approversHint": "승인자는 파이프라인을 프로젝트에 활성화할 때 게이트별로 지정합니다."
   },
   "runs": {
     "empty": "아직 실행 이력이 없습니다 — 지금 실행으로 테스트해 보세요.",
@@ -266,5 +281,28 @@
     "daily": "매일 {{time}}",
     "weekly": "매주 {{days}} {{time}}",
     "monthly": "매월 {{day}}일 {{time}}"
+  },
+  "approvers": {
+    "activateTitle": "이 프로젝트에 활성화 — {{project}}",
+    "sectionTitle": "승인자 지정 (게이트별)",
+    "sameForAll": "모든 게이트에 동일 적용",
+    "emptyHint": "비워두면 나만 승인할 수 있습니다.",
+    "addPlaceholder": "+ 멤버 검색…",
+    "remove": "{{who}} 제거",
+    "you": "나",
+    "edit": "게이트 승인자 편집",
+    "save": "승인자 저장",
+    "cancel": "취소"
+  },
+  "approverPanel": {
+    "roleBadge": "승인 권한만 보유",
+    "close": "닫기",
+    "started": "{{when}} 시작",
+    "decidedApproved": "✓ 승인함",
+    "decidedRejected": "✗ 거부함",
+    "resolvedElsewhere": "더 이상 내 결정을 기다리지 않는 게이트입니다.",
+    "loading": "실행 컨텍스트 불러오는 중…",
+    "retry": "다시 시도",
+    "auditLine": "이 결정은 실행 기록에 {{who}}(으)로 남습니다."
   }
 }

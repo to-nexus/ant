@@ -324,4 +324,117 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     await reconcilePipelines(deps as any);
     expect(keys.has('ant:pipe:active:local:user:proj-a')).toBe(false);
   });
+
+  it('rebuilds the approver-of discovery index from activation rosters (gate-agnostic union)', async () => {
+    writeDef(path.join(tmp, 'acme', '.ant', 'pipelines'), 'shared');
+    writeActivation(tmp, 'acme', 'alice', {
+      ...ACT('shared', 'proj-a'),
+      pipelineScope: 'org',
+      approvers: { 'budget-gate': ['bob@corp.com'], 'publish-gate': ['bob@corp.com', 'carol@corp.com'] },
+    } as any);
+    const { deps, keys } = makeDeps();
+    deps.workspacesPath = tmp;
+    await reconcilePipelines(deps as any);
+    expect(JSON.parse(keys.get('ant:pipe:approver-of:acme:bob@corp.com') ?? '[]')).toEqual(['alice|proj-a']);
+    expect(JSON.parse(keys.get('ant:pipe:approver-of:acme:carol@corp.com') ?? '[]')).toEqual(['alice|proj-a']);
+  });
+});
+
+describe('approver-of index — advisory discovery projection (activate/PUT/deactivate sync + channel port)', () => {
+  function kv() {
+    const keys = new Map<string, string>();
+    return {
+      keys,
+      store: {
+        getKey: async (k: string) => keys.get(k) ?? null,
+        setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
+        deleteKey: async (k: string) => void keys.delete(k),
+      },
+    };
+  }
+
+  it('sync adds new approvers, removes dropped ones, and deletes an emptied key', async () => {
+    const { approverIndexEntry, syncApproverIndexForActivation, readApproverIndex } = await import(
+      '../../src/core/pipelines/approverIndex'
+    );
+    const { keys, store } = kv();
+    await syncApproverIndexForActivation(store as any, 'acme', 'alice', 'proj-a', [], ['bob@corp.com', 'carol@corp.com']);
+    expect(await readApproverIndex(store as any, 'acme', 'bob@corp.com')).toEqual([approverIndexEntry('alice', 'proj-a')]);
+    // Roster edit: carol out, dave in — bob untouched.
+    await syncApproverIndexForActivation(store as any, 'acme', 'alice', 'proj-a', ['bob@corp.com', 'carol@corp.com'], ['bob@corp.com', 'dave@corp.com']);
+    expect(await readApproverIndex(store as any, 'acme', 'carol@corp.com')).toEqual([]);
+    expect(await readApproverIndex(store as any, 'acme', 'dave@corp.com')).toEqual(['alice|proj-a']);
+    // Deactivation empties every roster entry for the activation.
+    await syncApproverIndexForActivation(store as any, 'acme', 'alice', 'proj-a', ['bob@corp.com', 'dave@corp.com'], []);
+    expect(keys.has('ant:pipe:approver-of:acme:bob@corp.com')).toBe(false);
+    expect(keys.has('ant:pipe:approver-of:acme:dave@corp.com')).toBe(false);
+  });
+
+  it('deactivatePipelineBinding drops the activation from every approver roster', async () => {
+    const actRoot = path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations');
+    await saveActivationRecord(actRoot, { ...ACT('p1', 'proj-a'), approvers: { g1: ['bob@corp.com'] } } as any);
+    const { keys, store } = kv();
+    keys.set('ant:pipe:approver-of:local:bob@corp.com', JSON.stringify(['user|proj-a', 'other|proj-z']));
+    const deps = {
+      workspacesPath: tmp,
+      scheduleQueue: { removeCron: async () => {} },
+      coordinator: { deactivate: async () => {} },
+      stateStore: { ...store, publish: async () => {} },
+    };
+    await deactivatePipelineBinding(deps as any, { userId: 'user', organizationId: 'local', organizationKind: 'local' }, 'proj-a');
+    expect(JSON.parse(keys.get('ant:pipe:approver-of:local:bob@corp.com') ?? '[]')).toEqual(['other|proj-z']);
+  });
+
+  it('InAppChannel.notify is fire-and-forget: a publish failure never throws (gate arm must not block)', async () => {
+    const { InAppChannel } = await import('../../src/core/pipelines/notifications');
+    const channel = new InAppChannel({
+      publish: async () => {
+        throw new Error('redis down');
+      },
+    } as any);
+    await expect(
+      channel.notify({
+        kind: 'approvalRequested',
+        recipient: { userId: 'bob@corp.com', organizationId: 'acme', role: 'approver' },
+        gateId: 'gate-r1-g1',
+        cardId: 'pipe-gate-r1-g1',
+        runId: 'r1',
+        pipelineId: 'p1',
+        pipelineName: 'P1',
+        projectId: 'proj-a',
+        ownerUserId: 'alice',
+        stepId: 'g1',
+        prompt: 'approve?',
+        armedAt: '2026-09-06T00:00:00.000Z',
+        deepLink: 'ant://pipelines/approvals/gate-r1-g1',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('InAppChannel marks approver recipients on the wire (role + ownerUserId); owner rows stay unmarked', async () => {
+    const { InAppChannel } = await import('../../src/core/pipelines/notifications');
+    const published: any[] = [];
+    const channel = new InAppChannel({ publish: async (ch: string, msg: any) => void published.push({ ch, msg }) } as any);
+    const base = {
+      kind: 'approvalRequested' as const,
+      gateId: 'gate-r1-g1',
+      cardId: 'pipe-gate-r1-g1',
+      runId: 'r1',
+      pipelineId: 'p1',
+      pipelineName: 'P1',
+      projectId: 'proj-a',
+      ownerUserId: 'alice',
+      stepId: 'g1',
+      prompt: 'approve?',
+      armedAt: '2026-09-06T00:00:00.000Z',
+      deepLink: 'x',
+    };
+    await channel.notify({ ...base, recipient: { userId: 'alice', organizationId: 'acme', role: 'owner' } });
+    await channel.notify({ ...base, recipient: { userId: 'bob@corp.com', organizationId: 'acme', role: 'approver' } });
+    expect(published).toHaveLength(2);
+    expect(published[0].msg.data.approval.role).toBeUndefined();
+    expect(published[1].msg.data.approval).toMatchObject({ role: 'approver', ownerUserId: 'alice' });
+    // Each notice lands on ITS recipient's user channel.
+    expect(published[0].ch).not.toBe(published[1].ch);
+  });
 });

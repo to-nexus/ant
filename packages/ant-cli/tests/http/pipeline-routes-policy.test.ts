@@ -664,3 +664,471 @@ describe('clarify answer ceiling', () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * Gate resolve authority (doc 48 in-app approver, A2): the activation OWNER
+ * decides everything; a NON-owner decides ONLY a gate-kind approval step they
+ * are on the roster of — the roster re-read LIVE from the owner's
+ * activation.json at resolve time. Tool approvals and clarify stay
+ * activator-scoped. Approver rosters live on the ACTIVATION (activate body /
+ * the approvers PUT), never the definition.
+ */
+describe('gate resolve authority — owner ∨ per-gate approver', () => {
+  beforeEach(() => {
+    for (const dir of ['localorg/alice', 'localorg/bob', 'individual/alice', 'individual/bob']) {
+      fs.rmSync(path.join(wsRoot, dir), { recursive: true, force: true });
+    }
+  });
+
+  const OWNER = { userId: 'alice', organizationId: 'localorg', organizationKind: 'team' as const };
+  const HITL = (over: Partial<Record<string, unknown>> = {}) => ({
+    gateId: 'gate-r1-budget-gate',
+    cardId: 'pipe-gate-r1-budget-gate',
+    runId: 'r1',
+    stepId: 'budget-gate',
+    pipelineId: 'digest',
+    projectId: 'proj-a',
+    owner: OWNER,
+    onTimeout: 'reject',
+    anchorJobId: 'job-1',
+    prompt: 'Approve the March payout?',
+    ...over,
+  });
+  const RUN = (gateOver: Partial<Record<string, unknown>> = {}) => ({
+    runId: 'r1',
+    pipelineId: 'digest',
+    projectId: 'proj-a',
+    firedBy: 'cron',
+    fireEpoch: 1,
+    status: 'awaiting_human',
+    startedAt: '2026-09-06T00:00:00.000Z',
+    steps: [
+      {
+        stepId: 'budget-gate',
+        status: 'awaiting_gate',
+        gate: { gateId: 'gate-r1-budget-gate', cardId: 'pipe-gate-r1-budget-gate', prompt: 'Approve?', armedAt: '2026-09-06T00:00:00.000Z', ...gateOver },
+      },
+    ],
+  });
+
+  function writeOwnerActivation(approvers?: Record<string, string[]>): void {
+    const dir = path.join(wsRoot, 'localorg', 'alice', '.ant', 'pipeline-activations', 'proj-a');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'activation.json'),
+      JSON.stringify({
+        pipelineId: 'digest',
+        pipelineScope: 'org',
+        projectId: 'proj-a',
+        activatedAt: '2026-09-06T00:00:00.000Z',
+        activatedBy: 'alice',
+        ...(approvers ? { approvers } : {}),
+      }),
+    );
+  }
+
+  async function approverApp(
+    userId: string,
+    opts: {
+      hitl?: Record<string, unknown> | null;
+      run?: Record<string, unknown> | null;
+      resolved?: boolean;
+      approverRows?: unknown[];
+    } = {},
+  ) {
+    process.env.ANT_LOCAL_ORG = 'localorg';
+    process.env.ANT_LOCAL_USER = userId;
+    const applied: unknown[][] = [];
+    const choiceCalls: unknown[] = [];
+    const republished: string[] = [];
+    const keys = new Map<string, string>();
+    const resolver = {
+      getPhysicalWorkspacesPath: () => wsRoot,
+      getWorkspacePath: () => path.join(wsRoot, 'localorg', userId),
+      getProjectPath: (_uc: unknown, projectId: string) => path.join(wsRoot, 'localorg', userId, projectId),
+    };
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).user = { id: userId };
+      (req as any).organization = { id: 'localorg', kind: 'team' };
+      next();
+    });
+    app.use(
+      '/api/definitions/pipelines',
+      createPipelinesRoutes({
+        workspaceResolver: resolver as any,
+        coordinator: {
+          getActiveRunId: async () => null,
+          getRun: async () => opts.run ?? null,
+          listPendingApprovals: async () => [],
+          listApproverPendingApprovals: async () => opts.approverRows ?? [],
+          approverRunAccess: async () => false,
+          getHitlByGateId: async () => opts.hitl ?? null,
+          applyResolvedGate: async (...args: unknown[]) => {
+            applied.push(args);
+            return true;
+          },
+          republishArmedGates: async (_owner: unknown, projectId: string) => void republished.push(projectId),
+          cancelRun: async () => false,
+          readRunFromDisk: () => null,
+          deactivate: async () => {},
+        } as any,
+        scheduleQueue: {
+          upsertCron: async () => {},
+          removeCron: async () => {},
+          listCronIds: async () => [],
+          armDelayed: async () => {},
+          cancelDelayed: async () => {},
+          addNow: async () => {},
+          close: async () => {},
+        } as any,
+        stateStore: {
+          listJobsByFeature: async () => [],
+          setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
+          deleteKey: async (k: string) => void keys.delete(k),
+          getKey: async (k: string) => keys.get(k) ?? null,
+          publish: async () => {},
+        } as any,
+        organizationRepository: fakeOrgRepo(
+          new Map<string, OrgMembershipRole>([
+            ['alice', 'member'],
+            ['bob', 'member'],
+          ]),
+        ),
+        chatService: {
+          appendChoiceResolved: async (...args: unknown[]) => {
+            choiceCalls.push(args);
+            return { resolved: opts.resolved ?? true };
+          },
+        } as any,
+      }),
+    );
+    const srv = http.createServer(app);
+    await new Promise<void>((resolve) => srv.listen(0, resolve));
+    const port = (srv.address() as { port: number }).port;
+    return {
+      url: `http://127.0.0.1:${port}/api/definitions/pipelines`,
+      applied,
+      choiceCalls,
+      republished,
+      keys,
+      close: () => new Promise<void>((resolve, reject) => srv.close((e) => (e ? reject(e) : resolve()))),
+    };
+  }
+
+  const resolveGate = (url: string, body: Record<string, unknown> = { decision: 'approve' }) =>
+    fetch(`${url}/approvals/gate-r1-budget-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('S2 — a rostered approver resolves ANOTHER member\'s gate; the chat leg runs as the OWNER, the decider is recorded separately', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const bob = await approverApp('bob', { hitl: HITL(), run: RUN() });
+    try {
+      const res = await resolveGate(bob.url, { decision: 'approve', note: 'checked the ledger' });
+      expect(res.status).toBe(200);
+      // Chat path context = the run owner's; label names the approver.
+      const [, , choiceArgs] = bob.choiceCalls[0] as [string, string, any];
+      expect(choiceArgs.userContext).toMatchObject({ userId: 'alice' });
+      expect(choiceArgs.resolvedLabel).toBe('Approved by bob');
+      // applyResolvedGate carries the approver as decidedBy + the note.
+      expect(bob.applied[0]).toEqual(['pipe-gate-r1-budget-gate', 'approved', 'bob', 'api', { note: 'checked the ledger' }]);
+    } finally {
+      await bob.close();
+    }
+  });
+
+  it('another gate\'s approver gets 404 — authority is PER GATE, never per pipeline', async () => {
+    writeOwnerActivation({ 'publish-gate': ['bob'] });
+    const bob = await approverApp('bob', { hitl: HITL(), run: RUN() });
+    try {
+      const res = await resolveGate(bob.url);
+      expect(res.status).toBe(404);
+      expect(bob.applied).toHaveLength(0);
+    } finally {
+      await bob.close();
+    }
+  });
+
+  it('S6/S9 — a roster the owner has since edited is re-read LIVE: the dropped approver resolves to 404', async () => {
+    writeOwnerActivation({}); // bob was removed from every roster
+    const bob = await approverApp('bob', { hitl: HITL(), run: RUN() });
+    try {
+      expect((await resolveGate(bob.url)).status).toBe(404);
+    } finally {
+      await bob.close();
+    }
+  });
+
+  it('kind:tool gates stay activator-scoped — a rostered approver still gets 404 (L3 is v1.5)', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const bob = await approverApp('bob', { hitl: HITL({ kind: 'tool', tool: 'run_command', jobId: 'job-1' }), run: RUN() });
+    try {
+      expect((await resolveGate(bob.url)).status).toBe(404);
+    } finally {
+      await bob.close();
+    }
+  });
+
+  it('S7 — the NX loser gets 409 with who already decided', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const bob = await approverApp('bob', {
+      hitl: HITL(),
+      run: RUN({ decision: 'approved', decidedBy: 'carol' }),
+      resolved: false,
+    });
+    try {
+      const res = await resolveGate(bob.url);
+      expect(res.status).toBe(409);
+      expect((await res.json()).decidedBy).toBe('carol');
+      expect(bob.applied).toHaveLength(0);
+    } finally {
+      await bob.close();
+    }
+  });
+
+  it('S8 — the owner resolves regardless of rosters, with the unchanged label', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const alice = await approverApp('alice', { hitl: HITL(), run: RUN() });
+    try {
+      const res = await resolveGate(alice.url);
+      expect(res.status).toBe(200);
+      const [, , choiceArgs] = alice.choiceCalls[0] as [string, string, any];
+      expect(choiceArgs.resolvedLabel).toBe('Approved');
+      expect(alice.applied[0]).toEqual(['pipe-gate-r1-budget-gate', 'approved', 'alice', 'api', {}]);
+    } finally {
+      await alice.close();
+    }
+  });
+
+  it('an over-cap decision note is refused with 400 before any state is touched', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const bob = await approverApp('bob', { hitl: HITL(), run: RUN() });
+    try {
+      const res = await resolveGate(bob.url, { decision: 'reject', note: 'x'.repeat(501) });
+      expect(res.status).toBe(400);
+      expect(bob.applied).toHaveLength(0);
+    } finally {
+      await bob.close();
+    }
+  });
+
+  it('GET /approvals merges own rows with approver rows (role-stamped by the coordinator)', async () => {
+    const row = { gateId: 'g', cardId: 'c', runId: 'r', pipelineId: 'p', pipelineName: 'P', projectId: 'proj-a', stepId: 's', prompt: '?', armedAt: 'now', role: 'approver', ownerUserId: 'alice' };
+    const bob = await approverApp('bob', { approverRows: [row] });
+    try {
+      const res = await fetch(`${bob.url}/approvals`);
+      expect(res.status).toBe(200);
+      expect((await res.json()).approvals).toEqual([row]);
+    } finally {
+      await bob.close();
+    }
+  });
+});
+
+describe('activation approver rosters — activate body + the approvers PUT (activator-only)', () => {
+  beforeEach(() => {
+    for (const dir of ['localorg/alice', 'localorg/bob', 'individual/alice', 'individual/bob']) {
+      fs.rmSync(path.join(wsRoot, dir), { recursive: true, force: true });
+    }
+  });
+
+  const GATED_DEF = {
+    version: 2,
+    name: 'Gated',
+    on: { schedule: { cron: '0 9 * * 1', tz: 'Asia/Seoul' } },
+    steps: [
+      { id: 'collect', customJobRef: 'research/collect', directive: 'Collect sources' },
+      { id: 'budget-gate', type: 'approval', prompt: 'Approve the payout?' },
+    ],
+  };
+
+  async function teamActivateApp(userId: string) {
+    process.env.ANT_LOCAL_ORG = 'localorg';
+    process.env.ANT_LOCAL_USER = userId;
+    const republished: string[] = [];
+    const keys = new Map<string, string>();
+    const resolver = {
+      getPhysicalWorkspacesPath: () => wsRoot,
+      getWorkspacePath: () => path.join(wsRoot, 'localorg', userId),
+      getProjectPath: (_uc: unknown, projectId: string) => path.join(wsRoot, 'localorg', userId, projectId),
+    };
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).user = { id: userId };
+      (req as any).organization = { id: 'localorg', kind: 'team' };
+      next();
+    });
+    app.use(
+      '/api/definitions/pipelines',
+      createPipelinesRoutes({
+        workspaceResolver: resolver as any,
+        coordinator: {
+          getActiveRunId: async () => null,
+          getRun: async () => null,
+          listPendingApprovals: async () => [],
+          listApproverPendingApprovals: async () => [],
+          approverRunAccess: async () => false,
+          getHitlByGateId: async () => null,
+          applyResolvedGate: async () => true,
+          republishArmedGates: async (_owner: unknown, projectId: string) => void republished.push(projectId),
+          cancelRun: async () => false,
+          readRunFromDisk: () => null,
+          deactivate: async () => {},
+        } as any,
+        scheduleQueue: {
+          upsertCron: async () => {},
+          removeCron: async () => {},
+          listCronIds: async () => [],
+          armDelayed: async () => {},
+          cancelDelayed: async () => {},
+          addNow: async () => {},
+          close: async () => {},
+        } as any,
+        stateStore: {
+          listJobsByFeature: async () => [],
+          setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
+          deleteKey: async (k: string) => void keys.delete(k),
+          getKey: async (k: string) => keys.get(k) ?? null,
+          publish: async () => {},
+        } as any,
+        organizationRepository: fakeOrgRepo(
+          new Map<string, OrgMembershipRole>([
+            ['alice', 'member'],
+            ['bob', 'member'],
+          ]),
+        ),
+      }),
+    );
+    const srv = http.createServer(app);
+    await new Promise<void>((resolve) => srv.listen(0, resolve));
+    const port = (srv.address() as { port: number }).port;
+    return {
+      url: `http://127.0.0.1:${port}/api/definitions/pipelines`,
+      keys,
+      republished,
+      close: () => new Promise<void>((resolve, reject) => srv.close((e) => (e ? reject(e) : resolve()))),
+    };
+  }
+
+  async function scaffoldGatedActivatable(userId: string, appUrl: string): Promise<void> {
+    // Personal defs of a team-kind caller anchor under the INDIVIDUAL org.
+    scaffoldAgentCatalog(path.join(wsRoot, 'individual', userId, '.ant', 'agents'));
+    const projDir = path.join(wsRoot, 'localorg', userId, 'proj-a');
+    fs.mkdirSync(projDir, { recursive: true });
+    fs.writeFileSync(path.join(projDir, 'config.json'), JSON.stringify({ projectType: 'universal' }));
+    const created = await fetch(appUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'gated', def: GATED_DEF }),
+    });
+    expect(created.status).toBe(201);
+    expect((await fetch(`${appUrl}/gated/enable`, { method: 'POST' })).status).toBe(200);
+  }
+
+  const activationPath = (userId: string) =>
+    path.join(wsRoot, 'localorg', userId, '.ant', 'pipeline-activations', 'proj-a', 'activation.json');
+
+  it('activate accepts a per-gate roster: validated against the def\'s gates, membership-checked, indexed', async () => {
+    const alice = await teamActivateApp('alice');
+    try {
+      await scaffoldGatedActivatable('alice', alice.url);
+      // Unknown gate key → 400 naming the key.
+      const badKey = await fetch(`${alice.url}/gated/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: 'proj-a', approvers: { 'ghost-gate': ['bob'] } }),
+      });
+      expect(badKey.status).toBe(400);
+      expect((await badKey.json()).code).toBe('invalid-approvers');
+      // Non-member → 400 naming the member.
+      const dead = await fetch(`${alice.url}/gated/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: 'proj-a', approvers: { 'budget-gate': ['mallory'] } }),
+      });
+      expect(dead.status).toBe(400);
+      expect((await dead.json()).invalidApprovers).toEqual(['mallory']);
+      // Valid roster lands on the activation record + the discovery index.
+      const ok = await fetch(`${alice.url}/gated/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: 'proj-a', approvers: { 'budget-gate': ['bob'] } }),
+      });
+      expect(ok.status).toBe(200);
+      const record = JSON.parse(fs.readFileSync(activationPath('alice'), 'utf-8'));
+      expect(record.approvers).toEqual({ 'budget-gate': ['bob'] });
+      expect(JSON.parse(alice.keys.get('ant:pipe:approver-of:localorg:bob') ?? '[]')).toEqual(['alice|proj-a']);
+    } finally {
+      await alice.close();
+    }
+  });
+
+  it('the approvers PUT edits the live roster without deactivating and re-fires armed-gate notices (S9)', async () => {
+    const alice = await teamActivateApp('alice');
+    try {
+      await scaffoldGatedActivatable('alice', alice.url);
+      const activated = await fetch(`${alice.url}/gated/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: 'proj-a', approvers: { 'budget-gate': ['bob'] } }),
+      });
+      expect(activated.status).toBe(200);
+      const put = await fetch(`${alice.url}/activations/proj-a/approvers`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvers: { 'budget-gate': ['alice'] } }),
+      });
+      expect(put.status).toBe(200);
+      expect((await put.json()).approvers).toEqual({ 'budget-gate': ['alice'] });
+      const record = JSON.parse(fs.readFileSync(activationPath('alice'), 'utf-8'));
+      expect(record.approvers).toEqual({ 'budget-gate': ['alice'] });
+      // Index followed the edit: bob out, alice in.
+      expect(JSON.parse(alice.keys.get('ant:pipe:approver-of:localorg:bob') ?? '[]')).toEqual([]);
+      expect(JSON.parse(alice.keys.get('ant:pipe:approver-of:localorg:alice') ?? '[]')).toEqual(['alice|proj-a']);
+      // Armed gates re-fired to the CURRENT roster.
+      expect(alice.republished).toEqual(['proj-a']);
+      // Clearing the map entirely also works (activator-only again).
+      const cleared = await fetch(`${alice.url}/activations/proj-a/approvers`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvers: {} }),
+      });
+      expect(cleared.status).toBe(200);
+      expect(JSON.parse(fs.readFileSync(activationPath('alice'), 'utf-8')).approvers).toBeUndefined();
+    } finally {
+      await alice.close();
+    }
+  });
+
+  it('the approvers PUT answers 404 on a project with no activation; unknown gate keys 400', async () => {
+    const alice = await teamActivateApp('alice');
+    try {
+      const missing = await fetch(`${alice.url}/activations/ghost/approvers`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvers: {} }),
+      });
+      expect(missing.status).toBe(404);
+      await scaffoldGatedActivatable('alice', alice.url);
+      await fetch(`${alice.url}/gated/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: 'proj-a' }),
+      });
+      const badKey = await fetch(`${alice.url}/activations/proj-a/approvers`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvers: { 'ghost-gate': ['bob'] } }),
+      });
+      expect(badKey.status).toBe(400);
+      expect((await badKey.json()).code).toBe('invalid-approvers');
+    } finally {
+      await alice.close();
+    }
+  });
+});

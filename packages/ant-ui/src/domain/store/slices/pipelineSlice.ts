@@ -29,9 +29,11 @@ import {
   resolvePipelineApproval,
   answerPipelineClarify,
   runPipelineNow,
+  updateActivationApprovers,
   updatePipeline,
   updatePipelineEditors,
 } from '@/infrastructure/http/api/pipelines';
+import { ApiError } from '@/infrastructure/http/api/client';
 
 /**
  * pipelineSlice — FE state for the pipeline scheduler tab.
@@ -91,6 +93,12 @@ export interface PipelineSliceState {
   pipelineRunsByActivation: Record<string, PipelineRunSummary[]>;
   pipelineRunDetail: PipelineRunPublic | null;
   pipelineApprovals: PipelinePendingApproval[];
+  /**
+   * Approver context panel (slideover) — self-contained on run data: an
+   * approver never enters the owner's project or definition surfaces.
+   */
+  approverPanel: PipelinePendingApproval | null;
+  approverPanelRun: PipelineRunPublic | null;
   /** Per-project active-pipeline lock signal (chat surface). null = none. */
   activePipelineByProject: Record<string, ActivePipelineInfo | null>;
   /** Universal projects activatable by the caller (also the projectId→name map). */
@@ -111,14 +119,22 @@ export interface PipelineSliceActions {
   promotePipelineById: (pipelineId: string) => Promise<void>;
   savePipelineEditors: (pipelineId: string, editors: string[]) => Promise<void>;
   runPipelineNowById: (pipelineId: string, projectId: string) => Promise<string | null>;
-  activatePipelineTo: (pipelineId: string, projectId: string) => Promise<boolean>;
+  activatePipelineTo: (pipelineId: string, projectId: string, approvers?: Record<string, string[]>) => Promise<boolean>;
+  /** Activator-only per-gate roster edit (S9 — live from the next resolve on). */
+  updateActivationApproversTo: (
+    pipelineId: string,
+    projectId: string,
+    approvers: Record<string, string[]>,
+  ) => Promise<boolean>;
+  openApproverPanel: (approval: PipelinePendingApproval) => void;
+  closeApproverPanel: () => void;
   deactivatePipelineById: (pipelineId: string, projectId: string) => Promise<boolean>;
   loadActivatableProjects: () => Promise<void>;
   loadActivePipeline: (projectId: string) => Promise<void>;
   loadActivationRuns: (pipelineId: string, projectId: string, userId?: string) => Promise<void>;
   loadPipelineRunDetail: (runId: string, projectId: string) => Promise<void>;
   loadPipelineApprovals: () => Promise<void>;
-  resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject') => Promise<void>;
+  resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject', note?: string) => Promise<void>;
   answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
   setPipelinePanelView: (view: 'editor' | 'execution') => void;
   setPipelineWiringMode: (mode: 'view' | 'edit') => void;
@@ -151,6 +167,8 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineRunsByActivation: {},
   pipelineRunDetail: null,
   pipelineApprovals: [],
+  approverPanel: null,
+  approverPanelRun: null,
   activePipelineByProject: {},
   pipelineActivatableProjects: [],
   pipelineActivationError: null,
@@ -327,10 +345,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     }
   },
 
-  activatePipelineTo: async (pipelineId: string, projectId: string) => {
+  activatePipelineTo: async (pipelineId: string, projectId: string, approvers?: Record<string, string[]>) => {
     set({ pipelineActivationError: null });
     try {
-      await activatePipeline(pipelineId, projectId);
+      if (approvers && Object.keys(approvers).length > 0) await activatePipeline(pipelineId, projectId, approvers);
+      else await activatePipeline(pipelineId, projectId);
       // Authoritative refresh — the entry's activations include the new row.
       if (get().selectedPipelineId === pipelineId) await get().selectPipeline(pipelineId);
       void get().loadPipelines();
@@ -420,11 +439,70 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     }
   },
 
-  resolvePipelineApprovalById: async (gateId: string, decision: 'approve' | 'reject') => {
-    await resolvePipelineApproval(gateId, decision);
-    // Optimistic removal; the approvalResolved SSE event is the durable fold.
+  resolvePipelineApprovalById: async (gateId: string, decision: 'approve' | 'reject', note?: string) => {
+    try {
+      await resolvePipelineApproval(gateId, decision, note);
+    } catch (e) {
+      // 409 (someone else decided — S7) and 404 (authority revoked — S6) both
+      // mean this row is dead: fold it, then rethrow so the surface can name why.
+      if (e instanceof ApiError && (e.status === 409 || e.status === 404)) {
+        set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== gateId) });
+      }
+      throw e;
+    }
+    // Success removal is NOT optimistic — the server resolved; the
+    // approvalResolved SSE event is the durable fold for other surfaces.
     set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== gateId) });
+    // A panel open on this gate refreshes to show the landed decision.
+    const panel = get().approverPanel;
+    if (panel?.gateId === gateId) {
+      try {
+        const { run } = await fetchPipelineRun(panel.runId, panel.projectId);
+        set({ approverPanelRun: run });
+      } catch {
+        /* panel keeps last-good */
+      }
+    }
   },
+
+  updateActivationApproversTo: async (pipelineId: string, projectId: string, approvers: Record<string, string[]>) => {
+    set({ pipelineActivationError: null });
+    try {
+      const { approvers: saved } = await updateActivationApprovers(projectId, approvers);
+      set({
+        pipelines: get().pipelines.map((p: PipelineListEntry) =>
+          p.id === pipelineId
+            ? {
+                ...p,
+                activations: p.activations.map((a) =>
+                  a.mine && a.projectId === projectId
+                    ? { ...a, approvers: Object.keys(saved).length > 0 ? saved : undefined }
+                    : a,
+                ),
+              }
+            : p,
+        ),
+      });
+      return true;
+    } catch (e) {
+      set({ pipelineActivationError: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  },
+
+  openApproverPanel: (approval: PipelinePendingApproval) => {
+    set({ approverPanel: approval, approverPanelRun: null });
+    void (async () => {
+      try {
+        const { run } = await fetchPipelineRun(approval.runId, approval.projectId);
+        if (get().approverPanel?.gateId === approval.gateId) set({ approverPanelRun: run });
+      } catch {
+        /* the panel shows its retry affordance on null run */
+      }
+    })();
+  },
+
+  closeApproverPanel: () => set({ approverPanel: null, approverPanelRun: null }),
 
   answerPipelineClarifyById: async (clarifyId: string, runId: string, stepId: string, answer: string) => {
     await answerPipelineClarify(runId, stepId, answer);
@@ -530,6 +608,18 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       }
       case 'approvalResolved': {
         set({ pipelineApprovals: state.pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== event.gateId) });
+        // An open approver panel on this gate refreshes to show the decision.
+        const panel = state.approverPanel;
+        if (panel?.gateId === event.gateId) {
+          void (async () => {
+            try {
+              const { run } = await fetchPipelineRun(panel.runId, panel.projectId);
+              if (get().approverPanel?.gateId === event.gateId) set({ approverPanelRun: run });
+            } catch {
+              /* keep last-good */
+            }
+          })();
+        }
         break;
       }
       // Clarify rows ride the same inbox list — gateId/cardId carry the clarifyId.

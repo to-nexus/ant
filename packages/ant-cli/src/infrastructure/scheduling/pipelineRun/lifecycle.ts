@@ -177,6 +177,15 @@ export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run
     runId: run.runId,
     detail: { status: run.status, run: publicRun(sealed) },
   });
+  // Gate decisions ride the summary line — the org observer's "who opened
+  // this gate" channel (approval STEPS only; tool gates stay off it).
+  const gates = run.steps
+    .filter((s) => s.gate?.decision && s.gate.gateId.startsWith('gate-'))
+    .map((s) => ({
+      stepId: s.stepId,
+      decision: s.gate!.decision!,
+      ...(s.gate!.decidedBy && { decidedBy: s.gate!.decidedBy }),
+    }));
   await appendRunIndex(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), run.projectId, {
     runId: run.runId,
     pipelineId: run.pipelineId,
@@ -187,6 +196,7 @@ export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run
     startedAt: run.startedAt,
     endedAt,
     ...(sealed.error && { error: sealed.error }),
+    ...(gates.length > 0 && { gates }),
   });
   const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, run.projectId);
   const holder = await ctx.deps.stateStore.getKey(activeKey);

@@ -98,8 +98,23 @@ export function updatePipelineEditors(pipelineId: string, editors: string[]): Pr
   return apiPut(`${base()}/${encodeURIComponent(pipelineId)}/editors`, { editors });
 }
 
-export function activatePipeline(pipelineId: string, projectId: string): Promise<{ id: string; activation: PipelineActivation; nextFireAt?: string }> {
-  return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/activate`, { projectId });
+export function activatePipeline(
+  pipelineId: string,
+  projectId: string,
+  approvers?: Record<string, string[]>,
+): Promise<{ id: string; activation: PipelineActivation; nextFireAt?: string }> {
+  return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/activate`, {
+    projectId,
+    ...(approvers && Object.keys(approvers).length > 0 ? { approvers } : {}),
+  });
+}
+
+/** Activator-only per-gate approver roster edit — live from the next resolve on (S9). */
+export function updateActivationApprovers(
+  projectId: string,
+  approvers: Record<string, string[]>,
+): Promise<{ projectId: string; approvers: Record<string, string[]> }> {
+  return apiPut(`${base()}/activations/${encodeURIComponent(projectId)}/approvers`, { approvers });
 }
 
 export function deactivatePipeline(pipelineId: string, projectId: string): Promise<{ success: boolean }> {
@@ -141,8 +156,15 @@ export function fetchPipelineApprovals(): Promise<{ approvals: PipelinePendingAp
   return apiGet(`${base()}/approvals`);
 }
 
-export function resolvePipelineApproval(gateId: string, decision: 'approve' | 'reject'): Promise<{ success: boolean }> {
-  return apiPost(`${base()}/approvals/${encodeURIComponent(gateId)}`, { decision });
+export function resolvePipelineApproval(
+  gateId: string,
+  decision: 'approve' | 'reject',
+  note?: string,
+): Promise<{ success: boolean }> {
+  return apiPost(`${base()}/approvals/${encodeURIComponent(gateId)}`, {
+    decision,
+    ...(note?.trim() ? { note: note.trim() } : {}),
+  });
 }
 
 export function answerPipelineClarify(runId: string, stepId: string, answer: string): Promise<{ success: boolean }> {

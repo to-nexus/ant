@@ -692,6 +692,11 @@ function GatePanel({ def, step, stepIndex, onChange }: { def: PipelineDef; step:
           <span style={chipStyle(false)} title={t('gate.comingSoon', 'Coming soon')}>Email</span>
         </div>
       </div>
+      {/* Approvers are ACTIVATION data, never definition data — the definition
+          is a shared template, so a name here would block reuse (A5-1). */}
+      <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('gate.approversHint', 'Approvers are assigned per gate when the pipeline is activated on a project.')}
+      </div>
       <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} />
       {effectiveNeedsOf(def, stepIndex).length > 0 && <EdgeConditionField step={step} def={def} onChange={onChange} />}
     </>

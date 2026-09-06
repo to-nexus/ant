@@ -18,6 +18,7 @@ import { useStore } from '@/domain/store';
 import { useResizableWidth } from '../AgentSettings/useResizableWidth';
 import { PipelineRail } from './PipelineRail';
 import { PipelineWorkspace } from './PipelineWorkspace';
+import { ApproverRunPanel } from './ApproverRunPanel';
 
 export type PipelineSpace = 'workspace' | 'codespace';
 
@@ -64,7 +65,10 @@ export function PipelinesPanel() {
           onMouseDown={startResize}
         />
       </div>
-      <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      {/* relative: the approver context panel slides over the workspace side
+          (an approver's whole surface — never the project or the definition). */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+        <ApproverRunPanel />
         {space === 'codespace' ? (
           <div
             style={{

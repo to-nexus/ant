@@ -9,7 +9,7 @@ import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { Clock, Bot, ShieldCheck, Plus, Zap, Ban } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { PipelineStepStatus } from '@ant/shared';
+import type { GateDecision, PipelineStepStatus } from '@ant/shared';
 import { TRIGGER_NODE_ID } from '../draft';
 
 /** Card width — PipelineCanvas feeds it to dagre alongside the height estimate. */
@@ -29,6 +29,10 @@ export interface PipelineNodeData {
   onAdd?: (afterNodeId: string, kind: 'job' | 'gate') => void;
   nodeId: string;
   invalid?: boolean;
+  /** Gate nodes, activation context: who may open this gate ("이 게이트는 누가 여는가"). */
+  approvers?: string[];
+  /** Gate nodes, run context: the landed decision ("✓ B 승인"). */
+  gateDecision?: { decision: GateDecision; decidedBy?: string };
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -252,7 +256,10 @@ export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeD
 });
 
 export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeData>) {
+  const { t } = useTranslation('pipelines');
   const awaiting = data.status === 'awaiting_gate';
+  const decided = data.gateDecision;
+  const approved = decided && (decided.decision === 'approved' || decided.decision === 'expired_approve');
   return (
     <div
       style={{
@@ -262,7 +269,24 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
       }}
     >
       <NodeHeader icon={<ShieldCheck size={14} />} title={data.title} subtitle={data.subtitle} invalid={data.invalid} />
+      {/* "이 게이트는 누가 여는가" — the roster, right on the node (activation ctx). */}
+      {data.approvers && data.approvers.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3, overflowWrap: 'anywhere' }}>
+          🛡 {data.approvers.join(', ')}
+        </div>
+      )}
       <StatusChip status={data.status} />
+      {decided && (
+        <div style={{ fontSize: 10, fontWeight: 600, marginTop: 3, color: approved ? 'var(--emerald-500)' : 'var(--red-500)' }}>
+          {decided.decidedBy
+            ? approved
+              ? t('canvas.gateApprovedBy', '✓ approved by {{who}}', { who: decided.decidedBy })
+              : t('canvas.gateRejectedBy', '✗ rejected by {{who}}', { who: decided.decidedBy })
+            : approved
+              ? t('canvas.gateAutoApproved', '⏱ auto-approved')
+              : t('canvas.gateAutoRejected', '⏱ auto-rejected')}
+        </div>
+      )}
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
       <AddButton data={data} />

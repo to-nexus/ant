@@ -5,12 +5,15 @@
 
 import type { Router, Request, Response } from 'express';
 import {
+  isApprovalStep,
   MEMBERSHIP_REQUIRED,
   UNIVERSAL_FEATURE,
+  validatePipelineActivation,
   type PipelineActivation,
   type PipelineDef,
   type PipelineRunSummary,
 } from '@ant/shared';
+import { approverUnion, syncApproverIndexForActivation } from '../../../../../core/pipelines/approverIndex';
 import { extractUserContext } from '../helpers/userContext';
 import { sendErrorResponse } from '../helpers/errorResponse';
 import { validatePipelineCatalogServer } from '../../../../../core/pipelines/catalogBinding';
@@ -141,14 +144,70 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         return;
       }
 
-      const activation: PipelineActivation = holder ?? {
-        pipelineId,
-        pipelineScope: found.scopeRoot.scope,
-        projectId,
-        activatedAt: new Date().toISOString(),
-        activatedBy: owner.userId,
-      };
+      // Per-gate approver roster (optional). Keys are validated against the
+      // def's approval-step ids; every member must be a live org member.
+      const rawApprovers = req.body?.approvers;
+      let approvers: Record<string, string[]> | undefined;
+      if (rawApprovers !== undefined && rawApprovers !== null) {
+        if (typeof rawApprovers !== 'object' || Array.isArray(rawApprovers)) {
+          res.status(400).json({ error: 'approvers must be a map of { <gateStepId>: [memberId, …] }' });
+          return;
+        }
+        approvers = Object.fromEntries(
+          Object.entries(rawApprovers as Record<string, string[]>).filter(
+            ([, list]) => Array.isArray(list) && list.length > 0,
+          ),
+        );
+        if (Object.keys(approvers).length === 0) approvers = undefined;
+      }
+      if (approvers && owner.organizationKind !== 'team') {
+        res.status(400).json({ error: 'Gate approvers need a team organization', code: 'approvers-require-team-org' });
+        return;
+      }
+      if (approvers) {
+        const gateStepIds = def.steps.filter(isApprovalStep).map((s) => s.id);
+        const approverErrors = validatePipelineActivation(
+          { pipelineId, pipelineScope: found.scopeRoot.scope, projectId, activatedAt: new Date().toISOString(), approvers },
+          { gateStepIds },
+        );
+        if (approverErrors.length > 0) {
+          res.status(400).json({ error: approverErrors[0], errors: approverErrors, code: 'invalid-approvers' });
+          return;
+        }
+        const dead: string[] = [];
+        for (const userId of [...new Set(Object.values(approvers).flat())]) {
+          const membership = await deps.organizationRepository.getMembership(userId, owner.organizationId);
+          if (!membership) dead.push(userId);
+        }
+        if (dead.length > 0) {
+          res.status(400).json({
+            error: `Not a member of this organization: ${dead.join(', ')}`,
+            code: 'approver-not-member',
+            invalidApprovers: dead,
+          });
+          return;
+        }
+      }
+
+      const activation: PipelineActivation = holder
+        ? { ...holder, ...(approvers ? { approvers } : {}) }
+        : {
+            pipelineId,
+            pipelineScope: found.scopeRoot.scope,
+            projectId,
+            activatedAt: new Date().toISOString(),
+            activatedBy: owner.userId,
+            ...(approvers ? { approvers } : {}),
+          };
       await saveActivationRecord(actRoot, activation);
+      await syncApproverIndexForActivation(
+        deps.stateStore,
+        owner.organizationId,
+        owner.userId,
+        projectId,
+        approverUnion(holder),
+        approverUnion(activation),
+      );
 
       // Race guard vs disable: re-read availability AFTER the activation
       // landed — if the owner disabled concurrently, roll back and refuse.

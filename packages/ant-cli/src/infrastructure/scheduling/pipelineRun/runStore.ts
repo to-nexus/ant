@@ -17,8 +17,9 @@ import type { PipelineOwner } from '../../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL, getRealtimeBroadcastChannel } from '../../../core/constants/redis';
 import { logger } from '../../../utils/logger';
 import type { StepDispatch } from '../../../core/pipelines/ChainExecutor';
+import { parseApproverIndexEntry, readApproverIndex } from '../../../core/pipelines/approverIndex';
 import { deriveActivationsRoot, type PipelineTenantContext } from '../../../core/pipelines/paths';
-import { appendRunEvent, listAccountActivations, readRunEvents } from '../../../core/pipelines/store';
+import { appendRunEvent, hasRunLog, listAccountActivations, loadActivationByProject, readRunEvents } from '../../../core/pipelines/store';
 import { COMPONENT, type HitlRecord, type PipelineCoordinatorDeps } from './types';
 
 const RUN_LOCK_RETRIES = 20;
@@ -187,11 +188,104 @@ export async function listPendingApprovals(
 export async function getHitlByGateId(
   deps: PipelineCoordinatorDeps,
   gateId: string,
-): Promise<{ cardId: string; anchorJobId: string; owner: PipelineOwner; runId: string } | null> {
+): Promise<HitlRecord | null> {
   const raw = await deps.stateStore.getKey(REDIS_KEYS.PIPE.HITL(gateId));
   if (!raw) return null;
-  const hitl = JSON.parse(raw) as HitlRecord;
-  return { cardId: hitl.cardId, anchorJobId: hitl.anchorJobId, owner: hitl.owner, runId: hitl.runId };
+  return JSON.parse(raw) as HitlRecord;
+}
+
+/**
+ * Pending APPROVAL-STEP gates the caller may decide on OTHER members'
+ * activations — discovered via the approver-of index, then re-verified
+ * against each owner's live activation.json (the index is advisory). Clarify
+ * and tool rows never surface here: those stay activator-scoped in v1.
+ */
+export async function listApproverPendingApprovals(
+  deps: PipelineCoordinatorDeps,
+  caller: PipelineOwner,
+): Promise<PipelinePendingApproval[]> {
+  if (caller.organizationKind !== 'team') return [];
+  const out: PipelinePendingApproval[] = [];
+  const entries = await readApproverIndex(deps.stateStore, caller.organizationId, caller.userId);
+  for (const entry of entries) {
+    const parsed = parseApproverIndexEntry(entry);
+    if (!parsed) continue;
+    const owner: PipelineOwner = {
+      userId: parsed.ownerUserId,
+      organizationId: caller.organizationId,
+      organizationKind: 'team',
+    };
+    if (owner.userId === caller.userId) continue; // own rows come from the own-scan
+    let approversByGate: Record<string, string[]> | undefined;
+    try {
+      approversByGate = loadActivationByProject(
+        deriveActivationsRoot(tenantCtx(deps, owner)),
+        parsed.projectId,
+      )?.approvers;
+    } catch {
+      continue; // unreadable/gone activation — stale index entry
+    }
+    if (!approversByGate) continue;
+    const runId = await getActiveRunId(deps, owner, parsed.projectId);
+    if (!runId) continue;
+    const run = await getRun(deps, runId);
+    if (!run) continue;
+    for (const s of run.steps) {
+      if (s.status !== 'awaiting_gate' || !s.gate || s.gate.decision) continue;
+      const stepDef = run.defSnapshot?.steps.find((d) => d.id === s.stepId);
+      const isTool = stepDef ? !isApprovalStep(stepDef) : s.gate.gateId.startsWith('tga-');
+      if (isTool) continue;
+      if (!(approversByGate[s.stepId] ?? []).includes(caller.userId)) continue;
+      out.push({
+        gateId: s.gate.gateId,
+        cardId: s.gate.cardId,
+        runId,
+        pipelineId: run.pipelineId,
+        pipelineName: run.defSnapshot?.name ?? run.pipelineId,
+        projectId: run.projectId,
+        stepId: s.stepId,
+        prompt: s.gate.prompt,
+        armedAt: s.gate.armedAt,
+        timeoutAt: s.gate.timeoutAt,
+        role: 'approver',
+        ownerUserId: owner.userId,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Read-only run access for a NON-owner: the caller is on ANY gate's roster of
+ * the activation that owns this run (index-discovered, live-verified), and the
+ * owner's activation dir actually holds the run log. Grants the run DETAIL
+ * only — cancel/clarify stay activator-scoped.
+ */
+export async function approverRunAccess(
+  deps: PipelineCoordinatorDeps,
+  caller: PipelineOwner,
+  run: Pick<RunRecord, 'runId' | 'projectId'>,
+): Promise<boolean> {
+  if (caller.organizationKind !== 'team') return false;
+  const entries = await readApproverIndex(deps.stateStore, caller.organizationId, caller.userId);
+  for (const entry of entries) {
+    const parsed = parseApproverIndexEntry(entry);
+    if (!parsed || parsed.projectId !== run.projectId || parsed.ownerUserId === caller.userId) continue;
+    const owner: PipelineOwner = {
+      userId: parsed.ownerUserId,
+      organizationId: caller.organizationId,
+      organizationKind: 'team',
+    };
+    try {
+      const activation = loadActivationByProject(deriveActivationsRoot(tenantCtx(deps, owner)), run.projectId);
+      const listed = Object.values(activation?.approvers ?? {}).some((l) => l.includes(caller.userId));
+      if (!listed) continue;
+      if (hasRunLog(deriveActivationsRoot(tenantCtx(deps, owner)), run.projectId, run.runId)) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
 }
 
 export function isTerminal(status: RunRecord['status']): boolean {

@@ -14,14 +14,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Play, PowerOff, User, Zap } from 'lucide-react';
-import type { PipelineActivationView, PipelineDef, PipelineListEntry } from '@ant/shared';
+import { ChevronDown, ChevronRight, Pencil, Play, PowerOff, ShieldCheck, User, Zap } from 'lucide-react';
+import { isApprovalStep, type PipelineActivationView, type PipelineDef, type PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
+import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { Badge, Button } from '../aurora';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeCron } from './cronDescribe';
 import { ActivationRunHistory } from './ActivationRunHistory';
+import { ApproversEditor, type ApproverGateInfo } from './ApproversEditor';
 
 export interface PipelineExecutionViewProps {
   def: PipelineDef;
@@ -46,10 +48,20 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
   const [busy, setBusy] = useState(false);
   const [runNowNote, setRunNowNote] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [activateOpen, setActivateOpen] = useState(false);
+  const [draftApprovers, setDraftApprovers] = useState<Record<string, string[]>>({});
+  const isTeam = useStore(selectIsTeamActive);
 
   useEffect(() => {
     void loadActivatableProjects();
   }, [loadActivatableProjects]);
+
+  // Approval-step rows drive the per-gate approver form (S1). Zero gates =
+  // no approver UI at all; non-team orgs keep the one-click flow.
+  const gateInfos: ApproverGateInfo[] = useMemo(
+    () => def.steps.filter(isApprovalStep).map((s) => ({ id: s.id, prompt: s.prompt })),
+    [def],
+  );
 
   const activations = entry?.activations ?? [];
   const enabled = entry?.enabled ?? false;
@@ -158,43 +170,107 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
       </div>
 
       {/* Pinned footer — activation acts on the CURRENT project. */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '10px 14px',
-          borderTop: '1px solid var(--border-1)',
-          background: 'var(--bg-surface)',
-        }}
-      >
-        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {footerAction === 'badge'
-            ? (projectNameOf(selectedProject!) ?? selectedProject)
-            : footerHint ?? (projectNameOf(selectedProject!) ?? selectedProject)}
-        </span>
-        {footerAction === 'badge' ? (
-          <Badge tone="success" dot title={activeHere && !activeHere.mine ? activeHere.activatedBy : undefined}>
-            {activeHere && !activeHere.mine
-              ? t('execution.activeHereBy', 'Active here — by {{who}}', { who: activeHere.activatedBy })
-              : t('execution.activeHere', 'Active in this project')}
-          </Badge>
-        ) : (
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={footerAction !== 'activate' || busy}
-            title={footerHint ?? undefined}
-            onClick={async () => {
-              if (!selectedProject) return;
-              setBusy(true);
-              await activatePipelineTo(pipelineId, selectedProject);
-              setBusy(false);
+      <div style={{ position: 'relative' }}>
+        {activateOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              right: 12,
+              marginBottom: 8,
+              width: 420,
+              maxWidth: 'calc(100% - 24px)',
+              maxHeight: 380,
+              overflowY: 'auto',
+              zIndex: 20,
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-1)',
+              borderRadius: 'var(--r-md)',
+              boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.16))',
+              padding: 14,
             }}
           >
-            <Zap size={13} /> {t('execution.activateHere', 'Activate in this project')}
-          </Button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              <Zap size={12} style={{ color: 'var(--violet-500)' }} />
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
+                {t('approvers.activateTitle', 'Activate in this project — {{project}}', {
+                  project: projectNameOf(selectedProject!) ?? selectedProject,
+                })}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>
+              {t('approvers.sectionTitle', 'Gate approvers (per gate)')}
+            </div>
+            <ApproversEditor gates={gateInfos} value={draftApprovers} onChange={setDraftApprovers} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setActivateOpen(false)}>
+                {t('approvers.cancel', 'Cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={busy}
+                onClick={async () => {
+                  if (!selectedProject) return;
+                  setBusy(true);
+                  const ok = await activatePipelineTo(pipelineId, selectedProject, draftApprovers);
+                  setBusy(false);
+                  if (ok) {
+                    setActivateOpen(false);
+                    setDraftApprovers({});
+                  }
+                }}
+              >
+                <Zap size={13} /> {t('execution.activateHere', 'Activate in this project')}
+              </Button>
+            </div>
+          </div>
         )}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 14px',
+            borderTop: '1px solid var(--border-1)',
+            background: 'var(--bg-surface)',
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {footerAction === 'badge'
+              ? (projectNameOf(selectedProject!) ?? selectedProject)
+              : footerHint ?? (projectNameOf(selectedProject!) ?? selectedProject)}
+          </span>
+          {footerAction === 'badge' ? (
+            <Badge tone="success" dot title={activeHere && !activeHere.mine ? activeHere.activatedBy : undefined}>
+              {activeHere && !activeHere.mine
+                ? t('execution.activeHereBy', 'Active here — by {{who}}', { who: activeHere.activatedBy })
+                : t('execution.activeHere', 'Active in this project')}
+            </Badge>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={footerAction !== 'activate' || busy}
+              title={footerHint ?? undefined}
+              onClick={async () => {
+                if (!selectedProject) return;
+                // Team org + gates → the per-gate approver popover (S1);
+                // otherwise the original one-click activation.
+                if (isTeam && gateInfos.length > 0) {
+                  setDraftApprovers({});
+                  setActivateOpen((v) => !v);
+                  return;
+                }
+                setBusy(true);
+                await activatePipelineTo(pipelineId, selectedProject);
+                setBusy(false);
+              }}
+            >
+              <Zap size={13} /> {t('execution.activateHere', 'Activate in this project')}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -228,6 +304,19 @@ function ActivationSection({
   const { t } = useTranslation('pipelines');
   const runDetail = useStore((s) => s.pipelineRunDetail);
   const loadPipelineRunDetail = useStore((s) => s.loadPipelineRunDetail);
+  const updateActivationApproversTo = useStore((s) => s.updateActivationApproversTo);
+  const [editingApprovers, setEditingApprovers] = useState(false);
+  const [approverDraft, setApproverDraft] = useState<Record<string, string[]>>({});
+  const [savingApprovers, setSavingApprovers] = useState(false);
+
+  const gateInfos: ApproverGateInfo[] = useMemo(
+    () => def.steps.filter(isApprovalStep).map((s) => ({ id: s.id, prompt: s.prompt })),
+    [def],
+  );
+  const approverNames = useMemo(
+    () => [...new Set(Object.values(view.approvers ?? {}).flat())],
+    [view.approvers],
+  );
 
   const stateProps =
     view.state === 'broken'
@@ -278,6 +367,29 @@ function ActivationSection({
           <User size={9} style={{ marginRight: 3 }} />
           {view.mine ? t('execution.activatedByYou', 'you') : view.activatedBy}
         </Badge>
+        {/* Approver-union chip — org-visible transparency (S4); pencil = A5-2 form in PUT mode. */}
+        {approverNames.length > 0 && (
+          <Badge tone="warning" size="sm" title={approverNames.join(', ')}>
+            <ShieldCheck size={9} style={{ marginRight: 3 }} />
+            {approverNames.slice(0, 3).join(', ')}
+            {approverNames.length > 3 && ` +${approverNames.length - 3}`}
+          </Badge>
+        )}
+        {view.mine && gateInfos.length > 0 && (
+          <span onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="xs"
+              title={t('approvers.edit', 'Edit gate approvers')}
+              onClick={() => {
+                setApproverDraft(view.approvers ?? {});
+                setEditingApprovers((v) => !v);
+              }}
+            >
+              <Pencil size={11} />
+            </Button>
+          </span>
+        )}
         {view.nextFireAt && !live && (
           <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
             {t('execution.nextFire', 'Next fire: {{when}}', { when: new Date(view.nextFireAt).toLocaleString() })}
@@ -299,6 +411,32 @@ function ActivationSection({
           </span>
         )}
       </div>
+      {editingApprovers && (
+        <div style={{ borderTop: '1px solid var(--border-1)', padding: '10px 12px', background: 'var(--bg-surface-2)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>
+            {t('approvers.sectionTitle', 'Gate approvers (per gate)')}
+          </div>
+          <ApproversEditor gates={gateInfos} value={approverDraft} onChange={setApproverDraft} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+            <Button variant="ghost" size="xs" disabled={savingApprovers} onClick={() => setEditingApprovers(false)}>
+              {t('approvers.cancel', 'Cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              size="xs"
+              disabled={savingApprovers}
+              onClick={async () => {
+                setSavingApprovers(true);
+                const ok = await updateActivationApproversTo(view.pipelineId, view.projectId, approverDraft);
+                setSavingApprovers(false);
+                if (ok) setEditingApprovers(false);
+              }}
+            >
+              {t('approvers.save', 'Save approvers')}
+            </Button>
+          </div>
+        </div>
+      )}
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-1)' }}>
           {showProgress && runDetail && runDetail.runId === view.currentRunId && (
@@ -308,9 +446,21 @@ function ActivationSection({
                 customAgents={accountAgents}
                 cronSummary={cronSummary}
                 run={runDetail}
+                approversByGate={view.approvers}
                 selectedNodeId={null}
                 onSelectNode={() => {}}
               />
+            </div>
+          )}
+          {/* Per-gate roster table — the observer's map (S4), read-only. */}
+          {view.approvers && Object.keys(view.approvers).length > 0 && (
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-1)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {Object.entries(view.approvers).map(([gateId, list]) => (
+                <div key={gateId} style={{ display: 'flex', gap: 8, fontSize: 11 }}>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text-3)', flexShrink: 0 }}>{gateId}</span>
+                  <span style={{ color: 'var(--text-2)', overflowWrap: 'anywhere' }}>→ {list.join(', ')}</span>
+                </div>
+              ))}
             </div>
           )}
           <div style={{ padding: '4px 10px' }}>

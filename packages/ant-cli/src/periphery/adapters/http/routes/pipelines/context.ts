@@ -254,6 +254,8 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
       ...(broken ? {} : nextFireAt ? { nextFireAt } : {}),
       ...(currentRunId && { currentRunId }),
       ...(lastRun && { lastRun }),
+      // Org-visible by design: who opens which gate is never hidden.
+      ...(activation.approvers && { approvers: activation.approvers }),
     };
   }
 

@@ -145,6 +145,34 @@ function RunRow({
         {started.toLocaleString()} {duration !== null && `· ${duration}s`}
       </span>
       <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-3)' }}>{run.runId}</span>
+      {/* Gate-decision chips — the org observer's "who opened this gate"
+          channel, rendered on read-only member rows too (S4). */}
+      {run.gates?.map((g) => (
+        <span
+          key={g.stepId}
+          title={`${g.stepId}: ${g.decision}${g.decidedBy ? ` by ${g.decidedBy}` : ''}`}
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            padding: '1px 7px',
+            borderRadius: 999,
+            border: '1px solid var(--border-1)',
+            color:
+              g.decision === 'approved' || g.decision === 'expired_approve'
+                ? 'var(--emerald-500)'
+                : 'var(--red-500)',
+            background: 'var(--bg-surface-2)',
+          }}
+        >
+          {g.decision === 'approved'
+            ? `✓ ${g.decidedBy ?? '?'}`
+            : g.decision === 'rejected'
+              ? `✗ ${g.decidedBy ?? '?'}`
+              : g.decision === 'expired_approve'
+                ? '⏱ ✓ auto'
+                : '⏱ ✗ auto'}
+        </span>
+      ))}
       {run.error && (
         <span style={{ flexBasis: '100%', fontSize: 11, color: 'var(--red-500)' }}>{run.error}</span>
       )}
@@ -152,7 +180,18 @@ function RunRow({
   );
 }
 
-export function RunTimeline({ steps, live, onCancel }: { steps: StepRecord[]; live: boolean; onCancel?: () => void }) {
+export function RunTimeline({
+  steps,
+  live,
+  onCancel,
+  jobLink = true,
+}: {
+  steps: StepRecord[];
+  live: boolean;
+  onCancel?: () => void;
+  /** false = plain jobId text (approver panel — job deep links are project-scoped). */
+  jobLink?: boolean;
+}) {
   const { t } = useTranslation('pipelines');
   const selectJobId = useStore((s) => (s as any).selectJobId);
   return (
@@ -187,24 +226,40 @@ export function RunTimeline({ steps, live, onCancel }: { steps: StepRecord[]; li
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{step.stepId}</span>
                   <span style={{ fontSize: 10.5, fontWeight: 600, color, textTransform: 'capitalize' }}>{step.status.replace(/_/g, ' ')}</span>
-                  {step.jobId && (
-                    <button
-                      onClick={() => typeof selectJobId === 'function' && selectJobId(step.jobId, { jobType: 'universal' })}
-                      title={step.jobId}
-                      style={{
-                        fontSize: 10,
-                        fontFamily: 'monospace',
-                        padding: '1px 7px',
-                        borderRadius: 999,
-                        background: 'var(--bg-surface-2)',
-                        border: '1px solid var(--border-1)',
-                        color: 'var(--text-3)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {step.jobId}
-                    </button>
-                  )}
+                  {step.jobId &&
+                    (jobLink ? (
+                      <button
+                        onClick={() => typeof selectJobId === 'function' && selectJobId(step.jobId, { jobType: 'universal' })}
+                        title={step.jobId}
+                        style={{
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          padding: '1px 7px',
+                          borderRadius: 999,
+                          background: 'var(--bg-surface-2)',
+                          border: '1px solid var(--border-1)',
+                          color: 'var(--text-3)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {step.jobId}
+                      </button>
+                    ) : (
+                      <span
+                        title={step.jobId}
+                        style={{
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          padding: '1px 7px',
+                          borderRadius: 999,
+                          background: 'var(--bg-surface-2)',
+                          border: '1px solid var(--border-1)',
+                          color: 'var(--text-3)',
+                        }}
+                      >
+                        {step.jobId}
+                      </span>
+                    ))}
                 </div>
                 {step.error && <div style={{ fontSize: 11, color: 'var(--red-500)', marginTop: 3 }}>{step.error}</div>}
                 {step.output?.answer && (
@@ -241,6 +296,20 @@ export function RunTimeline({ steps, live, onCancel }: { steps: StepRecord[]; li
                         })}
                     {step.gate.decidedAt && ` · ${new Date(step.gate.decidedAt).toLocaleTimeString()}`}
                     {step.gate.via && ` · ${step.gate.via}`}
+                    {step.gate.decisionNote && (
+                      <div
+                        style={{
+                          marginTop: 3,
+                          padding: '3px 8px',
+                          borderLeft: '2px solid var(--border-2, var(--border-1))',
+                          fontStyle: 'italic',
+                          color: 'var(--text-2)',
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {step.gate.decisionNote}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

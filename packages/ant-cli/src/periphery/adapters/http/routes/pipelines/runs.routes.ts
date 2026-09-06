@@ -24,9 +24,14 @@ export function registerRunRoutes(router: Router, ctx: PipelinesRouteContext): v
         if (projectId !== undefined && !isSingleSegment(projectId)) return void reject400(res, 'projectId');
         if (projectId) run = deps.coordinator.readRunFromDisk(owner, projectId, req.params.runId);
       }
-      // Own runs only: the caller's own activation dir must hold the run log
-      // (the coordinator writes it there on fire) — members' rows are summaries.
-      if (run && !hasRunLog(actRootOf(owner), run.projectId, run.runId)) run = null;
+      // Own runs: the caller's own activation dir must hold the run log (the
+      // coordinator writes it there on fire). A NON-owner gets the detail
+      // read-only IFF they are on a gate roster of the owning activation —
+      // the approver's decision context (cancel/clarify stay owner-only).
+      if (run && !hasRunLog(actRootOf(owner), run.projectId, run.runId)) {
+        const approverRead = await deps.coordinator.approverRunAccess(owner, run);
+        if (!approverRead) run = null;
+      }
       if (!run) {
         res.status(404).json({ error: 'run not found', runId: req.params.runId });
         return;

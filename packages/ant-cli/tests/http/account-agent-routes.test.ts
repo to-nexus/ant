@@ -1358,6 +1358,8 @@ describe('self-api scope pin', () => {
     ['POST', '/api/definitions/pipelines/runs/run-1/cancel'],
     ['POST', '/api/definitions/pipelines/runs/run-1/steps/step-1/clarify'],
     ['GET', '/api/definitions/pipelines/weekly-report/runs'],
+    // Granting approval rights is the activator's decision, never a job's.
+    ['PUT', '/api/definitions/pipelines/activations/proj-a/approvers'],
     // Right shape, wrong method.
     ['POST', '/api/definitions/pipelines/weekly-report'],
     ['PUT', '/api/definitions/pipelines'],
@@ -1374,6 +1376,7 @@ describe('self-api scope pin', () => {
     expect((await call('/api/definitions/pipelines/weekly-report')).status).toBe(200);
     expect((await call('/api/definitions/pipelines/approvals')).status).toBe(403);
     expect((await call('/api/definitions/pipelines/runs')).status).toBe(403);
+    expect((await call('/api/definitions/pipelines/activations')).status).toBe(403);
     expect((await call('/api/definitions/pipelines/preview-fires')).status).toBe(403); // GET — the route is POST
   });
 

@@ -9,6 +9,7 @@ import { useStore } from '@/domain/store';
 import { OAUTH_BASE } from '@/infrastructure/http/api';
 import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
 import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
+import { selectPipelineApprovalCount } from '@/domain/store/selectors/pipelines';
 import { useSignOut } from '@/application/hooks/ui/useSignOut';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
@@ -45,6 +46,7 @@ export function AppNavBar({}: AppNavBarProps) {
   const serverMode = useStore((state) => selectServerMode(state));
   const pendingInvites = useStore((state) => state.pendingInvites);
   const undismissAllInvites = useStore((state) => state.undismissAllInvites);
+  const pendingApprovalCount = useStore((state) => selectPipelineApprovalCount(state as any));
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
@@ -252,6 +254,28 @@ export function AppNavBar({}: AppNavBarProps) {
             >
               <Waypoints className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{t('viewMode.pipelines', 'Pipelines')}</span>
+              {/* Amber pending-approval count — visible wherever the user is
+                  (pipelineApprovals fills over user-scoped SSE regardless of view). */}
+              {pendingApprovalCount > 0 && (
+                <span
+                  aria-label={t('viewMode.pipelinesPendingBadge', 'Pending approvals')}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    minWidth: 15,
+                    height: 15,
+                    padding: '0 4px',
+                    borderRadius: 8,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'var(--amber-500, #f59e0b)',
+                    color: 'var(--text-on-brand, #fff)',
+                  }}
+                >
+                  {pendingApprovalCount}
+                </span>
+              )}
             </button>
           </div>
 

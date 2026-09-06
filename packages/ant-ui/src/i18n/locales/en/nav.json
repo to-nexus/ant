@@ -26,7 +26,8 @@
     "label": "Task view mode",
     "kanban": "Kanban",
     "workflow": "Workflow",
-    "checklist": "Checklist"
+    "checklist": "Checklist",
+    "pipelinesPendingBadge": "Pending approvals"
   },
   "theme": {
     "toggle": "Toggle theme",

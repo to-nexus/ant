@@ -14,6 +14,7 @@ import type { PipelineActivation } from '@ant/shared';
 import { REDIS_KEYS } from '../../core/constants/redis';
 import type { PipelineOwner, ScheduleQueuePort } from '../../core/ports/scheduler';
 import type { StateStorePort } from '../../core/ports/stateStore';
+import { approverUnion, syncApproverIndexForActivation } from '../../core/pipelines/approverIndex';
 import { deriveActivationsRoot } from '../../core/pipelines/paths';
 import { deleteActivationRecord, loadActivationByProject } from '../../core/pipelines/store';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
@@ -24,7 +25,7 @@ export interface DeactivateBindingDeps {
   workspacesPath: string;
   scheduleQueue: Pick<ScheduleQueuePort, 'removeCron'>;
   coordinator: Pick<PipelineRunCoordinator, 'deactivate'>;
-  stateStore: Pick<StateStorePort, 'deleteKey' | 'publish'>;
+  stateStore: Pick<StateStorePort, 'deleteKey' | 'publish' | 'getKey' | 'setKeyWithTTL'>;
 }
 
 export async function deactivatePipelineBinding(
@@ -49,6 +50,16 @@ export async function deactivatePipelineBinding(
   await deps.scheduleQueue.removeCron(schedulerIdFor(owner, projectId));
   await deps.coordinator.deactivate(owner, projectId);
   deleteActivationRecord(actRoot, projectId);
+  // Approver-of discovery entries for this activation go with it (advisory —
+  // resolve authority already re-reads the deleted sidecar and refuses).
+  await syncApproverIndexForActivation(
+    deps.stateStore,
+    owner.organizationId,
+    owner.userId,
+    projectId,
+    approverUnion(activation),
+    [],
+  );
   await deps.stateStore
     .deleteKey(REDIS_KEYS.PIPE.ACTIVATION(owner.organizationId, owner.userId, projectId))
     .catch(() => {});

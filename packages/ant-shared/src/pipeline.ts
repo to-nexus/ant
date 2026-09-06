@@ -261,17 +261,88 @@ export interface PipelineActivation {
   projectId: string;
   activatedAt: string;
   activatedBy?: string;
+  /**
+   * PER-GATE approver roster: key = approval step id, value = lowercase org
+   * member userIds (emails in cloud). A gate absent from the map is decidable
+   * by the activator only. Stored on the ACTIVATION (never the definition —
+   * definitions are shared templates and are frozen while activated, which
+   * also pins the gate-id key set for the activation's lifetime). Resolve
+   * authority re-reads this live; the run's activationSnapshot copy is audit
+   * reference only.
+   */
+  approvers?: Record<string, string[]>;
   /** Reserved for the canonical phase (project+feature scope). Universal ⇒ omitted. */
   featureId?: string;
 }
 
-const ACTIVATION_KEYS = ['pipelineId', 'pipelineScope', 'projectId', 'activatedAt', 'activatedBy', 'featureId'];
+const ACTIVATION_KEYS = ['pipelineId', 'pipelineScope', 'projectId', 'activatedAt', 'activatedBy', 'approvers', 'featureId'];
 
-/** Plain messages, empty = valid (validateMcpServers precedent). */
-export function validatePipelineActivation(raw: unknown): string[] {
+/** Approver-map rows, reused by the activate and approvers-PUT ingresses. */
+function approverMapErrors(
+  raw: Record<string, unknown>,
+  gateStepIds: string[] | undefined,
+  cap: number,
+): string[] {
+  const errors: string[] = [];
+  for (const [stepId, list] of Object.entries(raw)) {
+    if (!isValidCustomId(stepId)) {
+      errors.push(`activation.approvers: "${stepId}" is not a valid step id`);
+      continue;
+    }
+    if (gateStepIds && !gateStepIds.includes(stepId)) {
+      errors.push(`activation.approvers: "${stepId}" is not an approval step of this pipeline (gates: ${gateStepIds.join(', ') || 'none'})`);
+    }
+    if (!Array.isArray(list)) {
+      errors.push(`activation.approvers.${stepId} must be an array of member ids`);
+      continue;
+    }
+    if (list.length > cap) {
+      errors.push(`activation.approvers.${stepId}: at most ${cap} approvers per gate (got: ${list.length})`);
+    }
+    const seen = new Set<string>();
+    for (const entry of list) {
+      if (typeof entry !== 'string' || entry.trim().length === 0) {
+        errors.push(`activation.approvers.${stepId}: approvers must be non-empty strings`);
+        continue;
+      }
+      if (entry !== entry.trim().toLowerCase()) {
+        errors.push(`activation.approvers.${stepId}: "${entry}" must be a lowercase member id`);
+      }
+      if (seen.has(entry)) {
+        errors.push(`activation.approvers.${stepId}: duplicate approver "${entry}"`);
+      }
+      seen.add(entry);
+    }
+  }
+  return errors;
+}
+
+/**
+ * Plain messages, empty = valid (validateMcpServers precedent).
+ * `opts.gateStepIds` (the activate/PUT ingresses pass the def's approval step
+ * ids) turns on the approver-key subset check; loads WITHOUT it stay lenient —
+ * a checkpoint/sidecar restore must not throw on a def that later changed.
+ */
+export function validatePipelineActivation(
+  raw: unknown,
+  opts: { gateStepIds?: string[]; maxApproversPerGate?: number } = {},
+): string[] {
   if (!isPlainObject(raw)) return ['activation must be an object'];
   const errors: string[] = [];
   errors.push(...unknownKeyErrors(raw, ACTIVATION_KEYS, 'activation'));
+  if (raw.approvers !== undefined) {
+    if (!isPlainObject(raw.approvers)) {
+      errors.push('activation.approvers must be a map of { <gateStepId>: [memberId, …] }');
+    } else {
+      errors.push(
+        ...approverMapErrors(
+          raw.approvers,
+          opts.gateStepIds,
+          opts.maxApproversPerGate ?? DEFAULT_PIPELINE_CAPS.maxApproversPerGate,
+        ),
+      );
+    }
+  }
   if (typeof raw.pipelineId !== 'string' || !isValidCustomId(raw.pipelineId)) {
     errors.push('activation.pipelineId must be a pipeline id (lowercase kebab-case)');
   }
@@ -373,6 +444,7 @@ export interface PipelineCaps {
   maxStepsPerPipeline: number;
   minCronIntervalMinutes: number;
   maxConcurrentRuns: number;
+  maxApproversPerGate: number;
 }
 
 export const DEFAULT_PIPELINE_CAPS: PipelineCaps = {
@@ -380,7 +452,11 @@ export const DEFAULT_PIPELINE_CAPS: PipelineCaps = {
   maxStepsPerPipeline: 20,
   minCronIntervalMinutes: 5,
   maxConcurrentRuns: 3,
+  maxApproversPerGate: 10,
 };
+
+/** Ceiling for a gate decision note (reject-reason channel) — audit line + run history. */
+export const PIPELINE_GATE_NOTE_MAX_CHARS = 500;
 
 // ============================================
 // Run / step / gate records (runs JSONL + Redis projection + API)
@@ -420,6 +496,8 @@ export interface GateRecord {
   decidedBy?: string;
   decidedAt?: string;
   via?: 'in-app' | 'api';
+  /** Free-text decision note (PIPELINE_GATE_NOTE_MAX_CHARS cap) — the reject-reason channel. */
+  decisionNote?: string;
 }
 
 /**
@@ -510,6 +588,14 @@ export interface RunRecord {
   chainDepth?: number;
 }
 
+/** One approval-gate decision on a terminal run's summary line — the org observer's "who opened this gate" channel. */
+export interface PipelineRunGateSummary {
+  stepId: string;
+  decision: GateDecision;
+  /** Absent on timeout auto-decisions. */
+  decidedBy?: string;
+}
+
 /** One line per TERMINAL run in `runs/index.jsonl`; also the runs-list API row. */
 export interface PipelineRunSummary {
   runId: string;
@@ -522,6 +608,8 @@ export interface PipelineRunSummary {
   startedAt: string;
   endedAt?: string;
   error?: string;
+  /** Approval-gate decisions (approval STEPS only — tool gates stay off the summary). */
+  gates?: PipelineRunGateSummary[];
 }
 
 /** Append-only run event line (`.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl`). */
@@ -566,6 +654,8 @@ export interface PipelineActivationView {
   nextFireAt?: string;
   currentRunId?: string;
   lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
+  /** Per-gate approver roster — org-visible by design (who opens which gate is never hidden). */
+  approvers?: Record<string, string[]>;
 }
 
 /** List-rail entry. `nextFireAt` is SERVER-computed — the FE never parses cron. */
@@ -613,6 +703,14 @@ export interface PipelinePendingApproval {
   timeoutAt?: string;
   /** Clarify rows only: the asking job (funnel key). */
   jobId?: string;
+  /**
+   * Absent = the caller's own activation. `'approver'` = the caller is on this
+   * gate's roster of ANOTHER member's activation — the inbox groups these rows
+   * separately and offers the run-context panel instead of project surfaces.
+   */
+  role?: 'approver';
+  /** role:'approver' rows only — the activation's owner (run/context reads key off it). */
+  ownerUserId?: string;
 }
 
 // ============================================

@@ -26,7 +26,8 @@
     "label": "작업 표시 모드",
     "kanban": "보드",
     "workflow": "작업흐름",
-    "checklist": "체크리스트"
+    "checklist": "체크리스트",
+    "pipelinesPendingBadge": "대기 중인 승인"
   },
   "theme": {
     "toggle": "테마 전환",

@@ -456,6 +456,12 @@ export const REDIS_KEYS = {
      *  self-clears, so the gate fails OPEN, never closed. - ant:pipe:proj:{orgId}:{userId}:{projectId} */
     PROJECT: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.PIPE}:proj:${org}:${user}:${projectId}`,
+    /** Reverse DISCOVERY index: activations naming this user a gate approver
+     *  (JSON array of "{ownerUserId}|{projectId}"). Advisory only — resolve
+     *  authority always re-reads the owner's activation.json; TTL-bounded and
+     *  rebuilt by the reconciler. - ant:pipe:approver-of:{orgId}:{userId} */
+    APPROVER_OF: (org: string, user: string): string =>
+      `${REDIS_DOMAINS.PIPE}:approver-of:${org}:${user}`,
   },
 } as const;
 
@@ -560,6 +566,13 @@ export const REDIS_TTL = {
      * crash between disk unlink and Redis delete self-clears within this.
      */
     ACTIVATION: 10 * 60,
+    /**
+     * Approver-of discovery index — same refresh contract as ACTIVATION
+     * (reconciler-rebuilt, activate/PUT/deactivate write synchronously). A
+     * stale entry is harmless: every consumer re-verifies against the owner's
+     * live activation.json before granting anything.
+     */
+    APPROVER_OF: 10 * 60,
   },
 } as const;
 

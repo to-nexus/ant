@@ -27,18 +27,21 @@
 import type { GateDecision, PipelinePendingApproval, RunRecord } from '@ant/shared';
 import type { PipelineControlJobData, PipelineOwner } from '../../core/ports/scheduler';
 import { REDIS_CHANNELS } from '../../core/constants/redis';
+import { InAppChannel, type NotificationChannelPort } from '../../core/pipelines/notifications';
 import { logger } from '../../utils/logger';
-import { COMPONENT, type PipelineCoordinatorDeps, type PipelineRunOps } from './pipelineRun/types';
+import { COMPONENT, type HitlRecord, type PipelineCoordinatorDeps, type PipelineRunOps } from './pipelineRun/types';
 import { handleFire } from './pipelineRun/fire';
 import { dispatchJobStep, executeDispatches, handleStepRetry } from './pipelineRun/dispatch';
 import { failStepOrRetry, handleJobStatusUpdate, handleOutcomeRetry, handleStepTimeout } from './pipelineRun/outcome';
 import { applyClarifyAnswer, enterAwaitingClarify, enterAwaitingToolApproval } from './pipelineRun/hitl';
-import { applyResolvedGate, armGate, handleGateRemind, handleGateTimeout } from './pipelineRun/gates';
+import { applyResolvedGate, armGate, handleGateRemind, handleGateTimeout, republishArmedGates } from './pipelineRun/gates';
 import { applyOutcome, cancelRun, deactivate, finalizeRun, killStepJob } from './pipelineRun/lifecycle';
 import {
+  approverRunAccess,
   getActiveRunId,
   getHitlByGateId,
   getRun,
+  listApproverPendingApprovals,
   listPendingApprovals,
   readRunFromDisk,
 } from './pipelineRun/runStore';
@@ -49,8 +52,10 @@ export class PipelineRunCoordinator {
   private readonly ctx: PipelineRunOps;
 
   constructor(private readonly deps: PipelineCoordinatorDeps) {
+    const channel: NotificationChannelPort = deps.notificationChannel ?? new InAppChannel(deps.stateStore);
     this.ctx = {
       deps,
+      notify: (notice) => channel.notify(notice),
       executeDispatches: (owner, def, run, dispatches) => executeDispatches(this.ctx, owner, def, run, dispatches),
       dispatchJobStep: (owner, def, run, step, retries, directiveOverride, approvalGrantTool) =>
         dispatchJobStep(this.ctx, owner, def, run, step, retries, directiveOverride, approvalGrantTool),
@@ -116,8 +121,19 @@ export class PipelineRunCoordinator {
    * Gate resolution — called AFTER ChatService's NX-guarded choice-resolved
    * succeeded (chat route branch, approvals route, or the timeout arm).
    */
-  async applyResolvedGate(cardId: string, decision: GateDecision, decidedBy: string | undefined, via: 'in-app' | 'api'): Promise<boolean> {
-    return applyResolvedGate(this.ctx, cardId, decision, decidedBy, via);
+  async applyResolvedGate(
+    cardId: string,
+    decision: GateDecision,
+    decidedBy: string | undefined,
+    via: 'in-app' | 'api',
+    opts: { note?: string } = {},
+  ): Promise<boolean> {
+    return applyResolvedGate(this.ctx, cardId, decision, decidedBy, via, opts);
+  }
+
+  /** S9 — re-fire armed approval-step gate notices to the CURRENT roster. */
+  async republishArmedGates(owner: PipelineOwner, projectId: string): Promise<void> {
+    return republishArmedGates(this.ctx, owner, projectId);
   }
 
   /**
@@ -162,7 +178,17 @@ export class PipelineRunCoordinator {
     return listPendingApprovals(this.deps, owner);
   }
 
-  async getHitlByGateId(gateId: string): Promise<{ cardId: string; anchorJobId: string; owner: PipelineOwner; runId: string } | null> {
+  /** Pending approval-step gates the caller may decide on OTHER members' activations. */
+  async listApproverPendingApprovals(caller: PipelineOwner): Promise<PipelinePendingApproval[]> {
+    return listApproverPendingApprovals(this.deps, caller);
+  }
+
+  /** Read-only run access for a gate approver (detail read only — never control). */
+  async approverRunAccess(caller: PipelineOwner, run: Pick<RunRecord, 'runId' | 'projectId'>): Promise<boolean> {
+    return approverRunAccess(this.deps, caller, run);
+  }
+
+  async getHitlByGateId(gateId: string): Promise<HitlRecord | null> {
     return getHitlByGateId(this.deps, gateId);
   }
 }

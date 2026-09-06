@@ -262,6 +262,8 @@ export class ApiError extends Error {
   filename?: string;
   /** Per-file refusals (415 UNREADABLE_FILES on artifact upload). */
   rejected?: Array<{ path: string; reason: string }>;
+  /** Who already resolved a pipeline gate (409 on the approvals resolve race). */
+  decidedBy?: string;
 
   constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message);
@@ -279,6 +281,7 @@ export class ApiError extends Error {
     this.leftovers = data?.leftovers as string[] | undefined;
     this.filename = data?.filename as string | undefined;
     this.rejected = data?.rejected as Array<{ path: string; reason: string }> | undefined;
+    this.decidedBy = data?.decidedBy as string | undefined;
   }
 }
 

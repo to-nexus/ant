@@ -93,7 +93,17 @@
     "timeout": "Auto-decides {{when}}",
     "clarifyPlaceholder": "Type your answer…",
     "clarifySubmit": "Answer & resume",
-    "toolGate": "Tool approval"
+    "toolGate": "Tool approval",
+    "groupApprover": "Approval requests",
+    "groupMine": "My pipelines",
+    "ownerLine": "{{who}}'s activation",
+    "details": "Details",
+    "rejectNotePlaceholder": "Reason (optional) — the owner uses it to decide the next move",
+    "rejectConfirm": "Confirm reject",
+    "rejectCancel": "Back",
+    "alreadyDecided": "This gate was already decided.",
+    "alreadyDecidedBy": "Already decided by {{who}}.",
+    "authorityRevoked": "Your approval authority for this gate was revoked."
   },
   "editor": {
     "pickOne": "Select a pipeline on the left,\nor create a new one.",
@@ -117,7 +127,11 @@
     "unconfigured": "Choose a job…",
     "noTimeout": "no timeout",
     "addJobStep": "Job step",
-    "addGate": "Approval gate"
+    "addGate": "Approval gate",
+    "gateApprovedBy": "✓ approved by {{who}}",
+    "gateRejectedBy": "✗ rejected by {{who}}",
+    "gateAutoApproved": "⏱ auto-approved",
+    "gateAutoRejected": "⏱ auto-rejected"
   },
   "inspector": {
     "trigger": "Trigger & policies",
@@ -219,7 +233,8 @@
     "inApp": "In-app",
     "comingSoon": "Coming soon",
     "remindAfter": "Remind while unresolved",
-    "remindAfterPlaceholder": "none — e.g. 4h, 24h"
+    "remindAfterPlaceholder": "none — e.g. 4h, 24h",
+    "approversHint": "Approvers are assigned per gate when the pipeline is activated on a project."
   },
   "runs": {
     "empty": "No runs yet — press Run now to test this pipeline.",
@@ -266,5 +281,28 @@
     "daily": "Every day at {{time}}",
     "weekly": "Every {{days}} at {{time}}",
     "monthly": "On day {{day}} of every month at {{time}}"
+  },
+  "approvers": {
+    "activateTitle": "Activate in this project — {{project}}",
+    "sectionTitle": "Gate approvers (per gate)",
+    "sameForAll": "Apply the same approvers to every gate",
+    "emptyHint": "Left empty, only you can approve this gate.",
+    "addPlaceholder": "+ search member…",
+    "remove": "Remove {{who}}",
+    "you": "you",
+    "edit": "Edit gate approvers",
+    "save": "Save approvers",
+    "cancel": "Cancel"
+  },
+  "approverPanel": {
+    "roleBadge": "Approval authority only",
+    "close": "Close",
+    "started": "started {{when}}",
+    "decidedApproved": "✓ Approved",
+    "decidedRejected": "✗ Rejected",
+    "resolvedElsewhere": "This gate is no longer waiting for you.",
+    "loading": "Loading run context…",
+    "retry": "Retry",
+    "auditLine": "Your decision is recorded on the run history as {{who}}."
   }
 }

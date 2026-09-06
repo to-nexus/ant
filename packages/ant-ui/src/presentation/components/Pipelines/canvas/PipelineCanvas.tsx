@@ -47,17 +47,20 @@ export interface PipelineCanvasProps {
   /** Account agent catalog for step display names — raw ids fall back when absent. */
   customAgents?: CanvasAgentSummary[];
   run?: PipelineRunPublic | null;
+  /** Activation context: per-gate approver roster rendered on gate nodes. */
+  approversByGate?: Record<string, string[]>;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   onAddAfter?: (afterNodeId: string, kind: 'job' | 'gate') => void;
 }
 
-export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
+export function PipelineCanvas({ def, cronSummary, customAgents, run, approversByGate, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
   const { t } = useTranslation('pipelines');
 
   const { nodes, edges } = useMemo(() => {
     const statusOf = new Map<string, PipelineStepStatus>();
     for (const s of run?.steps ?? []) statusOf.set(s.stepId, s.status);
+    const gateOf = new Map(run?.steps.filter((s) => s.gate?.decision).map((s) => [s.stepId, s.gate!]) ?? []);
 
     const rfNodes: Node<PipelineNodeData>[] = [
       {
@@ -110,6 +113,10 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNo
           selected: selectedNodeId === step.id,
           invalid,
           onAdd: onAddAfter,
+          ...(gate && approversByGate?.[step.id]?.length ? { approvers: approversByGate[step.id] } : {}),
+          ...(gate && gateOf.get(step.id)
+            ? { gateDecision: { decision: gateOf.get(step.id)!.decision!, decidedBy: gateOf.get(step.id)!.decidedBy } }
+            : {}),
         },
       });
     });
@@ -151,7 +158,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNo
     }
 
     return { nodes: rfNodes, edges: rfEdges };
-  }, [def, run, selectedNodeId, cronSummary, customAgents, onAddAfter, t]);
+  }, [def, run, approversByGate, selectedNodeId, cronSummary, customAgents, onAddAfter, t]);
 
   return (
     <ReactFlow
