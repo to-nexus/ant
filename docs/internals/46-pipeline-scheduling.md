@@ -506,7 +506,11 @@ the map = activator-only, exactly the pre-approver behavior.
   approval and clarify stay activator-scoped in v1. The chat leg still runs
   with `userContext: hitl.owner` (the card lives in the owner's project); the
   decider rides `decidedBy` + `resolvedLabel: "Approved by {caller}"`. The NX
-  loser's 409 carries `decidedBy`; an optional `note`
+  loser's 409 carries `decidedBy` only when the winner's apply has already
+  landed on the run record — in the tightest race the loser's re-read precedes
+  it and the field is omitted (observed live; the FE tolerates absence). A
+  re-resolve AFTER apply is 404, not 409 — the armed HITL record is gone
+  (existence non-disclosure). An optional `note`
   (≤ `PIPELINE_GATE_NOTE_MAX_CHARS`) lands on `gate.decisionNote` and the
   `human_resolved` line — the reject-reason channel.
 - **Notice fan-out has ONE owner**: `NotificationChannelPort`
