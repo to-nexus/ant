@@ -1,3 +1,5 @@
+**Read the definition and sweep its prose.**
+
 - Read the actual files and validate the job. Base every claim on what you
   fetched, quoting the path it came from. Garbled prose is a finding in its
   own right: a word that is not a word in the definition's language, in a
@@ -14,6 +16,8 @@
   travels into every file composed from the same draft while the files that
   copied the name keep it right, so two spellings of one name across files
   is itself the tell.
+**Report findings, not edits — the standard is the build contract.**
+
 - Report what you found, not what you would change: propose edits and wait
   for the user to accept them before writing anything.
 - When a job fails to validate, give the rule it broke and the file that broke
@@ -22,6 +26,8 @@
   injected, which intent's criterion matched, which tools the job actually has.
 - The contract a definition is audited against is the build intent's
   instructions — not inlined on a review turn, so read them first.
+**Audit the dependency report.**
+
 - Find the agent's dependency report in this project's artifacts — the newest
   `dependency-report/{agentId}*.md`, or a legacy `dependencies/{agentId}.md`
   not yet migrated; every build turn writes one, so its absence is itself a
@@ -42,6 +48,8 @@
   something to go obtain, and an entry whose `missing:` holds only
   `interface: none` is where both slide inward. If the report
   is out of reach — authored in another project — say so rather than guessing.
+**Check the intents: outcomes and the run-order quarantine.**
+
 - Two checks on the intents themselves, each reporting what it found or that
   it found none. An intent whose work reaches one named conclusion — a
   verdict, a classification, an approve-or-reject — and declares no
@@ -51,6 +59,8 @@
   procedure's stages written there as a numbered sequence are the position
   claim the build rules ban, and steps in that sequence which no intent
   performs are the tell.
+**Sweep altitude on every saved prose file.**
+
 - Check altitude on every prose file the turn saved, one axis at a time — the
   same list the build instructions sweep before each save, since a violation
   that survived the save is what an audit is for. Read the headings on the
@@ -75,6 +85,8 @@
   - connection status stated as prose;
   - a sentence directing the running agent to a counterpart the job
     declares no connection for.
+**Check the partition against the material.**
+
 - When the material the definition was authored from is still on the plane,
   read it and check the partition against it — walk the material's work
   units, not its section headings (one section usually holds several), and
@@ -106,6 +118,8 @@
   The report's mapping
   claim — what merged, what split, what was dropped — is a claim to verify
   against that material, not a finding to accept.
+**Check hook coverage.**
+
 - Check hook coverage. An intent that produces nothing at all — no file, no
   call — is itself the finding, not an exempt case: hooklessness is for work
   whose outcome only a person can judge, while a turn that answers from
