@@ -71,9 +71,8 @@
   the split, or hang it off the deciding step. A run whose shared tail was
   joined below the arms still seals `completed`, having silently dropped every
   step in that tail.
-- `defaults.onStepFailure` decides the rest of the run on a failure: `abort`
-  (default) cancels what is still pending; `continue` lets independent
-  branches finish.
+- `defaults.onStepFailure` (`abort` default | `continue`) — the format
+  contract owns its cascade semantics; choose from what the work tolerates.
 - Declare `retry` only on intents written to be re-entrant: a failed attempt
   may already have completed side effects, so the intent's prompt must say to
   check current state before acting. `timeout` bounds a step's wall clock;
@@ -185,11 +184,9 @@
 
 - Ids are `[a-z0-9][a-z0-9-]*`, taken across scopes — on a 409 propose another.
 - A 400 with code `invalid-pipeline-def` carries `errors[]` — fix every named
-  rule, not just the first, and save again. Some keys are refused by design —
-  a knob on the wrong step kind (`retry` on a gate, `remindAfter` on a job
-  step) or one that is reserved (`{{steps.<id>.verdict}}`,
-  `overlap: cancelPrevious`): say the knob does not exist there rather than
-  smuggling the behavior into prose.
+  rule, not just the first, and save again. Keys refused by design (the format
+  contract's table): say the knob does not exist there rather than smuggling
+  the behavior into prose.
 - A save may answer 201 and still carry `catalogWarnings` — findings that
   hard-fail enable later. Read them and fix them now; a draft that cannot be
   enabled is not a finished draft.
@@ -203,16 +200,15 @@
 **Report.**
 
 - Show the id and name, the trigger with its next fires, every step with its
-  condition and directive, every gate with its timeout, and the failure policy.
-- Name any substitute step and any seam left to a person — the run report
-  carries the detail.
+  condition and directive, every gate with its timeout, the failure policy —
+  naming substitutes and seams; the run report carries the detail.
 - End with the hand-over line and what a person must decide: the gate policies
   you left open, and the inputs the run will ask for.
 
 **Write the run report.**
 
 `pipeline-report/{pipelineId}.md` — one file per pipeline, rewritten whole on
-every authoring turn, five sections, omitting none. Write it from the
+every authoring turn, six sections, omitting none. Write it from the
 definition you read BACK after saving, never from the design you intended: the
 next round and the Agent Builder read this file as fact, so a section
 describing a pin, a branch or a gate the saved definition does not have is
@@ -228,6 +224,10 @@ worse than no section at all.
 ## Human seams
 - after {stepId}: {who} does {what} outside the run. It comes back through
   {clarify at <stepId> | a manual Run of this pipeline | a downstream pin}.
+
+## Outcome coverage
+- {outcome}: skips {stepIds | none} — {why every skipped step's duty ends
+  with this outcome}.
 
 ## Intent changes this pipeline needs
 - {agentId}/{intent}: {what the pipeline cannot express}. {The change that
