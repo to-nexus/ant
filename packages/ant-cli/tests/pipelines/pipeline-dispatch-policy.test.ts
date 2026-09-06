@@ -164,6 +164,19 @@ describe('approval funnel', () => {
     expect(routes).toMatch(/appendChoiceResolved/);
     expect(routes).toMatch(/if \(!result\.resolved\)/);
   });
+
+  it('the gate-seal human_resolved line precedes the dispatch fan-out (no log-order inversion)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    // applyOutcome fires the resolve audit hook after the outcome landed and
+    // before executeDispatches/finalizeRun append their downstream lines.
+    const apply = coordinator.slice(coordinator.indexOf('private async applyOutcome'));
+    const fanout = Math.min(apply.indexOf('executeDispatches'), apply.indexOf('finalizeRun'));
+    expect(apply.slice(0, fanout)).toMatch(/await onOutcomeLanded\(\)/);
+    // The gate seal path appends human_resolved through that hook, not post-hoc.
+    const gate = coordinator.slice(coordinator.indexOf('async applyResolvedGate'), coordinator.indexOf('private async handleGateTimeout'));
+    const seal = gate.slice(gate.indexOf('const applied = await this.applyOutcome('), gate.indexOf('if (!applied)'));
+    expect(seal).toMatch(/event: 'human_resolved'/);
+  });
 });
 
 describe('clarify funnel', () => {

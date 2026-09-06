@@ -880,6 +880,16 @@ export class PipelineRunCoordinator {
         ...record,
         gate: record.gate ? { ...record.gate, decision, decidedBy, decidedAt, via } : record.gate,
       }),
+      undefined,
+      () =>
+        this.appendEvent(hitl.owner, hitl.projectId, {
+          ts: decidedAt,
+          event: 'human_resolved',
+          runId: hitl.runId,
+          stepId: hitl.stepId,
+          gateId,
+          detail: { decision, decidedBy, via },
+        }),
     );
     // Keys are deleted only AFTER the outcome landed — a crash/lock-starved
     // apply keeps the HITL record recoverable (the timeout arm re-funnels).
@@ -888,15 +898,6 @@ export class PipelineRunCoordinator {
     await this.deps.scheduleQueue.cancelDelayed(`gre-${gateId}`);
     await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gateId));
     await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(cardId));
-
-    await this.appendEvent(hitl.owner, hitl.projectId, {
-      ts: decidedAt,
-      event: 'human_resolved',
-      runId: hitl.runId,
-      stepId: hitl.stepId,
-      gateId,
-      detail: { decision, decidedBy, via },
-    });
     const run = await this.getRun(hitl.runId);
     if (run) {
       await this.publish(hitl.owner, {
@@ -1797,6 +1798,7 @@ export class PipelineRunCoordinator {
     patch?: Partial<StepRecord>,
     decorate?: (record: StepRecord) => StepRecord,
     expectedJobId?: string,
+    onOutcomeLanded?: () => Promise<void>,
   ): Promise<boolean> {
     const result = await this.mutateRun(owner, runId, async (live, def) => {
       if (!def) return { run: live, dispatches: [] };
@@ -1820,6 +1822,10 @@ export class PipelineRunCoordinator {
       return plan;
     });
     if (!result) return false;
+    // The resolver's audit line (human_resolved) must precede the
+    // step_dispatched/run_finished fan-out below — and must not be written
+    // when the apply starved (the timeout arm re-funnels the whole resolve).
+    if (onOutcomeLanded) await onOutcomeLanded();
 
     if (result.dispatches.length > 0) {
       const def = result.run.defSnapshot!;
