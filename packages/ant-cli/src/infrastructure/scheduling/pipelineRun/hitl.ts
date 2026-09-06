@@ -96,6 +96,7 @@ export async function enterAwaitingToolApproval(ctx: PipelineRunOps, data: Pipel
     try {
       await ctx.deps.chatService.appendChoicePresented(projectId, UNIVERSAL_FEATURE, {
         jobId,
+        jobType: 'universal',
         cardId,
         cardType: 'pipeline_approval',
         prompt,

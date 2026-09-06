@@ -125,6 +125,7 @@ export async function armGate(
     try {
       await ctx.deps.chatService.appendChoicePresented(run.projectId, UNIVERSAL_FEATURE, {
         jobId: anchorJobId,
+        jobType: 'universal',
         cardId,
         cardType: 'pipeline_approval',
         prompt: step.prompt,

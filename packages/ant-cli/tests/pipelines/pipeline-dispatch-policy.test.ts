@@ -205,6 +205,16 @@ describe('approval funnel', () => {
     expect(gates).toMatch(/loadActivationByProject[\s\S]*?approvers\?\.\[stepId\]/);
   });
 
+  it("pipeline cards are minted with jobType 'universal' — the card index must not inherit the 'code' default", () => {
+    for (const mod of ['gates.ts', 'hitl.ts']) {
+      const src = read(`infrastructure/scheduling/pipelineRun/${mod}`);
+      const idx = src.indexOf("cardType: 'pipeline_approval'");
+      expect(idx).toBeGreaterThan(-1);
+      const block = src.slice(src.lastIndexOf('appendChoicePresented', idx), idx);
+      expect(block).toMatch(/jobType: 'universal'/);
+    }
+  });
+
   it('the approver inbox scan serves gate rows only — clarify and tool waits stay activator-scoped (v1)', () => {
     const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
     const scan = runStore.slice(runStore.indexOf('export async function listApproverPendingApprovals'));
