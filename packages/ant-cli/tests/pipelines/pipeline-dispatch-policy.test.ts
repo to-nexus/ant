@@ -205,7 +205,8 @@ describe('clarify funnel', () => {
     expect(coordinator).toMatch(/async applyClarifyAnswer\(/);
     // applyClarifyAnswer must end in dispatchJobStep (jobId re-pointing rides
     // the normal dispatch: reverse map + step→running + step_dispatched).
-    expect(coordinator).toMatch(/applyClarifyAnswer[\s\S]*?dispatchJobStep\(/);
+    const hitl = read('infrastructure/scheduling/pipelineRun/hitl.ts');
+    expect(hitl).toMatch(/applyClarifyAnswer[\s\S]*?dispatchJobStep\(/);
     // The wait is open-ended: no clarify timeout arm exists.
     expect(coordinator).not.toMatch(/cto-/);
   });
@@ -395,9 +396,10 @@ describe('retry / timeout / remind arms', () => {
     expect(coordinator.match(/`sto-\$\{run\.runId\}-\$\{step\.id\}`/g)?.length ?? 0).toBe(1); // one arm site
     expect(coordinator).toMatch(/handleStepTimeout/);
     // Expiry uses the ONE kill authority, then the retry funnel.
-    expect(coordinator).toMatch(/killStepJob\(data\.jobId, run\.projectId\);\s*\n\s*await this\.failStepOrRetry/);
+    expect(coordinator).toMatch(/killStepJob\(data\.jobId, run\.projectId\);\s*\n\s*await (this\.)?failStepOrRetry\(/);
     // Clarify park cancels the arm (human waits are open-ended).
-    const clarifySection = coordinator.slice(coordinator.indexOf('private async enterAwaitingClarify'));
+    const hitl = read('infrastructure/scheduling/pipelineRun/hitl.ts');
+    const clarifySection = hitl.slice(hitl.indexOf('export async function enterAwaitingClarify'));
     expect(clarifySection.slice(0, clarifySection.indexOf('appendEvent'))).toMatch(/cancelDelayed\(`sto-/);
   });
 

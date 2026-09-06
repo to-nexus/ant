@@ -25,28 +25,21 @@
  */
 
 import {
-  defaultStepDirective,
   isApprovalStep,
   parsePipelineDuration,
   MAX_GATE_REMINDERS,
-  MAX_STEP_RETRY,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
-  type ClarifyRecord,
   type GateDecision,
   type PipelineDef,
   type PipelinePendingApproval,
   type RunRecord,
-  type StepOutputRecord,
   type StepRecord,
 } from '@ant/shared';
 import type {
-  PipelineApprovalEnterJobData,
-  PipelineClarifyEnterJobData,
   PipelineControlJobData,
   PipelineGateRemindJobData,
   PipelineOwner,
-  PipelineStepTimeoutJobData,
 } from '../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL, REDIS_CHANNELS } from '../../core/constants/redis';
 import { logger } from '../../utils/logger';
@@ -62,16 +55,14 @@ import {
 } from '../../core/pipelines/store';
 import {
   COMPONENT,
-  MAX_OUTCOME_RETRIES,
-  OUTCOME_RETRY_DELAY_MS,
   type HitlRecord,
   type PipelineCoordinatorDeps,
   type PipelineRunOps,
-  type StepRetryOpts,
 } from './pipelineRun/types';
-import { renderDirective } from './pipelineRun/render';
 import { handleFire } from './pipelineRun/fire';
 import { dispatchJobStep, executeDispatches, handleStepRetry } from './pipelineRun/dispatch';
+import { failStepOrRetry, handleJobStatusUpdate, handleOutcomeRetry, handleStepTimeout } from './pipelineRun/outcome';
+import { applyClarifyAnswer, enterAwaitingClarify, enterAwaitingToolApproval } from './pipelineRun/hitl';
 import {
   appendEvent,
   getActiveRunId,
@@ -86,19 +77,8 @@ import {
   saveRun,
   tenantCtx,
 } from './pipelineRun/runStore';
-import { captureStepOutput, detectApprovalSeal, detectClarifySeal } from './pipelineRun/seals';
 
 export type { PipelineCoordinatorDeps } from './pipelineRun/types';
-
-/** Interruption reasons that are infrastructure's fault — retry-eligible. A human stop/pause is not. */
-const INFRA_INTERRUPTION_REASONS: ReadonlySet<string> = new Set(['worker_stalled', 'server_shutdown']);
-/** One free nudged round for a step that ended with its stop hooks unmet (no declared `retry` needed). */
-const HOOK_UNMET_RETRY: StepRetryOpts = {
-  budgetFloor: 1,
-  delayMsDefault: 5_000,
-  nudge:
-    'It ended without writing its required artifact. If input is missing, ask through the clarify tool — never end the turn on a prose question; otherwise finish the work and save the artifact.',
-};
 
 export class PipelineRunCoordinator {
   private readonly ctx: PipelineRunOps;
@@ -113,11 +93,11 @@ export class PipelineRunCoordinator {
       applyOutcome: (owner, runId, stepId, outcome, patch, decorate, expectedJobId, onOutcomeLanded) =>
         this.applyOutcome(owner, runId, stepId, outcome, patch, decorate, expectedJobId, onOutcomeLanded),
       failStepOrRetry: (owner, runId, stepId, error, expectedJobId, opts) =>
-        this.failStepOrRetry(owner, runId, stepId, error, expectedJobId, opts),
+        failStepOrRetry(this.ctx, owner, runId, stepId, error, expectedJobId, opts),
       finalizeRun: (owner, run) => this.finalizeRun(owner, run),
       killStepJob: (jobId, projectId) => this.killStepJob(jobId, projectId),
-      enterAwaitingClarify: (data) => this.enterAwaitingClarify(data),
-      enterAwaitingToolApproval: (data) => this.enterAwaitingToolApproval(data),
+      enterAwaitingClarify: (data) => enterAwaitingClarify(this.ctx, data),
+      enterAwaitingToolApproval: (data) => enterAwaitingToolApproval(this.ctx, data),
     };
   }
 
@@ -127,7 +107,7 @@ export class PipelineRunCoordinator {
       REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES,
       async (message: unknown) => {
         try {
-          await this.handleJobStatusUpdate(message as any);
+          await handleJobStatusUpdate(this.ctx, message as any);
         } catch (err) {
           logger.warn('[Pipeline] status-update handling failed', { component: COMPONENT }, err);
         }
@@ -150,13 +130,13 @@ export class PipelineRunCoordinator {
       case 'step-retry':
         return handleStepRetry(this.ctx, data.owner, data.runId, data.stepId, data.retries, data.directiveOverride);
       case 'step-timeout':
-        return this.handleStepTimeout(data);
+        return handleStepTimeout(this.ctx, data);
       case 'outcome-retry':
-        return this.handleOutcomeRetry(data);
+        return handleOutcomeRetry(this.ctx, data);
       case 'clarify-enter':
-        return this.enterAwaitingClarify(data);
+        return enterAwaitingClarify(this.ctx, data);
       case 'approval-enter':
-        return this.enterAwaitingToolApproval(data);
+        return enterAwaitingToolApproval(this.ctx, data);
       default:
         logger.warn(`[Pipeline] unknown control job kind: ${(data as any).kind}`, { component: COMPONENT });
     }
@@ -468,332 +448,6 @@ export class PipelineRunCoordinator {
   // Job status consumption + chain advance
   // ============================================
 
-  private async handleJobStatusUpdate(data: {
-    type?: string;
-    jobId?: string;
-    status?: string;
-    interruption?: any;
-    result?: any;
-  }): Promise<void> {
-    if (!data?.jobId) return;
-    if (data.type !== 'completed' && data.type !== 'failed') return;
-    const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.JOB(data.jobId));
-    if (!raw) return;
-    const { runId, stepId, pipelineId, projectId, owner } = JSON.parse(raw) as {
-      runId: string;
-      stepId: string;
-      pipelineId: string;
-      projectId: string;
-      owner: PipelineOwner;
-    };
-
-    const interruption = data.interruption || data.result?.output?.interruption || data.result?.interruption;
-    let outcome: 'succeeded' | 'failed' = data.status === 'failed' ? 'failed' : 'succeeded';
-    let error: string | undefined;
-    if (interruption) {
-      outcome = 'failed';
-      error = `interrupted: ${interruption.reason ?? 'unknown'}`;
-      // An interrupted job parks itself paused/resumable, but nobody resumes a
-      // pipeline step — and a paused job blocks the project's next dispatch
-      // (the S7 signature). The run treats the interruption as the step's
-      // outcome, so the job must not outlive that verdict.
-      await this.killStepJob(data.jobId, projectId);
-    }
-    // Clarify seal: the job ended awaiting a human answer (universal
-    // end-and-resume). Not an outcome — the step parks `awaiting_clarify`
-    // until the answer funnels through `applyClarifyAnswer`.
-    let output: StepOutputRecord | undefined;
-    let verdict: string | undefined;
-    if (outcome === 'succeeded') {
-      const clarify = await detectClarifySeal(this.deps, owner, runId, stepId, data.jobId);
-      if (clarify) {
-        await this.enterAwaitingClarify({
-          kind: 'clarify-enter',
-          owner,
-          pipelineId,
-          projectId,
-          runId,
-          stepId,
-          jobId: data.jobId,
-          question: clarify.question,
-          toolUseId: clarify.toolUseId,
-          retries: 0,
-        });
-        return;
-      }
-      // Tool-approval seal: the job ended awaiting a human decision on an
-      // approval-gated call (L3). Not an outcome — the step parks.
-      const approvalSeal = await detectApprovalSeal(this.deps, owner, runId, stepId, data.jobId);
-      if (approvalSeal) {
-        await this.enterAwaitingToolApproval({
-          kind: 'approval-enter',
-          owner,
-          pipelineId,
-          projectId,
-          runId,
-          stepId,
-          jobId: data.jobId,
-          toolName: approvalSeal.toolName,
-          argsSummary: approvalSeal.argsSummary,
-          retries: 0,
-        });
-        return;
-      }
-      // Step output + verdict capture ({{steps.*}} source, run-report summary,
-      // verdict routing) — reads the same seal the clarify check just did.
-      const captured = await captureStepOutput(this.deps, owner, runId, stepId, data.jobId);
-      output = captured.output;
-      verdict = captured.verdict;
-      // An outcome-declaring intent that sealed no valid verdict fails loudly
-      // (retryable — a re-run can decide) unless onMissingVerdict fell back.
-      if (captured.missingVerdict) {
-        outcome = 'failed';
-        error = 'missing-verdict: the intent declares outcomes but the run sealed no valid verdict';
-      }
-    }
-
-    // Plain job failures, infra interruptions and missing verdicts are
-    // RETRYABLE; a human stop/pause is not (nobody asked the scheduler to
-    // redo what they stopped). Unmet stop hooks get one nudged round even
-    // without a declared retry: the model asked in prose instead of calling
-    // clarify (or stopped short of the artifact), and a fresh round with the
-    // hook named recovers it — interactive chat's "Resume to continue",
-    // automated once, because a pipeline has no human to resume it.
-    const hookUnmet = interruption != null && String(interruption.reason ?? '') === 'universal_stop_hook_unmet';
-    const retryable =
-      outcome === 'failed' &&
-      (!interruption || hookUnmet || INFRA_INTERRUPTION_REASONS.has(String(interruption.reason ?? '')));
-
-    // A retryable failure consumes a retry round when the step declares one
-    // (step_retry event + re-dispatch arm); otherwise it falls through to the
-    // normal failed outcome inside the funnel.
-    if (retryable) {
-      const handled = await this.failStepOrRetry(owner, runId, stepId, error ?? 'job-failed', data.jobId, hookUnmet ? HOOK_UNMET_RETRY : undefined);
-      if (handled) {
-        await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
-        return;
-      }
-      // Lock starvation — re-arm; the retry judgment re-runs on the re-apply.
-      await this.deps.scheduleQueue.armDelayed(`outcome-retry-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
-        kind: 'outcome-retry',
-        owner,
-        pipelineId,
-        projectId,
-        runId,
-        stepId,
-        outcome: 'failed',
-        ...(error && { error }),
-        jobId: data.jobId,
-        retryable: true,
-        retries: 0,
-      });
-      return;
-    }
-
-    await appendEvent(this.deps, owner, projectId, {
-      ts: new Date().toISOString(),
-      event: 'step_completed',
-      runId,
-      stepId,
-      jobId: data.jobId,
-      detail: { outcome, ...(error && { error }), ...(output && { outputCaptured: true }) },
-    });
-    const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }) };
-    const applied = await this.applyOutcome(owner, runId, stepId, outcome, Object.keys(patch).length > 0 ? patch : undefined, undefined, data.jobId);
-    if (applied) {
-      await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
-    } else {
-      // Lock starvation would otherwise DROP the outcome and hang the run
-      // `running` until the overlap TTL — re-arm a bounded re-apply instead.
-      await this.deps.scheduleQueue.armDelayed(`outcome-retry-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
-        kind: 'outcome-retry',
-        owner,
-        pipelineId,
-        projectId,
-        runId,
-        stepId,
-        outcome,
-        ...(error && { error }),
-        ...(output && { output }),
-        jobId: data.jobId,
-        retries: 0,
-      });
-    }
-  }
-
-  private async handleOutcomeRetry(data: {
-    owner: PipelineOwner;
-    pipelineId: string;
-    projectId: string;
-    runId: string;
-    stepId: string;
-    outcome: 'succeeded' | 'failed';
-    error?: string;
-    output?: StepOutputRecord;
-    jobId?: string;
-    retryable?: boolean;
-    retries: number;
-  }): Promise<void> {
-    const patch = { ...(data.error && { error: data.error }), ...(data.output && { output: data.output }) };
-    const applied =
-      data.outcome === 'failed' && data.retryable
-        ? await this.failStepOrRetry(
-            data.owner, data.runId, data.stepId, data.error ?? 'job-failed', data.jobId,
-            // The replay path re-derives the hook-unmet floor from the error —
-            // the arm payload does not carry opts, and losing the floor on a
-            // lock-starved re-apply would fail a step the live path nudges.
-            data.error?.includes('universal_stop_hook_unmet') ? HOOK_UNMET_RETRY : undefined,
-          )
-        : await this.applyOutcome(
-            data.owner, data.runId, data.stepId, data.outcome,
-            Object.keys(patch).length > 0 ? patch : undefined,
-            undefined,
-            data.jobId,
-          );
-    if (applied) {
-      await this.deps.scheduleQueue.cancelDelayed(`sto-${data.runId}-${data.stepId}`);
-    }
-    if (!applied && data.retries < MAX_OUTCOME_RETRIES) {
-      await this.deps.scheduleQueue.armDelayed(
-        `outcome-retry-${data.runId}-${data.stepId}`,
-        OUTCOME_RETRY_DELAY_MS,
-        { ...data, kind: 'outcome-retry', retries: data.retries + 1 },
-      );
-    } else if (!applied) {
-      logger.warn(`[Pipeline] outcome dropped after retries: ${data.runId}/${data.stepId}`, { component: COMPONENT });
-    }
-  }
-
-  /**
-   * Retryable-failure funnel. When the step declares `retry` and rounds
-   * remain, the round is consumed: the step flips back to `dispatched`
-   * (attempts audited, jobId cleared, funnel key deleted) and a `step-retry`
-   * arm re-dispatches it after the backoff with a retry preamble — a NEW
-   * jobId, directive-level idempotency contract (J: the agent checks completed
-   * side effects first). No budget → the normal failed outcome (with its
-   * step_completed event) applies inside this funnel. Returns false only on
-   * lock starvation — the caller re-arms, never drops.
-   */
-  private async failStepOrRetry(
-    owner: PipelineOwner,
-    runId: string,
-    stepId: string,
-    error: string,
-    expectedJobId?: string,
-    opts?: StepRetryOpts,
-  ): Promise<boolean> {
-    interface RetryArm {
-      delayMs: number;
-      round: number;
-      max: number;
-      directiveOverride: string;
-      pipelineId: string;
-      projectId: string;
-      oldJobId?: string;
-    }
-    let armed: RetryArm | null = null;
-    let stale = false;
-    const result = await mutateRun(this.deps, owner, runId, async (live, def) => {
-      if (!def) return { run: live, dispatches: [] };
-      const record = live.steps.find((s) => s.stepId === stepId);
-      const stepDef = def.steps.find((s) => s.id === stepId);
-      if (!record || !stepDef || isApprovalStep(stepDef) || isTerminal(live.status)) {
-        stale = true;
-        return { run: live, dispatches: [] };
-      }
-      if (record.status !== 'running' && record.status !== 'dispatched') {
-        stale = true;
-        return { run: live, dispatches: [] };
-      }
-      if (expectedJobId !== undefined && record.jobId !== undefined && record.jobId !== expectedJobId) {
-        stale = true;
-        return { run: live, dispatches: [] };
-      }
-      const used = record.retriesUsed ?? 0;
-      const max = Math.min(Math.max(stepDef.retry?.max ?? 0, opts?.budgetFloor ?? 0), MAX_STEP_RETRY);
-      if (used >= max) return { run: live, dispatches: [] }; // no budget — fall through below
-      const round = used + 1;
-      const attempts = [
-        ...(record.attempts ?? []),
-        { ...(record.jobId && { jobId: record.jobId }), error, endedAt: new Date().toISOString() },
-      ].slice(-MAX_STEP_RETRY);
-      const template = stepDef.directive?.trim() ? stepDef.directive : defaultStepDirective(stepDef.intent);
-      const directiveOverride =
-        `[Retry ${round}/${max}] The previous attempt failed: "${error}". ` +
-        (opts?.nudge ?? `Before doing anything else, check which side effects the failed attempt already completed, then perform ONLY the remaining work.`) +
-        `\n\n` +
-        renderDirective(template, live);
-      armed = {
-        delayMs: parsePipelineDuration(stepDef.retry?.backoff) ?? opts?.delayMsDefault ?? 60_000,
-        round,
-        max,
-        directiveOverride,
-        pipelineId: live.pipelineId,
-        projectId: live.projectId,
-        oldJobId: record.jobId,
-      };
-      const steps = live.steps.map((s): StepRecord =>
-        s.stepId === stepId ? { ...s, status: 'dispatched', retriesUsed: round, attempts, jobId: undefined } : s,
-      );
-      return { run: { ...live, steps, status: deriveRunStatus(steps, def.defaults?.onStepFailure ?? 'abort') }, dispatches: [] };
-    });
-    if (!result) return false; // lock starvation — caller re-arms
-    if (stale) return true; // superseded round / terminal — drop, never re-arm
-    // TS cannot see the closure assignment — re-widen explicitly.
-    const held = armed as RetryArm | null;
-    if (!held) {
-      // Budget exhausted (or no retry declared): the normal failure path,
-      // with its step_completed audit line.
-      await appendEvent(this.deps, owner, result.run.projectId, {
-        ts: new Date().toISOString(),
-        event: 'step_completed',
-        runId,
-        stepId,
-        detail: { outcome: 'failed', error },
-      });
-      return this.applyOutcome(owner, runId, stepId, 'failed', { error }, undefined, expectedJobId);
-    }
-    if (held.oldJobId) {
-      await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(held.oldJobId)).catch(() => {});
-    }
-    await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
-    await appendEvent(this.deps, owner, held.projectId, {
-      ts: new Date().toISOString(),
-      event: 'step_retry',
-      runId,
-      stepId,
-      detail: { round: held.round, max: held.max, error, delayMs: held.delayMs },
-    });
-    await this.deps.scheduleQueue.armDelayed(`step-retry-${runId}-${stepId}`, held.delayMs, {
-      kind: 'step-retry',
-      owner,
-      pipelineId: held.pipelineId,
-      projectId: held.projectId,
-      runId,
-      stepId,
-      retries: 0,
-      directiveOverride: held.directiveOverride,
-    });
-    await publish(this.deps, owner, { cause: 'runUpdate', projectId: held.projectId, pipelineId: held.pipelineId, run: publicRun(result.run) });
-    return true;
-  }
-
-  /**
-   * Step-timeout expiry: kill the round's job (stop legs) and fail the step —
-   * retryable, so `timeout` and `retry` compose. Stale arms (a newer round's
-   * jobId, a parked/terminal step) no-op.
-   */
-  private async handleStepTimeout(data: PipelineStepTimeoutJobData): Promise<void> {
-    const run = await getRun(this.deps, data.runId);
-    if (!run || isTerminal(run.status)) return;
-    const record = run.steps.find((s) => s.stepId === data.stepId);
-    if (!record || record.status !== 'running' || record.jobId !== data.jobId) return;
-    const stepDef = run.defSnapshot?.steps.find((s) => s.id === data.stepId);
-    const after = stepDef && !isApprovalStep(stepDef) ? stepDef.timeout?.after : undefined;
-    await this.killStepJob(data.jobId, run.projectId);
-    await this.failStepOrRetry(data.owner, data.runId, data.stepId, `step-timeout: exceeded ${after ?? 'the configured bound'}`, data.jobId);
-  }
-
   /**
    * Gate reminder: the gate is still unresolved — re-fire the SSE row and drop
    * a reminder notice on the anchor turn, then re-arm (bounded). Resolve and
@@ -842,299 +496,12 @@ export class PipelineRunCoordinator {
   }
 
   /**
-   * Park a step whose job sealed awaiting a TOOL APPROVAL (L3 — the third
-   * HITL layer, unattended runs). The step parks `awaiting_gate` with a
-   * kind:'tool' HITL record; every resolve channel is the SAME NX
-   * choice-resolved funnel as an approval step. APPROVE re-dispatches the
-   * step with the decision text as the dangling call's tool_result plus a
-   * one-turn grant for the tool; REJECT fails the step (`on: failure`
-   * consumes it). Open-ended wait — no timeout arm; run cancel and
-   * deactivation are the escape hatches.
+   * Clarify answer funnel — chat clarify-card branch (in-app) and the
+   * pipelines clarify route (inbox/API). The mechanics live in
+   * pipelineRun/hitl.ts.
    */
-  private async enterAwaitingToolApproval(data: PipelineApprovalEnterJobData): Promise<void> {
-    const { owner, pipelineId, projectId, runId, stepId, jobId, toolName, argsSummary } = data;
-    const gateId = `tga-${runId}-${stepId}-${jobId}`;
-    const cardId = `pipe-${gateId}`;
-    const armedAt = new Date().toISOString();
-    const prompt = `Tool approval: ${toolName}${argsSummary ? ` ${argsSummary}` : ''}`;
-    let parked = false;
-    const result = await mutateRun(this.deps, owner, runId, async (live) => {
-      const step = live.steps.find((s) => s.stepId === stepId);
-      if (!step || isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
-        return { run: live, dispatches: [] };
-      }
-      parked = true;
-      const steps = live.steps.map((s): StepRecord =>
-        s.stepId === stepId
-          ? { ...s, status: 'awaiting_gate', gate: { gateId, cardId, prompt, armedAt } }
-          : s,
-      );
-      const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
-      return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
-    });
-    if (!result) {
-      // Lock starvation — bounded re-arm, clarify-enter parity.
-      if (data.retries < MAX_OUTCOME_RETRIES) {
-        await this.deps.scheduleQueue.armDelayed(`approval-enter-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
-          ...data,
-          retries: data.retries + 1,
-        });
-      } else {
-        logger.warn(`[Pipeline] approval-enter dropped after retries: ${runId}/${stepId}`, { component: COMPONENT });
-      }
-      return;
-    }
-    if (!parked) return; // stale/duplicate event
-
-    // The paused round's wall-clock bound stands down (human wait is open-ended).
-    await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
-    const hitl: HitlRecord = {
-      kind: 'tool',
-      gateId,
-      cardId,
-      runId,
-      stepId,
-      pipelineId,
-      projectId,
-      owner,
-      onTimeout: 'reject',
-      anchorJobId: jobId,
-      prompt,
-      tool: toolName,
-      jobId,
-    };
-    await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.HITL(gateId), JSON.stringify(hitl), REDIS_TTL.PIPE.HITL);
-    await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.CARD(cardId), gateId, REDIS_TTL.PIPE.HITL);
-
-    if (this.deps.chatService) {
-      try {
-        await this.deps.chatService.appendChoicePresented(projectId, UNIVERSAL_FEATURE, {
-          jobId,
-          cardId,
-          cardType: 'pipeline_approval',
-          prompt,
-          payload: {
-            gateId,
-            runId,
-            stepId,
-            pipelineId,
-            pipelineName: result.run.defSnapshot?.name ?? pipelineId,
-            kind: 'tool',
-            tool: toolName,
-          },
-          userContext: owner,
-        });
-      } catch (e) {
-        logger.warn(`[Pipeline] failed to present tool-approval card ${cardId}`, { component: COMPONENT }, e);
-      }
-    }
-
-    await appendEvent(this.deps, owner, projectId, {
-      ts: armedAt,
-      event: 'awaiting_human',
-      runId,
-      stepId,
-      jobId,
-      gateId,
-      detail: { kind: 'tool', tool: toolName, argsSummary },
-    });
-    await publish(this.deps, owner, {
-      cause: 'approvalRequested',
-      projectId,
-      approval: {
-        kind: 'tool',
-        gateId,
-        cardId,
-        runId,
-        pipelineId,
-        pipelineName: result.run.defSnapshot?.name ?? pipelineId,
-        projectId,
-        stepId,
-        prompt,
-        armedAt,
-        jobId,
-      },
-    });
-    await publish(this.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
-  }
-
-  // ============================================
-  // Clarify HITL (open-ended wait; funnel key = ant:pipe:job:{jobId})
-  // ============================================
-
-  /**
-   * Park a step whose job sealed awaiting a clarify answer. Guarded on
-   * (`running`, same jobId) so duplicate/stale status events no-op. The wait
-   * is open-ended — no timeout arm; run cancel / deactivation are the escape
-   * hatches. `ant:pipe:job:{jobId}` is NOT deleted: it is the answer funnel.
-   */
-  private async enterAwaitingClarify(data: PipelineClarifyEnterJobData): Promise<void> {
-    const { owner, pipelineId, projectId, runId, stepId, jobId } = data;
-    const askedAt = new Date().toISOString();
-    let record: ClarifyRecord | undefined;
-    const result = await mutateRun(this.deps, owner, runId, async (live) => {
-      const step = live.steps.find((s) => s.stepId === stepId);
-      if (!step || isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
-        return { run: live, dispatches: [] };
-      }
-      const round = (step.clarify?.round ?? 0) + 1;
-      record = {
-        clarifyId: `clr-${runId}-${stepId}-${round}`,
-        jobId,
-        question: data.question,
-        ...(data.toolUseId && { toolUseId: data.toolUseId }),
-        round,
-        askedAt,
-      };
-      const steps = live.steps.map((s): StepRecord =>
-        s.stepId === stepId ? { ...s, status: 'awaiting_clarify', clarify: record } : s,
-      );
-      const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
-      return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
-    });
-    if (!result) {
-      // Lock starvation would leave the step `running` forever — bounded
-      // re-arm, parity with outcome-retry.
-      if (data.retries < MAX_OUTCOME_RETRIES) {
-        await this.deps.scheduleQueue.armDelayed(`clarify-enter-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
-          ...data,
-          retries: data.retries + 1,
-        });
-      } else {
-        logger.warn(`[Pipeline] clarify-enter dropped after retries: ${runId}/${stepId}`, { component: COMPONENT });
-      }
-      return;
-    }
-    if (!record) return; // guard rejected — stale/duplicate event
-
-    // A human wait is open-ended by doctrine — the round's wall-clock bound
-    // stands down; the answer re-dispatch re-arms it.
-    await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
-
-    // The funnel key must outlive the open-ended wait (PIPE.JOB is 7d) —
-    // align with the ACTIVE overlap bound.
-    await this.deps.stateStore.setKeyWithTTL(
-      REDIS_KEYS.PIPE.JOB(jobId),
-      JSON.stringify({ runId, stepId, pipelineId, projectId, owner }),
-      REDIS_TTL.PIPE.ACTIVE,
-    );
-
-    await appendEvent(this.deps, owner, projectId, {
-      ts: askedAt,
-      event: 'awaiting_human',
-      runId,
-      stepId,
-      jobId,
-      detail: { kind: 'clarify', clarifyId: record.clarifyId, question: record.question, round: record.round },
-    });
-    await publish(this.deps, owner, {
-      cause: 'clarifyRequested',
-      projectId,
-      clarify: {
-        kind: 'clarify',
-        gateId: record.clarifyId,
-        cardId: record.clarifyId,
-        runId,
-        pipelineId,
-        pipelineName: result.run.defSnapshot?.name ?? pipelineId,
-        projectId,
-        stepId,
-        prompt: record.question,
-        armedAt: askedAt,
-        jobId,
-      },
-    });
-    await publish(this.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
-  }
-
-  /**
-   * Clarify answer funnel — called by the chat choice-resolved branch
-   * (in-app card) and the pipelines clarify route (inbox/API). Returns false
-   * when the jobId maps to no pipeline step (interactive clarify cards hit
-   * this as a safe no-op) or the step is no longer awaiting this clarify
-   * (already answered / cancelled / deactivated). On success the SAME step is
-   * re-dispatched through the single dispatch owner with the answer as its
-   * directive — the universal runner's dangling-tool_use detection makes the
-   * new job a structural resume (jobId re-pointing).
-   */
-  async applyClarifyAnswer(params: {
-    jobId: string;
-    answer: string;
-    answeredBy?: string;
-    via: 'in-app' | 'api';
-  }): Promise<boolean> {
-    const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.JOB(params.jobId));
-    if (!raw) return false;
-    const { runId, stepId, pipelineId, projectId, owner } = JSON.parse(raw) as {
-      runId: string;
-      stepId: string;
-      pipelineId: string;
-      projectId: string;
-      owner: PipelineOwner;
-    };
-
-    const answeredAt = new Date().toISOString();
-    let resolved: ClarifyRecord | undefined;
-    const result = await mutateRun(this.deps, owner, runId, async (live) => {
-      const step = live.steps.find((s) => s.stepId === stepId);
-      if (
-        !step ||
-        isTerminal(live.status) ||
-        step.status !== 'awaiting_clarify' ||
-        step.clarify?.jobId !== params.jobId
-      ) {
-        return { run: live, dispatches: [] };
-      }
-      resolved = {
-        ...step.clarify,
-        answeredBy: params.answeredBy,
-        answeredAt,
-        answer: params.answer.slice(0, 500),
-        via: params.via,
-      };
-      const steps = live.steps.map((s): StepRecord =>
-        s.stepId === stepId ? { ...s, status: 'dispatched', clarify: resolved } : s,
-      );
-      const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
-      return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
-    });
-    if (!result || !resolved) return false;
-
-    // Post-apply ordering (gate precedent): the funnel key dies only after
-    // the flip landed, so a crash mid-apply keeps the answer recoverable.
-    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(params.jobId)).catch(() => {});
-    await appendEvent(this.deps, owner, projectId, {
-      ts: answeredAt,
-      event: 'human_resolved',
-      runId,
-      stepId,
-      jobId: params.jobId,
-      detail: {
-        kind: 'clarify',
-        clarifyId: resolved.clarifyId,
-        round: resolved.round,
-        answer: resolved.answer,
-        answeredBy: params.answeredBy,
-        via: params.via,
-      },
-    });
-    await publish(this.deps, owner, {
-      cause: 'clarifyAnswered',
-      projectId,
-      pipelineId,
-      runId,
-      stepId,
-      clarifyId: resolved.clarifyId,
-      answeredBy: params.answeredBy,
-    });
-    await publish(this.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
-
-    const def = result.run.defSnapshot;
-    const stepDef = def?.steps.find((s) => s.id === stepId);
-    if (def && stepDef && !isApprovalStep(stepDef)) {
-      await dispatchJobStep(this.ctx, owner, def, result.run, stepDef, 0, params.answer);
-    }
-    return true;
+  async applyClarifyAnswer(params: { jobId: string; answer: string; answeredBy?: string; via: 'in-app' | 'api' }): Promise<boolean> {
+    return applyClarifyAnswer(this.ctx, params);
   }
 
   /**
