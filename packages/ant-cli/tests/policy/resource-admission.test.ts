@@ -278,7 +278,41 @@ describe('multipart uploads bound the request, not just each file (M-007)', () =
       }
     });
   }
+
+  // The SET rule over every route file, group modules in subdirectories
+  // included — a multer outside the SSOT budget anywhere under routes/ is an
+  // offender, wherever the next split puts it.
+  it('every multer under routes/ takes the SSOT limits', () => {
+    for (const file of walkRouteFiles()) {
+      const source = readFileSync(file.full, 'utf8');
+      for (const config of source.match(/multer\(\{[\s\S]*?\}\)/g) ?? []) {
+        expect(config, file.rel).toContain('UPLOAD_LIMITS');
+      }
+    }
+  });
 });
+
+/**
+ * Route sources, RECURSIVELY — the route surface is no longer one flat
+ * directory (pipelines/ and accountAgents/ hold group modules), and a scan
+ * that stops at the top level silently stops covering whatever the next
+ * split moves down a level.
+ */
+function walkRouteFiles(): Array<{ rel: string; base: string; full: string }> {
+  const routesDir = path.resolve(__dirname, '../../src/periphery/adapters/http/routes');
+  const out: Array<{ rel: string; base: string; full: string }> = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.routes.ts')) {
+        out.push({ rel: path.relative(routesDir, full), base: entry.name, full });
+      }
+    }
+  };
+  walk(routesDir);
+  return out;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Durable-write ingress: rate limit + body schema (M-NEW-029)
@@ -353,7 +387,7 @@ describe('expensive job routes are admission-gated (M-NEW-029)', () => {
   // archive would be outside every budget, which is why both go through it.
   for (const [file, route] of [
     ['routes/accountAgents.routes.ts', "/:agentId/download"],
-    ['routes/pipelines.routes.ts', "/:pipelineId/download"],
+    ['routes/pipelines/definition.routes.ts', "/:pipelineId/download"],
   ] as const) {
     it(`${route} is rate-limited and archives through the one seam`, () => {
       const src = read(file);
@@ -556,12 +590,10 @@ describe('an unapproved account reaches no router', () => {
   });
 
   it('no route handler re-judges approval — the surface guard is the only HTTP owner', () => {
-    const routesDir = path.resolve(__dirname, '../../src/periphery/adapters/http/routes');
     const offenders: string[] = [];
-    for (const entry of readdirSync(routesDir, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.routes.ts')) continue;
-      const src = readFileSync(path.join(routesDir, entry.name), 'utf8');
-      if (/\bcheckApproval\s*\(|\bgetUserApproval\s*\(/.test(src)) offenders.push(entry.name);
+    for (const file of walkRouteFiles()) {
+      const src = readFileSync(file.full, 'utf8');
+      if (/\bcheckApproval\s*\(|\bgetUserApproval\s*\(/.test(src)) offenders.push(file.rel);
     }
     expect(offenders).toEqual([]);
   });
@@ -631,16 +663,14 @@ describe('authenticated responses are never held by a shared cache', () => {
   });
 
   it('no route sets the header by hand except the two public-branch auth reads', () => {
-    const routesDir = path.resolve(__dirname, '../../src/periphery/adapters/http/routes');
     const offenders: string[] = [];
-    for (const entry of readdirSync(routesDir, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.routes.ts')) continue;
+    for (const file of walkRouteFiles()) {
       // `/auth/me` and `/auth/signout` answer on the JWT gate's PUBLIC branch,
       // so they carry no `req.user` for the middleware to key on and must keep
       // their own header.
-      if (entry.name === 'auth.routes.ts') continue;
-      const src = readFileSync(path.join(routesDir, entry.name), 'utf8');
-      if (/'Cache-Control',\s*'private, no-store'/.test(src)) offenders.push(entry.name);
+      if (file.base === 'auth.routes.ts') continue;
+      const src = readFileSync(file.full, 'utf8');
+      if (/'Cache-Control',\s*'private, no-store'/.test(src)) offenders.push(file.rel);
     }
     expect(offenders).toEqual([]);
   });
