@@ -24,6 +24,17 @@ function walk(dir: string): string[] {
   return out;
 }
 
+/**
+ * The coordinator is a facade over `infrastructure/scheduling/pipelineRun/*`
+ * modules — count/negative assertions read the WHOLE unit (entry + modules,
+ * concatenated); location-sensitive slices read the module that owns the code.
+ */
+const PIPELINE_RUN_DIR = path.join(SRC, 'infrastructure/scheduling/pipelineRun');
+const coordinatorAll = () =>
+  [path.join(SRC, 'infrastructure/scheduling/PipelineRunCoordinator.ts'), ...walk(PIPELINE_RUN_DIR)]
+    .map((f) => fs.readFileSync(f, 'utf-8'))
+    .join('\n');
+
 describe('single dispatch owner', () => {
   it('RouteConfigurator.createExecuteJob delegates to UniversalDispatchService', () => {
     const rc = read('periphery/adapters/http/express/config/RouteConfigurator.ts');
@@ -33,7 +44,7 @@ describe('single dispatch owner', () => {
   });
 
   it('the coordinator dispatches through UniversalDispatchService and the shared gates', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/UniversalDispatchService/);
     expect(coordinator).toMatch(/resolveUniversalExecuteContext/);
     expect(coordinator).toMatch(/validateUniversalTurnMeta/);
@@ -42,13 +53,13 @@ describe('single dispatch owner', () => {
   });
 
   it('an empty step directive dispatches the shared default (single owner in @ant/shared)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     // The synthesized template is what renderDirective and the chat user_turn see.
     expect(coordinator).toMatch(/defaultStepDirective\(step\.intent\)/);
   });
 
   it('glob pin expansion is armed by the coordinator only — interactive @ctx stays concrete-path-only', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/expandContextGlobs:\s*true/);
     const gate = read('core/scheduling/UniversalDispatchGate.ts');
     expect(gate).toMatch(/expandContextGlobs/);
@@ -58,13 +69,13 @@ describe('single dispatch owner', () => {
   });
 
   it('the coordinator has chat/tracker parity with the HTTP path (user turn before enqueue, stateTracker forwarded)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/appendUserTurn/);
     // Parity means the HTTP path's WHOLE contract, ceiling included. This row
     // used to require only the append — pinning the uncapped call in place
     // while `/execute` and `/inline-ask` were being capped (M-NEW-029).
     expect(coordinator).toMatch(/DIRECTIVE_MAX_CHARS/);
-    expect(coordinator).toMatch(/stateTracker:\s*this\.deps\.stateTracker/);
+    expect(coordinator).toMatch(/stateTracker:\s*(this|ctx)\.deps\.stateTracker/);
     // The pipeline is exempt from its own project lock — the coordinator
     // never reads the mutual-exclusion gate.
     expect(coordinator).not.toMatch(/findProjectPipelineActivation/);
@@ -106,14 +117,14 @@ describe('pipeline↔project mutual exclusion', () => {
   });
 
   it('the fire path resolves definitions ONLY at the activation-pinned scope (no closest-wins)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
-    expect(coordinator).toMatch(/resolveDefRoot\(this\.tenantCtx\(owner\), activation\.pipelineScope\)/);
+    const coordinator = coordinatorAll();
+    expect(coordinator).toMatch(/resolveDefRoot\(tenantCtx\((this|ctx)\.deps, owner\), activation\.pipelineScope\)/);
     const reconciler = read('infrastructure/scheduling/PipelineReconciler.ts');
     expect(reconciler).toMatch(/resolveDefRoot\(\{ workspacesPath: deps\.workspacesPath, \.\.\.owner \}, activation\.pipelineScope\)/);
   });
 
   it('a stale fire is skipped when the project switched pipelines (activation is the authority)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/activation\.pipelineId !== pipelineId/);
   });
 
@@ -166,7 +177,7 @@ describe('approval funnel', () => {
   });
 
   it('the gate-seal human_resolved line precedes the dispatch fan-out (no log-order inversion)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     // applyOutcome fires the resolve audit hook after the outcome landed and
     // before executeDispatches/finalizeRun append their downstream lines.
     const apply = coordinator.slice(coordinator.indexOf('private async applyOutcome'));
@@ -181,7 +192,7 @@ describe('approval funnel', () => {
 
 describe('clarify funnel', () => {
   it('a clarify seal parks the step instead of failing the run (v1 restriction retired)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).not.toMatch(/awaiting_clarify_unsupported/);
     expect(coordinator).toMatch(/enterAwaitingClarify/);
     // Session seal read goes through the sessionPaths SSOT, never a hand-rolled join.
@@ -190,7 +201,7 @@ describe('clarify funnel', () => {
   });
 
   it('the answer re-dispatches the SAME step through the single dispatch owner', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/async applyClarifyAnswer\(/);
     // applyClarifyAnswer must end in dispatchJobStep (jobId re-pointing rides
     // the normal dispatch: reverse map + step→running + step_dispatched).
@@ -209,7 +220,7 @@ describe('clarify funnel', () => {
   });
 
   it('cancel sweeps awaiting_clarify and stale outcomes cannot clobber a waiting step', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/'awaiting_clarify'/);
     // cancelRun sweep includes the clarify wait.
     expect(coordinator).toMatch(/s\.status === 'awaiting_clarify' \|\| s\.status === 'dispatched'/);
@@ -222,7 +233,7 @@ describe('verdict routing', () => {
   it('the vocabulary lives on the INTENT; the coordinator validates + stamps the sealed verdict', () => {
     const gate = read('core/scheduling/UniversalDispatchGate.ts');
     expect(gate).toMatch(/intentOutcomes/);
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/declaredOutcomes\.includes\(sealVerdict\)/);
     // Missing verdict fails loudly and RETRYABLY (a re-run can decide).
     expect(coordinator).toMatch(/missing-verdict/);
@@ -236,7 +247,7 @@ describe('verdict routing', () => {
 
 describe('tool-approval HITL (L3)', () => {
   it('unattended rides the ONE turn-meta channel and only the coordinator sets it', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/unattended: true/);
     // No HTTP ingress may mark a run unattended.
     const jobRoutes = read('periphery/adapters/http/routes/job.routes.ts');
@@ -257,7 +268,7 @@ describe('tool-approval HITL (L3)', () => {
   });
 
   it('resolution rides the SAME NX gate funnel; approve re-dispatches with a one-turn grant', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/enterAwaitingToolApproval/);
     expect(coordinator).toMatch(/hitl\.kind === 'tool' && approved/);
     expect(coordinator).toMatch(/tool-approval-rejected/);
@@ -267,8 +278,8 @@ describe('tool-approval HITL (L3)', () => {
   });
 
   it('the REST inbox keeps the tool kind: a job step awaiting_gate is a paused tool call, never an authored gate', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
-    const listSrc = coordinator.slice(coordinator.indexOf('async listPendingApprovals'));
+    const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
+    const listSrc = runStore.slice(runStore.indexOf('export async function listPendingApprovals'));
     expect(listSrc).toMatch(/!isApprovalStep\(stepDef\)/);
     expect(listSrc).toMatch(/kind: 'tool'/);
   });
@@ -276,7 +287,7 @@ describe('tool-approval HITL (L3)', () => {
 
 describe('runCompleted chaining', () => {
   it('chained fires ride the SAME fire path, scoped to the activator, depth-bounded at fire', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     // Publish point is finalize; delivery is addNow into the control queue.
     expect(coordinator).toMatch(/fireChainedPipelines\(owner, sealed\)/);
     expect(coordinator).toMatch(/firedBy: 'event'/);
@@ -290,7 +301,7 @@ describe('runCompleted chaining', () => {
 
 describe('run cancel authority', () => {
   it('cancelRun owns the stop legs — deactivate delegates, no second kill-loop copy', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     // Exactly one occurrence each: the kill legs live in cancelRun and nowhere
     // else (a copy in deactivate is how the FE stop button silently stopped
     // stopping the running job).
@@ -305,19 +316,19 @@ describe('run cancel authority', () => {
   });
 
   it('a cancelled live step is terminal-cancelled with a named error, never failed', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/error: 'run-cancelled'/);
   });
 
   it('a second cancel is a no-op — no duplicate run_finished / index append', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/if \(!result \|\| !mutated\) return false;/);
   });
 });
 
 describe('step output capture ({{steps.*}} source)', () => {
   it('capture is bounded, jobId-guarded, and best-effort (same seal channel as clarify)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/captureStepOutput/);
     expect(coordinator).toMatch(/PIPELINE_STEP_OUTPUT_MAX_CHARS/);
     // Every seal read (clarify + approval + capture) verifies the seal
@@ -328,19 +339,19 @@ describe('step output capture ({{steps.*}} source)', () => {
   });
 
   it('SSE runUpdate strips captured answers — JSONL/API serve them', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/answer: undefined/);
   });
 
   it('renderDirective substitutes steps.answer/artifacts and audits unresolved refs', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/steps\\\.\(\[a-z0-9-\]\+\)\\\.answer/);
     expect(coordinator).toMatch(/steps\\\.\(\[a-z0-9-\]\+\)\\\.artifacts/);
     expect(coordinator).toMatch(/unresolvedTemplates/);
   });
 
   it('context pins render static vars before the turn-meta gate; watermark frozen at fire', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/renderStaticVars\(pin, run\)/);
     expect(coordinator).toMatch(/prevSuccessFireEpoch/);
     // Frozen once at fire from the run index — never re-read per step.
@@ -350,7 +361,7 @@ describe('step output capture ({{steps.*}} source)', () => {
 
 describe('retry / timeout / remind arms', () => {
   it('failStepOrRetry is the ONE retryable-failure funnel; ant-jobs attempts stay 1', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     // Retryable call sites route through the funnel, never a second inline copy.
     expect(coordinator.match(/failStepOrRetry\(/g)?.length ?? 0).toBeGreaterThanOrEqual(4); // def + enqueue + status + timeout (+outcome-retry)
     // Standing failures stay non-retryable: the fail() closure defaults to false.
@@ -360,13 +371,13 @@ describe('retry / timeout / remind arms', () => {
   });
 
   it('an interrupted step job is killed — the run owns the verdict, the paused job must not block the project (S12)', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     // The interruption branch of the job-event outcome handler kills the parked job.
     expect(coordinator).toMatch(/error = `interrupted: \$\{interruption\.reason \?\? 'unknown'\}`;[\s\S]{0,600}?killStepJob\(data\.jobId, projectId\)/);
   });
 
   it('unmet stop hooks earn ONE nudged round without a declared retry (S13), on the live and replay paths', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/HOOK_UNMET_RETRY: StepRetryOpts = \{\s*\n\s*budgetFloor: 1/);
     // Live path keys on the interruption reason; the lock-starved replay re-derives it from the error.
     expect(coordinator.match(/HOOK_UNMET_RETRY : undefined/g)?.length ?? 0).toBe(2);
@@ -375,12 +386,12 @@ describe('retry / timeout / remind arms', () => {
   });
 
   it('a superseded round cannot be clobbered: applyOutcome guards on expectedJobId', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/expectedJobId !== undefined && already\.jobId !== expectedJobId/);
   });
 
   it('step timeout arms per round and stands down for clarify waits; expiry kills then fails', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator.match(/`sto-\$\{run\.runId\}-\$\{step\.id\}`/g)?.length ?? 0).toBe(1); // one arm site
     expect(coordinator).toMatch(/handleStepTimeout/);
     // Expiry uses the ONE kill authority, then the retry funnel.
@@ -391,7 +402,7 @@ describe('retry / timeout / remind arms', () => {
   });
 
   it('gate reminders are bounded and disarmed with the gate', () => {
-    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    const coordinator = coordinatorAll();
     expect(coordinator).toMatch(/MAX_GATE_REMINDERS/);
     // Resolve and run-cancel both remove the arm.
     expect(coordinator.match(/cancelDelayed\(`gre-/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
@@ -422,7 +433,7 @@ describe('pipeline run-log graft (read-only)', () => {
  * and the fix is the same primitive: count and reserve in one Lua body.
  */
 describe('account concurrent-run cap is reserved atomically', () => {
-  const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+  const coordinator = coordinatorAll();
 
   it('reserves through the atomic slot primitive', () => {
     expect(coordinator).toMatch(/reserveSlot\(/);

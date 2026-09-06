@@ -24,18 +24,15 @@
  * structural resume (jobId re-pointing, `ant:pipe:job:{jobId}` re-keyed).
  */
 
-import * as fs from 'fs';
 import {
   defaultStepDirective,
   isApprovalStep,
-  parseCustomJobRef,
   parsePipelineDuration,
   DEFAULT_PIPELINE_CAPS,
   DIRECTIVE_MAX_CHARS,
   MAX_CHAIN_DEPTH,
   MAX_GATE_REMINDERS,
   MAX_STEP_RETRY,
-  PIPELINE_STEP_OUTPUT_MAX_CHARS,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
   type ClarifyRecord,
@@ -43,16 +40,12 @@ import {
   type JobStepDef,
   type PipelineActivation,
   type PipelineDef,
-  type PipelineEventData,
   type PipelinePendingApproval,
-  type PipelineRunEvent,
   type RunRecord,
   type StepOutputRecord,
   type StepRecord,
 } from '@ant/shared';
-import type { StateStorePort } from '../../core/ports/stateStore';
 import type {
-  ScheduleQueuePort,
   PipelineApprovalEnterJobData,
   PipelineClarifyEnterJobData,
   PipelineControlJobData,
@@ -61,23 +54,19 @@ import type {
   PipelineOwner,
   PipelineStepTimeoutJobData,
 } from '../../core/ports/scheduler';
-import { REDIS_KEYS, REDIS_TTL, getRealtimeBroadcastChannel, REDIS_CHANNELS } from '../../core/constants/redis';
+import { REDIS_KEYS, REDIS_TTL, REDIS_CHANNELS } from '../../core/constants/redis';
 import { generateHumanId } from '../../utils/humanId';
 import { generateTurnId } from '../../composition/recordUserTurn';
 import { logger } from '../../utils/logger';
 import { buildInitialSteps, planAdvance, applyStepOutcome, deriveRunStatus, effectiveNeeds, type StepDispatch } from '../../core/pipelines/ChainExecutor';
-import { getSessionFilePath, readSessionTextBounded } from '../../core/utils/sessionPaths';
-import { selectSealedConversation } from '../../core/customAgents/universalConversation';
-import { deriveActivationsRoot, type PipelineTenantContext } from '../../core/pipelines/paths';
+import { deriveActivationsRoot } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import {
-  appendRunEvent,
   appendRunIndex,
   listAccountActivations,
   loadActivationByProject,
   loadAvailability,
   loadPipeline,
-  readRunEvents,
   readRunIndex,
 } from '../../core/pipelines/store';
 import {
@@ -85,20 +74,40 @@ import {
   validateUniversalTurnMeta,
   findDuplicateActiveJob,
   checkStartCredits,
-  expandArtifactGlobsBounded,
 } from '../../core/scheduling/UniversalDispatchGate';
 import { UniversalDispatchService } from '../../core/scheduling/UniversalDispatchService';
 import { createSelfApiTokenMinter } from '../auth/selfApiToken';
+import {
+  COMPONENT,
+  MAX_OUTCOME_RETRIES,
+  OUTCOME_RETRY_DELAY_MS,
+  type HitlRecord,
+  type PipelineCoordinatorDeps,
+  type StepRetryOpts,
+} from './pipelineRun/types';
+import { renderDirective, renderStaticVars, unresolvedStepRefs } from './pipelineRun/render';
+import {
+  appendEvent,
+  getActiveRunId,
+  getHitlByGateId,
+  getRun,
+  isTerminal,
+  listPendingApprovals,
+  mutateRun,
+  publicRun,
+  publish,
+  readRunFromDisk,
+  saveRun,
+  tenantCtx,
+} from './pipelineRun/runStore';
+import { captureStepOutput, detectApprovalSeal, detectClarifySeal } from './pipelineRun/seals';
 
-const COMPONENT = 'PipelineCoordinator';
+export type { PipelineCoordinatorDeps } from './pipelineRun/types';
+
 /** A cron fire older than this is "missed" (worker downtime) — `onMissed` decides. */
 const STALE_FIRE_MS = 10 * 60 * 1000;
 const MAX_OVERLAP_REQUEUES = 60; // 60 × 60s = 1h of queueing before giving up
 const MAX_DUPLICATE_RETRIES = 60;
-const MAX_OUTCOME_RETRIES = 5; // × 30s — lock-starved outcome re-applies
-const OUTCOME_RETRY_DELAY_MS = 30_000;
-const RUN_LOCK_RETRIES = 20;
-const RUN_LOCK_RETRY_DELAY_MS = 250;
 /** Interruption reasons that are infrastructure's fault — retry-eligible. A human stop/pause is not. */
 const INFRA_INTERRUPTION_REASONS: ReadonlySet<string> = new Set(['worker_stalled', 'server_shutdown']);
 /** One free nudged round for a step that ended with its stop hooks unmet (no declared `retry` needed). */
@@ -108,78 +117,6 @@ const HOOK_UNMET_RETRY: StepRetryOpts = {
   nudge:
     'It ended without writing its required artifact. If input is missing, ask through the clarify tool — never end the turn on a prose question; otherwise finish the work and save the artifact.',
 };
-
-/** failStepOrRetry knobs for reasons that earn a round the step did not declare. */
-interface StepRetryOpts {
-  /** Retry budget floor — grants rounds even when the step declares no `retry`. */
-  budgetFloor?: number;
-  /** Replaces the re-entrancy sentence in the retry preamble. */
-  nudge?: string;
-  /** Backoff when the step declares none (default 60s). */
-  delayMsDefault?: number;
-}
-
-export interface PipelineCoordinatorDeps {
-  stateStore: StateStorePort;
-  scheduleQueue: ScheduleQueuePort;
-  workspacesPath: string;
-  workspaceResolver: {
-    getPhysicalWorkspacesPath(): string;
-    getProjectPath(userContext: any, projectId: string): string;
-    getUniversalContainerPath(userContext: any, projectId: string): string;
-  };
-  workspaceService: { createWorkspace(tenantId: string, projectId: string): Promise<unknown> };
-  chatService?: {
-    appendChoicePresented(projectId: string, featureName: string, args: any): Promise<void>;
-    appendChoiceResolved(projectId: string, featureName: string, args: any): Promise<{ resolved: boolean }>;
-    appendUserTurn(
-      projectId: string,
-      featureName: string,
-      text: string,
-      turnId: string,
-      jobId?: string,
-      userContext?: any,
-      actionMetadata?: any,
-      jobType?: any,
-      pipeline?: { pipelineId: string; runId: string; stepId: string; firedBy: 'cron' | 'manual' | 'event' },
-    ): Promise<void>;
-    appendAssistantMessage(
-      projectId: string,
-      featureName: string,
-      text: string,
-      args: { jobId: string; turnId?: string | null; jobType?: any; userContext?: any; kind?: string },
-    ): Promise<void>;
-  };
-  /** In-memory kanban cache (API server) — parity with the HTTP dispatch path. */
-  stateTracker?: {
-    initializeJob(jobId: string, projectId: string, featureName: string, jobType: any, userContext?: any): void;
-  };
-  getJobQueue(): { enqueue(payload: any): Promise<string> };
-  getCreditLedger(): { getBalance(orgId: string, userId: string): Promise<{ credits: number }> };
-  /** Injected from the periphery helpers so the rule owners stay single. */
-  checkApproval(userContext: { userId: string; organizationId: string }): Promise<{ status: string } | null>;
-  checkTeamMembership(userContext: { userId: string; organizationId: string; organizationKind?: any }): Promise<boolean>;
-}
-
-interface HitlRecord {
-  /** Absent/'gate' = an approval STEP; 'tool' = a paused approval-gated tool call. */
-  kind?: 'gate' | 'tool';
-  gateId: string;
-  cardId: string;
-  runId: string;
-  stepId: string;
-  pipelineId: string;
-  projectId: string;
-  owner: PipelineOwner;
-  onTimeout: 'reject' | 'approve';
-  timeoutAt?: string;
-  anchorJobId: string;
-  prompt: string;
-  /** kind:'tool' — the approval-gated tool name (the approve re-dispatch grant). */
-  tool?: string;
-  /** kind:'tool' — the paused job (stale-arm guard on resume). */
-  jobId?: string;
-}
 
 export class PipelineRunCoordinator {
   constructor(private readonly deps: PipelineCoordinatorDeps) {}
@@ -225,13 +162,9 @@ export class PipelineRunCoordinator {
     }
   }
 
-  private tenantCtx(owner: PipelineOwner): PipelineTenantContext {
-    return { workspacesPath: this.deps.workspacesPath, ...owner };
-  }
-
   private async handleFire(data: PipelineFireJobData, intendedFireAt: number): Promise<void> {
     const { owner, pipelineId, projectId } = data;
-    const actRoot = deriveActivationsRoot(this.tenantCtx(owner));
+    const actRoot = deriveActivationsRoot(tenantCtx(this.deps, owner));
 
     // Activation is the fire authority: no activation ⇒ orphan scheduler —
     // skip; the reconciler removes the cron entry. A pipelineId mismatch means
@@ -256,7 +189,7 @@ export class PipelineRunCoordinator {
     }
 
     // Definition resolves ONLY at the activation's pinned scope.
-    const defRoot = resolveDefRoot(this.tenantCtx(owner), activation.pipelineScope);
+    const defRoot = resolveDefRoot(tenantCtx(this.deps, owner), activation.pipelineScope);
     let def: PipelineDef;
     try {
       def = loadPipeline(defRoot, pipelineId);
@@ -348,7 +281,7 @@ export class PipelineRunCoordinator {
     // pipeline on this activation.
     let prevSuccessFireEpoch: number | undefined;
     try {
-      prevSuccessFireEpoch = readRunIndex(deriveActivationsRoot(this.tenantCtx(owner)), projectId, 50, pipelineId)
+      prevSuccessFireEpoch = readRunIndex(deriveActivationsRoot(tenantCtx(this.deps, owner)), projectId, 50, pipelineId)
         .find((e) => e.status === 'completed')?.fireEpoch;
     } catch {
       prevSuccessFireEpoch = undefined;
@@ -369,10 +302,10 @@ export class PipelineRunCoordinator {
       ...(data.chainDepth !== undefined && { chainDepth: data.chainDepth }),
     };
 
-    await this.appendEvent(owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
+    await appendEvent(this.deps, owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
     const plan = planAdvance(def, run);
-    await this.saveRun(plan.run);
-    await this.publish(owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId, run: this.publicRun(plan.run) });
+    await saveRun(this.deps, plan.run);
+    await publish(this.deps, owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId, run: publicRun(plan.run) });
     await this.executeDispatches(owner, def, plan.run, plan.dispatches);
   }
 
@@ -394,44 +327,9 @@ export class PipelineRunCoordinator {
       }
     }
     // Terminal without any dispatch (e.g. everything skipped immediately).
-    if (this.isTerminal(run.status) && dispatches.length === 0) {
+    if (isTerminal(run.status) && dispatches.length === 0) {
       await this.finalizeRun(owner, run);
     }
-  }
-
-  /** Static whitelist substitution — shared by directives and context pins. */
-  private renderStaticVars(template: string, run: RunRecord): string {
-    const prev = run.prevSuccessFireEpoch;
-    return template
-      .replace(/\{\{\s*trigger\.fireDate\s*\}\}/g, new Date(run.fireEpoch).toISOString())
-      .replace(/\{\{\s*trigger\.fireEpoch\s*\}\}/g, String(run.fireEpoch))
-      .replace(/\{\{\s*run\.id\s*\}\}/g, run.runId)
-      // Cross-run watermark — the first run renders empty.
-      .replace(/\{\{\s*run\.prevSuccess\.fireDate\s*\}\}/g, prev !== undefined ? new Date(prev).toISOString() : '')
-      .replace(/\{\{\s*run\.prevSuccess\.fireEpoch\s*\}\}/g, prev !== undefined ? String(prev) : '');
-  }
-
-  private renderDirective(template: string, run: RunRecord): string {
-    const outputOf = (stepId: string) => run.steps.find((s) => s.stepId === stepId)?.output;
-    return this.renderStaticVars(template, run)
-      // Step-output substitution — validated at save time against the needs
-      // closure, so the referenced step is terminal here; a skipped/no-output
-      // upstream renders empty (recorded as unresolved on the dispatch event).
-      .replace(/\{\{\s*steps\.([a-z0-9-]+)\.answer\s*\}\}/g, (_, id: string) => outputOf(id)?.answer ?? '')
-      .replace(/\{\{\s*steps\.([a-z0-9-]+)\.artifacts\s*\}\}/g, (_, id: string) => (outputOf(id)?.artifacts ?? []).join('\n'));
-  }
-
-  /** Step-output refs in the template that render empty — dispatch-event audit detail. */
-  private unresolvedStepRefs(template: string, run: RunRecord): string[] {
-    const out: string[] = [];
-    const re = /\{\{\s*(steps\.([a-z0-9-]+)\.(answer|artifacts))\s*\}\}/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(template)) !== null) {
-      const output = run.steps.find((s) => s.stepId === m![2])?.output;
-      const value = m[3] === 'answer' ? output?.answer : output?.artifacts?.join('');
-      if (!value) out.push(m[1]);
-    }
-    return [...new Set(out)];
   }
 
   private async dispatchJobStep(
@@ -464,7 +362,7 @@ export class PipelineRunCoordinator {
     // Pins render their STATIC template vars before expansion/existence
     // checks — `reports/{{trigger.fireDate}}/**` addresses exactly this run's
     // partition (run-scoped pin isolation; steps.* refs are validator-refused).
-    const renderedContext = (step.context ?? []).map((pin) => this.renderStaticVars(pin, run));
+    const renderedContext = (step.context ?? []).map((pin) => renderStaticVars(pin, run));
     const meta = await validateUniversalTurnMeta(
       resolved.containerPath,
       resolved.intentIds,
@@ -500,7 +398,7 @@ export class PipelineRunCoordinator {
     // An empty/absent step directive dispatches the shared default — the
     // definition (base docs + intent) is the work statement in that case.
     const template = step.directive?.trim() ? step.directive : defaultStepDirective(step.intent);
-    const directive = directiveOverride ?? this.renderDirective(template, run);
+    const directive = directiveOverride ?? renderDirective(template, run);
     // Last common point before BOTH durable sinks (chat.jsonl append + universal
     // enqueue). The ingress caps are where the author/answerer sees the error;
     // this is where the axis is actually closed, because template expansion,
@@ -595,7 +493,7 @@ export class PipelineRunCoordinator {
       JSON.stringify({ runId: run.runId, stepId: step.id, pipelineId, projectId: run.projectId, owner }),
       REDIS_TTL.PIPE.JOB,
     );
-    await this.mutateRun(owner, run.runId, async (live) => {
+    await mutateRun(this.deps, owner, run.runId, async (live) => {
       const steps = live.steps.map((s): StepRecord =>
         s.stepId === step.id ? { ...s, status: 'running', jobId, turnId, startedAt: new Date().toISOString() } : s,
       );
@@ -617,8 +515,8 @@ export class PipelineRunCoordinator {
         });
       }
     }
-    const unresolvedTemplates = directiveOverride ? [] : this.unresolvedStepRefs(template, run);
-    await this.appendEvent(owner, run.projectId, {
+    const unresolvedTemplates = directiveOverride ? [] : unresolvedStepRefs(template, run);
+    await appendEvent(this.deps, owner, run.projectId, {
       ts: new Date().toISOString(),
       event: 'step_dispatched',
       runId: run.runId,
@@ -639,8 +537,8 @@ export class PipelineRunCoordinator {
     retries: number,
     directiveOverride?: string,
   ): Promise<void> {
-    const run = await this.getRun(runId);
-    if (!run || this.isTerminal(run.status)) return;
+    const run = await getRun(this.deps, runId);
+    if (!run || isTerminal(run.status)) return;
     const record = run.steps.find((s) => s.stepId === stepId);
     if (!record || record.status !== 'dispatched') return;
     const def = run.defSnapshot;
@@ -687,7 +585,7 @@ export class PipelineRunCoordinator {
     await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.HITL(gateId), JSON.stringify(hitl), REDIS_TTL.PIPE.HITL);
     await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.CARD(cardId), gateId, REDIS_TTL.PIPE.HITL);
 
-    await this.mutateRun(owner, run.runId, async (live) => {
+    await mutateRun(this.deps, owner, run.runId, async (live) => {
       const steps = live.steps.map((s): StepRecord =>
         s.stepId === step.id
           ? {
@@ -750,14 +648,14 @@ export class PipelineRunCoordinator {
       });
     }
 
-    await this.appendEvent(owner, run.projectId, {
+    await appendEvent(this.deps, owner, run.projectId, {
       ts: new Date().toISOString(),
       event: 'awaiting_human',
       runId: run.runId,
       stepId: step.id,
       gateId,
     });
-    await this.publish(owner, {
+    await publish(this.deps, owner, {
       cause: 'approvalRequested',
       projectId: run.projectId,
       approval: {
@@ -817,9 +715,9 @@ export class PipelineRunCoordinator {
     // the normal failed outcome below (`on: failure` consumes it).
     if (hitl.kind === 'tool' && approved) {
       let resumed = false;
-      const result = await this.mutateRun(hitl.owner, hitl.runId, async (live) => {
+      const result = await mutateRun(this.deps, hitl.owner, hitl.runId, async (live) => {
         const step = live.steps.find((s) => s.stepId === hitl.stepId);
-        if (!step || this.isTerminal(live.status) || step.status !== 'awaiting_gate' || step.gate?.gateId !== gateId) {
+        if (!step || isTerminal(live.status) || step.status !== 'awaiting_gate' || step.gate?.gateId !== gateId) {
           return { run: live, dispatches: [] };
         }
         resumed = true;
@@ -836,7 +734,7 @@ export class PipelineRunCoordinator {
       await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gateId));
       await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(cardId));
       if (hitl.jobId) await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(hitl.jobId)).catch(() => {});
-      await this.appendEvent(hitl.owner, hitl.projectId, {
+      await appendEvent(this.deps, hitl.owner, hitl.projectId, {
         ts: decidedAt,
         event: 'human_resolved',
         runId: hitl.runId,
@@ -844,7 +742,7 @@ export class PipelineRunCoordinator {
         gateId,
         detail: { kind: 'tool', tool: hitl.tool, decision, decidedBy, via },
       });
-      await this.publish(hitl.owner, {
+      await publish(this.deps, hitl.owner, {
         cause: 'approvalResolved',
         projectId: hitl.projectId,
         pipelineId: hitl.pipelineId,
@@ -853,7 +751,7 @@ export class PipelineRunCoordinator {
         decision,
         decidedBy,
       });
-      await this.publish(hitl.owner, { cause: 'runUpdate', projectId: hitl.projectId, pipelineId: hitl.pipelineId, run: this.publicRun(result.run) });
+      await publish(this.deps, hitl.owner, { cause: 'runUpdate', projectId: hitl.projectId, pipelineId: hitl.pipelineId, run: publicRun(result.run) });
       const def = result.run.defSnapshot;
       const stepDef = def?.steps.find((s) => s.id === hitl.stepId);
       if (def && stepDef && !isApprovalStep(stepDef) && hitl.tool) {
@@ -882,7 +780,7 @@ export class PipelineRunCoordinator {
       }),
       undefined,
       () =>
-        this.appendEvent(hitl.owner, hitl.projectId, {
+        appendEvent(this.deps, hitl.owner, hitl.projectId, {
           ts: decidedAt,
           event: 'human_resolved',
           runId: hitl.runId,
@@ -898,9 +796,9 @@ export class PipelineRunCoordinator {
     await this.deps.scheduleQueue.cancelDelayed(`gre-${gateId}`);
     await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gateId));
     await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(cardId));
-    const run = await this.getRun(hitl.runId);
+    const run = await getRun(this.deps, hitl.runId);
     if (run) {
-      await this.publish(hitl.owner, {
+      await publish(this.deps, hitl.owner, {
         cause: 'approvalResolved',
         projectId: run.projectId,
         pipelineId: hitl.pipelineId,
@@ -917,8 +815,8 @@ export class PipelineRunCoordinator {
     const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.HITL(gateId));
     if (!raw) return; // already resolved
     const hitl = JSON.parse(raw) as HitlRecord;
-    const run = await this.getRun(hitl.runId);
-    if (!run || this.isTerminal(run.status)) return;
+    const run = await getRun(this.deps, hitl.runId);
+    if (!run || isTerminal(run.status)) return;
 
     const approve = hitl.onTimeout === 'approve';
     // Funnel through the SAME choice-resolved path a human click uses — the
@@ -935,7 +833,7 @@ export class PipelineRunCoordinator {
       resolved = result.resolved;
     }
     if (resolved) {
-      await this.appendEvent(hitl.owner, hitl.projectId, {
+      await appendEvent(this.deps, hitl.owner, hitl.projectId, {
         ts: new Date().toISOString(),
         event: 'gate_expired',
         runId: hitl.runId,
@@ -992,7 +890,7 @@ export class PipelineRunCoordinator {
     let output: StepOutputRecord | undefined;
     let verdict: string | undefined;
     if (outcome === 'succeeded') {
-      const clarify = await this.detectClarifySeal(owner, runId, stepId, data.jobId);
+      const clarify = await detectClarifySeal(this.deps, owner, runId, stepId, data.jobId);
       if (clarify) {
         await this.enterAwaitingClarify({
           kind: 'clarify-enter',
@@ -1010,7 +908,7 @@ export class PipelineRunCoordinator {
       }
       // Tool-approval seal: the job ended awaiting a human decision on an
       // approval-gated call (L3). Not an outcome — the step parks.
-      const approvalSeal = await this.detectApprovalSeal(owner, runId, stepId, data.jobId);
+      const approvalSeal = await detectApprovalSeal(this.deps, owner, runId, stepId, data.jobId);
       if (approvalSeal) {
         await this.enterAwaitingToolApproval({
           kind: 'approval-enter',
@@ -1028,7 +926,7 @@ export class PipelineRunCoordinator {
       }
       // Step output + verdict capture ({{steps.*}} source, run-report summary,
       // verdict routing) — reads the same seal the clarify check just did.
-      const captured = await this.captureStepOutput(owner, runId, stepId, data.jobId);
+      const captured = await captureStepOutput(this.deps, owner, runId, stepId, data.jobId);
       output = captured.output;
       verdict = captured.verdict;
       // An outcome-declaring intent that sealed no valid verdict fails loudly
@@ -1077,7 +975,7 @@ export class PipelineRunCoordinator {
       return;
     }
 
-    await this.appendEvent(owner, projectId, {
+    await appendEvent(this.deps, owner, projectId, {
       ts: new Date().toISOString(),
       event: 'step_completed',
       runId,
@@ -1151,37 +1049,6 @@ export class PipelineRunCoordinator {
     }
   }
 
-  private async detectClarifySeal(
-    owner: PipelineOwner,
-    runId: string,
-    stepId: string,
-    jobId: string,
-  ): Promise<{ question: string; toolUseId?: string } | null> {
-    try {
-      const run = await this.getRun(runId);
-      const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
-      if (!run || !stepDef || isApprovalStep(stepDef)) return null;
-      const ref = parseCustomJobRef(stepDef.customJobRef);
-      if (!ref) return null;
-      const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
-      const sessionPath = getSessionFilePath(containerPath, ref.agentId, ref.jobId);
-      // Bound the read on its own descriptor (M-NEW-029): the scheduler hot path
-      // must not sync-read and JSON-parse an unbounded session. Oversize throws
-      // and is swallowed by the catch below (treated as "no clarify seal").
-      const raw = readSessionTextBounded(sessionPath);
-      if (raw === null) return null;
-      const session = JSON.parse(raw);
-      const state = session?.state ?? session;
-      if (state?.awaitingClarify !== true || state?.jobId !== jobId) return null;
-      return {
-        question: typeof state.clarifyQuestion === 'string' ? state.clarifyQuestion : '',
-        ...(typeof state.clarifyToolUseId === 'string' && { toolUseId: state.clarifyToolUseId }),
-      };
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Retryable-failure funnel. When the step declares `retry` and rounds
    * remain, the round is consumed: the step flips back to `dispatched`
@@ -1211,11 +1078,11 @@ export class PipelineRunCoordinator {
     }
     let armed: RetryArm | null = null;
     let stale = false;
-    const result = await this.mutateRun(owner, runId, async (live, def) => {
+    const result = await mutateRun(this.deps, owner, runId, async (live, def) => {
       if (!def) return { run: live, dispatches: [] };
       const record = live.steps.find((s) => s.stepId === stepId);
       const stepDef = def.steps.find((s) => s.id === stepId);
-      if (!record || !stepDef || isApprovalStep(stepDef) || this.isTerminal(live.status)) {
+      if (!record || !stepDef || isApprovalStep(stepDef) || isTerminal(live.status)) {
         stale = true;
         return { run: live, dispatches: [] };
       }
@@ -1240,7 +1107,7 @@ export class PipelineRunCoordinator {
         `[Retry ${round}/${max}] The previous attempt failed: "${error}". ` +
         (opts?.nudge ?? `Before doing anything else, check which side effects the failed attempt already completed, then perform ONLY the remaining work.`) +
         `\n\n` +
-        this.renderDirective(template, live);
+        renderDirective(template, live);
       armed = {
         delayMs: parsePipelineDuration(stepDef.retry?.backoff) ?? opts?.delayMsDefault ?? 60_000,
         round,
@@ -1262,7 +1129,7 @@ export class PipelineRunCoordinator {
     if (!held) {
       // Budget exhausted (or no retry declared): the normal failure path,
       // with its step_completed audit line.
-      await this.appendEvent(owner, result.run.projectId, {
+      await appendEvent(this.deps, owner, result.run.projectId, {
         ts: new Date().toISOString(),
         event: 'step_completed',
         runId,
@@ -1275,7 +1142,7 @@ export class PipelineRunCoordinator {
       await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(held.oldJobId)).catch(() => {});
     }
     await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
-    await this.appendEvent(owner, held.projectId, {
+    await appendEvent(this.deps, owner, held.projectId, {
       ts: new Date().toISOString(),
       event: 'step_retry',
       runId,
@@ -1292,7 +1159,7 @@ export class PipelineRunCoordinator {
       retries: 0,
       directiveOverride: held.directiveOverride,
     });
-    await this.publish(owner, { cause: 'runUpdate', projectId: held.projectId, pipelineId: held.pipelineId, run: this.publicRun(result.run) });
+    await publish(this.deps, owner, { cause: 'runUpdate', projectId: held.projectId, pipelineId: held.pipelineId, run: publicRun(result.run) });
     return true;
   }
 
@@ -1302,8 +1169,8 @@ export class PipelineRunCoordinator {
    * jobId, a parked/terminal step) no-op.
    */
   private async handleStepTimeout(data: PipelineStepTimeoutJobData): Promise<void> {
-    const run = await this.getRun(data.runId);
-    if (!run || this.isTerminal(run.status)) return;
+    const run = await getRun(this.deps, data.runId);
+    if (!run || isTerminal(run.status)) return;
     const record = run.steps.find((s) => s.stepId === data.stepId);
     if (!record || record.status !== 'running' || record.jobId !== data.jobId) return;
     const stepDef = run.defSnapshot?.steps.find((s) => s.id === data.stepId);
@@ -1320,12 +1187,12 @@ export class PipelineRunCoordinator {
   private async handleGateRemind(data: PipelineGateRemindJobData): Promise<void> {
     const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.HITL(data.gateId));
     if (!raw) return; // resolved or swept
-    const run = await this.getRun(data.runId);
+    const run = await getRun(this.deps, data.runId);
     const record = run?.steps.find((s) => s.stepId === data.stepId);
     if (!run || !record || record.status !== 'awaiting_gate' || !record.gate || record.gate.decision) return;
     const stepDef = run.defSnapshot?.steps.find((s) => s.id === data.stepId);
     const remindAfter = stepDef && isApprovalStep(stepDef) ? stepDef.remindAfter : undefined;
-    await this.publish(data.owner, {
+    await publish(this.deps, data.owner, {
       cause: 'approvalRequested',
       projectId: run.projectId,
       approval: {
@@ -1360,136 +1227,6 @@ export class PipelineRunCoordinator {
   }
 
   /**
-   * Capture a completed step's output and verdict.
-   * - `output` — the `{{steps.*}}` substitution source and the run history's
-   *   business-readable summary: `.answer` = the final assistant text of the
-   *   seal's `session:main` (jobId-guarded, same read channel as the clarify
-   *   detection); `.artifacts` = files matching the pinned intent's
-   *   `hooks.stop` globs at completion. Best-effort — failure is an absent
-   *   record, never a step failure.
-   * - `verdict` — the sealed decision, VALIDATED against the pinned intent's
-   *   declared outcomes with the step's `onMissingVerdict` fallback applied.
-   *   `missingVerdict` = the intent declares outcomes but no valid verdict
-   *   resolved — the caller fails the step (retryable: a re-run can decide).
-   */
-  private async captureStepOutput(
-    owner: PipelineOwner,
-    runId: string,
-    stepId: string,
-    jobId: string,
-  ): Promise<{ output?: StepOutputRecord; verdict?: string; missingVerdict?: boolean }> {
-    const run = await this.getRun(runId).catch(() => null);
-    const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
-    if (!run || !stepDef || isApprovalStep(stepDef)) return {};
-    const ref = parseCustomJobRef(stepDef.customJobRef);
-    if (!ref) return {};
-    const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
-
-    let answer: string | undefined;
-    let answerTruncated = false;
-    let sealVerdict: string | undefined;
-    try {
-      const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
-      if (raw !== null) {
-        const session = JSON.parse(raw);
-        const state = session?.state ?? session;
-        // The seal must belong to THIS step's job — the session is shared by
-        // every step of the same customJobRef.
-        if (state?.jobId === jobId) {
-          if (typeof state.verdict === 'string') sealVerdict = state.verdict;
-          const main = selectSealedConversation<any>(state);
-          if (Array.isArray(main)) {
-            for (let i = main.length - 1; i >= 0; i -= 1) {
-              const msg = main[i];
-              if (msg?.role !== 'assistant') continue;
-              const text =
-                typeof msg.content === 'string'
-                  ? msg.content
-                  : Array.isArray(msg.content)
-                    ? msg.content.map((b: any) => (typeof b?.text === 'string' ? b.text : '')).join('')
-                    : '';
-              if (text.trim().length > 0) {
-                answer = text;
-                break;
-              }
-            }
-          }
-          if (answer && answer.length > PIPELINE_STEP_OUTPUT_MAX_CHARS) {
-            answer = answer.slice(0, PIPELINE_STEP_OUTPUT_MAX_CHARS);
-            answerTruncated = true;
-          }
-        }
-      }
-    } catch {
-      /* best-effort seal read */
-    }
-
-    let artifacts: string[] | undefined;
-    let declaredOutcomes: string[] = [];
-    if (stepDef.intent) {
-      try {
-        const resolved = await resolveUniversalExecuteContext(this.deps.workspaceResolver, owner, run.projectId, stepDef.customJobRef);
-        if (resolved.ok) {
-          declaredOutcomes = resolved.intentOutcomes[stepDef.intent] ?? [];
-          const globs = resolved.intentStopGlobs[stepDef.intent] ?? [];
-          const expanded = await expandArtifactGlobsBounded(containerPath, globs);
-          if (expanded.length > 0) artifacts = expanded;
-        }
-      } catch {
-        /* best-effort */
-      }
-    }
-
-    const output =
-      !answer && !artifacts
-        ? undefined
-        : {
-            ...(answer && { answer }),
-            ...(answerTruncated && { answerTruncated: true }),
-            ...(artifacts && { artifacts }),
-            capturedAt: new Date().toISOString(),
-          };
-
-    // Verdict contract — only when the pinned intent declares a vocabulary.
-    if (declaredOutcomes.length === 0) return { ...(output && { output }) };
-    let verdict = sealVerdict && declaredOutcomes.includes(sealVerdict) ? sealVerdict : undefined;
-    if (!verdict) {
-      const fallback = stepDef.onMissingVerdict;
-      if (fallback && fallback !== 'fail' && declaredOutcomes.includes(fallback)) verdict = fallback;
-    }
-    return { ...(output && { output }), ...(verdict ? { verdict } : { missingVerdict: true }) };
-  }
-
-  /** Same read channel as the clarify seal — the tool-approval pause markers. */
-  private async detectApprovalSeal(
-    owner: PipelineOwner,
-    runId: string,
-    stepId: string,
-    jobId: string,
-  ): Promise<{ toolName: string; argsSummary: string } | null> {
-    try {
-      const run = await this.getRun(runId);
-      const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
-      if (!run || !stepDef || isApprovalStep(stepDef)) return null;
-      const ref = parseCustomJobRef(stepDef.customJobRef);
-      if (!ref) return null;
-      const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
-      const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
-      if (raw === null) return null;
-      const session = JSON.parse(raw);
-      const state = session?.state ?? session;
-      if (state?.awaitingApproval !== true || state?.jobId !== jobId) return null;
-      if (typeof state.approvalTool !== 'string' || state.approvalTool.length === 0) return null;
-      return {
-        toolName: state.approvalTool,
-        argsSummary: typeof state.approvalArgsSummary === 'string' ? state.approvalArgsSummary : '',
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Park a step whose job sealed awaiting a TOOL APPROVAL (L3 — the third
    * HITL layer, unattended runs). The step parks `awaiting_gate` with a
    * kind:'tool' HITL record; every resolve channel is the SAME NX
@@ -1506,9 +1243,9 @@ export class PipelineRunCoordinator {
     const armedAt = new Date().toISOString();
     const prompt = `Tool approval: ${toolName}${argsSummary ? ` ${argsSummary}` : ''}`;
     let parked = false;
-    const result = await this.mutateRun(owner, runId, async (live) => {
+    const result = await mutateRun(this.deps, owner, runId, async (live) => {
       const step = live.steps.find((s) => s.stepId === stepId);
-      if (!step || this.isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
+      if (!step || isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
         return { run: live, dispatches: [] };
       }
       parked = true;
@@ -1577,7 +1314,7 @@ export class PipelineRunCoordinator {
       }
     }
 
-    await this.appendEvent(owner, projectId, {
+    await appendEvent(this.deps, owner, projectId, {
       ts: armedAt,
       event: 'awaiting_human',
       runId,
@@ -1586,7 +1323,7 @@ export class PipelineRunCoordinator {
       gateId,
       detail: { kind: 'tool', tool: toolName, argsSummary },
     });
-    await this.publish(owner, {
+    await publish(this.deps, owner, {
       cause: 'approvalRequested',
       projectId,
       approval: {
@@ -1603,7 +1340,7 @@ export class PipelineRunCoordinator {
         jobId,
       },
     });
-    await this.publish(owner, { cause: 'runUpdate', projectId, pipelineId, run: this.publicRun(result.run) });
+    await publish(this.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
   }
 
   // ============================================
@@ -1620,9 +1357,9 @@ export class PipelineRunCoordinator {
     const { owner, pipelineId, projectId, runId, stepId, jobId } = data;
     const askedAt = new Date().toISOString();
     let record: ClarifyRecord | undefined;
-    const result = await this.mutateRun(owner, runId, async (live) => {
+    const result = await mutateRun(this.deps, owner, runId, async (live) => {
       const step = live.steps.find((s) => s.stepId === stepId);
-      if (!step || this.isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
+      if (!step || isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
         return { run: live, dispatches: [] };
       }
       const round = (step.clarify?.round ?? 0) + 1;
@@ -1667,7 +1404,7 @@ export class PipelineRunCoordinator {
       REDIS_TTL.PIPE.ACTIVE,
     );
 
-    await this.appendEvent(owner, projectId, {
+    await appendEvent(this.deps, owner, projectId, {
       ts: askedAt,
       event: 'awaiting_human',
       runId,
@@ -1675,7 +1412,7 @@ export class PipelineRunCoordinator {
       jobId,
       detail: { kind: 'clarify', clarifyId: record.clarifyId, question: record.question, round: record.round },
     });
-    await this.publish(owner, {
+    await publish(this.deps, owner, {
       cause: 'clarifyRequested',
       projectId,
       clarify: {
@@ -1692,7 +1429,7 @@ export class PipelineRunCoordinator {
         jobId,
       },
     });
-    await this.publish(owner, { cause: 'runUpdate', projectId, pipelineId, run: this.publicRun(result.run) });
+    await publish(this.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
   }
 
   /**
@@ -1723,11 +1460,11 @@ export class PipelineRunCoordinator {
 
     const answeredAt = new Date().toISOString();
     let resolved: ClarifyRecord | undefined;
-    const result = await this.mutateRun(owner, runId, async (live) => {
+    const result = await mutateRun(this.deps, owner, runId, async (live) => {
       const step = live.steps.find((s) => s.stepId === stepId);
       if (
         !step ||
-        this.isTerminal(live.status) ||
+        isTerminal(live.status) ||
         step.status !== 'awaiting_clarify' ||
         step.clarify?.jobId !== params.jobId
       ) {
@@ -1751,7 +1488,7 @@ export class PipelineRunCoordinator {
     // Post-apply ordering (gate precedent): the funnel key dies only after
     // the flip landed, so a crash mid-apply keeps the answer recoverable.
     await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(params.jobId)).catch(() => {});
-    await this.appendEvent(owner, projectId, {
+    await appendEvent(this.deps, owner, projectId, {
       ts: answeredAt,
       event: 'human_resolved',
       runId,
@@ -1766,7 +1503,7 @@ export class PipelineRunCoordinator {
         via: params.via,
       },
     });
-    await this.publish(owner, {
+    await publish(this.deps, owner, {
       cause: 'clarifyAnswered',
       projectId,
       pipelineId,
@@ -1775,7 +1512,7 @@ export class PipelineRunCoordinator {
       clarifyId: resolved.clarifyId,
       answeredBy: params.answeredBy,
     });
-    await this.publish(owner, { cause: 'runUpdate', projectId, pipelineId, run: this.publicRun(result.run) });
+    await publish(this.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
 
     const def = result.run.defSnapshot;
     const stepDef = def?.steps.find((s) => s.id === stepId);
@@ -1800,12 +1537,12 @@ export class PipelineRunCoordinator {
     expectedJobId?: string,
     onOutcomeLanded?: () => Promise<void>,
   ): Promise<boolean> {
-    const result = await this.mutateRun(owner, runId, async (live, def) => {
+    const result = await mutateRun(this.deps, owner, runId, async (live, def) => {
       if (!def) return { run: live, dispatches: [] };
       const already = live.steps.find((s) => s.stepId === stepId);
       // `awaiting_clarify` refuses outcomes too: a stale outcome-retry must
       // never clobber a step parked on a human answer.
-      if (!already || this.isTerminal(live.status) || ['succeeded', 'failed', 'skipped', 'cancelled', 'awaiting_clarify'].includes(already.status)) {
+      if (!already || isTerminal(live.status) || ['succeeded', 'failed', 'skipped', 'cancelled', 'awaiting_clarify'].includes(already.status)) {
         return { run: live, dispatches: [] };
       }
       // A step can hold several sequential jobIds (clarify resume, retry
@@ -1830,10 +1567,10 @@ export class PipelineRunCoordinator {
     if (result.dispatches.length > 0) {
       const def = result.run.defSnapshot!;
       await this.executeDispatches(owner, def, result.run, result.dispatches);
-    } else if (this.isTerminal(result.run.status)) {
+    } else if (isTerminal(result.run.status)) {
       await this.finalizeRun(owner, result.run);
     }
-    await this.publish(owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId: result.run.pipelineId, run: this.publicRun(result.run) });
+    await publish(this.deps, owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId: result.run.pipelineId, run: publicRun(result.run) });
     return true;
   }
 
@@ -1842,8 +1579,8 @@ export class PipelineRunCoordinator {
     // concurrently cannot slip past both the sweep and the kill.
     const killTargets: Array<{ jobId: string; projectId: string }> = [];
     let mutated = false;
-    const result = await this.mutateRun(owner, runId, async (live) => {
-      if (this.isTerminal(live.status)) return { run: live, dispatches: [] };
+    const result = await mutateRun(this.deps, owner, runId, async (live) => {
+      if (isTerminal(live.status)) return { run: live, dispatches: [] };
       mutated = true;
       const endedAt = new Date().toISOString();
       const steps = live.steps.map((s): StepRecord => {
@@ -1884,7 +1621,7 @@ export class PipelineRunCoordinator {
       await this.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${s.stepId}`);
     }
     await this.finalizeRun(owner, result.run);
-    await this.publish(owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId: result.run.pipelineId, run: this.publicRun(result.run) });
+    await publish(this.deps, owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId: result.run.pipelineId, run: publicRun(result.run) });
     return true;
   }
 
@@ -1915,10 +1652,10 @@ export class PipelineRunCoordinator {
    * responsibility — this method never touches activation state.
    */
   async deactivate(owner: PipelineOwner, projectId: string): Promise<void> {
-    const runId = await this.getActiveRunId(owner, projectId);
+    const runId = await getActiveRunId(this.deps, owner, projectId);
     if (!runId) return;
-    const run = await this.getRun(runId);
-    if (run && !this.isTerminal(run.status)) {
+    const run = await getRun(this.deps, runId);
+    if (run && !isTerminal(run.status)) {
       await this.cancelRun(owner, runId);
     }
   }
@@ -1933,14 +1670,14 @@ export class PipelineRunCoordinator {
     const error =
       run.error ?? ((run.status === 'failed' || run.status === 'partial') && firstFailed ? `${firstFailed.stepId}: ${firstFailed.error}` : undefined);
     const sealed: RunRecord = { ...run, endedAt, ...(error && { error }) };
-    await this.saveRun(sealed);
-    await this.appendEvent(owner, run.projectId, {
+    await saveRun(this.deps, sealed);
+    await appendEvent(this.deps, owner, run.projectId, {
       ts: endedAt,
       event: 'run_finished',
       runId: run.runId,
-      detail: { status: run.status, run: this.publicRun(sealed) },
+      detail: { status: run.status, run: publicRun(sealed) },
     });
-    await appendRunIndex(deriveActivationsRoot(this.tenantCtx(owner)), run.projectId, {
+    await appendRunIndex(deriveActivationsRoot(tenantCtx(this.deps, owner)), run.projectId, {
       runId: run.runId,
       pipelineId: run.pipelineId,
       projectId: run.projectId,
@@ -1977,7 +1714,7 @@ export class PipelineRunCoordinator {
     const depth = (run.chainDepth ?? 0) + 1;
     let activations: Array<{ projectId: string }>;
     try {
-      activations = listAccountActivations(deriveActivationsRoot(this.tenantCtx(owner)));
+      activations = listAccountActivations(deriveActivationsRoot(tenantCtx(this.deps, owner)));
     } catch {
       return;
     }
@@ -1985,9 +1722,9 @@ export class PipelineRunCoordinator {
       // A pipeline never chains onto its own project — that run just finished.
       if (projectId === run.projectId) continue;
       try {
-        const activation = loadActivationByProject(deriveActivationsRoot(this.tenantCtx(owner)), projectId);
+        const activation = loadActivationByProject(deriveActivationsRoot(tenantCtx(this.deps, owner)), projectId);
         if (!activation) continue;
-        const defRoot = resolveDefRoot(this.tenantCtx(owner), activation.pipelineScope);
+        const defRoot = resolveDefRoot(tenantCtx(this.deps, owner), activation.pipelineScope);
         const def = loadPipeline(defRoot, activation.pipelineId);
         const trigger = def.on?.runCompleted;
         if (!trigger || trigger.pipelineId !== run.pipelineId) continue;
@@ -2054,205 +1791,30 @@ export class PipelineRunCoordinator {
   }
 
   // ============================================
-  // Run projection (Redis JSON doc, single writer under per-run lock)
+  // Run queries for the HTTP surface (delegators — the persistence/locking
+  // kernel lives in pipelineRun/runStore.ts)
   // ============================================
 
   async getRun(runId: string): Promise<RunRecord | null> {
-    const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.RUN(runId));
-    return raw ? (JSON.parse(raw) as RunRecord) : null;
+    return getRun(this.deps, runId);
   }
 
   /** Disk fallback for terminal runs whose projection has expired. */
   readRunFromDisk(owner: PipelineOwner, projectId: string, runId: string): RunRecord | null {
-    const events = readRunEvents(deriveActivationsRoot(this.tenantCtx(owner)), projectId, runId);
-    for (let i = events.length - 1; i >= 0; i -= 1) {
-      const detail = events[i]?.detail as { run?: RunRecord } | undefined;
-      if (events[i].event === 'run_finished' && detail?.run) return detail.run;
-    }
-    return null;
+    return readRunFromDisk(this.deps, owner, projectId, runId);
   }
-
-  private async saveRun(run: RunRecord): Promise<void> {
-    // Open-ended human waits (gate without timeout, clarify) must outlive the
-    // 7d projection TTL — align with the ACTIVE overlap bound while awaiting.
-    const awaiting = run.steps.some((s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify');
-    const ttl = awaiting ? REDIS_TTL.PIPE.ACTIVE : REDIS_TTL.PIPE.RUN;
-    await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.RUN(run.runId), JSON.stringify(run), ttl);
-  }
-
-  /**
-   * Take down one armed-but-orphaned gate: timeout/remind arms, HITL record,
-   * card key, and a run-log line so the audit trail says why the card
-   * vanished. Idempotent — every key delete tolerates absence.
-   */
-  private async disarmGate(owner: PipelineOwner, run: RunRecord, step: StepRecord): Promise<void> {
-    const gate = step.gate;
-    if (!gate) return;
-    await this.deps.scheduleQueue.cancelDelayed(`gto-${gate.gateId}`);
-    await this.deps.scheduleQueue.cancelDelayed(`gre-${gate.gateId}`);
-    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gate.gateId)).catch(() => {});
-    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(gate.cardId)).catch(() => {});
-    await this.appendEvent(owner, run.projectId, {
-      ts: new Date().toISOString(),
-      event: 'step_completed',
-      runId: run.runId,
-      stepId: step.stepId,
-      gateId: gate.gateId,
-      detail: { outcome: 'cancelled', reason: 'gate-orphaned-by-abort' },
-    });
-  }
-
-  private async mutateRun(
-    owner: PipelineOwner,
-    runId: string,
-    fn: (run: RunRecord, def: PipelineDef | undefined) => Promise<{ run: RunRecord; dispatches: StepDispatch[] }>,
-  ): Promise<{ run: RunRecord; dispatches: StepDispatch[] } | null> {
-    const lockKey = REDIS_KEYS.PIPE.RUN_LOCK(runId);
-    for (let attempt = 0; attempt < RUN_LOCK_RETRIES; attempt += 1) {
-      if (await this.deps.stateStore.acquireLock(lockKey, REDIS_TTL.PIPE.RUN_LOCK)) {
-        let result: { run: RunRecord; dispatches: StepDispatch[] } | null = null;
-        let orphanedGates: StepRecord[] = [];
-        try {
-          const live = await this.getRun(runId);
-          if (!live) return null;
-          result = await fn(live, live.defSnapshot);
-          await this.saveRun(result.run);
-          // Any step this mutation turned `cancelled` while it still held an
-          // undecided gate is an orphaned human wait (the abort cascade's
-          // armed gate, §5). The executor owns the state change; the arms,
-          // the HITL record and the card are ours to take down — otherwise
-          // the inbox keeps a decision nobody can act on.
-          const wasWaiting = new Set(
-            live.steps.filter((s) => s.status === 'awaiting_gate').map((s) => s.stepId),
-          );
-          orphanedGates = result.run.steps.filter(
-            (s) => s.status === 'cancelled' && wasWaiting.has(s.stepId) && s.gate && !s.gate.decision,
-          );
-        } finally {
-          await this.deps.stateStore.releaseLock(lockKey).catch(() => {});
-        }
-        for (const step of orphanedGates) await this.disarmGate(owner, result!.run, step);
-        return result;
-      }
-      await new Promise((r) => setTimeout(r, RUN_LOCK_RETRY_DELAY_MS));
-    }
-    logger.warn(`[Pipeline] run lock starvation: ${runId}`, { component: COMPONENT });
-    return null;
-  }
-
-  // ============================================
-  // Queries for the HTTP surface
-  // ============================================
 
   /** Overlap-guard holder for one ACTIVATION (projectId-keyed). */
   async getActiveRunId(owner: PipelineOwner, projectId: string): Promise<string | null> {
-    return this.deps.stateStore.getKey(REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, projectId));
+    return getActiveRunId(this.deps, owner, projectId);
   }
 
   /** Pending gates across the caller's own activations (disk-derived scan). */
   async listPendingApprovals(owner: PipelineOwner): Promise<PipelinePendingApproval[]> {
-    const out: PipelinePendingApproval[] = [];
-    for (const { projectId } of listAccountActivations(deriveActivationsRoot(this.tenantCtx(owner)))) {
-      const runId = await this.getActiveRunId(owner, projectId);
-      if (!runId) continue;
-      const run = await this.getRun(runId);
-      if (!run) continue;
-      for (const s of run.steps) {
-        if (s.status === 'awaiting_gate' && s.gate) {
-          // A JOB step parked awaiting_gate is a paused tool call (L3), never
-          // an authored approval step — the SSE payload already says so; the
-          // disk-derived inbox row must not lose the kind. Snapshot-less runs
-          // fall back to the tool-gate id prefix.
-          const stepDef = run.defSnapshot?.steps.find((d) => d.id === s.stepId);
-          const isTool = stepDef ? !isApprovalStep(stepDef) : s.gate.gateId.startsWith('tga-');
-          out.push({
-            ...(isTool && { kind: 'tool' as const }),
-            gateId: s.gate.gateId,
-            cardId: s.gate.cardId,
-            runId,
-            pipelineId: run.pipelineId,
-            pipelineName: run.defSnapshot?.name ?? run.pipelineId,
-            projectId: run.projectId,
-            stepId: s.stepId,
-            prompt: s.gate.prompt,
-            armedAt: s.gate.armedAt,
-            timeoutAt: s.gate.timeoutAt,
-            ...(isTool && s.jobId && { jobId: s.jobId }),
-          });
-        } else if (s.status === 'awaiting_clarify' && s.clarify) {
-          out.push({
-            kind: 'clarify',
-            gateId: s.clarify.clarifyId,
-            cardId: s.clarify.clarifyId,
-            runId,
-            pipelineId: run.pipelineId,
-            pipelineName: run.defSnapshot?.name ?? run.pipelineId,
-            projectId: run.projectId,
-            stepId: s.stepId,
-            prompt: s.clarify.question,
-            armedAt: s.clarify.askedAt,
-            jobId: s.clarify.jobId,
-          });
-        }
-      }
-    }
-    return out;
+    return listPendingApprovals(this.deps, owner);
   }
 
   async getHitlByGateId(gateId: string): Promise<{ cardId: string; anchorJobId: string; owner: PipelineOwner; runId: string } | null> {
-    const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.HITL(gateId));
-    if (!raw) return null;
-    const hitl = JSON.parse(raw) as HitlRecord;
-    return { cardId: hitl.cardId, anchorJobId: hitl.anchorJobId, owner: hitl.owner, runId: hitl.runId };
-  }
-
-  // ============================================
-  // Shared plumbing
-  // ============================================
-
-  private isTerminal(status: RunRecord['status']): boolean {
-    return status === 'completed' || status === 'failed' || status === 'partial' || status === 'cancelled';
-  }
-
-  /** SSE payload copy — the frozen def never rides the wire. */
-  private publicRun(run: RunRecord): Omit<RunRecord, 'defSnapshot'> {
-    const { defSnapshot: _snapshot, ...rest } = run;
-    return rest;
-  }
-
-  private async appendEvent(owner: PipelineOwner, projectId: string, event: PipelineRunEvent): Promise<void> {
-    try {
-      await appendRunEvent(deriveActivationsRoot(this.tenantCtx(owner)), projectId, event);
-    } catch (err) {
-      logger.warn(`[Pipeline] run-event append failed: ${projectId}/${event.runId}`, { component: COMPONENT }, err);
-    }
-  }
-
-  private async publish(owner: PipelineOwner, data: PipelineEventData): Promise<void> {
-    try {
-      // The wire stays lean: captured step answers (≤16k each) ride the run
-      // JSONL and the runs API, never the SSE fan-out.
-      const payload: PipelineEventData =
-        data.cause === 'runUpdate'
-          ? {
-              ...data,
-              run: {
-                ...data.run,
-                steps: data.run.steps.map((s) =>
-                  s.output?.answer ? { ...s, output: { ...s.output, answer: undefined, answerTruncated: undefined } } : s,
-                ),
-              },
-            }
-          : data;
-      // No projectId on the envelope — user-scoped delivery reaches the
-      // approvals inbox even when another project is open.
-      await this.deps.stateStore.publish(getRealtimeBroadcastChannel(owner.organizationId, owner.userId), {
-        type: 'pipeline',
-        data: payload,
-        userContext: { userId: owner.userId, organizationId: owner.organizationId },
-      });
-    } catch (err) {
-      logger.warn('[Pipeline] SSE publish failed', { component: COMPONENT }, err);
-    }
+    return getHitlByGateId(this.deps, gateId);
   }
 }
