@@ -1186,6 +1186,8 @@ export function validatePipelineDef(
 export interface PipelineCatalogIntent {
   id: string;
   outcomes?: string[];
+  /** Stop-hook subset (structural match of `IntentHooks`) — pin-needs advisories only. */
+  hooks?: { stop: Array<{ artifact?: string; action?: string }> };
 }
 export interface PipelineCatalogJob {
   id: string;
@@ -1279,6 +1281,65 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
   });
 
   return errors;
+}
+
+/**
+ * Catalog-dependent advisories — ride the save response's `catalogWarnings`
+ * only, never the enable/activate hard gate. One rule: what you pin, you
+ * needs — a `context` pin whose producing step is not in the pinning step's
+ * needs closure is wired by file-order luck (works while sibling ordering
+ * happens to run the producer first, breaks under any reordering). Producer
+ * identification is deliberately exact-match — the pin glob string equals a
+ * sibling step intent's declared stop artifact glob — because pins are
+ * authored by copying stop globs; a fuzzy overlap test would trade the
+ * zero-false-positive property for coverage no observed incident has needed.
+ */
+export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
+  const advisories: string[] = [];
+  const agentById = new Map(agents.map((a) => [a.id, a]));
+  // stop artifact glob → job steps whose pinned intent declares it
+  const producersByGlob = new Map<string, string[]>();
+  for (const step of def.steps) {
+    if (isApprovalStep(step)) continue;
+    const ref = parseCustomJobRef(step.customJobRef);
+    if (ref === null || step.intent === undefined || step.intent === GENERAL_INTENT) continue;
+    const job = agentById.get(ref.agentId)?.jobs.find((j) => j.id === ref.jobId);
+    const intent = job?.intents?.find((i) => i.id === step.intent);
+    for (const hook of intent?.hooks?.stop ?? []) {
+      if (hook.artifact === undefined) continue;
+      producersByGlob.set(hook.artifact, [...(producersByGlob.get(hook.artifact) ?? []), step.id]);
+    }
+  }
+  if (producersByGlob.size === 0) return advisories;
+  const stepByIndex = new Map(def.steps.map((s, i) => [s.id, i]));
+  const effectiveNeeds = (id: string): string[] => {
+    const i = stepByIndex.get(id);
+    if (i === undefined) return [];
+    return def.steps[i].needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
+  };
+  const closureOf = (id: string): Set<string> => {
+    const seen = new Set<string>();
+    const stack = [...effectiveNeeds(id)];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      stack.push(...effectiveNeeds(cur));
+    }
+    return seen;
+  };
+  for (const step of def.steps) {
+    if (isApprovalStep(step)) continue;
+    const ancestors = closureOf(step.id);
+    for (const pin of step.context ?? []) {
+      const producers = (producersByGlob.get(pin) ?? []).filter((p) => p !== step.id);
+      if (producers.length === 0 || producers.some((p) => ancestors.has(p))) continue;
+      advisories.push(
+        `step "${step.id}" pins "${pin}" produced by step "${producers.join('"/"')}", which is not in its needs chain — what you pin, you needs: add the producer to needs, or drop the pin`,
+      );
+    }
+  }
+  return advisories;
 }
 
 /**

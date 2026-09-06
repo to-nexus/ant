@@ -6,7 +6,12 @@
  * `catalogWarnings` so an authoring job (pipeline-builder) can self-correct.
  */
 
-import { collectPipelineDefAdvisories, validatePipelineCatalogBinding, type PipelineDef } from '@ant/shared';
+import {
+  collectPipelineCatalogAdvisories,
+  collectPipelineDefAdvisories,
+  validatePipelineCatalogBinding,
+  type PipelineDef,
+} from '@ant/shared';
 import { discoverAgents } from '../customAgents/CustomAgentLoader';
 import { deriveCustomAgentScopeRootsForTenant, type CustomAgentTenantContext } from '../customAgents/scopeRoots';
 
@@ -14,7 +19,16 @@ export function validatePipelineCatalogServer(def: PipelineDef, tenant: CustomAg
   return validatePipelineCatalogBinding(def, discoverAgents(deriveCustomAgentScopeRootsForTenant(tenant)));
 }
 
-/** Save-funnel warnings: catalog findings (hard-fail enable later) + def-structural advisories (never hard). */
+/**
+ * Save-funnel warnings: catalog findings (hard-fail enable later) +
+ * def-structural and catalog advisories (never hard — pin-needs coherence
+ * rides the save response only, the enable gate must not consume it).
+ */
 export function collectPipelineSaveWarnings(def: PipelineDef, tenant: CustomAgentTenantContext): string[] {
-  return [...validatePipelineCatalogServer(def, tenant), ...collectPipelineDefAdvisories(def)];
+  const agents = discoverAgents(deriveCustomAgentScopeRootsForTenant(tenant));
+  return [
+    ...validatePipelineCatalogBinding(def, agents),
+    ...collectPipelineDefAdvisories(def),
+    ...collectPipelineCatalogAdvisories(def, agents),
+  ];
 }

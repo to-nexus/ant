@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisories, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisories, collectPipelineCatalogAdvisories, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
 import type { PipelineCatalogAgent, PipelineDef } from '@ant/shared';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
@@ -499,5 +499,88 @@ describe('collectPipelineDefAdvisories — save-time structural advisories (neve
 
   it('a terminal JOB step is not flagged — the rule is about undecided decisions, not leaves', () => {
     expect(collectPipelineDefAdvisories(def([job('a'), job('b')]))).toHaveLength(0);
+  });
+});
+
+describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisory, never the hard gate)', () => {
+  // The F31 shape: a step pins a sibling producer's stop glob without carrying
+  // the producer in its needs closure — wired by file-order luck.
+  const CATALOG: PipelineCatalogAgent[] = [
+    {
+      id: 'terms',
+      jobs: [
+        {
+          id: 'notice',
+          intents: [
+            { id: 'publishing', hooks: { stop: [{ artifact: 'terms/*/publishing-request.md' }] } },
+            { id: 'extract', hooks: { stop: [{ artifact: 'terms/*/extract-request.md' }] } },
+            { id: 'mail', hooks: { stop: [{ artifact: 'terms/*/mail-request.md' }, { action: 'api__ant__request' }] } },
+          ],
+        },
+      ],
+    },
+  ];
+  const def = (steps: unknown[]): PipelineDef =>
+    ({ version: PIPELINE_DEF_VERSION, name: 'n', steps } as unknown as PipelineDef);
+  const step = (id: string, intent: string, extra: object = {}) =>
+    ({ id, customJobRef: 'terms/notice', intent, ...extra });
+
+  it('flags a pin whose producer step is not in the needs closure (F31)', () => {
+    const advisories = collectPipelineCatalogAdvisories(
+      def([
+        step('publishing', 'publishing'),
+        step('extract', 'extract', { needs: [] }),
+        step('mail', 'mail', { needs: ['extract'], context: ['terms/*/publishing-request.md'] }),
+      ]),
+      CATALOG,
+    );
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]).toMatch(/step "mail" pins "terms\/\*\/publishing-request\.md" produced by step "publishing"/);
+    expect(advisories[0]).toMatch(/what you pin, you needs/);
+  });
+
+  it('silent when the producer is in the TRANSITIVE needs chain, including through an approval gate', () => {
+    const advisories = collectPipelineCatalogAdvisories(
+      def([
+        step('publishing', 'publishing'),
+        { id: 'gate', type: 'approval', prompt: 'p', needs: ['publishing'] },
+        step('mail', 'mail', { needs: ['gate'], context: ['terms/*/publishing-request.md'] }),
+      ]),
+      CATALOG,
+    );
+    expect(advisories).toHaveLength(0);
+  });
+
+  it('implicit needs (omitted = previous step in file order) count as the chain', () => {
+    const advisories = collectPipelineCatalogAdvisories(
+      def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'] })]),
+      CATALOG,
+    );
+    expect(advisories).toHaveLength(0);
+  });
+
+  it('no claim for pins matching no sibling stop glob (external inputs), self-pins, or when any duplicate producer is an ancestor', () => {
+    expect(
+      collectPipelineCatalogAdvisories(
+        def([step('a', 'publishing'), step('b', 'mail', { needs: [], context: ['resource/manual.html'] })]),
+        CATALOG,
+      ),
+    ).toHaveLength(0);
+    expect(
+      collectPipelineCatalogAdvisories(
+        def([step('a', 'publishing', { context: ['terms/*/publishing-request.md'] })]),
+        CATALOG,
+      ),
+    ).toHaveLength(0);
+    expect(
+      collectPipelineCatalogAdvisories(
+        def([
+          step('p1', 'publishing'),
+          step('p2', 'publishing', { needs: [] }),
+          step('mail', 'mail', { needs: ['p1'], context: ['terms/*/publishing-request.md'] }),
+        ]),
+        CATALOG,
+      ),
+    ).toHaveLength(0);
   });
 });
