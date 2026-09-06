@@ -34,6 +34,11 @@ const coordinatorAll = () =>
   [path.join(SRC, 'infrastructure/scheduling/PipelineRunCoordinator.ts'), ...walk(PIPELINE_RUN_DIR)]
     .map((f) => fs.readFileSync(f, 'utf-8'))
     .join('\n');
+const PIPE_ROUTES_DIR = path.join(SRC, 'periphery/adapters/http/routes/pipelines');
+const pipeRoutesAll = () =>
+  [path.join(SRC, 'periphery/adapters/http/routes/pipelines.routes.ts'), ...walk(PIPE_ROUTES_DIR)]
+    .map((f) => fs.readFileSync(f, 'utf-8'))
+    .join('\n');
 
 describe('single dispatch owner', () => {
   it('RouteConfigurator.createExecuteJob delegates to UniversalDispatchService', () => {
@@ -91,7 +96,7 @@ describe('pipeline↔project mutual exclusion', () => {
   });
 
   it('the availability machine binds the write surface (edit/delete/promote disabled-only, activate enabled-only, disable holder-gated)', () => {
-    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    const routes = pipeRoutesAll();
     // PUT + DELETE + promote all funnel through the same enabled refusal.
     expect(routes.match(/refuseWhileEnabled\(/g)?.length ?? 0).toBeGreaterThanOrEqual(4); // decl + 3 call sites
     expect(routes).toMatch(/code:\s*'pipeline-enabled'/);
@@ -101,7 +106,7 @@ describe('pipeline↔project mutual exclusion', () => {
   });
 
   it('deactivation has ONE authority: route and delete/rename cascade both call deactivatePipelineBinding', () => {
-    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    const routes = pipeRoutesAll();
     const projectService = read('periphery/adapters/http/services/ProjectService/index.ts');
     expect(routes).toMatch(/deactivatePipelineBinding\(/);
     expect(projectService).toMatch(/deactivatePipelineBinding\(/);
@@ -129,7 +134,7 @@ describe('pipeline↔project mutual exclusion', () => {
   });
 
   it('activation requires a quiet project (live-job gate) and a universal project', () => {
-    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    const routes = pipeRoutesAll();
     expect(routes).toMatch(/project-has-live-job/);
     expect(routes).toMatch(/project-has-active-pipeline/);
     expect(routes).toMatch(/project-not-universal/);
@@ -170,7 +175,7 @@ describe('approval funnel', () => {
   it('gate advance happens only after an NX-winning choice-resolved', () => {
     const chat = read('periphery/adapters/http/routes/chat.routes.ts');
     expect(chat).toMatch(/pipeline_approval' && result\.resolved/);
-    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    const routes = pipeRoutesAll();
     // The pipelines approval route must delegate to the same ChatService resolve.
     expect(routes).toMatch(/appendChoiceResolved/);
     expect(routes).toMatch(/if \(!result\.resolved\)/);
@@ -214,7 +219,7 @@ describe('clarify funnel', () => {
   it('both funnels exist: chat clarify-card branch (NX-first) and the account-scoped clarify route', () => {
     const chat = read('periphery/adapters/http/routes/chat.routes.ts');
     expect(chat).toMatch(/clarifying' && result\.resolved/);
-    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    const routes = pipeRoutesAll();
     expect(routes).toMatch(/\/runs\/:runId\/steps\/:stepId\/clarify/);
     // Own-run check parity with run detail/cancel.
     expect(routes).toMatch(/clarify-already-resolved/);
