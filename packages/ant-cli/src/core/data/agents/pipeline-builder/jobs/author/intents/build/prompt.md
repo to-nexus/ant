@@ -177,12 +177,9 @@
     directory sweep (`terms/**`) that hands the step every case's every file
     and calls it context.
   - **Run isolation is only yours to give when the paths are yours.** A
-    prefix carrying a static variable (`{{run.id}}`) partitions a run — but
-    only if the producing intent writes there. When the intents own their
-    output paths (a domain key like a contract id), the pipeline cannot
-    partition them, so say that in the report: name the cross-case exposure,
-    and name what would remove it as agent work — an intent that accepts a
-    path prefix. Do not present a narrowed pin as isolation it does not give.
+    `{{run.id}}` prefix partitions a run only if the producing intent writes
+    there; domain-keyed paths the intents own, it cannot — the report owes its
+    cross-case entry (see the skeleton), never a narrowed pin sold as isolation.
 
 **Save, verify, decode failures.**
 
@@ -235,6 +232,9 @@ worse than no section at all.
 ## Intent changes this pipeline needs
 - {agentId}/{intent}: {what the pipeline cannot express}. {The change that
   would fix it.} → Agent Builder.
+- {agentId}/{intent}: pins ride `{glob}` — a domain key the pipeline cannot
+  partition, so concurrent cases share what they match. An intent accepting a
+  path prefix would isolate runs. → Agent Builder. Owed by every domain-keyed pin.
 
 ## Run entry
 - {stepId} asks {whom} for {what} through clarify.
