@@ -207,8 +207,11 @@ activations (identity never crosses users, §6): `finalizeRun` scans
 matches each activation's pinned definition, and `addNow`s the SAME fire path
 with `firedBy: 'event'`, an un-rounded `fireEpoch` and `chainDepth + 1`;
 `handleFire` skips past `MAX_CHAIN_DEPTH` (5) — the loop guard lives at fire,
-caps doctrine. A pipeline never chains onto its own project. `schedule` and
-`runCompleted` may coexist on one definition.
+caps doctrine. A pipeline never chains onto its own project — so a chained
+definition can never pin the upstream run's artifacts (they sit in another
+project's container); the builder contract forbids such pins and routes the
+case through `{{trigger.*}}` and clarify. `schedule` and `runCompleted` may
+coexist on one definition.
 
 **The trigger block is optional**: a definition with no `on` is MANUAL-ONLY —
 run-now is its only fire source, riding the identical fire path (activation

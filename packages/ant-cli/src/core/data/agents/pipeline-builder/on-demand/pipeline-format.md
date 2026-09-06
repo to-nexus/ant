@@ -20,9 +20,14 @@ on:                             # OPTIONAL — omit `on` entirely for a
     pipelineId: weekly-ops      # that pipeline's run (the SAME activator's)
     statuses: [completed]       # seals one of these terminal statuses
                                 # (default [completed]; ['failed'] = an
-                                # error-handler pipeline). `schedule` and
-                                # `runCompleted` may coexist. Chain depth
-                                # is bounded (5) against fire loops.
+                                # error-handler pipeline). `schedule` may
+                                # coexist; chain depth is bounded (5). A
+                                # chained fire lands on the activator's OTHER
+                                # activated projects — never back where the
+                                # run just sealed — so the upstream run's
+                                # artifacts sit in another container, out of
+                                # pin reach: pin only what this pipeline's
+                                # own steps produce.
 defaults:
   onStepFailure: abort          # abort (default) | continue
 steps:

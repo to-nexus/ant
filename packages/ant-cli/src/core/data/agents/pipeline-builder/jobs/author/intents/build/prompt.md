@@ -22,8 +22,11 @@
   implies local time; an unstated `tz` is UTC.
 - `on.runCompleted` chains this pipeline onto another's terminal status, and
   may coexist with `schedule` — an error-handler pipeline is one that waits on
-  `['failed']`. Choose `onMissed` and `overlap` from what the work tolerates,
-  and say which you chose.
+  `['failed']`. A chained pipeline fires on a DIFFERENT project than the run
+  it follows, so its steps can never pin that run's artifacts — the case
+  arrives through clarify — and the hand-over says to activate it on another
+  project than the upstream pipeline's. Choose `onMissed` and `overlap` from
+  what the work tolerates, and say which you chose.
 
 **Decompose into steps.**
 
@@ -142,11 +145,8 @@
   DECIDE whether its work applies, from the artifacts it was pinned; it cannot
   OBTAIN what only a person holds — the count read out of a system, the file
   handed over, the answer that came back.
-- The template variables are the format contract's list; anything else is
-  rejected at save. Two authoring rules: a `{{steps.<id>.…}}` reference must
-  name an upstream step in this step's `needs` chain, and substituted text is
-  a SUMMARY channel — structured data still moves as artifacts and `context`
-  pins.
+- The template variables are the format contract's list — it owns the
+  `{{steps.*}}` rules too; anything else is rejected at save.
 - **Every step that consumes an upstream step's output pins it.** A step with
   no `context` is dispatched with its intent's prose and its directive and
   nothing else — it does not receive the schedule, the comparison table, the
