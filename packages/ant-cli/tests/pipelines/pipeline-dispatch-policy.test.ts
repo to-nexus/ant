@@ -177,15 +177,15 @@ describe('approval funnel', () => {
   });
 
   it('the gate-seal human_resolved line precedes the dispatch fan-out (no log-order inversion)', () => {
-    const coordinator = coordinatorAll();
     // applyOutcome fires the resolve audit hook after the outcome landed and
     // before executeDispatches/finalizeRun append their downstream lines.
-    const apply = coordinator.slice(coordinator.indexOf('private async applyOutcome'));
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    const apply = lifecycle.slice(lifecycle.indexOf('export async function applyOutcome'));
     const fanout = Math.min(apply.indexOf('executeDispatches'), apply.indexOf('finalizeRun'));
     expect(apply.slice(0, fanout)).toMatch(/await onOutcomeLanded\(\)/);
     // The gate seal path appends human_resolved through that hook, not post-hoc.
-    const gate = coordinator.slice(coordinator.indexOf('async applyResolvedGate'), coordinator.indexOf('private async handleGateTimeout'));
-    const seal = gate.slice(gate.indexOf('const applied = await this.applyOutcome('), gate.indexOf('if (!applied)'));
+    const gates = read('infrastructure/scheduling/pipelineRun/gates.ts');
+    const seal = gates.slice(gates.indexOf('const applied = await ctx.applyOutcome('), gates.indexOf('if (!applied)'));
     expect(seal).toMatch(/event: 'human_resolved'/);
   });
 });
@@ -290,7 +290,7 @@ describe('runCompleted chaining', () => {
   it('chained fires ride the SAME fire path, scoped to the activator, depth-bounded at fire', () => {
     const coordinator = coordinatorAll();
     // Publish point is finalize; delivery is addNow into the control queue.
-    expect(coordinator).toMatch(/fireChainedPipelines\(owner, sealed\)/);
+    expect(coordinator).toMatch(/fireChainedPipelines\(ctx, owner, sealed\)/);
     expect(coordinator).toMatch(/firedBy: 'event'/);
     // The loop guard lives at FIRE (caps doctrine), not at publish.
     expect(coordinator).toMatch(/data\.chainDepth \?\? 0\) > MAX_CHAIN_DEPTH/);
@@ -310,9 +310,10 @@ describe('run cancel authority', () => {
     expect(coordinator.match(/ant:job-poisoned/g)?.length ?? 0).toBe(1);
     expect(coordinator.match(/JOB_WORKER\.STOP/g)?.length ?? 0).toBe(1);
     // deactivate's body is pure delegation.
-    const deactivateBody = coordinator.slice(coordinator.indexOf('async deactivate('));
-    const deactivateEnd = deactivateBody.indexOf('\n  }');
-    expect(deactivateBody.slice(0, deactivateEnd)).toMatch(/this\.cancelRun\(/);
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    const deactivateBody = lifecycle.slice(lifecycle.indexOf('export async function deactivate('));
+    const deactivateEnd = deactivateBody.indexOf('\n}');
+    expect(deactivateBody.slice(0, deactivateEnd)).toMatch(/await cancelRun\(ctx/);
     expect(deactivateBody.slice(0, deactivateEnd)).not.toMatch(/markUserStopped/);
   });
 
