@@ -13,7 +13,9 @@
   it needs from the Agent Builder, and the policies it left open. Its absence
   on a pipeline that was authored here is a finding. So is a claim in it that
   the definition contradicts — and so is a limitation you can see in the
-  definition that the report does not name.
+  definition that the report does not name. The report speaks from its
+  authoring turn: a state that changed afterwards (enabled, activated, runs
+  accrued) contradicts nothing it says.
 - List `pipeline-runs/` before judging anything: that folder of this project's
   artifacts tree holds one `{runId}.jsonl` per run plus `index.jsonl`, and if
   it holds a run of this pipeline you read the newest one. "This pipeline has
@@ -66,8 +68,12 @@ step, and say which:
   approval carries one bit and no payload, so check what the downstream step
   needs: if it needs the content that labor produced, the gate cannot deliver
   it and the seam belongs on a pipeline boundary.
-- A directive that restates its intent's procedure, or that carries no input
-  the run alone supplies. Say which steps will therefore stop for clarify.
+- A directive that duplicates what a contract already owns — the intent's
+  procedure or output paths, an outcomes vocabulary's definitions, a condition
+  its `on` edge already enforces — or that carries no input the run alone
+  supplies. A one-line work order naming the run's inputs and context is the
+  compliant form, not a restatement. Say which steps will therefore stop for
+  clarify.
 - A `{{…}}`-shaped or `{placeholder}` literal in a directive or pin that is
   not one of the accepted variables — it is prose, and nothing substitutes it.
   An accepted variable standing where a different kind of value belongs (a run
