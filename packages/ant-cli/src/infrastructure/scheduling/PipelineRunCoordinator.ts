@@ -28,17 +28,12 @@ import {
   defaultStepDirective,
   isApprovalStep,
   parsePipelineDuration,
-  DEFAULT_PIPELINE_CAPS,
-  DIRECTIVE_MAX_CHARS,
-  MAX_CHAIN_DEPTH,
   MAX_GATE_REMINDERS,
   MAX_STEP_RETRY,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
   type ClarifyRecord,
   type GateDecision,
-  type JobStepDef,
-  type PipelineActivation,
   type PipelineDef,
   type PipelinePendingApproval,
   type RunRecord,
@@ -49,16 +44,13 @@ import type {
   PipelineApprovalEnterJobData,
   PipelineClarifyEnterJobData,
   PipelineControlJobData,
-  PipelineFireJobData,
   PipelineGateRemindJobData,
   PipelineOwner,
   PipelineStepTimeoutJobData,
 } from '../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL, REDIS_CHANNELS } from '../../core/constants/redis';
-import { generateHumanId } from '../../utils/humanId';
-import { generateTurnId } from '../../composition/recordUserTurn';
 import { logger } from '../../utils/logger';
-import { buildInitialSteps, planAdvance, applyStepOutcome, deriveRunStatus, effectiveNeeds, type StepDispatch } from '../../core/pipelines/ChainExecutor';
+import { applyStepOutcome, deriveRunStatus, effectiveNeeds } from '../../core/pipelines/ChainExecutor';
 import { deriveActivationsRoot } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import {
@@ -67,25 +59,19 @@ import {
   loadActivationByProject,
   loadAvailability,
   loadPipeline,
-  readRunIndex,
 } from '../../core/pipelines/store';
-import {
-  resolveUniversalExecuteContext,
-  validateUniversalTurnMeta,
-  findDuplicateActiveJob,
-  checkStartCredits,
-} from '../../core/scheduling/UniversalDispatchGate';
-import { UniversalDispatchService } from '../../core/scheduling/UniversalDispatchService';
-import { createSelfApiTokenMinter } from '../auth/selfApiToken';
 import {
   COMPONENT,
   MAX_OUTCOME_RETRIES,
   OUTCOME_RETRY_DELAY_MS,
   type HitlRecord,
   type PipelineCoordinatorDeps,
+  type PipelineRunOps,
   type StepRetryOpts,
 } from './pipelineRun/types';
-import { renderDirective, renderStaticVars, unresolvedStepRefs } from './pipelineRun/render';
+import { renderDirective } from './pipelineRun/render';
+import { handleFire } from './pipelineRun/fire';
+import { dispatchJobStep, executeDispatches, handleStepRetry } from './pipelineRun/dispatch';
 import {
   appendEvent,
   getActiveRunId,
@@ -104,10 +90,6 @@ import { captureStepOutput, detectApprovalSeal, detectClarifySeal } from './pipe
 
 export type { PipelineCoordinatorDeps } from './pipelineRun/types';
 
-/** A cron fire older than this is "missed" (worker downtime) — `onMissed` decides. */
-const STALE_FIRE_MS = 10 * 60 * 1000;
-const MAX_OVERLAP_REQUEUES = 60; // 60 × 60s = 1h of queueing before giving up
-const MAX_DUPLICATE_RETRIES = 60;
 /** Interruption reasons that are infrastructure's fault — retry-eligible. A human stop/pause is not. */
 const INFRA_INTERRUPTION_REASONS: ReadonlySet<string> = new Set(['worker_stalled', 'server_shutdown']);
 /** One free nudged round for a step that ended with its stop hooks unmet (no declared `retry` needed). */
@@ -119,7 +101,25 @@ const HOOK_UNMET_RETRY: StepRetryOpts = {
 };
 
 export class PipelineRunCoordinator {
-  constructor(private readonly deps: PipelineCoordinatorDeps) {}
+  private readonly ctx: PipelineRunOps;
+
+  constructor(private readonly deps: PipelineCoordinatorDeps) {
+    this.ctx = {
+      deps,
+      executeDispatches: (owner, def, run, dispatches) => executeDispatches(this.ctx, owner, def, run, dispatches),
+      dispatchJobStep: (owner, def, run, step, retries, directiveOverride, approvalGrantTool) =>
+        dispatchJobStep(this.ctx, owner, def, run, step, retries, directiveOverride, approvalGrantTool),
+      armGate: (owner, def, run, step) => this.armGate(owner, def, run, step),
+      applyOutcome: (owner, runId, stepId, outcome, patch, decorate, expectedJobId, onOutcomeLanded) =>
+        this.applyOutcome(owner, runId, stepId, outcome, patch, decorate, expectedJobId, onOutcomeLanded),
+      failStepOrRetry: (owner, runId, stepId, error, expectedJobId, opts) =>
+        this.failStepOrRetry(owner, runId, stepId, error, expectedJobId, opts),
+      finalizeRun: (owner, run) => this.finalizeRun(owner, run),
+      killStepJob: (jobId, projectId) => this.killStepJob(jobId, projectId),
+      enterAwaitingClarify: (data) => this.enterAwaitingClarify(data),
+      enterAwaitingToolApproval: (data) => this.enterAwaitingToolApproval(data),
+    };
+  }
 
   /** Subscribe the status-update consumer. Call once per process. */
   async start(): Promise<void> {
@@ -142,13 +142,13 @@ export class PipelineRunCoordinator {
   async handleControlJob(data: PipelineControlJobData, intendedFireAt: number): Promise<void> {
     switch (data.kind) {
       case 'fire':
-        return this.handleFire(data, intendedFireAt);
+        return handleFire(this.ctx, data, intendedFireAt);
       case 'gate-timeout':
         return this.handleGateTimeout(data.gateId);
       case 'gate-remind':
         return this.handleGateRemind(data);
       case 'step-retry':
-        return this.handleStepRetry(data.owner, data.runId, data.stepId, data.retries, data.directiveOverride);
+        return handleStepRetry(this.ctx, data.owner, data.runId, data.stepId, data.retries, data.directiveOverride);
       case 'step-timeout':
         return this.handleStepTimeout(data);
       case 'outcome-retry':
@@ -160,391 +160,6 @@ export class PipelineRunCoordinator {
       default:
         logger.warn(`[Pipeline] unknown control job kind: ${(data as any).kind}`, { component: COMPONENT });
     }
-  }
-
-  private async handleFire(data: PipelineFireJobData, intendedFireAt: number): Promise<void> {
-    const { owner, pipelineId, projectId } = data;
-    const actRoot = deriveActivationsRoot(tenantCtx(this.deps, owner));
-
-    // Activation is the fire authority: no activation ⇒ orphan scheduler —
-    // skip; the reconciler removes the cron entry. A pipelineId mismatch means
-    // the project switched pipelines after this fire was armed — stale, skip.
-    let activation: PipelineActivation | null;
-    try {
-      activation = loadActivationByProject(actRoot, projectId);
-    } catch (e) {
-      logger.warn(`[Pipeline] fire skipped — activation invalid: ${projectId}`, { component: COMPONENT }, e);
-      return;
-    }
-    if (!activation) {
-      logger.info(`[Pipeline] fire skipped — not activated: ${projectId}`, { component: COMPONENT });
-      return;
-    }
-    if (activation.pipelineId !== pipelineId) {
-      logger.info(
-        `[Pipeline] fire skipped — project ${projectId} now runs ${activation.pipelineId}, not ${pipelineId}`,
-        { component: COMPONENT },
-      );
-      return;
-    }
-
-    // Definition resolves ONLY at the activation's pinned scope.
-    const defRoot = resolveDefRoot(tenantCtx(this.deps, owner), activation.pipelineScope);
-    let def: PipelineDef;
-    try {
-      def = loadPipeline(defRoot, pipelineId);
-    } catch (e) {
-      logger.warn(`[Pipeline] fire skipped — definition invalid: ${pipelineId}`, { component: COMPONENT }, e);
-      return;
-    }
-    // Defensive: the availability machine forbids disabling while activated,
-    // but a hand-edited sidecar must not fire.
-    try {
-      if (!loadAvailability(defRoot, pipelineId).enabled) {
-        logger.warn(`[Pipeline] fire skipped — pipeline disabled: ${pipelineId}`, { component: COMPONENT });
-        return;
-      }
-    } catch (e) {
-      logger.warn(`[Pipeline] fire skipped — availability unreadable: ${pipelineId}`, { component: COMPONENT }, e);
-      return;
-    }
-
-    // Chain-depth loop guard (caps doctrine: enforce at fire, skip + log).
-    if ((data.chainDepth ?? 0) > MAX_CHAIN_DEPTH) {
-      logger.warn(
-        `[Pipeline] chained fire skipped — depth ${data.chainDepth} exceeds ${MAX_CHAIN_DEPTH}: ${pipelineId} on ${projectId}`,
-        { component: COMPONENT },
-      );
-      return;
-    }
-
-    const fireEpoch = data.fireEpoch ?? Math.floor(intendedFireAt / 60_000) * 60_000;
-
-    // Missed-fire policy (cron only; manual fires are always "now").
-    if (data.firedBy === 'cron' && Date.now() - intendedFireAt > STALE_FIRE_MS) {
-      if ((def.on?.schedule?.onMissed ?? 'skip') === 'skip') {
-        logger.info(`[Pipeline] missed fire skipped: ${pipelineId} @ ${new Date(fireEpoch).toISOString()}`, { component: COMPONENT });
-        return;
-      }
-    }
-
-    // Fire idempotency (attempts:3 on the control queue + multi-replica).
-    const firedKey = REDIS_KEYS.PIPE.FIRED(owner.organizationId, owner.userId, projectId, fireEpoch);
-    if (!(await this.deps.stateStore.acquireLock(firedKey, REDIS_TTL.PIPE.FIRED))) return;
-
-    // Cap: bound the activator's simultaneously-live runs across all of their
-    // activations. Counted and reserved in ONE step — the previous shape read a
-    // count, compared it, and only reserved much later, so two activations
-    // firing at once both passed an N-1 cap (L-031). Same primitive, same
-    // reasoning as the SSE connection slot (M-005). Member is the projectId, so
-    // a retry of the same activation refreshes rather than double-counting.
-    const slotKey = REDIS_KEYS.PIPE.RUN_SLOTS(owner.organizationId, owner.userId);
-    const reserved = await this.deps.stateStore.reserveSlot(
-      slotKey,
-      projectId,
-      DEFAULT_PIPELINE_CAPS.maxConcurrentRuns,
-      REDIS_TTL.PIPE.ACTIVE,
-    );
-    if (!reserved) {
-      logger.warn(
-        `[Pipeline] fire skipped — maxConcurrentRuns reached (${DEFAULT_PIPELINE_CAPS.maxConcurrentRuns}): ${pipelineId}`,
-        { component: COMPONENT },
-      );
-      await this.deps.stateStore.releaseLock(firedKey).catch(() => {});
-      return;
-    }
-
-    // Overlap guard — one live run per ACTIVATION (the same pipeline may run
-    // concurrently on other projects).
-    const runId = generateHumanId();
-    const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, projectId);
-    const acquired = await this.deps.stateStore.tryAcquireLock(activeKey, runId, REDIS_TTL.PIPE.ACTIVE);
-    if (!acquired) {
-      await this.deps.stateStore.releaseSlot(slotKey, projectId).catch(() => {});
-      const overlap = def.on?.schedule?.overlap ?? 'skip';
-      // Release the fire NX so a queued re-arm (same fireEpoch) can pass it.
-      await this.deps.stateStore.releaseLock(firedKey).catch(() => {});
-      if (overlap === 'queue' && (data.requeues ?? 0) < MAX_OVERLAP_REQUEUES) {
-        await this.deps.scheduleQueue.armDelayed(
-          `fire-requeue-${owner.organizationId}-${owner.userId}-${projectId}-${fireEpoch}`,
-          60_000,
-          { ...data, fireEpoch, requeues: (data.requeues ?? 0) + 1 },
-        );
-      } else {
-        logger.info(`[Pipeline] overlap skip: ${pipelineId} on ${projectId}`, { component: COMPONENT });
-      }
-      return;
-    }
-
-    // Cross-run watermark, frozen at fire so every step of this run sees the
-    // same value ({{run.prevSuccess.*}}): the newest COMPLETED run of this
-    // pipeline on this activation.
-    let prevSuccessFireEpoch: number | undefined;
-    try {
-      prevSuccessFireEpoch = readRunIndex(deriveActivationsRoot(tenantCtx(this.deps, owner)), projectId, 50, pipelineId)
-        .find((e) => e.status === 'completed')?.fireEpoch;
-    } catch {
-      prevSuccessFireEpoch = undefined;
-    }
-
-    const run: RunRecord = {
-      runId,
-      pipelineId,
-      projectId,
-      firedBy: data.firedBy,
-      fireEpoch,
-      status: 'running',
-      steps: buildInitialSteps(def),
-      startedAt: new Date().toISOString(),
-      defSnapshot: def,
-      activationSnapshot: activation,
-      ...(prevSuccessFireEpoch !== undefined && { prevSuccessFireEpoch }),
-      ...(data.chainDepth !== undefined && { chainDepth: data.chainDepth }),
-    };
-
-    await appendEvent(this.deps, owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
-    const plan = planAdvance(def, run);
-    await saveRun(this.deps, plan.run);
-    await publish(this.deps, owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId, run: publicRun(plan.run) });
-    await this.executeDispatches(owner, def, plan.run, plan.dispatches);
-  }
-
-  // ============================================
-  // Step dispatch
-  // ============================================
-
-  private async executeDispatches(
-    owner: PipelineOwner,
-    def: PipelineDef,
-    run: RunRecord,
-    dispatches: StepDispatch[],
-  ): Promise<void> {
-    for (const dispatch of dispatches) {
-      if (dispatch.kind === 'gate') {
-        await this.armGate(owner, def, run, dispatch.def as ApprovalStepDef);
-      } else {
-        await this.dispatchJobStep(owner, def, run, dispatch.def as JobStepDef, 0);
-      }
-    }
-    // Terminal without any dispatch (e.g. everything skipped immediately).
-    if (isTerminal(run.status) && dispatches.length === 0) {
-      await this.finalizeRun(owner, run);
-    }
-  }
-
-  private async dispatchJobStep(
-    owner: PipelineOwner,
-    def: PipelineDef,
-    run: RunRecord,
-    step: JobStepDef,
-    retries: number,
-    directiveOverride?: string,
-    approvalGrantTool?: string,
-  ): Promise<void> {
-    const pipelineId = run.pipelineId;
-    // Standing failures (approval/membership/credits/definition/meta) never
-    // retry — they are deterministic until a person changes something.
-    const fail = (reason: string, retryableFailure = false) =>
-      retryableFailure
-        ? this.failStepOrRetry(owner, run.runId, step.id, reason)
-        : this.applyOutcome(owner, run.runId, step.id, 'failed', { error: reason });
-
-    // Owner-standing gates — re-judged at EVERY step dispatch, never once at
-    // registration (revocation/credit-drain take effect mid-chain).
-    if (await this.deps.checkApproval(owner)) return void (await fail('account-not-approved'));
-    if (!(await this.deps.checkTeamMembership(owner))) return void (await fail('membership-revoked'));
-    const lowCredits = await checkStartCredits(owner, this.deps.getCreditLedger);
-    if (lowCredits) return void (await fail('insufficient-credits'));
-
-    // Definition + turn-meta accept gates (same owners as the HTTP route).
-    const resolved = await resolveUniversalExecuteContext(this.deps.workspaceResolver, owner, run.projectId, step.customJobRef);
-    if (!resolved.ok) return void (await fail(`${resolved.code}: ${resolved.error}`));
-    // Pins render their STATIC template vars before expansion/existence
-    // checks — `reports/{{trigger.fireDate}}/**` addresses exactly this run's
-    // partition (run-scoped pin isolation; steps.* refs are validator-refused).
-    const renderedContext = (step.context ?? []).map((pin) => renderStaticVars(pin, run));
-    const meta = await validateUniversalTurnMeta(
-      resolved.containerPath,
-      resolved.intentIds,
-      step.intent ? [step.intent] : [],
-      renderedContext,
-      undefined,
-      resolved.builtinTools,
-      resolved.scopeRoots,
-      // Glob pins (upstream stop-hook artifact contracts) expand here only —
-      // interactive @ctx stays concrete-path-only.
-      { expandContextGlobs: true },
-    );
-    if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
-
-    // Project-level duplicate gate — with the pipeline-owned project gate on
-    // the interactive side AND the executor's one-job-in-flight rule, the only
-    // collision left is the seal race between a finishing step's job (status
-    // record lagging the pub/sub event) and this dispatch: 1–2 re-arms absorb it.
-    const duplicate = await findDuplicateActiveJob(this.deps.stateStore as any, owner, run.projectId, UNIVERSAL_FEATURE, 'universal');
-    if (duplicate) {
-      if (retries >= MAX_DUPLICATE_RETRIES) return void (await fail('duplicate-job-timeout'));
-      await this.deps.scheduleQueue.armDelayed(
-        `step-retry-${run.runId}-${step.id}`,
-        60_000,
-        { kind: 'step-retry', owner, pipelineId, projectId: run.projectId, runId: run.runId, stepId: step.id, retries: retries + 1, directiveOverride },
-      );
-      return;
-    }
-
-    // Chat parity with the interactive execute path: the step's directive is
-    // a durable, live-broadcast user_turn (pipeline-attributed), and the run's
-    // FIRST step also carries a run-started notice on the same turn.
-    // An empty/absent step directive dispatches the shared default — the
-    // definition (base docs + intent) is the work statement in that case.
-    const template = step.directive?.trim() ? step.directive : defaultStepDirective(step.intent);
-    const directive = directiveOverride ?? renderDirective(template, run);
-    // Last common point before BOTH durable sinks (chat.jsonl append + universal
-    // enqueue). The ingress caps are where the author/answerer sees the error;
-    // this is where the axis is actually closed, because template expansion,
-    // clarify resume and step-retry replay all arrive here with a value no
-    // ingress inspected (M-NEW-029). A cap after the append protects nothing.
-    if (directive.length > DIRECTIVE_MAX_CHARS) {
-      return void (await fail(`directive-too-large: ${directive.length} > ${DIRECTIVE_MAX_CHARS} characters`));
-    }
-    const turnId = generateTurnId();
-    const isFirstTurn = !run.steps.some((s) => s.turnId);
-    if (this.deps.chatService) {
-      try {
-        await this.deps.chatService.appendUserTurn(
-          run.projectId,
-          UNIVERSAL_FEATURE,
-          directive,
-          turnId,
-          undefined,
-          owner,
-          undefined,
-          'universal',
-          { pipelineId, runId: run.runId, stepId: step.id, firedBy: run.firedBy },
-        );
-      } catch (e) {
-        logger.warn(`[Pipeline] failed to append step user_turn: ${run.runId}/${step.id}`, { component: COMPONENT }, e);
-      }
-    }
-
-    const dispatcher = new UniversalDispatchService(
-      { jobQueue: this.deps.getJobQueue() as any, stateStore: this.deps.stateStore as any },
-      {
-        workspaceService: this.deps.workspaceService,
-        workspaceResolver: this.deps.workspaceResolver,
-        stateTracker: this.deps.stateTracker,
-        selfApiTokenMinter: createSelfApiTokenMinter(),
-      },
-    );
-
-    let jobId: string;
-    try {
-      const result = await dispatcher.enqueue({
-        jobType: 'universal',
-        agent: 'universal',
-        project: run.projectId,
-        feature: UNIVERSAL_FEATURE,
-        userContext: owner,
-        overrideDirective: directive,
-        customJobRef: step.customJobRef,
-        declaresSelfApi: resolved.declaresSelfApi,
-        // Every pipeline dispatch is UNATTENDED: approval-gated tool calls
-        // pause for the inbox instead of the interactive fail-closed reject.
-        // The grant rides only the approve re-dispatch (one turn, one tool).
-        universalTurnMeta: {
-          intents: meta.meta?.intents ?? [],
-          context: meta.meta?.context ?? [],
-          ...(meta.meta?.plan && { plan: true }),
-          unattended: true,
-          ...(approvalGrantTool && { approvalGrantTool }),
-          // Memory boundary: this run's steps share a conversation channel,
-          // and no other run's.
-          runId: run.runId,
-        },
-        firedBy: 'schedule',
-        pipelineRunId: run.runId,
-        pipelineStepId: step.id,
-        seedTurnId: turnId,
-      });
-      jobId = result.jobId;
-    } catch (e) {
-      return void (await fail(`enqueue-failed: ${e instanceof Error ? e.message : String(e)}`, true));
-    }
-
-    if (isFirstTurn && this.deps.chatService) {
-      const startedText = run.firedBy === 'cron'
-        ? `🔁 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
-        : run.firedBy === 'event'
-          ? `🔗 선행 파이프라인 완료로 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
-          : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
-      this.deps.chatService
-        .appendAssistantMessage(run.projectId, UNIVERSAL_FEATURE, startedText, {
-          jobId,
-          turnId,
-          jobType: 'universal',
-          userContext: owner,
-          kind: 'system_notice',
-        })
-        .catch((e) => logger.warn('[Pipeline] run-started notice failed', { component: COMPONENT }, e));
-    }
-
-    await this.deps.stateStore.setKeyWithTTL(
-      REDIS_KEYS.PIPE.JOB(jobId),
-      JSON.stringify({ runId: run.runId, stepId: step.id, pipelineId, projectId: run.projectId, owner }),
-      REDIS_TTL.PIPE.JOB,
-    );
-    await mutateRun(this.deps, owner, run.runId, async (live) => {
-      const steps = live.steps.map((s): StepRecord =>
-        s.stepId === step.id ? { ...s, status: 'running', jobId, turnId, startedAt: new Date().toISOString() } : s,
-      );
-      return { run: { ...live, steps }, dispatches: [] };
-    });
-    // Wall-clock bound for THIS round — re-armed (same id) on every
-    // re-dispatch, cancelled on outcome / clarify park / run cancel.
-    if (step.timeout) {
-      const timeoutMs = parsePipelineDuration(step.timeout.after);
-      if (timeoutMs) {
-        await this.deps.scheduleQueue.armDelayed(`sto-${run.runId}-${step.id}`, timeoutMs, {
-          kind: 'step-timeout',
-          owner,
-          pipelineId,
-          projectId: run.projectId,
-          runId: run.runId,
-          stepId: step.id,
-          jobId,
-        });
-      }
-    }
-    const unresolvedTemplates = directiveOverride ? [] : unresolvedStepRefs(template, run);
-    await appendEvent(this.deps, owner, run.projectId, {
-      ts: new Date().toISOString(),
-      event: 'step_dispatched',
-      runId: run.runId,
-      stepId: step.id,
-      jobId,
-      detail: {
-        turnId,
-        ...(meta.contextExpanded && { contextExpanded: meta.contextExpanded }),
-        ...(unresolvedTemplates.length > 0 && { unresolvedTemplates }),
-      },
-    });
-  }
-
-  private async handleStepRetry(
-    owner: PipelineOwner,
-    runId: string,
-    stepId: string,
-    retries: number,
-    directiveOverride?: string,
-  ): Promise<void> {
-    const run = await getRun(this.deps, runId);
-    if (!run || isTerminal(run.status)) return;
-    const record = run.steps.find((s) => s.stepId === stepId);
-    if (!record || record.status !== 'dispatched') return;
-    const def = run.defSnapshot;
-    const stepDef = def?.steps.find((s) => s.id === stepId);
-    if (!def || !stepDef || isApprovalStep(stepDef)) return;
-    await this.dispatchJobStep(owner, def, run, stepDef, retries, directiveOverride);
   }
 
   // ============================================
@@ -755,7 +370,7 @@ export class PipelineRunCoordinator {
       const def = result.run.defSnapshot;
       const stepDef = def?.steps.find((s) => s.id === hitl.stepId);
       if (def && stepDef && !isApprovalStep(stepDef) && hitl.tool) {
-        await this.dispatchJobStep(
+        await dispatchJobStep(this.ctx, 
           hitl.owner,
           def,
           result.run,
@@ -1517,7 +1132,7 @@ export class PipelineRunCoordinator {
     const def = result.run.defSnapshot;
     const stepDef = def?.steps.find((s) => s.id === stepId);
     if (def && stepDef && !isApprovalStep(stepDef)) {
-      await this.dispatchJobStep(owner, def, result.run, stepDef, 0, params.answer);
+      await dispatchJobStep(this.ctx, owner, def, result.run, stepDef, 0, params.answer);
     }
     return true;
   }
@@ -1566,7 +1181,7 @@ export class PipelineRunCoordinator {
 
     if (result.dispatches.length > 0) {
       const def = result.run.defSnapshot!;
-      await this.executeDispatches(owner, def, result.run, result.dispatches);
+      await executeDispatches(this.ctx, owner, def, result.run, result.dispatches);
     } else if (isTerminal(result.run.status)) {
       await this.finalizeRun(owner, result.run);
     }

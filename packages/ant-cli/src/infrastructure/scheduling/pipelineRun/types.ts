@@ -4,9 +4,21 @@
  * root; every module here is free functions over `PipelineCoordinatorDeps`.
  */
 
+import type {
+  ApprovalStepDef,
+  JobStepDef,
+  PipelineDef,
+  RunRecord,
+  StepRecord,
+} from '@ant/shared';
 import type { StateStorePort } from '../../../core/ports/stateStore';
-import type { PipelineOwner } from '../../../core/ports/scheduler';
-import type { ScheduleQueuePort } from '../../../core/ports/scheduler';
+import type {
+  PipelineApprovalEnterJobData,
+  PipelineClarifyEnterJobData,
+  PipelineOwner,
+  ScheduleQueuePort,
+} from '../../../core/ports/scheduler';
+import type { StepDispatch } from '../../../core/pipelines/ChainExecutor';
 
 export const COMPONENT = 'PipelineCoordinator';
 export const MAX_OUTCOME_RETRIES = 5; // × 30s — lock-starved outcome re-applies
@@ -62,6 +74,50 @@ export interface PipelineCoordinatorDeps {
   /** Injected from the periphery helpers so the rule owners stay single. */
   checkApproval(userContext: { userId: string; organizationId: string }): Promise<{ status: string } | null>;
   checkTeamMembership(userContext: { userId: string; organizationId: string; organizationKind?: any }): Promise<boolean>;
+}
+
+/**
+ * Cross-cluster call surface. The cluster modules (fire/dispatch/gates/
+ * outcome/hitl/lifecycle) never value-import each other — every edge in the
+ * mutual-call graph goes through this ctx, which the coordinator class
+ * assembles in its constructor. Kernel calls (runStore/render/seals) are
+ * direct imports; those modules are leaves.
+ */
+export interface PipelineRunOps {
+  deps: PipelineCoordinatorDeps;
+  executeDispatches(owner: PipelineOwner, def: PipelineDef, run: RunRecord, dispatches: StepDispatch[]): Promise<void>;
+  dispatchJobStep(
+    owner: PipelineOwner,
+    def: PipelineDef,
+    run: RunRecord,
+    step: JobStepDef,
+    retries: number,
+    directiveOverride?: string,
+    approvalGrantTool?: string,
+  ): Promise<void>;
+  armGate(owner: PipelineOwner, def: PipelineDef, run: RunRecord, step: ApprovalStepDef): Promise<void>;
+  applyOutcome(
+    owner: PipelineOwner,
+    runId: string,
+    stepId: string,
+    outcome: 'succeeded' | 'failed',
+    patch?: Partial<StepRecord>,
+    decorate?: (record: StepRecord) => StepRecord,
+    expectedJobId?: string,
+    onOutcomeLanded?: () => Promise<void>,
+  ): Promise<boolean>;
+  failStepOrRetry(
+    owner: PipelineOwner,
+    runId: string,
+    stepId: string,
+    error: string,
+    expectedJobId?: string,
+    opts?: StepRetryOpts,
+  ): Promise<boolean>;
+  finalizeRun(owner: PipelineOwner, run: RunRecord): Promise<void>;
+  killStepJob(jobId: string, projectId: string): Promise<void>;
+  enterAwaitingClarify(data: PipelineClarifyEnterJobData): Promise<void>;
+  enterAwaitingToolApproval(data: PipelineApprovalEnterJobData): Promise<void>;
 }
 
 export interface HitlRecord {
