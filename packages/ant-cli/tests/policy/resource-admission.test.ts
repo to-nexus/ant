@@ -386,7 +386,7 @@ describe('expensive job routes are admission-gated (M-NEW-029)', () => {
   // same pair. The slot lives in the shared seam — a route that builds its own
   // archive would be outside every budget, which is why both go through it.
   for (const [file, route] of [
-    ['routes/accountAgents.routes.ts', "/:agentId/download"],
+    ['routes/accountAgents/definitionFiles.routes.ts', "/:agentId/download"],
     ['routes/pipelines/definition.routes.ts', "/:pipelineId/download"],
   ] as const) {
     it(`${route} is rate-limited and archives through the one seam`, () => {
