@@ -224,7 +224,7 @@ activations), and its orphan sweep compares against the set actually
 UPSERTED, so a schedule removed by an edit is swept even while the activation
 stays wanted.
 
-Fire semantics (`PipelineRunCoordinator.handleFire`, addressed by
+Fire semantics (`scheduling/pipelineRun/fire.ts::handleFire`, addressed by
 `(activator, projectId)`):
 - **Activation is the fire authority**: no `activation.json` ⇒ the fire is an
   orphan scheduler and skips (the reconciler removes the cron entry); an
@@ -416,7 +416,10 @@ parent state hostage to queue retention; ③ this repo's rule is pub/sub
 fan-out, never BullMQ-internal hooks; ④ the per-project duplicate gate needs
 self-paced sequencing anyway — eager child enqueue is actively harmful.
 
-The coordinator (`infrastructure/scheduling/PipelineRunCoordinator.ts`) is an
+The coordinator (`infrastructure/scheduling/PipelineRunCoordinator.ts` — a
+delegation facade over the `pipelineRun/{fire,dispatch,gates,outcome,hitl,
+lifecycle,runStore,seals,render,types}.ts` modules; cross-cluster calls ride
+the `PipelineRunOps` ctx) is an
 ADDITIONAL subscriber on `job:status:updates` (note: no `ant:` prefix —
 `CHANNEL_DOMAINS.JOB = 'job'`), beside RouteConfigurator's. It resolves
 `ant:pipe:job:{jobId}`, takes the per-run lock, applies the executor's plan,
@@ -651,7 +654,8 @@ activator's live runs across their activations).
 
 ## 7. HTTP / FE surface
 
-Routes (`pipelines.routes.ts`, mounted **account-scoped `/api/definitions/pipelines`** —
+Routes (`pipelines.routes.ts`, group modules under `routes/pipelines/*.routes.ts`
+over a shared `context.ts`, mounted **account-scoped `/api/definitions/pipelines`** —
 definitions are cross-project): list (scope-merged closest-wins; entries
 carry `scope` / per-caller `readonly` / `enabled` / `org` permission
 projection / `activations: PipelineActivationView[]` — own rows plus, for
