@@ -69,6 +69,26 @@ describe('universalBuildDirective — one template, every custom intent', () => 
     const t = await translator('ko');
     expect(HANGUL.test(universalBuildDirective({ intentId: 'deep-dive', t }))).toBe(true);
   });
+
+  // With `@ctx` attached, "there is no further input" is false and tells the
+  // model to disregard the material it was handed — the variant must resolve in
+  // BOTH locales (fallbackLng would otherwise serve the other language).
+  it.each(LANGS)('%s: the attached-context variant resolves and differs from the bare one', async (lng) => {
+    const t = await translator(lng);
+    const bare = universalBuildDirective({ intentId: 'deep-dive', t });
+    const withCtx = universalBuildDirective({ intentId: 'deep-dive', t, hasAttachedContext: true });
+    expect(withCtx).not.toBe(bare);
+    expect(withCtx).toContain('deep-dive');
+    expect(withCtx).not.toContain('universal.buildDirective');
+    expect(withCtx).not.toContain('{{');
+    expect(HANGUL.test(withCtx)).toBe(lng === 'ko');
+  });
+
+  it('hasAttachedContext defaults to the bare template', async () => {
+    const t = await translator('en');
+    expect(universalBuildDirective({ intentId: 'deep-dive', t, hasAttachedContext: false }))
+      .toBe(universalBuildDirective({ intentId: 'deep-dive', t }));
+  });
 });
 
 describe('canonicalBuildDirective — authored i18n → catalog copy → fallback', () => {
@@ -122,5 +142,25 @@ describe('tombstone — the footer cannot reach an intent criterion', () => {
       .replace(/^[ \t]*\/\/.*$/gm, '');
     expect(code).not.toMatch(/\bCustomIntentDef\b/);
     expect(code).not.toMatch(/\.infer\b/);
+  });
+
+  // major-leaning-depth: Build reset the whole turn meta before dispatch and the
+  // user's `@ctx` file never reached the run. Build owns the intent slot only.
+  it('handleBuild composes the wire params over the armed turn meta, never resetting it first', () => {
+    const code = fs
+      .readFileSync(path.join(__dirname, '../ActionFooter.tsx'), 'utf-8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    // The canonical IntentVariant has its own handleBuild — anchor on the universal one.
+    const variant = code.indexOf('function UniversalIntentVariant');
+    const start = code.indexOf('const handleBuild', variant);
+    const dispatch = code.indexOf('executeCodeJob(', start);
+    expect(variant).toBeGreaterThan(-1);
+    expect(start).toBeGreaterThan(variant);
+    expect(dispatch).toBeGreaterThan(start);
+    const preDispatch = code.slice(start, dispatch);
+    expect(preDispatch).not.toMatch(/resetUniversalTurnMeta/);
+    expect(preDispatch).not.toMatch(/addUniversalIntentMention/);
+    expect(preDispatch).toMatch(/selectUniversalBuildExecuteContext\(/);
   });
 });

@@ -8,7 +8,7 @@ import {
 } from '@ant/shared';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { addChatUserMessage } from '@/infrastructure/http/api';
-import { selectUniversalExecuteContext } from '@/domain/store/selectors/universalExecuteContext';
+import { selectUniversalBuildExecuteContext } from '@/domain/store/selectors/universalExecuteContext';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 import { Button, WizardStepIndicator, type WizardStep } from '@/presentation/components/aurora';
 import { canonicalBuildDirective, universalBuildDirective } from './buildDirective';
@@ -222,23 +222,26 @@ function UniversalIntentVariant({ intentId }: UniversalIntentFooterProps) {
     if (!selectedProject || isRunning) return;
 
     const store = useStore.getState();
-    // One localized template covers every custom intent: the work statement
-    // already rides the pinned intent's prompt.md and the job/agent base
-    // prompts, so the directive only states that this run carries no further
-    // input. Minting it from the intent's criterion instead double-injected
-    // the same prose and dragged the turn's locale to the author's language.
-    const directive = universalBuildDirective({ intentId, t });
-
     if (store.selectedJobType !== 'universal' || store.selectedAgent !== 'universal') {
       store.applyJobIdentity({ jobType: 'universal', agent: 'universal' });
     }
-    // BUILD is a self-contained atomic run of exactly this intent: drop any
-    // pre-armed @ctx/@plan leftovers, then pin this intent and read the wire
-    // params off the ONE mapping SSOT.
-    store.resetUniversalTurnMeta();
-    store.addUniversalIntentMention(intentId);
-    const ctx = selectUniversalExecuteContext(useStore.getState());
+    // BUILD decides the intent and nothing else: the wire params are the
+    // armed turn meta with the intent slot replaced by this page's intent.
+    // Armed @ctx / @plan chips are the user's explicit input and ride the run
+    // — resetting them here is how a Build lost the very material it was
+    // asked to work from (major-leaning-depth).
+    const ctx = selectUniversalBuildExecuteContext(store, intentId);
     if (!ctx) return;
+    // One localized template per attachment state covers every custom intent:
+    // the work statement already rides the pinned intent's prompt.md and the
+    // job/agent base prompts, so the directive only states what else this run
+    // carries. Minting it from the intent's criterion instead double-injected
+    // the same prose and dragged the turn's locale to the author's language.
+    const directive = universalBuildDirective({
+      intentId,
+      t,
+      hasAttachedContext: (ctx.context?.length ?? 0) > 0,
+    });
 
     store.setRunning(true, undefined, 'generate');
     try {

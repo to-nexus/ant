@@ -451,6 +451,12 @@ debugging session.
   or letting a definition error crash the worker child instead of answering 400
   at accept.
 - Silently ignoring a removed yaml key — an author concludes the knob works.
+- Clearing armed `universalTurnMeta.context` / `plan` on the way to a dispatch.
+  An `@ctx` chip is the user's explicit input (the near-loading-brace class: the
+  selection outranks any policy layer). The Actions-tab Build button owns the
+  intent slot ONLY — `selectUniversalBuildExecuteContext` composes over the
+  armed meta and the directive names the attachment
+  (`universal.buildDirectiveWithContext`); the one reset is post-dispatch.
 - **A per-turn pre-classification LLM pass** (intent, tier, or anything else)
   before the agent call. Unpinned turns resolve deterministically:
   explicit → inherited (clarify continuity) → `general` (there is no catalog

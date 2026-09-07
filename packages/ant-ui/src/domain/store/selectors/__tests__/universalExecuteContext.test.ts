@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { selectUniversalExecuteContext } from '../universalExecuteContext';
+import { selectUniversalExecuteContext, selectUniversalBuildExecuteContext } from '../universalExecuteContext';
 
 const emptyMeta = { intents: [], context: [], plan: false };
 
@@ -51,5 +51,54 @@ describe('selectUniversalExecuteContext', () => {
     expect(ctx?.intents).toEqual(['incident']);
     expect(ctx?.context).toEqual(['reports/w.md']);
     expect(ctx?.plan).toBe(true);
+  });
+});
+
+/**
+ * The Actions-tab Build button owns exactly one thing: the intent slot. Armed
+ * `@ctx` / `@plan` are the user's explicit input and ride the run — a Build that
+ * reset the whole turn meta first shipped with no material (major-leaning-depth).
+ */
+describe('selectUniversalBuildExecuteContext — Build replaces the intent slot only', () => {
+  it('forwards pre-armed context and plan; the intent becomes the page intent', () => {
+    const ctx = selectUniversalBuildExecuteContext(
+      fakeState({ universalTurnMeta: { intents: [], context: ['resource/spec.html'], plan: true } }),
+      'build',
+    );
+    expect(ctx?.intents).toEqual(['build']);
+    expect(ctx?.context).toEqual(['resource/spec.html']);
+    expect(ctx?.plan).toBe(true);
+  });
+
+  it('replaces a different pre-armed intent instead of accumulating (single slot)', () => {
+    const ctx = selectUniversalBuildExecuteContext(
+      fakeState({ universalTurnMeta: { intents: ['review'], context: ['a.md'], plan: false } }),
+      'build',
+    );
+    expect(ctx?.intents).toEqual(['build']);
+    expect(ctx?.context).toEqual(['a.md']);
+    expect(ctx?.plan).toBeUndefined();
+  });
+
+  it('with nothing armed, sends only the intent', () => {
+    const ctx = selectUniversalBuildExecuteContext(fakeState(), 'build');
+    expect(ctx).toMatchObject({ customJobRef: 'ops-team/weekly-report', intents: ['build'] });
+    expect(ctx?.context).toBeUndefined();
+    expect(ctx?.plan).toBeUndefined();
+  });
+
+  it.each([
+    ['canonical project', { projectType: 'canonical' as const }],
+    ['no job selected', { selectedCustomJobId: undefined }],
+  ])('returns null on %s', (_label, overrides) => {
+    expect(selectUniversalBuildExecuteContext(fakeState(overrides), 'build')).toBeNull();
+  });
+
+  it('is pure — the input state and its turn meta are untouched', () => {
+    const meta = { intents: ['review'], context: ['a.md'], plan: false };
+    const state = fakeState({ universalTurnMeta: meta });
+    selectUniversalBuildExecuteContext(state, 'build');
+    expect(state.universalTurnMeta).toBe(meta);
+    expect(meta).toEqual({ intents: ['review'], context: ['a.md'], plan: false });
   });
 });

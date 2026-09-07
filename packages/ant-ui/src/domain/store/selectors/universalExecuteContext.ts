@@ -48,3 +48,20 @@ export function selectUniversalExecuteContext(
     plan: universalTurnMeta.plan || undefined,
   };
 }
+
+/**
+ * The Actions-tab Build button's wire params: the CURRENT turn meta with the
+ * intent slot replaced by `intentId`. Build decides the intent and nothing
+ * else — armed `@ctx` / `@plan` chips are the user's explicit input and ride
+ * the run (resetting them before dispatch is how a Build lost the material it
+ * was meant to work from). Pure: composes over the state, never writes it.
+ */
+export function selectUniversalBuildExecuteContext(
+  state: Parameters<typeof selectUniversalExecuteContext>[0],
+  intentId: string,
+): UniversalExecuteContext | null {
+  return selectUniversalExecuteContext({
+    ...state,
+    universalTurnMeta: { ...state.universalTurnMeta, intents: [intentId] },
+  });
+}

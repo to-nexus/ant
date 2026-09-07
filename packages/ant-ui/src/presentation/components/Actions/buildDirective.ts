@@ -31,6 +31,11 @@ import {
 // key must exist in BOTH locale files or an English user gets the Korean copy.
 const UNIVERSAL_BUILD_DIRECTIVE_EN =
   'Please run the "{{intent}}" intent. There is no further input beyond this request — treat the intent\'s own definition as the complete specification and carry it out end to end';
+// With `@ctx` attached the "no further input" sentence would be false and tell
+// the model to disregard the material it was handed. Paths are not listed: the
+// runtime renders them in the Attached Context band and the turn-context card.
+const UNIVERSAL_BUILD_DIRECTIVE_WITH_CONTEXT_EN =
+  'Please run the "{{intent}}" intent on the attached context. Beyond the attached files there is no further input — treat the intent\'s own definition as the complete specification and carry it out end to end';
 
 /**
  * Canonical (RAC pipeline) BUILD directive: authored i18n imperative →
@@ -61,11 +66,21 @@ export function canonicalBuildDirective(args: {
   );
 }
 
-/** Universal (custom-agent) BUILD directive — one template, every intent. */
-export function universalBuildDirective(args: { intentId: string; t: TFunction }): string {
-  const { intentId, t } = args;
-  return t('universal.buildDirective', {
-    intent: intentId,
-    defaultValue: UNIVERSAL_BUILD_DIRECTIVE_EN,
-  });
+/** Universal (custom-agent) BUILD directive — one template per attachment state, every intent. */
+export function universalBuildDirective(args: {
+  intentId: string;
+  t: TFunction;
+  /** True when the run carries `@ctx` pins — the directive must not claim there is no input. */
+  hasAttachedContext?: boolean;
+}): string {
+  const { intentId, t, hasAttachedContext = false } = args;
+  return hasAttachedContext
+    ? t('universal.buildDirectiveWithContext', {
+        intent: intentId,
+        defaultValue: UNIVERSAL_BUILD_DIRECTIVE_WITH_CONTEXT_EN,
+      })
+    : t('universal.buildDirective', {
+        intent: intentId,
+        defaultValue: UNIVERSAL_BUILD_DIRECTIVE_EN,
+      });
 }

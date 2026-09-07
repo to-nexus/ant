@@ -204,6 +204,7 @@
     "hooksNone": "No hooks — the turn ends when the agent stops.",
     "hooksVerified": "Checked at the turn's stop event, from actual tool results — never from the model's claims. Unmet hooks re-prompt the agent a bounded number of times, then pause the job resumably.",
     "buildDirective": "Please run the \"{{intent}}\" intent. There is no further input beyond this request \u2014 treat the intent's own definition as the complete specification and carry it out end to end",
+    "buildDirectiveWithContext": "Please run the \"{{intent}}\" intent on the attached context. Beyond the attached files there is no further input \u2014 treat the intent's own definition as the complete specification and carry it out end to end",
     "armedHint": "Pinned — this intent rides your next chat turn.",
     "disarm": "Disarm",
     "intentDetailPrompt": "Prompt",

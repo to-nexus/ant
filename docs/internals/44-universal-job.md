@@ -1679,11 +1679,16 @@ after a Disarm or a send while staying on the page) and focuses the composer
 posts a localized run request as the user turn (`universalBuildDirective`,
 `actions:universal.buildDirective` — never the intent's `infer` criterion, which
 is prompt text already rendered into the Intent Catalog) and dispatches a
-universal run with EXACTLY this intent pinned — `handleBuild` resets the
-armed turn meta before arming, so pre-armed intents/`@ctx`/`@plan` leftovers
-never ride a Build — via `selectUniversalExecuteContext` (the
-`PlanCompleteVariant.handleProceed` precedent — composer-independent, so a
-collapsed chat sidebar cannot defer it).
+universal run with EXACTLY this intent pinned via
+`selectUniversalBuildExecuteContext` — the armed turn meta with the intent slot
+replaced, nothing reset first. Build decides the intent and nothing else: armed
+`@ctx`/`@plan` chips are the user's explicit input and ride the run, and the
+directive switches to `actions:universal.buildDirectiveWithContext` when `@ctx`
+is present so it never claims "no further input" over attached material
+(major-leaning-depth: the earlier pre-dispatch reset shipped a Build with no
+material, and the agent asked which agent to build). Composer-independent, so a
+collapsed chat sidebar cannot defer it (the `PlanCompleteVariant.handleProceed`
+precedent).
 
 ### Structured ⇄ raw coverage matrix (Agent Settings)
 
