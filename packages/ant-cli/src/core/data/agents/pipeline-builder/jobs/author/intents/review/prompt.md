@@ -88,6 +88,23 @@ step, and say which:
 - A pin whose producer is not among the step's `needs` ancestors. Nothing
   orders the producer before the consumer, so the file arrives only by the
   accident of dispatch order — what a step pins, it `needs`.
+- Chain-context pins (`on.runCompleted`), judged per pipeline: a pin naming
+  what only the UPSTREAM pipeline's runs produce is structurally dead — the
+  chained fire lands on a different project, out of container reach (a
+  hand-over telling the operator to activate both on the same project is the
+  same defect in prose). WITHIN the chained pipeline the duty is unchanged:
+  consumers still pin their own upstream steps' stop globs — intra-pipeline
+  pins at zero across a multi-step flow is the restriction over-applied, not
+  compliance.
+- The report's `Outcome coverage` section, checked by simulation: walk the
+  graph once per declared outcome and compare the steps that skip with what
+  the section claims. A missing section, an outcome it does not walk, or a
+  "duty ends with this outcome" claim the material contradicts — each counts.
+- The report's wiring claims, checked against the definition's own channels:
+  a report or final answer saying a downstream step pins an artifact when the
+  definition carries no such `context` is a self-contradiction — count it
+  even when a run completed, because the clarify fallback hides the missing
+  pin as repeated questions to a person.
 
 **Report.** Two sections, kept apart: findings (a contract mechanism unmet, a
 step that cannot work as written, a mismatch with the material) and judgment
