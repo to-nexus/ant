@@ -109,10 +109,13 @@
   handoff in, or let the step that CONSUMES it ask through its intent's
   `clarify`. The split is reversible; chain or merge the two pipelines once the
   seam is wired.
-- A gate cannot be the third shape: the format contract is explicit that an
-  approval carries **no payload**, so a directive claiming a gate delivered
-  content leaves the step working from an assumption that does not survive
-  into its answer, its sealed verdict, or the next step's input.
+- A gate cannot be the third shape, and that is a fact rather than a
+  preference: an approval carries **no payload**, so it delivers none of what
+  the person produced. A gate `prompt` inviting the approver to enter or paste
+  anything describes a channel that does not exist, and a directive claiming a
+  gate delivered content leaves the step working from an assumption whose
+  hedge does not survive into its answer, its sealed verdict, or the next
+  step's input.
 - A clarify answer stays with the step that asked it (`{{steps.<id>.answer}}`
   is that step's final answer, not its clarify), so whatever LATER steps need
   from a person must be captured into an artifact by the step that asked — the
