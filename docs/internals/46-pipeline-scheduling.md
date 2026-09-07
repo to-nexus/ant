@@ -725,7 +725,11 @@ decision the run does not execute is a seam, not a gate) and
 catalog advisories (`collectPipelineCatalogAdvisories`: pin-needs
 coherence — a `context` pin whose producing step, identified by
 exact stop-glob match, is not in the pinning step's needs closure
-is wired by file-order luck; "what you pin, you needs" — and, on
+is wired by file-order luck; "what you pin, you needs"; a step pinning
+its OWN intent's stop glob (the small-farming-medal shape: the entry step
+pinned `terms/*/notice-period.md`, so a fresh project's first run died at
+step 1 with `invalid-context-path` — the needs rule's self-filter had
+silenced exactly that case) — and, on
 `on.runCompleted` pipelines only, the inverse F34 shape: a pinless
 job step whose needs-closure ancestors declare stop globs, because
 the chain restriction "pin only what this pipeline's own steps

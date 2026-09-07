@@ -161,6 +161,11 @@
   a step does not duplicate its output name — so pin the intent's own glob.
   A pin invented from the step's id matches nothing and the step fails at
   dispatch, taking the run with it.
+- A step never pins its own intent's stop glob, and an entry step pins
+  nothing — it has no upstream. A self-pin is the same failure one step
+  earlier: on a fresh project the glob matches nothing and the run dies at
+  its first step; where an earlier case left a match, the step is handed that
+  case's file as if it were its input.
 - A pin inherits its producer's condition. A glob that matches nothing fails
   the step, so pinning an artifact whose producing step only runs on one
   outcome makes the pinning step fail on every other one — at the very end of

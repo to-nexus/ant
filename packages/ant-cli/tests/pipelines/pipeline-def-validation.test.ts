@@ -559,16 +559,30 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
     expect(advisories).toHaveLength(0);
   });
 
-  it('no claim for pins matching no sibling stop glob (external inputs), self-pins, or when any duplicate producer is an ancestor', () => {
+  // The small-farming-medal shape: the ENTRY step pinned its own intent's stop
+  // glob — a fresh project has no match, dispatch fails the step, abort kills
+  // the run. The self-filter of the needs rule silenced it; it is its own row.
+  it('flags a step that pins its own intent\'s stop glob (self-pin) — entry step or not', () => {
+    const entry = collectPipelineCatalogAdvisories(
+      def([step('lookup', 'publishing', { context: ['terms/*/publishing-request.md'] }), step('mail', 'mail')]),
+      CATALOG,
+    );
+    expect(entry).toHaveLength(1);
+    expect(entry[0]).toMatch(/step "lookup" pins "terms\/\*\/publishing-request\.md", its own intent's stop artifact/);
+    expect(entry[0]).toMatch(/matches nothing and the step fails at dispatch/);
+
+    const downstream = collectPipelineCatalogAdvisories(
+      def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md', 'terms/*/mail-request.md'] })]),
+      CATALOG,
+    );
+    expect(downstream).toHaveLength(1);
+    expect(downstream[0]).toMatch(/step "mail" pins "terms\/\*\/mail-request\.md", its own intent's stop artifact/);
+  });
+
+  it('no claim for pins matching no sibling stop glob (external inputs), or when any duplicate producer is an ancestor', () => {
     expect(
       collectPipelineCatalogAdvisories(
         def([step('a', 'publishing'), step('b', 'mail', { needs: [], context: ['resource/manual.html'] })]),
-        CATALOG,
-      ),
-    ).toHaveLength(0);
-    expect(
-      collectPipelineCatalogAdvisories(
-        def([step('a', 'publishing', { context: ['terms/*/publishing-request.md'] })]),
         CATALOG,
       ),
     ).toHaveLength(0);

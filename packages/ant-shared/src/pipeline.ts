@@ -1358,6 +1358,16 @@ export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: Pipel
     if (isApprovalStep(step)) continue;
     const ancestors = closureOf(step.id);
     for (const pin of step.context ?? []) {
+      // A step pinning its OWN intent's stop glob has no producer upstream: on
+      // a fresh project the glob matches nothing and dispatch fails the step
+      // (`invalid-context-path`), and where a prior case left a match it pins
+      // that case's file. The self-filter below would otherwise silence it.
+      if ((producersByGlob.get(pin) ?? []).includes(step.id)) {
+        advisories.push(
+          `step "${step.id}" pins "${pin}", its own intent's stop artifact — on a first run the glob matches nothing and the step fails at dispatch; a step never pins its own output (an entry step pins nothing): drop the pin`,
+        );
+        continue;
+      }
       const producers = (producersByGlob.get(pin) ?? []).filter((p) => p !== step.id);
       if (producers.length === 0 || producers.some((p) => ancestors.has(p))) continue;
       advisories.push(
