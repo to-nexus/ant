@@ -26,13 +26,16 @@ import { ActivationRunHistory } from './ActivationRunHistory';
 import { ApproversEditor, type ApproverGateInfo } from './ApproversEditor';
 
 export interface PipelineExecutionViewProps {
+  /** The SAVED definition — execution never reads unsaved design edits. */
   def: PipelineDef;
   draftIsNew: boolean;
   pipelineId: string | null;
   entry: PipelineListEntry | null;
+  /** The design view holds edits the server has not seen. */
+  unsavedChanges?: boolean;
 }
 
-export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: PipelineExecutionViewProps) {
+export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsavedChanges = false }: PipelineExecutionViewProps) {
   const { t, i18n } = useTranslation('pipelines');
   const activatableProjects = useStore((s) => s.pipelineActivatableProjects);
   const activationError = useStore((s) => s.pipelineActivationError);
@@ -44,6 +47,8 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
   const activatePipelineTo = useStore((s) => s.activatePipelineTo);
   const deactivatePipelineById = useStore((s) => s.deactivatePipelineById);
   const runPipelineNowById = useStore((s) => s.runPipelineNowById);
+  const enablePipelineById = useStore((s) => s.enablePipelineById);
+  const loadActivationRuns = useStore((s) => s.loadActivationRuns);
 
   const [busy, setBusy] = useState(false);
   const [runNowNote, setRunNowNote] = useState<string | null>(null);
@@ -102,7 +107,7 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
     !activeHere &&
     ((activatableProjects.find((p) => p.id === selectedProject)?.activePipelineId ?? activePipelineByProject[selectedProject]?.pipelineId ?? null) !== null);
   let footerHint: string | null = null;
-  let footerAction: 'activate' | 'badge' | null = null;
+  let footerAction: 'activate' | 'badge' | 'publish' | null = null;
   if (!selectedProject) {
     footerHint = t('execution.selectProjectFirst', 'Select a project first to activate this pipeline there.');
   } else if (activeHere) {
@@ -112,7 +117,11 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
   } else if (boundElsewhere) {
     footerHint = t('execution.boundToOther', 'This project is bound to another pipeline.');
   } else if (!enabled) {
-    footerHint = t('execution.enableFirstShort', 'Enable the pipeline in Pipeline settings (Wiring view) to activate it here.');
+    // Publishing is the missing step — offer it here instead of pointing at another view.
+    footerAction = 'publish';
+    footerHint = unsavedChanges
+      ? t('availability.saveFirst', 'Save your changes before publishing.')
+      : t('execution.enableFirstShort', 'Publish the pipeline to activate it here.');
   } else {
     footerAction = 'activate';
   }
@@ -128,6 +137,12 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
             {t('execution.activationsCount', '{{n}} project(s)', { n: activations.length })}
           </span>
         </div>
+
+        {unsavedChanges && (
+          <Badge tone="warning" size="sm" style={{ alignSelf: 'flex-start' }}>
+            {t('execution.unsavedChanges', 'Unsaved design changes — execution follows the saved definition')}
+          </Badge>
+        )}
 
         {(activationError || runNowNote) && (
           <div style={{ fontSize: 12, color: activationError ? 'var(--red-500)' : 'var(--text-2)' }}>
@@ -157,8 +172,17 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
               setBusy(true);
               setRunNowNote(null);
               const err = await runPipelineNowById(pipelineId, a.projectId);
-              setRunNowNote(err ?? t('editor.runNowAccepted', 'Run accepted — it appears below shortly.'));
               setBusy(false);
+              if (err) {
+                setRunNowNote(err);
+                return;
+              }
+              // The run lands in THIS section's history — open it and fetch,
+              // instead of a note promising it will appear somewhere below.
+              setExpanded(a.projectId);
+              void loadActivationRuns(pipelineId, a.projectId);
+              setRunNowNote(t('execution.runNowAccepted', 'Run started — follow it in the history below.'));
+              window.setTimeout(() => setRunNowNote((cur) => (cur === null ? cur : null)), 4000);
             }}
             onDeactivate={async () => {
               setBusy(true);
@@ -247,6 +271,20 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
                 ? t('execution.activeHereBy', 'Active here — by {{who}}', { who: activeHere.activatedBy })
                 : t('execution.activeHere', 'Active in this project')}
             </Badge>
+          ) : footerAction === 'publish' ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy || unsavedChanges}
+              title={footerHint ?? undefined}
+              onClick={async () => {
+                setBusy(true);
+                await enablePipelineById(pipelineId);
+                setBusy(false);
+              }}
+            >
+              <Zap size={13} /> {t('availability.publish', 'Publish')}
+            </Button>
           ) : (
             <Button
               variant="primary"
@@ -396,7 +434,13 @@ function ActivationSection({
         <div style={{ flex: 1 }} />
         {view.mine && view.state !== 'broken' && (
           <span onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="xs" disabled={busy || live} onClick={onRunNow}>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={busy || live}
+              title={live ? t('execution.runNowLive', 'A run is in progress — Run now is available when it finishes.') : undefined}
+              onClick={onRunNow}
+            >
               <Play size={12} /> {t('editor.runNow', 'Run now')}
             </Button>
           </span>

@@ -133,6 +133,7 @@ export function PipelineWorkspace() {
         draftIsNew={draftIsNew}
         readonly={readonly}
         enabled={enabled}
+        definitionDirty={!!dirty?.definition}
         view={view}
         onViewChange={setPipelinePanelView}
       />
@@ -164,7 +165,10 @@ export function PipelineWorkspace() {
 
       {view === 'execution' ? (
         <div style={{ flex: 1, minHeight: 0 }}>
-          <PipelineExecutionView def={draft} draftIsNew={draftIsNew} pipelineId={selectedId} entry={entry ?? null} />
+          {/* Execution follows the SAVED definition — after publishing it is the
+              activated one; unsaved design edits never leak into rosters,
+              gate lists or the live progress canvas. */}
+          <PipelineExecutionView def={saved ?? draft} draftIsNew={draftIsNew} pipelineId={selectedId} entry={entry ?? null} unsavedChanges={!!dirty?.definition} />
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -183,9 +187,18 @@ export function PipelineWorkspace() {
                 }}
               >
                 <Lock size={12} />
-                {readonly
-                  ? t('editor.readOnlyShared', 'Shared by {{owner}} — read-only for you.', { owner: entry?.org?.owner ?? 'the organization' })
-                  : t('canvas.lockedEnabled', 'Wiring is locked while the pipeline is enabled — disable it in Pipeline settings to edit.')}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  {readonly
+                    ? t('editor.readOnlyShared', 'Shared by {{owner}} — read-only for you.', { owner: entry?.org?.owner ?? 'the organization' })
+                    : t('canvas.lockedEnabled', 'Design is locked while the pipeline is published — switch it back to draft in the header to edit.')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPipelinePanelView('execution')}
+                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--violet-500)', cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
+                >
+                  {t('canvas.openExecution', 'Open execution →')}
+                </button>
               </div>
             )}
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
@@ -227,7 +240,6 @@ export function PipelineWorkspace() {
               editable={editable}
               readonly={readonly}
               enabled={enabled}
-              definitionDirty={!!dirty?.definition}
               onPatch={patch}
             />
           )}

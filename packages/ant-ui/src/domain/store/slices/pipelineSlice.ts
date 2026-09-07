@@ -1,3 +1,4 @@
+import i18next from 'i18next';
 import { StateCreator } from 'zustand';
 import type {
   ActivePipelineInfo,
@@ -292,7 +293,9 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   newPipelineDraft: () => {
     const draft: PipelineDef = {
       version: PIPELINE_DEF_VERSION,
-      name: 'New pipeline',
+      // The app's i18n bootstrap initializes the default i18next instance; a
+      // store built without it (tests) keeps the English fallback.
+      name: i18next.isInitialized ? i18next.t('pipelines:editor.defaultName', 'New pipeline') : 'New pipeline',
       on: { schedule: { cron: '0 9 * * *', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } },
       steps: [],
     };

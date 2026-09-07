@@ -3,8 +3,8 @@
     "new": "새 파이프라인",
     "awaiting": "{{n}}건 대기",
     "running": "실행 중",
-    "enabled": "사용 가능",
-    "draft": "사용 불능",
+    "enabled": "게시됨",
+    "draft": "초안",
     "readonly": "읽기 전용",
     "discardConfirm": "저장하지 않은 변경사항을 버릴까요?",
     "orphanHint": "존재하지 않는 파이프라인을 참조하는 활성화입니다.",
@@ -24,7 +24,7 @@
     "unsaved": "저장 전"
   },
   "views": {
-    "wiring": "배선도",
+    "wiring": "설계",
     "execution": "실행"
   },
   "space": {
@@ -47,22 +47,24 @@
     "selectProjectFirst": "먼저 프로젝트를 선택해야 이 파이프라인을 활성화할 수 있습니다.",
     "notUniversal": "파이프라인은 워크스페이스(universal) 프로젝트에서만 활성화할 수 있습니다.",
     "boundToOther": "이 프로젝트는 다른 파이프라인에 바인딩되어 있습니다.",
-    "enableFirstShort": "파이프라인 설정(배선도 뷰)에서 사용 가능으로 전환하면 여기에 활성화할 수 있습니다.",
+    "enableFirstShort": "게시하면 이 프로젝트에 활성화할 수 있습니다.",
     "activeHere": "이 프로젝트에서 활성",
     "activeHereBy": "이 프로젝트에서 활성 — {{who}}",
     "activateHere": "이 프로젝트에서 활성화",
     "thisProject": "이 프로젝트",
-    "activatedByYou": "나"
+    "activatedByYou": "내가 활성화",
+    "unsavedChanges": "설계에 저장되지 않은 변경이 있습니다 — 실행은 저장본을 따릅니다",
+    "runNowLive": "실행이 진행 중입니다 — 끝나면 다시 실행할 수 있습니다.",
+    "runNowAccepted": "실행이 시작됐습니다 — 아래 실행 이력에서 진행을 확인하세요."
   },
   "availability": {
-    "enable": "사용 가능으로 전환",
-    "disable": "사용 불능으로 전환",
-    "saveFirst": "전환하기 전에 변경사항을 저장하세요.",
-    "hint": {
-      "body": "사용 가능: 프로젝트에서 이 파이프라인을 활성화할 수 있고 배선도는 잠깁니다. 편집·삭제·승급하려면 사용 불능으로 전환하세요 — 활성화가 하나도 없을 때만 가능합니다."
-    },
-    "disableFirstPromote": "승급하려면 먼저 파이프라인을 사용 불능으로 전환하세요.",
-    "disableFirstDelete": "삭제하려면 먼저 파이프라인을 사용 불능으로 전환하세요."
+    "saveFirst": "게시하기 전에 변경사항을 저장하세요.",
+    "disableFirstPromote": "승급하려면 먼저 초안으로 되돌리세요.",
+    "disableFirstDelete": "삭제하려면 먼저 초안으로 되돌리세요.",
+    "publish": "게시",
+    "toDraft": "초안",
+    "segmentLabel": "게시 상태",
+    "activationsFirst": "활성화 {{n}}곳을 먼저 해제하세요."
   },
   "promote": {
     "title": "조직으로 승급",
@@ -96,8 +98,8 @@
     "groupMine": "내 파이프라인",
     "ownerLine": "{{who}}의 활성화",
     "details": "자세히",
-    "rejectNotePlaceholder": "거부 사유 (선택) — 소유자가 다음 조치를 정하는 데 쓰입니다",
-    "rejectConfirm": "거부 확정",
+    "rejectNotePlaceholder": "거절 사유 (선택) — 소유자가 다음 조치를 정하는 데 쓰입니다",
+    "rejectConfirm": "거절 확정",
     "rejectCancel": "뒤로",
     "alreadyDecided": "이미 결정된 게이트입니다.",
     "alreadyDecidedBy": "이미 {{who}}이(가) 결정했습니다.",
@@ -107,12 +109,12 @@
     "pickOne": "왼쪽에서 파이프라인을 선택하거나\n새로 만들어 보세요.",
     "namePlaceholder": "파이프라인 이름",
     "runNow": "지금 실행",
-    "runNowAccepted": "발화했습니다 — 실행 이력에서 확인하세요.",
     "viewMode": "파이프라인 뷰",
     "readOnlyShared": "{{owner}}이(가) 공유함 — 내게는 읽기 전용입니다.",
     "badCron": "저장하려면 스케줄을 고쳐주세요.",
     "needSteps": "스텝을 하나 이상 추가하세요.",
-    "emptyCanvas": "트리거 노드의 + 버튼으로 첫 스텝을 추가하세요."
+    "emptyCanvas": "트리거 노드의 + 버튼으로 첫 스텝을 추가하세요.",
+    "defaultName": "새 파이프라인"
   },
   "canvas": {
     "approval": "승인 게이트",
@@ -121,15 +123,16 @@
     "addJobStep": "잡 스텝",
     "addGate": "승인 게이트",
     "gateApprovedBy": "✓ {{who}} 승인",
-    "gateRejectedBy": "✗ {{who}} 거부",
+    "gateRejectedBy": "✗ {{who}} 거절",
     "gateAutoApproved": "⏱ 자동 승인",
-    "gateAutoRejected": "⏱ 자동 거부",
-    "lockedEnabled": "파이프라인이 사용 가능 상태인 동안 배선도는 잠깁니다 — 편집하려면 파이프라인 설정에서 사용 불능으로 전환하세요.",
+    "gateAutoRejected": "⏱ 자동 거절",
+    "lockedEnabled": "게시된 파이프라인의 설계는 잠깁니다 — 편집하려면 헤더에서 초안으로 되돌리세요.",
     "triggerMode": {
       "schedule": "스케줄",
       "manual": "수동 실행",
       "runCompleted": "체인"
-    }
+    },
+    "openExecution": "실행 보기 →"
   },
   "inspector": {
     "trigger": "트리거·정책",
@@ -151,8 +154,7 @@
     "identityTitle": "기본 정보",
     "identityDesc": "레일·인박스·모든 실행에 표시되는 이름입니다.",
     "name": "이름",
-    "availabilityTitle": "사용 가능 여부",
-    "saveToUnlock": "파이프라인을 저장하면 사용 가능 여부·공유·삭제가 열립니다."
+    "saveToUnlock": "파이프라인을 저장하면 게시·공유·삭제가 열립니다."
   },
   "trigger": {
     "mode": "트리거",
@@ -175,14 +177,14 @@
     "cron": "Cron 표현식",
     "tz": "타임존",
     "nextFires": "다음 발화",
-    "onMissed": "발화를 놓쳤을 때",
+    "onMissed": "놓친 발화 처리",
     "onMissedSkip": "건너뛰기 (기본)",
     "onMissedRunOnce": "복구 시 1회 실행",
-    "overlap": "이전 run이 아직 살아있을 때",
+    "overlap": "동시 실행 처리",
     "overlapSkip": "이번 발화 건너뛰기 (기본)",
-    "overlapQueue": "끝날 때까지 대기",
-    "onStepFailure": "스텝이 실패하면",
-    "failAbort": "run 중단 (기본)",
+    "overlapQueue": "이전 실행이 끝날 때까지 대기",
+    "onStepFailure": "스텝 실패 시",
+    "failAbort": "실행 중단 (기본)",
     "failContinue": "다른 브랜치 계속"
   },
   "step": {
@@ -194,7 +196,7 @@
     "noIntent": "없음 (잡이 결정)",
     "intentsUnavailable": "인텐트 카탈로그 파스 실패 — 에이전트 설정에서 정의를 고쳐주세요.",
     "directive": "지시문",
-    "directivePlaceholder": "이 run이 무엇을 해야 하나요? 비워두면 기본 지시문으로 실행됩니다.",
+    "directivePlaceholder": "이 실행이 무엇을 해야 하나요? 비워두면 기본 지시문으로 실행됩니다.",
     "templateVars": "템플릿 변수",
     "templateVarsHint": "실행이 디스패치될 때 실제 값으로 치환됩니다 — 커서 위치에 삽입됩니다.",
     "templateVar": {
@@ -212,8 +214,8 @@
     "upstreamOutputs": "선행 스텝 산출물",
     "upstreamOutputsHint": "각 경로 패턴은 그 스텝 인텐트의 stop-hook 산출물 계약입니다 — 이 스텝 실행 전 존재가 보장되며 디스패치 시 실제 파일로 확장됩니다.",
     "addContext": "추가",
-    "removeContext": "핀 제거",
-    "on": "의존 스텝이 …일 때 실행",
+    "removeContext": "첨부 제거",
+    "on": "실행 조건",
     "onSuccess": "성공했을 때 (기본)",
     "onFailure": "실패했을 때 (실패 브랜치)",
     "onAlways": "성공/실패 무관",
@@ -223,16 +225,16 @@
     "retryN": "최대 {{n}}회 재시도",
     "retryBackoffPlaceholder": "1m (대기 간격, {n}m|h|d)",
     "retryIdempotency": "재시도는 부수효과를 반복할 수 있습니다 — 이 인텐트는 이미 완료된 작업을 확인한 뒤 수행해야 합니다.",
-    "timeout": "1회 실행 시간 제한",
+    "timeout": "실행 시간 제한",
     "timeoutPlaceholder": "없음 — 예: 30m, 2h",
     "needs": "의존 스텝",
-    "needsHint": "선택한 스텝이 전부 끝난 뒤 이 스텝이 실행됩니다. 여러 개를 고르면 합류(fan-in), 여러 스텝이 한 스텝에 의존하면 분기(fan-out)가 됩니다. 아무것도 선택하지 않으면 루트가 됩니다.",
+    "needsHint": "선택한 스텝이 전부 끝난 뒤 이 스텝이 실행됩니다. 여러 개를 고르면 합류, 여러 스텝이 한 스텝에 의존하면 분기가 됩니다. 아무것도 선택하지 않으면 루트가 됩니다.",
     "needsReset": "기본값 (직전 스텝)",
     "gateNeedsUpstream": "승인 게이트는 선행 스텝이 필요합니다 — 하나 이상 선택하세요.",
     "expectedOutputs": "예상 산출물",
-    "expectedOutputsHint": "이 인텐트가 선언한 stop-hook 아티팩트 계약 — 하위 스텝이 이 glob을 컨텍스트로 핀할 수 있습니다.",
+    "expectedOutputsHint": "이 인텐트가 선언한 stop-hook 산출물 계약 — 하위 스텝이 이 경로 패턴을 컨텍스트로 첨부할 수 있습니다.",
     "expectedOutputsNone": "이 인텐트는 아티팩트 계약을 선언하지 않습니다 — 액션 전용 또는 자유 형식 출력.",
-    "onMissingVerdict": "실행이 verdict를 남기지 않으면",
+    "onMissingVerdict": "판정 없을 때",
     "onMissingVerdictFail": "스텝 실패 (기본)",
     "onMissingVerdictAssume": "\"{{o}}\"로 간주",
     "stepId": "스텝 ID",
@@ -273,9 +275,9 @@
   },
   "runs": {
     "empty": "아직 실행 이력이 없습니다 — 지금 실행으로 테스트해 보세요.",
-    "emptyOther": "이 활성화에는 아직 기록된 run이 없습니다.",
+    "emptyOther": "이 활성화에는 아직 기록된 실행이 없습니다.",
     "timeline": "스텝 타임라인",
-    "cancel": "run 취소",
+    "cancel": "실행 취소",
     "cron": "스케줄",
     "manual": "수동",
     "event": "체인",
@@ -344,7 +346,7 @@
   },
   "header": {
     "root": "파이프라인",
-    "scopeUser": "내 것",
+    "scopeUser": "내 파이프라인",
     "scopeOrg": "조직"
   },
   "advisory": {

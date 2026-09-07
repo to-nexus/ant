@@ -1,10 +1,11 @@
 /**
  * PipelineSettingsPanel — the inspector slot's content when no node is
  * selected: everything about the pipeline that is not wiring. Identity (name),
- * Availability (the BE state machine's toggle), Organization access (editors —
- * writable even while enabled, per the BE), Promote and Delete (both refused
- * while enabled — the cards say so in place instead of hiding). A NEW draft
- * shows Identity only: the other cards need a saved id.
+ * Organization access (editors — writable even while published, per the BE),
+ * Promote and Delete (both refused while published — the cards say so in
+ * place instead of hiding). The publication lifecycle itself lives in the
+ * header segment. A NEW draft shows Identity only: the other cards need a
+ * saved id.
  */
 
 import { useEffect, useState } from 'react';
@@ -12,7 +13,6 @@ import { useTranslation } from 'react-i18next';
 import type { PipelineDef, PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
-import { Toggle } from '../aurora';
 import { AuroraInput, DangerZone, FieldLabel, SectionCard } from '../ConfigEditor/aurora';
 import { OrgAccessCard } from '../shared/org/OrgAccessCard';
 import { PromoteZone } from '../shared/org/PromoteZone';
@@ -25,22 +25,18 @@ export interface PipelineSettingsPanelProps {
   editable: boolean;
   readonly: boolean;
   enabled: boolean;
-  definitionDirty: boolean;
   onPatch: (next: PipelineDef) => void;
 }
 
-export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, readonly, enabled, definitionDirty, onPatch }: PipelineSettingsPanelProps) {
+export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, readonly, enabled, onPatch }: PipelineSettingsPanelProps) {
   const { t } = useTranslation('pipelines');
   const selectedId = useStore((s) => s.selectedPipelineId);
   const editorsDraft = useStore((s) => s.pipelineEditorsDraft);
   const setPipelineEditorsDraft = useStore((s) => s.setPipelineEditorsDraft);
-  const enablePipelineById = useStore((s) => s.enablePipelineById);
-  const disablePipelineById = useStore((s) => s.disablePipelineById);
   const promotePipelineById = useStore((s) => s.promotePipelineById);
   const deletePipelineById = useStore((s) => s.deletePipelineById);
   const isTeamActive = useStore(selectIsTeamActive);
 
-  const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
   const [dangerArmed, setDangerArmed] = useState(false);
@@ -51,13 +47,6 @@ export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, read
     setDangerArmed(false);
     setPromoteError(null);
   }, [selectedId]);
-
-  const availabilityDisabled = readonly || availabilityBusy || (!enabled && definitionDirty);
-  const availabilityHint = readonly
-    ? t('editor.readOnlyShared', 'Shared by {{owner}} — read-only for you.', { owner: entry?.org?.owner ?? 'the organization' })
-    : !enabled && definitionDirty
-      ? t('availability.saveFirst', 'Save your changes before enabling.')
-      : null;
 
   const handleDelete = async () => {
     if (!selectedId) return;
@@ -94,46 +83,13 @@ export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, read
         </div>
         {draftIsNew && (
           <p style={{ margin: '10px 0 0', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
-            {t('settings.saveToUnlock', 'Save the pipeline to unlock availability, sharing, and deletion.')}
+            {t('settings.saveToUnlock', 'Save the pipeline to unlock publishing, sharing, and deletion.')}
           </p>
         )}
       </SectionCard>
 
       {!draftIsNew && selectedId && (
         <>
-          <SectionCard
-            id="pipe-availability"
-            icon="Power"
-            accent="cool"
-            title={t('settings.availabilityTitle', 'Availability')}
-            description={t(
-              'availability.hint.body',
-              'Enabled: projects can activate this pipeline and the wiring is locked. Disable to edit, delete, or promote — only possible while no project has it activated.',
-            )}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: 'var(--text-1)', fontWeight: 600 }}>
-                <Toggle
-                  size="sm"
-                  checked={enabled}
-                  disabled={availabilityDisabled}
-                  aria-label={enabled ? t('availability.disable', 'Disable') : t('availability.enable', 'Enable')}
-                  onChange={async (next) => {
-                    setAvailabilityBusy(true);
-                    try {
-                      if (next) await enablePipelineById(selectedId);
-                      else await disablePipelineById(selectedId);
-                    } finally {
-                      setAvailabilityBusy(false);
-                    }
-                  }}
-                />
-                {enabled ? t('rail.enabled', 'Enabled') : t('rail.draft', 'Disabled')}
-              </label>
-              {availabilityHint && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{availabilityHint}</span>}
-            </div>
-          </SectionCard>
-
           {entry?.org?.canManageEditors && (
             <OrgAccessCard
               id="pipe-org-access"
@@ -153,7 +109,7 @@ export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, read
                 resourceName={entry?.name ?? selectedId}
                 isPromoting={isPromoting}
                 disabled={enabled}
-                disabledReason={t('availability.disableFirstPromote', 'Disable the pipeline before promoting it.')}
+                disabledReason={t('availability.disableFirstPromote', 'Switch the pipeline back to draft before promoting it.')}
                 onPromote={() => {
                   setIsPromoting(true);
                   setPromoteError(null);
@@ -170,7 +126,7 @@ export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, read
             <DangerZone
               title={t('danger.title', 'Delete this pipeline')}
               description={`${t('danger.desc', 'Removes the definition. Run history stays with each activation.')}${
-                enabled ? ` ${t('availability.disableFirstDelete', 'Disable the pipeline before deleting it.')}` : ''
+                enabled ? ` ${t('availability.disableFirstDelete', 'Switch the pipeline back to draft before deleting it.')}` : ''
               }`}
               buttonText={dangerArmed ? t('danger.confirm', 'Click again to confirm') : t('danger.button', 'Delete pipeline')}
               loadingText={t('danger.deleting', 'Deleting…')}

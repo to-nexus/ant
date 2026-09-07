@@ -3,9 +3,9 @@
     "new": "New pipeline",
     "awaiting": "{{n}} waiting",
     "running": "Running",
-    "enabled": "Enabled",
-    "draft": "Disabled",
-    "readonly": "readonly",
+    "enabled": "Published",
+    "draft": "Draft",
+    "readonly": "Read-only",
     "discardConfirm": "Discard unsaved changes?",
     "orphanHint": "This activation references a pipeline that no longer exists.",
     "scope": {
@@ -24,7 +24,7 @@
     "unsaved": "Unsaved"
   },
   "views": {
-    "wiring": "Wiring",
+    "wiring": "Design",
     "execution": "Execution"
   },
   "space": {
@@ -47,22 +47,24 @@
     "selectProjectFirst": "Select a project first to activate this pipeline there.",
     "notUniversal": "Pipelines activate on Workspace (universal) projects only.",
     "boundToOther": "This project is bound to another pipeline.",
-    "enableFirstShort": "Enable the pipeline in Pipeline settings (Wiring view) to activate it here.",
+    "enableFirstShort": "Publish the pipeline to activate it here.",
     "activeHere": "Active in this project",
     "activeHereBy": "Active here — by {{who}}",
     "activateHere": "Activate in this project",
     "thisProject": "This project",
-    "activatedByYou": "you"
+    "activatedByYou": "you",
+    "unsavedChanges": "Unsaved design changes — execution follows the saved definition",
+    "runNowLive": "A run is in progress — Run now is available when it finishes.",
+    "runNowAccepted": "Run started — follow it in the history below."
   },
   "availability": {
-    "enable": "Enable",
-    "disable": "Disable",
-    "saveFirst": "Save your changes before enabling.",
-    "hint": {
-      "body": "Enabled: projects can activate this pipeline and the wiring is locked. Disable to edit, delete, or promote — only possible while no project has it activated."
-    },
-    "disableFirstPromote": "Disable the pipeline before promoting it.",
-    "disableFirstDelete": "Disable the pipeline before deleting it."
+    "saveFirst": "Save your changes before publishing.",
+    "disableFirstPromote": "Switch the pipeline back to draft before promoting it.",
+    "disableFirstDelete": "Switch the pipeline back to draft before deleting it.",
+    "publish": "Published",
+    "toDraft": "Draft",
+    "segmentLabel": "Publication state",
+    "activationsFirst": "Deactivate the {{n}} activation(s) first."
   },
   "promote": {
     "title": "Promote to organization",
@@ -107,12 +109,12 @@
     "pickOne": "Select a pipeline on the left,\nor create a new one.",
     "namePlaceholder": "Pipeline name",
     "runNow": "Run now",
-    "runNowAccepted": "Fired — watch the run history.",
     "viewMode": "Pipeline view",
     "readOnlyShared": "Shared by {{owner}} — read-only for you.",
     "badCron": "Fix the schedule to save.",
     "needSteps": "Add at least one step.",
-    "emptyCanvas": "Press + on the trigger node to add the first step."
+    "emptyCanvas": "Press + on the trigger node to add the first step.",
+    "defaultName": "New pipeline"
   },
   "canvas": {
     "approval": "Approval",
@@ -124,12 +126,13 @@
     "gateRejectedBy": "✗ rejected by {{who}}",
     "gateAutoApproved": "⏱ auto-approved",
     "gateAutoRejected": "⏱ auto-rejected",
-    "lockedEnabled": "Wiring is locked while the pipeline is enabled — disable it in Pipeline settings to edit.",
+    "lockedEnabled": "Design is locked while the pipeline is published — switch it back to draft in the header to edit.",
     "triggerMode": {
       "schedule": "Schedule",
       "manual": "Manual",
       "runCompleted": "Chain"
-    }
+    },
+    "openExecution": "Open execution →"
   },
   "inspector": {
     "trigger": "Trigger & policies",
@@ -151,8 +154,7 @@
     "identityTitle": "Identity",
     "identityDesc": "The name shown in the rail, the inbox, and every run.",
     "name": "Name",
-    "availabilityTitle": "Availability",
-    "saveToUnlock": "Save the pipeline to unlock availability, sharing, and deletion."
+    "saveToUnlock": "Save the pipeline to unlock publishing, sharing, and deletion."
   },
   "trigger": {
     "mode": "Trigger",
@@ -175,13 +177,13 @@
     "cron": "Cron expression",
     "tz": "Timezone",
     "nextFires": "Next fires",
-    "onMissed": "If a fire is missed",
+    "onMissed": "Missed fires",
     "onMissedSkip": "Skip it (default)",
     "onMissedRunOnce": "Run once on recovery",
-    "overlap": "If the previous run is still live",
+    "overlap": "Overlapping runs",
     "overlapSkip": "Skip this fire (default)",
     "overlapQueue": "Queue until it finishes",
-    "onStepFailure": "When a step fails",
+    "onStepFailure": "On step failure",
     "failAbort": "Abort the run (default)",
     "failContinue": "Continue other branches"
   },
@@ -213,7 +215,7 @@
     "upstreamOutputsHint": "Each glob is that step intent's stop-hook output contract — it exists before this step runs, and expands to the actual files at dispatch.",
     "addContext": "Add",
     "removeContext": "Remove pin",
-    "on": "Run when its dependencies…",
+    "on": "Run condition",
     "onSuccess": "Succeeded (default)",
     "onFailure": "Failed (failure branch)",
     "onAlways": "Finished either way",
@@ -223,7 +225,7 @@
     "retryN": "Up to {{n}} retries",
     "retryBackoffPlaceholder": "1m (backoff, {n}m|h|d)",
     "retryIdempotency": "A retried run may repeat side effects — this intent must check what already completed before acting.",
-    "timeout": "Time limit per run",
+    "timeout": "Time limit",
     "timeoutPlaceholder": "none — e.g. 30m, 2h",
     "needs": "Depends on",
     "needsHint": "This step runs after every selected step finished. Pick several for a fan-in; several steps depending on one make a fan-out. No selection makes it a root.",
@@ -232,7 +234,7 @@
     "expectedOutputs": "Expected outputs",
     "expectedOutputsHint": "The intent's declared stop-hook artifact contract — downstream steps can pin these globs as context.",
     "expectedOutputsNone": "This intent declares no artifact contract — action-only or free-form output.",
-    "onMissingVerdict": "If the run seals no verdict",
+    "onMissingVerdict": "When no verdict is sealed",
     "onMissingVerdictFail": "Fail the step (default)",
     "onMissingVerdictAssume": "Assume \"{{o}}\"",
     "stepId": "Step id",
@@ -344,7 +346,7 @@
   },
   "header": {
     "root": "Pipelines",
-    "scopeUser": "My",
+    "scopeUser": "Mine",
     "scopeOrg": "Organization"
   },
   "advisory": {
