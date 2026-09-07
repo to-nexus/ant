@@ -55,6 +55,33 @@ steps:
       - reports/**              # glob over the artifacts tree
 ```
 
+A CHAINED pipeline's pins, demonstrated — this is required content, not a
+template to copy:
+
+```yaml
+version: 2
+name: Weekly ops follow-up
+on:
+  runCompleted:
+    pipelineId: weekly-ops      # the weekly-ops RUN's own artifacts sit in
+    statuses: [completed]       # another container — none of them is pinned.
+steps:
+  - id: verify                  # entry step: no upstream step in THIS
+    customJobRef: ops-team/weekly-report      # pipeline, so no pin — its
+    intent: verify-apply                      # case inputs arrive through
+                                              # its intent's clarify.
+  - id: file-record
+    customJobRef: ops-team/weekly-report
+    intent: record
+    context:
+      - reports/*/verify-checklist.md   # verify's own stop glob: WITHIN the
+                                        # chained pipeline every consumer
+                                        # still pins its upstream steps'
+                                        # outputs. Only the pins that would
+                                        # cross INTO the upstream run's
+                                        # container are out of reach.
+```
+
 ## Job steps
 
 `{ id, customJobRef, intent?, directive?, context?, needs?, on? }` — no
