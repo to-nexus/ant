@@ -82,6 +82,9 @@ step, and say which:
   identifier written as a date) is the same defect one step further in.
 - A pin with a `*` where the case's own key belongs, on per-case work: it
   expands against the whole artifacts tree, so it matches other cases too.
+  When that step's directive carries no `{{steps.<producer>.*}}` reference and
+  no static variable either, the case identity is not threaded at all — the
+  step is handed every case's file and told nothing about which is its own.
 - A pin whose producing step is conditional, on a step that is not: walk each
   outcome and say which step fails at dispatch because its glob can match
   nothing.

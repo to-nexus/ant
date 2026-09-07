@@ -15,6 +15,9 @@
   (`dependency-report/{agentId}*.md`) when present — it names the human relays.
   Name the substitute steps in the design you state, so nobody reads a green
   run as the real work happening.
+- An intent whose `prompt.md` has no closing operating-context section gave
+  you no cadence input. Say so in the report's Intent changes; do not infer a
+  cadence from the base docs and present it as the intent's own.
 
 **Design the trigger.**
 
@@ -185,6 +188,18 @@
     `{{run.id}}` prefix partitions a run only if the producing intent writes
     there; domain-keyed paths the intents own, it cannot — the report owes its
     cross-case entry (see the skeleton), never a narrowed pin sold as isolation.
+  - **Thread the case the run learned.** When the case's key is obtained at
+    run time — an upstream step asked for it through clarify — the pipeline
+    CAN still tell each consumer which of the matched files is its own:
+    `{{steps.<id>.artifacts}}` renders the files that step's job wrote (this
+    run's, not every case's), `{{steps.<id>.answer}}` its summary. Put one of
+    them in the directive of every consumer whose pin is a domain-keyed `*`
+    glob. A per-case pipeline whose directives carry no run-known value at all
+    has dropped the case identity — that is what the save advisory names.
+- An input that is a FILE — a mail HTML, a recipient list, a signed PDF —
+  cannot arrive as a clarify answer: that channel carries text only. The
+  directive tells the step to ask for the artifacts path the person uploaded
+  it to, and Run entry names the upload as the person's work.
 
 **Save, verify, decode failures.**
 
@@ -209,7 +224,10 @@
   condition and directive, every gate with its timeout, the failure policy —
   naming substitutes and seams; the run report carries the detail.
 - End with the hand-over line and what a person must decide: the gate policies
-  you left open, and the inputs the run will ask for.
+  you left open, and the inputs the run will ask for. A gate has two exits:
+  say what reject does to the run (the step fails; `onStepFailure` decides the
+  rest) — a prompt offering a third exit ("ask for an adjustment") names a
+  channel that does not exist.
 
 **Write the run report.**
 

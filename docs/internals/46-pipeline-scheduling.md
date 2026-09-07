@@ -111,9 +111,16 @@ carry another step's output — the validator refuses it).
 **Step-output substitution** (`{{steps.<id>.answer}}` /
 `{{steps.<id>.artifacts}}`): on step completion the coordinator captures
 `StepRecord.output` — the final assistant text of the seal's `session:main`
-(jobId-guarded, `PIPELINE_STEP_OUTPUT_MAX_CHARS` = 16k, same bounded read as
-the clarify detection) and the files matching the pinned intent's
-`hooks.stop` globs (`expandArtifactGlobsBounded`, non-failing). Capture is
+(jobId-guarded, canonical tags stripped via `stripRegisteredTags`,
+`PIPELINE_STEP_OUTPUT_MAX_CHARS` = 16k, same bounded read as the clarify
+detection) and the files THIS job wrote that satisfy its intent's `hooks.stop`
+globs — read from the seal's own `lastTurnHooks[].matchedWrites`
+(`core/pipelines/stepOutput.ts`), so on a domain-keyed glob
+(`terms/*/notice-period.md`) the value is the run's own case, not every case in
+the tree; the whole-tree `expandArtifactGlobsBounded` walk is only the fallback
+for a seal carrying no write evidence (ledger-met hook, pre-record session).
+The dispatch audit (`unresolvedTemplates`, `contextExpanded`) also lands on
+`StepRecord.dispatch`, not only on the `step_dispatched` event. Capture is
 best-effort: failure means an absent record, never a step failure. The
 validator restricts references to the step's transitive `needs` closure
 (never itself, never a gate) — the compile-time guarantee the referenced
@@ -729,7 +736,16 @@ is wired by file-order luck; "what you pin, you needs"; a step pinning
 its OWN intent's stop glob (the small-farming-medal shape: the entry step
 pinned `terms/*/notice-period.md`, so a fresh project's first run died at
 step 1 with `invalid-context-path` — the needs rule's self-filter had
-silenced exactly that case) — and, on
+silenced exactly that case); a `*` glob pin whose producer IS upstream while
+the consumer's directive carries no `{{…}}` reference at all (the case
+identity the run learned through clarify never reaches the consumer — the
+small-farming-medal shape's second half); and, from the def-structural set,
+an approval gate with neither `timeout` nor `remindAfter` (the authoring
+contract's "reminder on gates whose timeout is long or absent", unenforced
+until a live pipeline shipped two such gates). All of these are ONE structured
+source, `collectPipelineAdvisoryItems` (`{ code, stepId, field, message }`) —
+the string collectors map its `message`, the FE anchors the same item to the
+step and field — and, on
 `on.runCompleted` pipelines only, the inverse F34 shape: a pinless
 job step whose needs-closure ancestors declare stop globs, because
 the chain restriction "pin only what this pipeline's own steps

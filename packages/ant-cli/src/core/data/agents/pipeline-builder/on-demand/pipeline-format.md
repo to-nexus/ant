@@ -100,9 +100,11 @@ steps:
   `{{run.prevSuccess.fireEpoch}}` (the previous COMPLETED run of this
   activation — empty on the first run; the natural "process everything since
   the last successful run" watermark), plus step-output references —
-  `{{steps.<stepId>.answer}}` (the referenced step's final answer text) and
-  `{{steps.<stepId>.artifacts}}` (newline-joined paths its intent's stop-hook
-  globs matched at completion). A step-output reference must name an upstream
+  `{{steps.<stepId>.answer}}` (the referenced step's final answer text, with
+  canonical tags such as `<checklist>` / `<verdict>` stripped) and
+  `{{steps.<stepId>.artifacts}}` (newline-joined paths of the files THAT
+  step's job wrote which satisfy its intent's stop-hook globs — this run's
+  own, never every case in the tree). A step-output reference must name an upstream
   dependency in this step's `needs` chain (never itself, never a gate) — that
   ordering is what guarantees the value exists at dispatch. Anything else is
   rejected at save (`steps.<id>.verdict` is reserved).

@@ -591,6 +591,11 @@ export interface StepRecord {
   attempts?: StepAttemptRecord[];
   /** Chat turn the step's user-turn line was minted under (coordinator-owned). */
   turnId?: string;
+  /**
+   * Dispatch-time audit the run view surfaces: step-output refs that rendered
+   * empty, and how many files each glob pin expanded to.
+   */
+  dispatch?: { unresolvedTemplates?: string[]; contextExpanded?: Record<string, number> };
 }
 
 export interface RunRecord {
@@ -1309,19 +1314,98 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
   return errors;
 }
 
+/** Field an advisory anchors to — an editor renders it under that field of the named step. */
+export type PipelineAdvisoryField = 'context' | 'directive' | 'timeout' | 'needs';
+
+export type PipelineAdvisoryCode =
+  | 'gate-holds-nothing'
+  | 'gate-waits-forever'
+  | 'self-pin'
+  | 'pin-not-in-needs'
+  | 'case-identity-not-threaded'
+  | 'chained-pinless-consumer';
+
 /**
- * Catalog-dependent advisories — ride the save response's `catalogWarnings`
- * only, never the enable/activate hard gate. One rule: what you pin, you
- * needs — a `context` pin whose producing step is not in the pinning step's
- * needs closure is wired by file-order luck (works while sibling ordering
- * happens to run the producer first, breaks under any reordering). Producer
- * identification is deliberately exact-match — the pin glob string equals a
- * sibling step intent's declared stop artifact glob — because pins are
- * authored by copying stop globs; a fuzzy overlap test would trade the
- * zero-false-positive property for coverage no observed incident has needed.
+ * One save-time advisory. `message` is the wire form (the save response's
+ * `catalogWarnings` and the string collectors below map to it); `stepId` +
+ * `field` let an editor anchor the same finding to the offending control.
+ * Advisory by design — never fed to the enable/activate hard gate.
  */
-export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
-  const advisories: string[] = [];
+export interface PipelineAdvisory {
+  code: PipelineAdvisoryCode;
+  stepId?: string;
+  field?: PipelineAdvisoryField;
+  message: string;
+}
+
+/** Effective needs (omitted = previous step in file order) and their transitive closure. */
+function needsClosureOf(def: PipelineDef): (id: string) => Set<string> {
+  const stepByIndex = new Map(def.steps.map((s, i) => [s.id, i]));
+  const effectiveNeeds = (id: string): string[] => {
+    const i = stepByIndex.get(id);
+    if (i === undefined) return [];
+    return def.steps[i].needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
+  };
+  return (id: string): Set<string> => {
+    const seen = new Set<string>();
+    const stack = [...effectiveNeeds(id)];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      stack.push(...effectiveNeeds(cur));
+    }
+    return seen;
+  };
+}
+
+/**
+ * Definition-structural advisories — catalog-free findings. A terminal gate
+ * still differentiates the run's final status (a `runCompleted` chain may
+ * consume it), and a gate with no timeout is a legal "wait for a person" —
+ * so both are advisories a person weighs, never validator errors.
+ */
+export function collectPipelineDefAdvisoryItems(def: PipelineDef): PipelineAdvisory[] {
+  const out: PipelineAdvisory[] = [];
+  const dependedOn = new Set<string>();
+  def.steps.forEach((step, i) => {
+    const needs = step.needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
+    for (const need of needs) dependedOn.add(need);
+  });
+  for (const step of def.steps) {
+    if (!isApprovalStep(step)) continue;
+    if (!dependedOn.has(step.id)) {
+      out.push({
+        code: 'gate-holds-nothing',
+        stepId: step.id,
+        field: 'needs',
+        message: `approval step "${step.id}" holds back nothing: no step needs it, so its decision only sets the run's final status. A decision the run does not execute is a human seam for the report, not a gate — wire the steps it should hold back, or record the seam and drop the gate`,
+      });
+    }
+    // The authoring contract: a gate whose timeout is long or absent carries
+    // remindAfter, so a waiting run is never forgotten. Neither set = nobody
+    // is ever told the run is parked.
+    if (step.timeout === undefined && step.remindAfter === undefined) {
+      out.push({
+        code: 'gate-waits-forever',
+        stepId: step.id,
+        field: 'timeout',
+        message: `approval step "${step.id}" waits forever and reminds nobody — set remindAfter so a parked run resurfaces, and a timeout if the run should not wait indefinitely`,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Catalog-dependent advisories. Producer identification is deliberately
+ * exact-match — the pin glob string equals a sibling step intent's declared
+ * stop artifact glob — because pins are authored by copying stop globs; a
+ * fuzzy overlap test would trade the zero-false-positive property for
+ * coverage no observed incident has needed.
+ */
+export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: PipelineCatalogAgent[]): PipelineAdvisory[] {
+  const out: PipelineAdvisory[] = [];
   const agentById = new Map(agents.map((a) => [a.id, a]));
   // stop artifact glob → job steps whose pinned intent declares it
   const producersByGlob = new Map<string, string[]>();
@@ -1336,43 +1420,59 @@ export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: Pipel
       producersByGlob.set(hook.artifact, [...(producersByGlob.get(hook.artifact) ?? []), step.id]);
     }
   }
-  if (producersByGlob.size === 0) return advisories;
-  const stepByIndex = new Map(def.steps.map((s, i) => [s.id, i]));
-  const effectiveNeeds = (id: string): string[] => {
-    const i = stepByIndex.get(id);
-    if (i === undefined) return [];
-    return def.steps[i].needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
-  };
-  const closureOf = (id: string): Set<string> => {
-    const seen = new Set<string>();
-    const stack = [...effectiveNeeds(id)];
-    while (stack.length > 0) {
-      const cur = stack.pop()!;
-      if (seen.has(cur)) continue;
-      seen.add(cur);
-      stack.push(...effectiveNeeds(cur));
-    }
-    return seen;
-  };
+  if (producersByGlob.size === 0) return out;
+  const closureOf = needsClosureOf(def);
   for (const step of def.steps) {
     if (isApprovalStep(step)) continue;
     const ancestors = closureOf(step.id);
+    const directiveHasVars = /\{\{/.test(step.directive ?? '');
+    // `*` pins whose producer is upstream — judged once per step, below.
+    const unthreaded: Array<{ pin: string; producer: string }> = [];
     for (const pin of step.context ?? []) {
       // A step pinning its OWN intent's stop glob has no producer upstream: on
       // a fresh project the glob matches nothing and dispatch fails the step
       // (`invalid-context-path`), and where a prior case left a match it pins
-      // that case's file. The self-filter below would otherwise silence it.
+      // that case's file.
       if ((producersByGlob.get(pin) ?? []).includes(step.id)) {
-        advisories.push(
-          `step "${step.id}" pins "${pin}", its own intent's stop artifact — on a first run the glob matches nothing and the step fails at dispatch; a step never pins its own output (an entry step pins nothing): drop the pin`,
-        );
+        out.push({
+          code: 'self-pin',
+          stepId: step.id,
+          field: 'context',
+          message: `step "${step.id}" pins "${pin}", its own intent's stop artifact — on a first run the glob matches nothing and the step fails at dispatch; a step never pins its own output (an entry step pins nothing): drop the pin`,
+        });
         continue;
       }
       const producers = (producersByGlob.get(pin) ?? []).filter((p) => p !== step.id);
-      if (producers.length === 0 || producers.some((p) => ancestors.has(p))) continue;
-      advisories.push(
-        `step "${step.id}" pins "${pin}" produced by step "${producers.join('"/"')}", which is not in its needs chain — what you pin, you needs: add the producer to needs, or drop the pin`,
-      );
+      if (producers.length === 0) continue;
+      const upstream = producers.filter((p) => ancestors.has(p));
+      if (upstream.length === 0) {
+        // What you pin, you needs — a producer outside the needs closure is
+        // wired by file-order luck (works while sibling ordering happens to
+        // run the producer first, breaks under any reordering).
+        out.push({
+          code: 'pin-not-in-needs',
+          stepId: step.id,
+          field: 'needs',
+          message: `step "${step.id}" pins "${pin}" produced by step "${producers.join('"/"')}", which is not in its needs chain — what you pin, you needs: add the producer to needs, or drop the pin`,
+        });
+        continue;
+      }
+      // A `*` where the case's key belongs matches every case in the tree.
+      // The one thing the pipeline CAN do about it is tell the step which of
+      // the matched files is this run's — through a step-output reference or
+      // a static partition variable in the directive. A directive with no
+      // template reference at all has dropped the case identity.
+      if (pin.includes('*') && !directiveHasVars) unthreaded.push({ pin, producer: upstream[0] });
+    }
+    if (unthreaded.length > 0) {
+      const pins = unthreaded.map((u) => `"${u.pin}"`).join(', ');
+      const producer = unthreaded[0].producer;
+      out.push({
+        code: 'case-identity-not-threaded',
+        stepId: step.id,
+        field: 'directive',
+        message: `step "${step.id}" pins ${pins} — a domain-keyed glob that matches every case in the tree — and its directive carries no run-known value; thread the case: {{steps.${producer}.artifacts}} / {{steps.${producer}.answer}}, or a static partition variable`,
+      });
     }
   }
   // Chained pipelines only (the observed failure mode): the trigger comment's
@@ -1389,35 +1489,28 @@ export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: Pipel
         .filter(([, producers]) => producers.some((p) => p !== step.id && ancestors.has(p)))
         .map(([glob]) => glob);
       if (upstreamGlobs.length === 0) continue;
-      advisories.push(
-        `chained pipeline: step "${step.id}" pins nothing while its upstream steps declare ${upstreamGlobs.map((g) => `"${g}"`).join(', ')} — only the UPSTREAM RUN's artifacts are out of pin reach; within this pipeline the duty is unchanged: pin the upstream step's stop glob, or leave the step pinless only if it truly consumes none of it`,
-      );
+      out.push({
+        code: 'chained-pinless-consumer',
+        stepId: step.id,
+        field: 'context',
+        message: `chained pipeline: step "${step.id}" pins nothing while its upstream steps declare ${upstreamGlobs.map((g) => `"${g}"`).join(', ')} — only the UPSTREAM RUN's artifacts are out of pin reach; within this pipeline the duty is unchanged: pin the upstream step's stop glob, or leave the step pinless only if it truly consumes none of it`,
+      });
     }
   }
-  return advisories;
+  return out;
 }
 
-/**
- * Definition-structural advisories — catalog-free findings that ride the save
- * response's `catalogWarnings` so an authoring job self-corrects. Advisory by
- * design: never fed to the enable/activate hard gate (a terminal gate still
- * differentiates the run's final status, which a `runCompleted` chain may
- * consume — a person, not a validator, decides whether that is enough).
- */
+/** Every save-time advisory, structured — the one source the string collectors and editors read. */
+export function collectPipelineAdvisoryItems(def: PipelineDef, agents: PipelineCatalogAgent[]): PipelineAdvisory[] {
+  return [...collectPipelineDefAdvisoryItems(def), ...collectPipelineCatalogAdvisoryItems(def, agents)];
+}
+
+/** Wire form of {@link collectPipelineCatalogAdvisoryItems} — rides the save response's `catalogWarnings`. */
+export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
+  return collectPipelineCatalogAdvisoryItems(def, agents).map((a) => a.message);
+}
+
+/** Wire form of {@link collectPipelineDefAdvisoryItems}. */
 export function collectPipelineDefAdvisories(def: PipelineDef): string[] {
-  const advisories: string[] = [];
-  // Effective needs: omitted = the previous step in file order.
-  const dependedOn = new Set<string>();
-  def.steps.forEach((step, i) => {
-    const needs = step.needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
-    for (const need of needs) dependedOn.add(need);
-  });
-  for (const step of def.steps) {
-    if (isApprovalStep(step) && !dependedOn.has(step.id)) {
-      advisories.push(
-        `approval step "${step.id}" holds back nothing: no step needs it, so its decision only sets the run's final status. A decision the run does not execute is a human seam for the report, not a gate — wire the steps it should hold back, or record the seam and drop the gate`,
-      );
-    }
-  }
-  return advisories;
+  return collectPipelineDefAdvisoryItems(def).map((a) => a.message);
 }

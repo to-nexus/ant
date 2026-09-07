@@ -17,6 +17,7 @@ import {
   resolveUniversalExecuteContext,
   expandArtifactGlobsBounded,
 } from '../../../core/scheduling/UniversalDispatchGate';
+import { stepAnswerFromText, stepArtifactsFromSeal } from '../../../core/pipelines/stepOutput';
 import { getRun } from './runStore';
 import type { PipelineCoordinatorDeps } from './types';
 
@@ -112,6 +113,8 @@ export async function captureStepOutput(
   let answer: string | undefined;
   let answerTruncated = false;
   let sealVerdict: string | undefined;
+  // The seal's own write evidence — set only when the seal is this job's.
+  let sealedArtifacts: string[] | undefined;
   try {
     const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
     if (raw !== null) {
@@ -132,12 +135,14 @@ export async function captureStepOutput(
                 : Array.isArray(msg.content)
                   ? msg.content.map((b: any) => (typeof b?.text === 'string' ? b.text : '')).join('')
                   : '';
-            if (text.trim().length > 0) {
-              answer = text;
+            const prose = stepAnswerFromText(text);
+            if (prose.length > 0) {
+              answer = prose;
               break;
             }
           }
         }
+        sealedArtifacts = stepArtifactsFromSeal(state);
         if (answer && answer.length > PIPELINE_STEP_OUTPUT_MAX_CHARS) {
           answer = answer.slice(0, PIPELINE_STEP_OUTPUT_MAX_CHARS);
           answerTruncated = true;
@@ -148,16 +153,21 @@ export async function captureStepOutput(
     /* best-effort seal read */
   }
 
-  let artifacts: string[] | undefined;
+  // `{{steps.<id>.artifacts}}` = the files THIS job wrote (seal evidence). The
+  // whole-tree glob expansion is only the fallback for a seal without it — on
+  // a domain-keyed glob it would list every case's file, not the run's own.
+  let artifacts: string[] | undefined = sealedArtifacts;
   let declaredOutcomes: string[] = [];
   if (stepDef.intent) {
     try {
       const resolved = await resolveUniversalExecuteContext(deps.workspaceResolver, owner, run.projectId, stepDef.customJobRef);
       if (resolved.ok) {
         declaredOutcomes = resolved.intentOutcomes[stepDef.intent] ?? [];
-        const globs = resolved.intentStopGlobs[stepDef.intent] ?? [];
-        const expanded = await expandArtifactGlobsBounded(containerPath, globs);
-        if (expanded.length > 0) artifacts = expanded;
+        if (!artifacts) {
+          const globs = resolved.intentStopGlobs[stepDef.intent] ?? [];
+          const expanded = await expandArtifactGlobsBounded(containerPath, globs);
+          if (expanded.length > 0) artifacts = expanded;
+        }
       }
     } catch {
       /* best-effort */

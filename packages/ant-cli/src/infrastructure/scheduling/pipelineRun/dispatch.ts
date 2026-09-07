@@ -217,9 +217,25 @@ export async function dispatchJobStep(
     JSON.stringify({ runId: run.runId, stepId: step.id, pipelineId, projectId: run.projectId, owner }),
     REDIS_TTL.PIPE.JOB,
   );
+  // Dispatch audit rides the record too, so the run view can show a step that
+  // ran with a `{{steps.*}}` ref unsubstituted or a glob pin expanded to N.
+  const unresolvedTemplates = directiveOverride ? [] : unresolvedStepRefs(template, run);
+  const dispatchDetail = {
+    ...(meta.contextExpanded && { contextExpanded: meta.contextExpanded }),
+    ...(unresolvedTemplates.length > 0 && { unresolvedTemplates }),
+  };
   await mutateRun(ctx.deps, owner, run.runId, async (live) => {
     const steps = live.steps.map((s): StepRecord =>
-      s.stepId === step.id ? { ...s, status: 'running', jobId, turnId, startedAt: new Date().toISOString() } : s,
+      s.stepId === step.id
+        ? {
+            ...s,
+            status: 'running',
+            jobId,
+            turnId,
+            startedAt: new Date().toISOString(),
+            ...(Object.keys(dispatchDetail).length > 0 && { dispatch: dispatchDetail }),
+          }
+        : s,
     );
     return { run: { ...live, steps }, dispatches: [] };
   });
@@ -239,18 +255,13 @@ export async function dispatchJobStep(
       });
     }
   }
-  const unresolvedTemplates = directiveOverride ? [] : unresolvedStepRefs(template, run);
   await appendEvent(ctx.deps, owner, run.projectId, {
     ts: new Date().toISOString(),
     event: 'step_dispatched',
     runId: run.runId,
     stepId: step.id,
     jobId,
-    detail: {
-      turnId,
-      ...(meta.contextExpanded && { contextExpanded: meta.contextExpanded }),
-      ...(unresolvedTemplates.length > 0 && { unresolvedTemplates }),
-    },
+    detail: { turnId, ...dispatchDetail },
   });
 }
 

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisories, collectPipelineCatalogAdvisories, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisories, collectPipelineCatalogAdvisories, collectPipelineAdvisoryItems, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
 import type { PipelineCatalogAgent, PipelineDef } from '@ant/shared';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
@@ -486,15 +486,31 @@ describe('collectPipelineDefAdvisories — save-time structural advisories (neve
   const gate = (id: string, extra: object = {}) => ({ id, type: 'approval', prompt: 'p', ...extra });
   const job = (id: string, extra: object = {}) => ({ id, customJobRef: 'research/collect', ...extra });
 
+  // Gates in these rows carry remindAfter so only the axis under test fires.
+  const remind = { remindAfter: '24h' };
+
   it('flags an approval gate no step needs (terminal gate = seam, not gate)', () => {
-    const advisories = collectPipelineDefAdvisories(def([job('a'), gate('g', { needs: ['a'] })]));
+    const advisories = collectPipelineDefAdvisories(def([job('a'), gate('g', { needs: ['a'], ...remind })]));
     expect(advisories).toHaveLength(1);
     expect(advisories[0]).toMatch(/approval step "g" holds back nothing/);
   });
 
+  // The small-farming-medal shape: two gates, no timeout, no remindAfter — a
+  // parked run nobody is ever reminded of. The authoring contract requires
+  // remindAfter on gates whose timeout is long or absent; this is its gate.
+  it('flags a gate with neither timeout nor remindAfter; silent when either is set', () => {
+    const bare = collectPipelineDefAdvisories(def([job('a'), gate('g'), job('b')]));
+    expect(bare).toHaveLength(1);
+    expect(bare[0]).toMatch(/approval step "g" waits forever and reminds nobody/);
+    expect(collectPipelineDefAdvisories(def([job('a'), gate('g', { remindAfter: '4h' }), job('b')]))).toHaveLength(0);
+    expect(
+      collectPipelineDefAdvisories(def([job('a'), gate('g', { timeout: { after: '24h', onTimeout: 'reject' } }), job('b')])),
+    ).toHaveLength(0);
+  });
+
   it('a gate depended on explicitly, or implicitly as the previous step in file order, is silent', () => {
-    expect(collectPipelineDefAdvisories(def([job('a'), gate('g', { needs: ['a'] }), job('b', { needs: ['g'] })]))).toHaveLength(0);
-    expect(collectPipelineDefAdvisories(def([job('a'), gate('g'), job('b')]))).toHaveLength(0);
+    expect(collectPipelineDefAdvisories(def([job('a'), gate('g', { needs: ['a'], ...remind }), job('b', { needs: ['g'] })]))).toHaveLength(0);
+    expect(collectPipelineDefAdvisories(def([job('a'), gate('g', remind), job('b')]))).toHaveLength(0);
   });
 
   it('a terminal JOB step is not flagged — the rule is about undecided decisions, not leaves', () => {
@@ -524,6 +540,8 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
     ({ version: PIPELINE_DEF_VERSION, name: 'n', steps } as unknown as PipelineDef);
   const step = (id: string, intent: string, extra: object = {}) =>
     ({ id, customJobRef: 'terms/notice', intent, ...extra });
+  // Rows testing another axis thread the case, so the case-identity rule stays quiet.
+  const threadRef = '이번 케이스: {{steps.publishing.answer}}';
 
   it('flags a pin whose producer step is not in the needs closure (F31)', () => {
     const advisories = collectPipelineCatalogAdvisories(
@@ -544,7 +562,7 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
       def([
         step('publishing', 'publishing'),
         { id: 'gate', type: 'approval', prompt: 'p', needs: ['publishing'] },
-        step('mail', 'mail', { needs: ['gate'], context: ['terms/*/publishing-request.md'] }),
+        step('mail', 'mail', { needs: ['gate'], context: ['terms/*/publishing-request.md'], directive: threadRef }),
       ]),
       CATALOG,
     );
@@ -553,7 +571,7 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
 
   it('implicit needs (omitted = previous step in file order) count as the chain', () => {
     const advisories = collectPipelineCatalogAdvisories(
-      def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'] })]),
+      def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'], directive: threadRef })]),
       CATALOG,
     );
     expect(advisories).toHaveLength(0);
@@ -572,7 +590,7 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
     expect(entry[0]).toMatch(/matches nothing and the step fails at dispatch/);
 
     const downstream = collectPipelineCatalogAdvisories(
-      def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md', 'terms/*/mail-request.md'] })]),
+      def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md', 'terms/*/mail-request.md'], directive: threadRef })]),
       CATALOG,
     );
     expect(downstream).toHaveLength(1);
@@ -591,11 +609,77 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
         def([
           step('p1', 'publishing'),
           step('p2', 'publishing', { needs: [] }),
-          step('mail', 'mail', { needs: ['p1'], context: ['terms/*/publishing-request.md'] }),
+          step('mail', 'mail', { needs: ['p1'], context: ['terms/*/publishing-request.md'], directive: threadRef }),
         ]),
         CATALOG,
       ),
     ).toHaveLength(0);
+  });
+
+  // The small-farming-medal shape, second half: every downstream pin is a
+  // domain-keyed `*` glob and no directive carries a template reference, so
+  // the case the run learned through clarify never reaches the consumer.
+  it('flags a `*` pin from an upstream producer when the directive carries no template reference', () => {
+    const advisories = collectPipelineCatalogAdvisories(
+      def([
+        step('publishing', 'publishing'),
+        step('mail', 'mail', { context: ['terms/*/publishing-request.md'], directive: '메일 발송 요청 규격을 준비한다.' }),
+      ]),
+      CATALOG,
+    );
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]).toMatch(/step "mail" pins "terms\/\*\/publishing-request\.md" — a domain-keyed glob/);
+    // Two `*` pins on one step → ONE advisory naming both, not one per pin.
+    const twoPins = collectPipelineCatalogAdvisories(
+      def([
+        step('publishing', 'publishing'),
+        step('extract', 'extract'),
+        step('mail', 'mail', { needs: ['publishing', 'extract'], context: ['terms/*/publishing-request.md', 'terms/*/extract-request.md'] }),
+      ]),
+      CATALOG,
+    );
+    expect(twoPins).toHaveLength(1);
+    expect(twoPins[0]).toMatch(/"terms\/\*\/publishing-request\.md", "terms\/\*\/extract-request\.md"/);
+    expect(advisories[0]).toMatch(/\{\{steps\.publishing\.artifacts\}\}/);
+    // An omitted directive is the default "carry out this intent" — no reference either.
+    expect(
+      collectPipelineCatalogAdvisories(def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'] })]), CATALOG),
+    ).toHaveLength(1);
+  });
+
+  it('silent when the directive threads the case (steps.* ref or a static variable), or the pin has no `*`', () => {
+    const threaded = (directive: string) =>
+      collectPipelineCatalogAdvisories(
+        def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'], directive })]),
+        CATALOG,
+      );
+    expect(threaded('이번 케이스: {{steps.publishing.answer}}')).toHaveLength(0);
+    expect(threaded('파일: {{steps.publishing.artifacts}}')).toHaveLength(0);
+    expect(threaded('주간 {{trigger.fireDate}} 기준')).toHaveLength(0);
+    expect(
+      collectPipelineCatalogAdvisories(
+        def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/acme/publishing-request.md'] })]),
+        CATALOG,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('structured items anchor each finding to its step and field (the string collectors are their map)', () => {
+    const pipeline = def([
+      step('lookup', 'publishing', { context: ['terms/*/publishing-request.md'] }),
+      { id: 'gate', type: 'approval', prompt: 'p' },
+      step('mail', 'mail', { context: ['terms/*/publishing-request.md'] }),
+    ]);
+    const items = collectPipelineAdvisoryItems(pipeline, CATALOG);
+    expect(items.map((a) => [a.code, a.stepId, a.field])).toEqual([
+      ['gate-waits-forever', 'gate', 'timeout'],
+      ['self-pin', 'lookup', 'context'],
+      ['case-identity-not-threaded', 'mail', 'directive'],
+    ]);
+    expect(items.map((a) => a.message)).toEqual([
+      ...collectPipelineDefAdvisories(pipeline),
+      ...collectPipelineCatalogAdvisories(pipeline, CATALOG),
+    ]);
   });
 
   // The F34 shape (chained pipelines only): the chain restriction over-applied,
@@ -621,7 +705,7 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
   it('chained pipeline: silent for the entry step, and for a consumer that pins its upstream glob', () => {
     expect(
       collectPipelineCatalogAdvisories(
-        chainDef([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'] })]),
+        chainDef([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'], directive: threadRef })]),
         CATALOG,
       ),
     ).toHaveLength(0);

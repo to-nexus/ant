@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { stepAnswerFromText, stepArtifactsFromSeal } from '../../src/core/pipelines/stepOutput';
 
 const SRC = path.join(__dirname, '../../src');
 const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8');
@@ -380,6 +381,37 @@ describe('step output capture ({{steps.*}} source)', () => {
     expect(coordinator.match(/state\?\.jobId (!==|===) jobId/g)?.length ?? 0).toBe(3);
     // Artifact expansion is the bounded, non-failing gate helper.
     expect(coordinator).toMatch(/expandArtifactGlobsBounded\(/);
+  });
+
+  // `{{steps.<id>.artifacts}}` used to be a whole-tree glob expansion — on a
+  // domain-keyed glob it listed every case's file, so a consumer could not
+  // tell which was this run's. The seal's own write evidence is the source.
+  it('artifacts come from the seal\'s matchedWrites — this run\'s own files, not every case in the tree', () => {
+    const state = {
+      jobId: 'j1',
+      lastTurnHooks: [
+        { intentId: 'lookup', hook: { artifact: 'terms/*/notice-period.md' }, met: true, matchedWrites: ['./terms/sw-sales/notice-period.md'] },
+        { intentId: 'lookup', hook: { action: 'api__ant__request' }, met: true },
+        { intentId: 'lookup', hook: { artifact: 'terms/*/ledger.md' }, met: false, matchedWrites: [] },
+      ],
+    };
+    expect(stepArtifactsFromSeal(state)).toEqual(['terms/sw-sales/notice-period.md']);
+  });
+
+  it('a seal with no write evidence yields undefined so the bounded glob walk stays the fallback', () => {
+    expect(stepArtifactsFromSeal({ jobId: 'j1' })).toBeUndefined();
+    expect(stepArtifactsFromSeal({ lastTurnHooks: [{ hook: { artifact: 'a/*.md' }, met: true, viaLedger: true, matchedWrites: [] }] })).toBeUndefined();
+    expect(stepArtifactsFromSeal(null)).toBeUndefined();
+    const coordinator = coordinatorAll();
+    expect(coordinator).toMatch(/if \(!artifacts\) \{/);
+  });
+
+  it('the captured answer is prose — canonical tags are stripped before it can ride a directive', () => {
+    const final = '<checklist>\n- [x] 1. done\n</checklist>\n\n## 결과\n\n고지 기간 30일로 확정.\n\n<verdict>needs-review</verdict>';
+    const answer = stepAnswerFromText(final);
+    expect(answer).not.toMatch(/<checklist>|<verdict>/);
+    expect(answer).toMatch(/^## 결과/);
+    expect(answer).toMatch(/30일로 확정\.$/);
   });
 
   it('SSE runUpdate strips captured answers — JSONL/API serve them', () => {

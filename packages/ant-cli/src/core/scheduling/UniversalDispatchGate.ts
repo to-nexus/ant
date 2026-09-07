@@ -165,7 +165,7 @@ export async function expandArtifactGlobsBounded(containerPath: string, globs: r
 // of explicit input; the total is a hard refusal because past it the prompt
 // band itself would be unbounded.
 const GLOB_PIN_MAX_MATCHES = 20;
-const GLOB_PIN_TOTAL_CONTEXT_MAX = 50;
+export const GLOB_PIN_TOTAL_CONTEXT_MAX = 50;
 const GLOB_WALK_MAX_DEPTH = 32;
 const GLOB_WALK_MAX_ENTRIES = 5_000;
 
