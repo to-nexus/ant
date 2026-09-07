@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import type { CustomAgentSummary, CustomAgentDefinitionFileNode, DefinitionValidationResult } from '@ant/shared';
+import type { AgentDefinitionEventData, CustomAgentSummary, CustomAgentDefinitionFileNode, DefinitionValidationResult } from '@ant/shared';
 import {
   fetchAccountAgents,
   fetchDefinitionTree,
@@ -89,8 +89,19 @@ export interface AgentSettingsActions {
   /** Save via the single write funnel; returns false when the 400 gate refused. */
   saveOpenDefinitionFile: () => Promise<boolean>;
   closeDefinitionFileBuffer: () => void;
-  /** Re-sync the composer chips after a settings mutation (universal project selected). */
-  syncComposerAgents: () => void;
+  /**
+   * Re-sync the composer after a definition mutation (universal project
+   * selected): invalidate the picker graft's trees — one agent when known,
+   * all otherwise — and re-read the agent list.
+   */
+  syncComposerAgents: (agentId?: string) => void;
+  /**
+   * The `agentDefinition` SSE hint — a definition changed through the write
+   * funnel from OUTSIDE this screen (a job's self api, the CLI, an import,
+   * another tab). The one consumer: composer re-sync plus a rail re-read
+   * when the rail has ever loaded.
+   */
+  applyAgentDefinitionEvent: (data: AgentDefinitionEventData) => void;
   /** Ask the settings screen to land on one definition file (see the state field). */
   requestAgentSettingsFile: (agentId: string, path: string) => void;
   /** Consumed by the screen once the request has been honored. */
@@ -266,13 +277,22 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
     if (changed) set({ definitionTrees: next });
   },
 
-  syncComposerAgents: () => {
+  syncComposerAgents: (agentId) => {
     // A save changed a definition the picker graft may hold — the rail's own
     // re-read is the window-wake refresh, the composer's is this invalidation.
-    get().invalidateDefinitionTrees();
+    get().invalidateDefinitionTrees(agentId);
     const state = get();
     if (state.projectType === 'universal' && state.selectedProject && typeof state.loadCustomAgents === 'function') {
       void state.loadCustomAgents(state.selectedProject);
+    }
+  },
+
+  applyAgentDefinitionEvent: (data) => {
+    get().syncComposerAgents(data.agentId ?? undefined);
+    // Only a rail that has loaded once is worth re-reading — an unopened
+    // settings screen fetches on mount anyway.
+    if ((get().accountAgents as CustomAgentSummary[]).length > 0) {
+      void get().loadAccountAgents();
     }
   },
 

@@ -17,6 +17,8 @@ import http from 'node:http';
 import express from 'express';
 import * as yaml from 'js-yaml';
 import { createAccountAgentRoutes } from '../../src/periphery/adapters/http/routes/accountAgents.routes';
+import { createCustomAgentRoutes } from '../../src/periphery/adapters/http/routes/customAgents.routes';
+import { agentIdFromSegment } from '../../src/periphery/adapters/http/routes/helpers/agentDefinitionEvents';
 import { createSelfApiScopeGuard } from '../../src/periphery/adapters/http/middleware/selfApiScopeGuard';
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
@@ -27,6 +29,13 @@ let wsRoot: string;
 let userDir: string;
 let server: http.Server;
 let baseUrl: string;
+/** Every `agentDefinition` publish the two definition routers emit (channel + message). */
+const published: Array<{ channel: string; message: any }> = [];
+const fakeStateStore = {
+  publish: async (channel: string, message: any) => {
+    published.push({ channel, message });
+  },
+} as any;
 
 function api(pathname: string, init?: RequestInit): Promise<Response> {
   return fetch(`${baseUrl}/api/definitions/agents${pathname}`, {
@@ -67,7 +76,20 @@ beforeAll(async () => {
   app.use(express.json());
   app.use(
     '/api/definitions/agents',
-    createAccountAgentRoutes({ workspaceResolver: resolver, organizationRepository: fakeOrgRepo(new Map()) }),
+    createAccountAgentRoutes({
+      workspaceResolver: resolver,
+      organizationRepository: fakeOrgRepo(new Map()),
+      stateStore: fakeStateStore,
+    }),
+  );
+  // The project-scoped mirror shares the broadcast contract (same helper).
+  app.use(
+    '/api',
+    createCustomAgentRoutes({
+      workspaceResolver: resolver,
+      organizationRepository: fakeOrgRepo(new Map()),
+      stateStore: fakeStateStore,
+    }),
   );
   server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -85,6 +107,7 @@ afterAll(async () => {
 beforeEach(() => {
   // Fresh user scope per test (builtin scope stays shared/readonly).
   fs.rmSync(path.join(userDir, '.ant'), { recursive: true, force: true });
+  published.length = 0;
 });
 
 async function createAgent(id = 'ops'): Promise<void> {
@@ -1478,5 +1501,88 @@ describe('self-api scope pin on the realtime surface', () => {
     rtScope = undefined;
     expect((await rtCall('/projects/p/features/f/stream')).status).toBe(200);
     expect((await rtCall('/bridge/status')).status).toBe(200);
+  });
+});
+
+describe('agentDefinition change broadcast (the `_agents` twin of pipeline defChanged)', () => {
+  const defChanged = () => published.filter((p) => p.message?.type === 'agentDefinition');
+  const expectOne = (agentId: string | null) => {
+    const hits = defChanged();
+    expect(hits).toHaveLength(1);
+    expect(hits[0].channel).toContain('localorg');
+    expect(hits[0].channel).toContain('localuser');
+    expect(hits[0].message).toMatchObject({
+      type: 'agentDefinition',
+      data: { cause: 'defChanged', agentId },
+      userContext: { organizationId: 'localorg', userId: 'localuser' },
+    });
+  };
+  /** `res.on('finish')` runs after the response is flushed — give the event loop one turn. */
+  const settle = () => new Promise<void>((r) => setImmediate(r));
+
+  it.each([
+    ['POST / (create)', async () => { await createAgent('ops'); }, 'ops'],
+    ['PUT /:id/file (the write funnel)', async () => {
+      await createAgent('ops');
+      published.length = 0;
+      const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: 'base/role.md', content: '# Ops\n' }) });
+      expect(res.status).toBe(200);
+    }, 'ops'],
+    ['POST /:id/jobs', async () => {
+      await createAgent('ops');
+      published.length = 0;
+      expect((await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'Weekly' }) })).status).toBe(201);
+    }, 'ops'],
+    ['DELETE /:id', async () => {
+      await createAgent('ops');
+      published.length = 0;
+      expect((await api('/ops', { method: 'DELETE' })).status).toBe(200);
+    }, 'ops'],
+  ])('%s → exactly one defChanged on the owner channel', async (_label, act, agentId) => {
+    await act();
+    await settle();
+    expectOne(agentId);
+  });
+
+  it.each([
+    ['GET / (read)', async () => { expect((await api('')).status).toBe(200); }],
+    ['GET /:id/files (read)', async () => { await createAgent('ops'); published.length = 0; expect((await api('/ops/files')).status).toBe(200); }],
+    ['PUT /:id/file refused by the gate (400)', async () => {
+      await createAgent('ops');
+      published.length = 0;
+      const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: '../escape.md', content: 'x' }) });
+      expect(res.status).toBe(400);
+    }],
+    ['POST / with an invalid id (400)', async () => {
+      expect((await api('', { method: 'POST', body: JSON.stringify({ id: 'Bad_Id', name: 'x' }) })).status).toBe(400);
+    }],
+  ])('%s → no publish', async (_label, act) => {
+    await act();
+    await settle();
+    expect(defChanged()).toHaveLength(0);
+  });
+
+  it('the project-scoped mirror publishes the same hint (one helper, two mounts)', async () => {
+    const res = await fetch(`${baseUrl}/api/projects/any-project/custom-agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'mirror', name: 'Mirror' }),
+    });
+    expect(res.status).toBe(201);
+    await settle();
+    expectOne('mirror');
+    published.length = 0;
+    expect((await fetch(`${baseUrl}/api/projects/any-project/custom-agents`)).status).toBe(200);
+    await settle();
+    expect(defChanged()).toHaveLength(0);
+  });
+
+  it('a write that addresses no single agent (folder import) reports agentId null', () => {
+    const reserved = new Set(['import']);
+    expect(agentIdFromSegment('import', reserved)).toBeNull();
+    expect(agentIdFromSegment('', reserved)).toBeNull();
+    expect(agentIdFromSegment(undefined, reserved)).toBeNull();
+    expect(agentIdFromSegment('Bad_Id', reserved)).toBeNull();
+    expect(agentIdFromSegment('ops', reserved)).toBe('ops');
   });
 });

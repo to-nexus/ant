@@ -41,7 +41,8 @@ export type SSEMessageType =
   | 'projectDeletionPhase'
   | 'featureDeletionPhase'
   | 'customDomainStatus'
-  | 'pipeline';
+  | 'pipeline'
+  | 'agentDefinition';
 
 /**
  * Generic phase status shared by every phased-operation SSE event
@@ -274,6 +275,19 @@ export type PipelineEventData =
     };
 
 /**
+ * Agent-definition realtime hint — the `_agents` twin of `pipeline` /
+ * `defChanged`. Published on the OWNER's user channel by the definition write
+ * funnels after any successful mutating request, so a definition written by a
+ * job (self api), the CLI, an import, or another tab reaches the composer's
+ * `_agents` graft and the settings rail without a reload. `agentId` is null
+ * when the route does not address one agent (folder import).
+ */
+export interface AgentDefinitionEventData {
+  cause: 'defChanged';
+  agentId: string | null;
+}
+
+/**
  * Map of event type → payload shape. Only events with a stable, shared
  * contract are listed here.
  */
@@ -284,6 +298,7 @@ export interface SSEMessageMap {
   featureDeletionPhase: FeatureDeletionPhaseEventData;
   customDomainStatus: CustomDomainStatusEventData;
   pipeline: PipelineEventData;
+  agentDefinition: AgentDefinitionEventData;
 }
 
 // Legacy `GitChangeEventData` / `gitChange` event were retired at cutover.

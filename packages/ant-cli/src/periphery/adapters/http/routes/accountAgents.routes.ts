@@ -56,15 +56,28 @@ import {
   type AccountAgentsRoutesDeps,
 } from './accountAgents/context';
 import { registerDefinitionFileRoutes } from './accountAgents/definitionFiles.routes';
+import { agentIdOfWrite, attachAgentDefinitionChangeBroadcast } from './helpers/agentDefinitionEvents';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
+
+/** First-segment literals on this mount that are routes, not agent ids. */
+const ACCOUNT_MOUNT_RESERVED: ReadonlySet<string> = new Set(['import']);
 
 export function createAccountAgentRoutes(deps: AccountAgentsRoutesDeps): Router {
   const router = Router();
   const upload = multer({ storage: multer.memoryStorage(), limits: UPLOAD_LIMITS });
   const ctx = buildAccountAgentsRouteContext(deps);
   const { scopeRootsFor, orgGateFor, creationRoot, findViewableAgent } = ctx;
+
+  // Every mutating request on this mount is a definition write (`POST /`,
+  // `/:agentId/**`, `/import`) — the composer graft and the settings rail
+  // refresh on the resulting `agentDefinition` hint. Attached before the
+  // routes so the file sub-router is covered too.
+  attachAgentDefinitionChangeBroadcast(router, {
+    stateStore: deps.stateStore,
+    match: (req) => ({ agentId: agentIdOfWrite(req, req.path.split('/')[1], ACCOUNT_MOUNT_RESERVED) }),
+  });
 
   // ── listing ─────────────────────────────────────────────────────────────
 

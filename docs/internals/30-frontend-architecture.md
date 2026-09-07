@@ -80,7 +80,7 @@ Auth: the `x-user-email` header is sent in cloud mode.
 `infrastructure/sse/SSEManager.ts` manages it as a singleton:
 - Unified connection: `REALTIME_BASE()/projects/{project}/features/{feature}/stream`
 - Workflow connection: `/jobs/{jobId}/workflow/stream`
-- Message types: `kanban`, `chat`, `fileTree`, `workflow`, `preview`, `deploy`, `gitChange`, `transfer`, `unseenArtifacts`, `bridge` (the canonical union is `SSEMessageType` in `@ant/shared/sse-events.ts`)
+- Message types: `kanban`, `chat`, `fileTree`, `workflow`, `preview`, `deploy`, `gitState`, `transfer`, `unseenArtifacts`, `bridge`, `idePhase`, `projectDeletionPhase`, `featureDeletionPhase`, `customDomainStatus`, `pipeline`, `agentDefinition` (the canonical union is `SSEMessageType` in `@ant/shared/sse-events.ts`)
 - Auto-reconnect: exponential backoff, including logic to prevent loss of in-flight streaming chat messages on reconnection
 
 ## Agent Watermarks

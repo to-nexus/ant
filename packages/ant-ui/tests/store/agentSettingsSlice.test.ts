@@ -218,6 +218,41 @@ describe('definitionTrees map (rail file view)', () => {
     expect(s.getState().definitionTrees.assistant.status).toBe('stale'); // untouched until asked
   });
 
+  it('applyAgentDefinitionEvent(agentId) — the SSE hint — stales ONLY that tree and re-reads the composer list', async () => {
+    const s = makeStore({ projectType: 'universal', selectedProject: 'proj-1' });
+    await s.getState().ensureDefinitionTree('ops');
+    await s.getState().ensureDefinitionTree('assistant');
+
+    s.getState().applyAgentDefinitionEvent({ cause: 'defChanged', agentId: 'ops' });
+    expect(s.getState().definitionTrees.ops.status).toBe('stale');
+    expect(s.getState().definitionTrees.assistant.status).toBe('ready');
+    expect(loadCustomAgentsMock).toHaveBeenCalledWith('proj-1');
+    // The rail never loaded in this tab — nothing to re-read.
+    expect(apiMock.fetchAccountAgents).not.toHaveBeenCalled();
+  });
+
+  it('applyAgentDefinitionEvent(null) stales every loaded tree and re-reads a rail that has loaded', async () => {
+    const s = makeStore({ projectType: 'universal', selectedProject: 'proj-1' });
+    await s.getState().loadAccountAgents();
+    await s.getState().ensureDefinitionTree('ops');
+    await s.getState().ensureDefinitionTree('assistant');
+    apiMock.fetchAccountAgents.mockClear();
+
+    s.getState().applyAgentDefinitionEvent({ cause: 'defChanged', agentId: null });
+    expect(s.getState().definitionTrees.ops.status).toBe('stale');
+    expect(s.getState().definitionTrees.assistant.status).toBe('stale');
+    expect(loadCustomAgentsMock).toHaveBeenCalledWith('proj-1');
+    expect(apiMock.fetchAccountAgents).toHaveBeenCalledTimes(1);
+  });
+
+  it('applyAgentDefinitionEvent on a canonical project never touches the composer list', async () => {
+    const s = makeStore({ projectType: 'canonical' });
+    await s.getState().ensureDefinitionTree('ops');
+    s.getState().applyAgentDefinitionEvent({ cause: 'defChanged', agentId: 'ops' });
+    expect(s.getState().definitionTrees.ops.status).toBe('stale');
+    expect(loadCustomAgentsMock).not.toHaveBeenCalled();
+  });
+
   it('invalidateDefinitionTrees(agentId) scopes to one agent and ignores error entries', async () => {
     const s = makeStore();
     await s.getState().loadDefinitionTree('ops');

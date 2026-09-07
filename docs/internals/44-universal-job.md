@@ -390,6 +390,25 @@ an agent / job / intent directory.
   (`isAllowedDefinitionPath` ∪ `classifyDefinitionDir`), not against whatever
   happens to sit in the dir — so the picker and the save funnel name the same
   set of files.
+- **The graft refreshes on the write funnel's own hint, never on a reload.**
+  Definitions are account-owned, so the project file-tree broadcast cannot
+  carry them, and the composer's `customAgents` list is otherwise read once at
+  project load. Both definition routers (`/definitions/agents/**` and its
+  project-scoped mirror `/projects/:id/custom-agents/**`) attach ONE
+  router-level hook (`attachAgentDefinitionChangeBroadcast`,
+  `routes/helpers/agentDefinitionEvents.ts`) that publishes
+  `agentDefinition { cause: 'defChanged', agentId }` on the owner's user channel
+  after any non-GET request that finished 2xx — the SET of mutating routes,
+  so a route added later is covered by construction (the `_pipelines` twin is
+  `publishPipelineEvent(…'defChanged')`). The one FE consumer is
+  `applyAgentDefinitionEvent`: it re-syncs the composer (scoped tree
+  invalidation + list re-read) and re-reads the settings rail when it has
+  loaded. Incident: `lost-melting-heron` authored a user-scope agent through
+  the self api and the pipeline-builder's `@ctx:` picker showed only builtins
+  until a browser reload — no scope filter anywhere, just a list nothing
+  invalidated. FE-side saves keep their direct `syncComposerAgents()` call and
+  also receive the echoed hint; one redundant list GET is the accepted cost of
+  a single out-of-band owner.
 
 **`_pipelines/` — designating a pipeline definition.** The `_agents` shape one
 resource over, all-or-none across the same five surfaces (resolver, accept gate,

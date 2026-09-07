@@ -385,6 +385,15 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }),
     );
 
+    // Agent-definition writes from outside this tab (a job's self api, the
+    // CLI, an import) — the `_agents` picker graft and the settings rail
+    // would otherwise hold the list captured at project load.
+    sliceHandlerIds.push(
+      sseManager.registerHandlerWithId('agentDefinition', (data: SSEMessageMap['agentDefinition']) => {
+        get().applyAgentDefinitionEvent?.(data);
+      }),
+    );
+
     setupConnectionPolicy(sseManager, set, get);
 
     sseManager.connect(state.selectedProject, state.selectedFeature, jobType);

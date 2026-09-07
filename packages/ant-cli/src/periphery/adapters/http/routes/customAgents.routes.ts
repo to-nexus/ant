@@ -64,9 +64,12 @@ import {
 } from './helpers/customAgentHandlers';
 import { createOrgGateResolver, readOrgAgentAcl, updateOrgAgentAcl } from './helpers/orgAclStore';
 import { extractUserContext } from './helpers/userContext';
+import { agentIdOfWrite, attachAgentDefinitionChangeBroadcast } from './helpers/agentDefinitionEvents';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
+
+const NO_RESERVED: ReadonlySet<string> = new Set();
 
 export function createCustomAgentRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
@@ -77,6 +80,17 @@ export function createCustomAgentRoutes(deps: {
   stateStore?: StateStorePort;
 }): Router {
   const router = Router();
+
+  // Project-scoped mirror of the definition write funnel: the same
+  // `agentDefinition` hint the account mount publishes, keyed on the SET of
+  // mutating `custom-agents` requests (never the container endpoints).
+  attachAgentDefinitionChangeBroadcast(router, {
+    stateStore: deps.stateStore,
+    match: (req) => {
+      const m = /^\/projects\/[^/]+\/custom-agents(?:\/([^/]+))?(?:\/|$)/.exec(req.path);
+      return m ? { agentId: agentIdOfWrite(req, m[1], NO_RESERVED) } : null;
+    },
+  });
 
   function scopeRootsFor(req: Request): CustomAgentScopeRoot[] {
     // Definitions are account/org-owned — the projectId in the URL scopes the
