@@ -35,7 +35,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FilePlus, FolderDown, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Bot, Briefcase, CircleCheckBig, FilePlus, FolderDown, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
 import {
   getDefinitionDirPolicy,
   toCustomId,
@@ -45,7 +45,16 @@ import {
 } from '@ant/shared';
 import { Button, KebabMenu, type KebabMenuItem } from '@/presentation/components/aurora';
 import { AuroraInput, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
-import { selectedRowLabel, selectedRowStyle } from '@/presentation/components/aurora/selection';
+import {
+  COLLAPSE_SPACER,
+  CollapseToggle,
+  RailGroup,
+  RailIconSwitch,
+  RailRow,
+  RailToolbarButton,
+  TOOLBAR_ICON_CLASS,
+  toggleSetMember,
+} from '@/presentation/components/shared/rail';
 import { useFilePicker } from '@/application/hooks/ui/useFilePicker';
 import { STORAGE_KEYS } from '@/domain/store/storage';
 import type { AgentSettingsSelection, DefinitionTreeEntry } from '@/domain/store/slices/agentSettingsSlice';
@@ -62,28 +71,6 @@ function loadTreeView(): TreeView {
 }
 
 const SCOPE_ORDER: CustomAgentScope[] = ['user', 'org', 'builtin'];
-
-/** Shared box for the two toolbar icons so <button> and <label> render identically. */
-const TOOLBAR_ICON_CLASS =
-  'inline-flex items-center justify-center h-6 w-6 rounded text-[color:var(--text-3)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors';
-
-/** Trailing collapse control (and the spacer that keeps chevron-less rows plumb). */
-function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      className="p-0.5 shrink-0 text-[color:var(--text-4)] hover:text-[color:var(--text-2)]"
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-    >
-      {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-    </button>
-  );
-}
-
-const COLLAPSE_SPACER = <span className="w-4 shrink-0" />;
 
 type Creating =
   | { kind: 'agent' }
@@ -274,12 +261,7 @@ export function AgentTree({
   }, [view, agents, collapsedAgents, onEnsureTree]);
 
   const toggle = (set: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) => {
-    set((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    set((prev) => toggleSetMember(prev, key));
   };
 
   // Write items are gated by the PER-AGENT effective readonly (org agents can
@@ -450,11 +432,6 @@ export function AgentTree({
     return null;
   };
 
-  const toggleLabel =
-    view === 'files'
-      ? t('tree.toggleToHuman', 'File view — switch to Structure')
-      : t('tree.toggleToFiles', 'Structure view — switch to Files');
-
   return (
     <div className="h-full overflow-y-auto p-3 flex flex-col gap-3">
       {filePicker}
@@ -462,15 +439,7 @@ export function AgentTree({
           reclaimed width goes to the tree rows. Upload stays a <label> (it
           wraps the folder input) but matches the button box exactly. */}
       <div className="flex items-center gap-1">
-        <button
-          type="button"
-          title={t('tree.newAgent', 'New Agent')}
-          aria-label={t('tree.newAgent', 'New Agent')}
-          className={TOOLBAR_ICON_CLASS}
-          onClick={() => setCreating({ kind: 'agent' })}
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        <RailToolbarButton icon={Plus} label={t('tree.newAgent', 'New Agent')} onClick={() => setCreating({ kind: 'agent' })} />
         <label
           title={t('tree.uploadAgentFolder', 'Upload agent folder… (must contain agent.yaml)')}
           aria-label={t('tree.uploadAgentFolder', 'Upload agent folder… (must contain agent.yaml)')}
@@ -490,18 +459,19 @@ export function AgentTree({
           />
         </label>
         <span className="flex-1" />
-        {/* Structure ⇄ Files — ONE icon switch: the icon is the current view,
-            the tooltip names both the state and the destination. A segmented
-            pair spent rail width restating a binary the icon already carries. */}
-        <button
-          type="button"
-          title={toggleLabel}
-          aria-label={toggleLabel}
-          className={TOOLBAR_ICON_CLASS}
-          onClick={() => changeView(view === 'files' ? 'human' : 'files')}
-        >
-          {view === 'files' ? <FolderTree className="w-3.5 h-3.5" /> : <ListTree className="w-3.5 h-3.5" />}
-        </button>
+        {/* Structure ⇄ Files — the tooltip names both the state and the destination. */}
+        <RailIconSwitch<TreeView>
+          value={view}
+          onChange={changeView}
+          options={[
+            { id: 'human', icon: ListTree },
+            { id: 'files', icon: FolderTree },
+          ]}
+          labels={{
+            files: t('tree.toggleToHuman', 'File view — switch to Structure'),
+            human: t('tree.toggleToFiles', 'Structure view — switch to Files'),
+          }}
+        />
       </div>
 
       {creating?.kind === 'agent' && (
@@ -523,53 +493,52 @@ export function AgentTree({
       {SCOPE_ORDER.map((scope) => {
         const group = agents.filter((a) => a.scope === scope);
         return (
-          <div key={scope} className="flex flex-col gap-0.5">
-            <div
-              className="text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 px-1"
-              style={{ color: 'var(--text-4)' }}
-            >
-              {t(`tree.scope.${scope}`, scope)}
-              {/* readonly is PER AGENT now (org agents can be editable for
-                  their owner/editors) — only a uniformly-readonly group gets
-                  the header pill; mixed groups mark individual rows below. */}
-              {group.length > 0 && group.every((a) => a.readonly) && (
+          <RailGroup
+            key={scope}
+            label={t(`tree.scope.${scope}`, scope)}
+            // readonly is PER AGENT (org agents can be editable for their
+            // owner/editors) — only a uniformly-readonly group gets the header
+            // pill; mixed groups mark individual rows below.
+            pill={
+              group.length > 0 && group.every((a) => a.readonly) ? (
                 <StatusPill state="not-configured" label={t('tree.readonly', 'readonly')} />
-              )}
-            </div>
-            {group.length === 0 && (
-              <div className="py-1 pl-2 pr-1" style={{ fontSize: 10.5, lineHeight: 1.45, color: 'var(--text-4)' }}>
-                {scope === 'user'
-                  ? t('tree.scope.emptyUser', 'No agents of your own yet — create one with + above.')
-                  : scope === 'org'
-                    ? isTeamActive
-                      ? t('tree.scope.emptyOrg', 'Nothing shared in this organization yet.')
-                      : t('tree.scope.emptyOrgNoTeam', 'Join a team to share agents with an organization.')
-                    : t('tree.scope.emptyBuiltin', 'No built-in agents were loaded.')}
-              </div>
-            )}
+              ) : undefined
+            }
+            emptyText={
+              scope === 'user'
+                ? t('tree.scope.emptyUser', 'No agents of your own yet — create one with + above.')
+                : scope === 'org'
+                  ? isTeamActive
+                    ? t('tree.scope.emptyOrg', 'Nothing shared in this organization yet.')
+                    : t('tree.scope.emptyOrgNoTeam', 'Join a team to share agents with an organization.')
+                  : t('tree.scope.emptyBuiltin', 'No built-in agents were loaded.')
+            }
+          >
             {group.map((agent) => {
               const agentCollapsed = collapsedAgents.has(agent.id);
               const agentSelected = selection.agentId === agent.id && !selection.jobId;
               return (
                 <div key={agent.id}>
-                  {/* agent row */}
-                  <div
-                    className="group flex items-center gap-1 py-1 pl-2 pr-1 rounded text-xs cursor-pointer hover:bg-[color:var(--bg-hover)]"
-                    style={{ ...selectedRowStyle('violet', agentSelected), ...selectedRowLabel(agentSelected, 'var(--text-2)') }}
+                  <RailRow
+                    icon={Bot}
+                    label={agent.name}
+                    active={agentSelected}
+                    idleColor="var(--text-2)"
                     onClick={() => onSelect(agent.id)}
-                  >
-                    <Bot size={14} className="shrink-0" />
-                    <span className="truncate flex-1">{agent.name}</span>
-                    {agent.readonly && !group.every((a) => a.readonly) && (
-                      <StatusPill state="not-configured" label={t('tree.readonly', 'readonly')} />
-                    )}
-                    {/* Agent actions stay visible — the agent row is where a job
-                        is born, and a hover-only affordance hid that entry point. */}
-                    <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <KebabMenu items={agentMenu(agent)} ariaLabel={t('tree.menu.agentActions', 'Agent actions')} />
-                    </span>
-                    <CollapseToggle collapsed={agentCollapsed} onToggle={() => toggle(setCollapsedAgents, agent.id)} />
-                  </div>
+                    trailing={
+                      <>
+                        {agent.readonly && !group.every((a) => a.readonly) && (
+                          <StatusPill state="not-configured" label={t('tree.readonly', 'readonly')} />
+                        )}
+                        {/* Agent actions stay visible — the agent row is where a job
+                            is born, and a hover-only affordance hid that entry point. */}
+                        <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <KebabMenu items={agentMenu(agent)} ariaLabel={t('tree.menu.agentActions', 'Agent actions')} />
+                        </span>
+                        <CollapseToggle collapsed={agentCollapsed} onToggle={() => toggle(setCollapsedAgents, agent.id)} />
+                      </>
+                    }
+                  />
 
                   {creating?.kind === 'job' && creating.agentId === agent.id && view === 'human' && (
                     <InlineCreateForm
@@ -620,28 +589,28 @@ export function AgentTree({
                       const intents = job.intents ?? [];
                       return (
                         <div key={job.id}>
-                          {/* job row */}
-                          <div
-                            className="group flex items-center gap-1 py-1 pl-6 pr-1 rounded text-xs cursor-pointer hover:bg-[color:var(--bg-hover)]"
-                            style={{ ...selectedRowStyle('violet', jobSelected), ...selectedRowLabel(jobSelected, 'var(--text-3)') }}
+                          <RailRow
+                            icon={Briefcase}
+                            label={job.name}
+                            active={jobSelected}
+                            idleColor="var(--text-3)"
+                            level={1}
                             onClick={() => onSelect(agent.id, job.id)}
-                          >
-                            <Briefcase size={14} className="shrink-0" />
-                            <span className="truncate flex-1">{job.name}</span>
-                            {/* Visible like the agent row's: the job row is where an
-                                intent is born, and hover-only hid that entry point. */}
-                            <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                              <KebabMenu items={jobMenu(agent, job.id)} ariaLabel={t('tree.menu.jobActions', 'Job actions')} />
-                            </span>
-                            {intents.length > 0 ? (
-                              <CollapseToggle
-                                collapsed={jobCollapsed}
-                                onToggle={() => toggle(setCollapsedJobs, jobKey)}
-                              />
-                            ) : (
-                              COLLAPSE_SPACER
-                            )}
-                          </div>
+                            trailing={
+                              <>
+                                {/* Visible like the agent row's: the job row is where an
+                                    intent is born, and hover-only hid that entry point. */}
+                                <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <KebabMenu items={jobMenu(agent, job.id)} ariaLabel={t('tree.menu.jobActions', 'Job actions')} />
+                                </span>
+                                {intents.length > 0 ? (
+                                  <CollapseToggle collapsed={jobCollapsed} onToggle={() => toggle(setCollapsedJobs, jobKey)} />
+                                ) : (
+                                  COLLAPSE_SPACER
+                                )}
+                              </>
+                            }
+                          />
 
                           {creating?.kind === 'intent' &&
                             creating.agentId === agent.id &&
@@ -665,31 +634,32 @@ export function AgentTree({
                                 selection.jobId === job.id &&
                                 selection.intentId === intent.id;
                               return (
-                                <div
+                                <RailRow
                                   key={intent.id}
+                                  icon={Target}
+                                  iconSize={12}
+                                  label={intent.id}
+                                  active={intentSelected}
+                                  idleColor="var(--text-3)"
+                                  level={2}
+                                  mono
                                   title={intent.infer}
-                                  className="flex items-center gap-1 py-1 pl-10 pr-1 rounded cursor-pointer hover:bg-[color:var(--bg-hover)]"
-                                  style={{
-                                    fontSize: 11,
-                                    fontFamily: 'var(--font-mono)',
-                                    ...selectedRowStyle('violet', intentSelected),
-                                    ...selectedRowLabel(intentSelected, 'var(--text-3)'),
-                                  }}
                                   onClick={() => onSelect(agent.id, job.id, intent.id)}
-                                >
-                                  <Target size={12} className="shrink-0" />
-                                  <span className="truncate flex-1">{intent.id}</span>
-                                  {(intent.hooks?.stop?.length ?? 0) > 0 && (
-                                    <span
-                                      className="shrink-0 inline-flex"
-                                      title={t('tree.intentHasHooks', 'Declares hooks')}
-                                      style={{ color: 'var(--text-4)' }}
-                                    >
-                                      <CircleCheckBig size={10} />
-                                    </span>
-                                  )}
-                                  {COLLAPSE_SPACER}
-                                </div>
+                                  trailing={
+                                    <>
+                                      {(intent.hooks?.stop?.length ?? 0) > 0 && (
+                                        <span
+                                          className="shrink-0 inline-flex"
+                                          title={t('tree.intentHasHooks', 'Declares hooks')}
+                                          style={{ color: 'var(--text-4)' }}
+                                        >
+                                          <CircleCheckBig size={10} />
+                                        </span>
+                                      )}
+                                      {COLLAPSE_SPACER}
+                                    </>
+                                  }
+                                />
                               );
                             })}
                         </div>
@@ -698,7 +668,7 @@ export function AgentTree({
                 </div>
               );
             })}
-          </div>
+          </RailGroup>
         );
       })}
     </div>

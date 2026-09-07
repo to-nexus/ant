@@ -30,6 +30,8 @@ import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { AgentTree } from './AgentTree';
 import { OrgAccessCard } from '../shared/org/OrgAccessCard';
 import { PromoteZone } from '../shared/org/PromoteZone';
+import { editorsEqual } from '../shared/org/editors';
+import { RailResizeHandle } from '../shared/rail';
 import { updateAgentEditors } from '@/infrastructure/http/api/accountAgents';
 import { DetailHeader, type DetailLevel } from './DetailHeader';
 import { PromptsCard, type PromptsScope } from './prompts/PromptsCard';
@@ -139,6 +141,9 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const [dangerArmed, setDangerArmed] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
+  // Org editors ride the same ChangedBar as the definition docs — null = untouched.
+  const [editorsDraft, setEditorsDraft] = useState<string[] | null>(null);
+  const [editorsSaving, setEditorsSaving] = useState(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const { width: treeWidth, isResizing, startResize } = useResizableWidth();
 
@@ -180,9 +185,12 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
 
   useEffect(() => {
     setTreeFocusPath(null);
+    setEditorsDraft(null);
   }, [selection.agentId, selection.jobId, selection.intentId]);
 
   const selectedAgent = agents.find((a) => a.id === selection.agentId);
+  const savedEditors = selectedAgent?.org?.editors ?? [];
+  const editorsDirty = editorsDraft != null && !!selectedAgent?.org && !editorsEqual(editorsDraft, savedEditors);
   const selectedJob = selectedAgent?.jobs.find((j) => j.id === selection.jobId);
   const readonly = definitionReadonly || (selectedAgent?.readonly ?? false);
   const level: DetailLevel = selection.intentId ? 'intent' : selection.jobId ? 'job' : 'agent';
@@ -488,6 +496,15 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     try {
       const result = await docs.save();
       setLastWarnings(result?.warnings ?? []);
+      if (editorsDirty && editorsDraft && selection.agentId) {
+        setEditorsSaving(true);
+        try {
+          await updateAgentEditors(selection.agentId, editorsDraft);
+          setEditorsDraft(null);
+        } finally {
+          setEditorsSaving(false);
+        }
+      }
       await afterMutation();
       // A phantom intent's directory is created by this save — the tree that
       // `intentIds` derives from must follow, or the new intent exists in
@@ -741,24 +758,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           selectedFilePath={selection.agentId ? selectedFilePath : null}
           selectedFileAgentId={selection.agentId ?? null}
         />
-        {/* drag handle: 4px hit area on the border */}
-        <div
-          className="absolute top-0 right-0 h-full"
-          style={{
-            width: 4,
-            marginRight: -2,
-            cursor: 'ew-resize',
-            zIndex: 10,
-            background: isResizing ? 'var(--violet-400)' : 'transparent',
-          }}
-          onMouseDown={startResize}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLDivElement).style.background = 'var(--violet-400)';
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizing) (e.currentTarget as HTMLDivElement).style.background = 'transparent';
-          }}
-        />
+        <RailResizeHandle isResizing={isResizing} onMouseDown={startResize} />
       </div>
 
       {/* right — canonical settings scroller */}
@@ -784,11 +784,14 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
 
             {!readonly && (
               <ChangedBar
-                hasChanges={docs.dirtyCount > 0}
-                isSaving={docs.isSaving}
-                count={docs.dirtyCount}
+                hasChanges={docs.dirtyCount > 0 || editorsDirty}
+                isSaving={docs.isSaving || editorsSaving}
+                count={docs.dirtyCount + (editorsDirty ? 1 : 0)}
                 onSave={() => void handleSave()}
-                onDiscard={docs.discard}
+                onDiscard={() => {
+                  docs.discard();
+                  setEditorsDraft(null);
+                }}
               />
             )}
 
@@ -827,9 +830,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
                 id="c3g-org-access"
                 resourceId={selection.agentId!}
                 org={selectedAgent.org}
-                onSaveEditors={(editors) => updateAgentEditors(selection.agentId!, editors)}
-                onSaved={afterMutation}
-                onError={setError}
+                value={editorsDraft ?? savedEditors}
+                onChange={setEditorsDraft}
               />
             )}
             {level === 'intent' && selection.intentId && (

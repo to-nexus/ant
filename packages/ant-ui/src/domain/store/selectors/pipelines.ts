@@ -1,5 +1,7 @@
 import type { ActivePipelineInfo } from '@ant/shared';
 
+export { selectPipelineDirty, type PipelineDirtyReport } from '../slices/pipelineSlice';
+
 /**
  * Pipeline selectors — the chat surface's activation lock reads live here so
  * ChatInput / useChatPolicy / the banner share one derivation.

@@ -112,7 +112,7 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
   } else if (boundElsewhere) {
     footerHint = t('execution.boundToOther', 'This project is bound to another pipeline.');
   } else if (!enabled) {
-    footerHint = t('execution.enableFirstShort', 'Enable the pipeline (header toggle) to activate it here.');
+    footerHint = t('execution.enableFirstShort', 'Enable the pipeline in Pipeline settings (Wiring view) to activate it here.');
   } else {
     footerAction = 'activate';
   }
@@ -304,10 +304,11 @@ function ActivationSection({
   const { t } = useTranslation('pipelines');
   const runDetail = useStore((s) => s.pipelineRunDetail);
   const loadPipelineRunDetail = useStore((s) => s.loadPipelineRunDetail);
-  const updateActivationApproversTo = useStore((s) => s.updateActivationApproversTo);
+  // Roster edits are a ChangedBar draft (saved with the pipeline), so the
+  // pencil only opens/closes the editor — closing is not a discard.
+  const approversDraft = useStore((s) => s.pipelineApproversDraft[view.projectId]);
+  const setPipelineApproversDraft = useStore((s) => s.setPipelineApproversDraft);
   const [editingApprovers, setEditingApprovers] = useState(false);
-  const [approverDraft, setApproverDraft] = useState<Record<string, string[]>>({});
-  const [savingApprovers, setSavingApprovers] = useState(false);
 
   const gateInfos: ApproverGateInfo[] = useMemo(
     () => def.steps.filter(isApprovalStep).map((s) => ({ id: s.id, prompt: s.prompt })),
@@ -381,10 +382,7 @@ function ActivationSection({
               variant="ghost"
               size="xs"
               title={t('approvers.edit', 'Edit gate approvers')}
-              onClick={() => {
-                setApproverDraft(view.approvers ?? {});
-                setEditingApprovers((v) => !v);
-              }}
+              onClick={() => setEditingApprovers((v) => !v)}
             >
               <Pencil size={11} />
             </Button>
@@ -416,24 +414,13 @@ function ActivationSection({
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>
             {t('approvers.sectionTitle', 'Gate approvers (per gate)')}
           </div>
-          <ApproversEditor gates={gateInfos} value={approverDraft} onChange={setApproverDraft} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-            <Button variant="ghost" size="xs" disabled={savingApprovers} onClick={() => setEditingApprovers(false)}>
-              {t('approvers.cancel', 'Cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              size="xs"
-              disabled={savingApprovers}
-              onClick={async () => {
-                setSavingApprovers(true);
-                const ok = await updateActivationApproversTo(view.pipelineId, view.projectId, approverDraft);
-                setSavingApprovers(false);
-                if (ok) setEditingApprovers(false);
-              }}
-            >
-              {t('approvers.save', 'Save approvers')}
-            </Button>
+          <ApproversEditor
+            gates={gateInfos}
+            value={approversDraft ?? view.approvers ?? {}}
+            onChange={(next) => setPipelineApproversDraft(view.projectId, next)}
+          />
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
+            {t('approvers.editHint', 'Changes save with the pipeline (Save above).')}
           </div>
         </div>
       )}

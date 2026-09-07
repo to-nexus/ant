@@ -1,5 +1,6 @@
 
 import { Pencil } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface ChangedBarProps {
   hasChanges: boolean;
@@ -7,6 +8,10 @@ export interface ChangedBarProps {
   onSave: () => void;
   onDiscard: () => void;
   count?: number;
+  /** Save stays visible but inert (validation gate); pair with `blockedReason`. */
+  saveDisabled?: boolean;
+  /** Why Save is disabled — replaces the subtitle in the error tone. */
+  blockedReason?: string;
 }
 
 /**
@@ -19,8 +24,12 @@ export function ChangedBar({
   onSave,
   onDiscard,
   count,
+  saveDisabled = false,
+  blockedReason,
 }: ChangedBarProps) {
+  const { t } = useTranslation('common');
   if (!hasChanges) return null;
+  const saveInert = isSaving || saveDisabled;
 
   return (
     <div
@@ -68,17 +77,17 @@ export function ChangedBar({
             color: 'var(--text-1)',
           }}
         >
-          저장되지 않은 변경사항
+          {t('changedBar.title', 'Unsaved changes')}
           {typeof count === 'number' && count > 0 ? ` (${count})` : ''}
         </div>
         <div
           style={{
             fontSize: 11,
-            color: 'var(--text-3)',
+            color: blockedReason ? 'var(--red-500)' : 'var(--text-3)',
             marginTop: 1,
           }}
         >
-          저장하기 전까지 적용되지 않습니다.
+          {blockedReason ?? t('changedBar.subtitle', 'Nothing is applied until you save.')}
         </div>
       </div>
       <button
@@ -98,12 +107,12 @@ export function ChangedBar({
           opacity: isSaving ? 0.5 : 1,
         }}
       >
-        되돌리기
+        {t('changedBar.discard', 'Discard')}
       </button>
       <button
         type="button"
         onClick={onSave}
-        disabled={isSaving}
+        disabled={saveInert}
         style={{
           height: 30,
           padding: '0 14px',
@@ -115,13 +124,13 @@ export function ChangedBar({
           fontSize: 12,
           fontWeight: 700,
           letterSpacing: '0.01em',
-          cursor: isSaving ? 'wait' : 'pointer',
-          opacity: isSaving ? 0.75 : 1,
+          cursor: isSaving ? 'wait' : saveDisabled ? 'not-allowed' : 'pointer',
+          opacity: saveInert ? 0.6 : 1,
           boxShadow: '0 6px 18px -6px oklch(55% 0.20 290 / 0.5)',
           transition: 'background-position 0.4s ease',
         }}
       >
-        {isSaving ? '저장 중…' : '저장'}
+        {isSaving ? t('changedBar.saving', 'Saving…') : t('changedBar.save', 'Save')}
       </button>
     </div>
   );

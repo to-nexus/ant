@@ -140,5 +140,15 @@
       "recheck": "다시 확인",
       "signOut": "로그아웃"
     }
+  },
+  "changedBar": {
+    "title": "저장되지 않은 변경사항",
+    "subtitle": "저장하기 전까지 적용되지 않습니다.",
+    "discard": "되돌리기",
+    "save": "저장",
+    "saving": "저장 중…"
+  },
+  "rail": {
+    "switchTo": "{{next}}(으)로 전환"
   }
 }

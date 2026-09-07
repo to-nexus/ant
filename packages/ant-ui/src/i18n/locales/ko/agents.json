@@ -226,9 +226,7 @@
     "ownerUnknown": "알 수 없음 (조직 관리자가 관리)",
     "editors": "편집자",
     "noMembers": "아직 이 조직에 다른 멤버가 없습니다.",
-    "self": "(나)",
-    "saving": "저장 중…",
-    "save": "편집자 저장"
+    "self": "(나)"
   },
   "danger": {
     "agentTitle": "이 에이전트 삭제",

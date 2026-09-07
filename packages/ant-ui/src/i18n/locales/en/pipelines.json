@@ -1,7 +1,6 @@
 {
   "rail": {
     "new": "New pipeline",
-    "newDraft": "New pipeline (unsaved)",
     "awaiting": "{{n}} waiting",
     "running": "Running",
     "enabled": "Enabled",
@@ -21,7 +20,8 @@
     "menu": {
       "pipelineActions": "Pipeline actions",
       "downloadFolder": "Download folder"
-    }
+    },
+    "unsaved": "Unsaved"
   },
   "views": {
     "wiring": "Wiring",
@@ -47,7 +47,7 @@
     "selectProjectFirst": "Select a project first to activate this pipeline there.",
     "notUniversal": "Pipelines activate on Workspace (universal) projects only.",
     "boundToOther": "This project is bound to another pipeline.",
-    "enableFirstShort": "Enable the pipeline (header toggle) to activate it here.",
+    "enableFirstShort": "Enable the pipeline in Pipeline settings (Wiring view) to activate it here.",
     "activeHere": "Active in this project",
     "activeHereBy": "Active here — by {{who}}",
     "activateHere": "Activate in this project",
@@ -58,11 +58,11 @@
     "enable": "Enable",
     "disable": "Disable",
     "saveFirst": "Save your changes before enabling.",
-    "finishEditing": "Finish editing (Done) before changing availability.",
     "hint": {
-      "label": "Availability",
       "body": "Enabled: projects can activate this pipeline and the wiring is locked. Disable to edit, delete, or promote — only possible while no project has it activated."
-    }
+    },
+    "disableFirstPromote": "Disable the pipeline before promoting it.",
+    "disableFirstDelete": "Disable the pipeline before deleting it."
   },
   "promote": {
     "title": "Promote to organization",
@@ -79,9 +79,7 @@
     "ownerUnknown": "unknown (managed by org admins)",
     "editors": "Editors",
     "noMembers": "No other members in this organization yet.",
-    "self": "(you)",
-    "saving": "Saving…",
-    "save": "Save editors"
+    "self": "(you)"
   },
   "chip": {
     "firedByPipeline": "Started by pipeline \"{{name}}\""
@@ -114,12 +112,7 @@
     "readOnlyShared": "Shared by {{owner}} — read-only for you.",
     "badCron": "Fix the schedule to save.",
     "needSteps": "Add at least one step.",
-    "discard": "Discard",
-    "save": "Save",
-    "emptyCanvas": "Press + on the trigger node to add the first step.",
-    "edit": "Edit",
-    "done": "Done",
-    "editBlockedEnabled": "Disable the pipeline (toggle) to edit its wiring."
+    "emptyCanvas": "Press + on the trigger node to add the first step."
   },
   "canvas": {
     "trigger": "Schedule",
@@ -131,7 +124,8 @@
     "gateApprovedBy": "✓ approved by {{who}}",
     "gateRejectedBy": "✗ rejected by {{who}}",
     "gateAutoApproved": "⏱ auto-approved",
-    "gateAutoRejected": "⏱ auto-rejected"
+    "gateAutoRejected": "⏱ auto-rejected",
+    "lockedEnabled": "Wiring is locked while the pipeline is enabled — disable it in Pipeline settings to edit."
   },
   "inspector": {
     "trigger": "Trigger & policies",
@@ -139,6 +133,14 @@
     "gate": "Approval gate",
     "close": "Close",
     "deleteStep": "Remove step"
+  },
+  "settings": {
+    "title": "Pipeline settings",
+    "identityTitle": "Identity",
+    "identityDesc": "The name shown in the rail, the inbox, and every run.",
+    "name": "Name",
+    "availabilityTitle": "Availability",
+    "saveToUnlock": "Save the pipeline to unlock availability, sharing, and deletion."
   },
   "trigger": {
     "mode": "Trigger",
@@ -257,9 +259,11 @@
     "clarifyWaiting": "awaiting answer"
   },
   "danger": {
-    "delete": "Delete",
-    "confirmTitle": "Delete pipeline",
-    "confirmMessage": "Delete \"{{name}}\"? The definition is removed; run history stays with each activation."
+    "title": "Delete this pipeline",
+    "desc": "Removes the definition. Run history stays with each activation.",
+    "button": "Delete pipeline",
+    "confirm": "Click again to confirm",
+    "deleting": "Deleting…"
   },
   "card": {
     "title": "Pipeline approval",
@@ -291,8 +295,8 @@
     "remove": "Remove {{who}}",
     "you": "you",
     "edit": "Edit gate approvers",
-    "save": "Save approvers",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "editHint": "Changes save with the pipeline (Save above)."
   },
   "approverPanel": {
     "roleBadge": "Approval authority only",
@@ -304,5 +308,10 @@
     "loading": "Loading run context…",
     "retry": "Retry",
     "auditLine": "Your decision is recorded on the run history as {{who}}."
+  },
+  "header": {
+    "root": "Pipelines",
+    "scopeUser": "My",
+    "scopeOrg": "Organization"
   }
 }

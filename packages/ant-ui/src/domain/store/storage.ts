@@ -16,6 +16,7 @@ export const STORAGE_KEYS = {
   LANGUAGE: 'ant-ui:language',
   AGENT_TREE_WIDTH: 'ant-ui:agent-settings-tree-width',
   AGENT_TREE_VIEW: 'ant-ui:agent-settings-tree-view',
+  PIPELINE_RAIL_WIDTH: 'ant-ui:pipelines-rail-width',
   // Per-provider "don't show again" ack for the third-party data-consent gate
   // (DeepSeek, GLM). Keyed by provider so acking one never silently acks another.
   PROVIDER_CONSENT_ACK: (provider: string) => `ant-ui:provider-consent-ack:${provider}`,

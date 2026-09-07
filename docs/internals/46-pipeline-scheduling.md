@@ -772,29 +772,62 @@ project switches (`identityTransition` no longer closes it), and its GNB
 entry is a standalone launcher button (Waypoints icon + label) to the RIGHT
 of the Agents/Code segmented control, never inside it (it opens a tab, not a
 view mode; no pressed state). The panel is an AgentSettings-style resizable
-split — rail beside `PipelineWorkspace`. The rail follows the AgentTree
-model: approval inbox pinned, then SCOPE GROUPS (`My pipelines` /
-`Organization pipelines` — both headers always render, each with its own
-empty copy; the org copy branches on team-active), rows with
-Draft/Enabled/Running pills + per-caller readonly pill + activation count,
-invalid rows, orphan-activation rows (deactivate-only), and the footer SPACE
-toggle — Workspace / Codespace, icon-only when the rail is narrow; Codespace
-is reserved and shows an unsupported notice (pipelines are Workspace-only
-today; pure FE state, locally persisted). The workspace splits into TWO
-views: **Wiring** (배선도 — the n8n-style canvas — reactflow + dagre —
-trigger/step/gate nodes, insert-after "+" menus, inspector drawer; read-only
-with a banner while enabled or shared-readonly; detail footer carries the
-Enable/Disable card, `OrgAccessCard` + `PromoteZone` — the SHARED
-`components/shared/org/` pair the agents screen also uses — and the danger
-zone) and **Execution** (activation rows — own rows actionable with run-now /
-deactivate / expandable per-activation run history via
+split — rail beside `PipelineWorkspace` (rail width persisted under
+`STORAGE_KEYS.PIPELINE_RAIL_WIDTH`). The rail is built from the SHARED rail
+primitives in `components/shared/rail/` (`RailGroup` / `RailRow` /
+`RailToolbarButton` / `RailIconSwitch` / `CollapseToggle` / `RailResizeHandle`
++ `toggleSetMember`) that `AgentTree` is built from too, so the two rails read
+identically: the approval inbox is a collapsible `RailGroup` (ShieldCheck +
+amber count), then the SCOPE GROUPS (`My pipelines` / `Organization
+pipelines` — both headers always render, each collapsible, each with its own
+empty copy; the org copy branches on team-active), rows carrying a Waypoints
+icon tinted by availability plus awaiting / running / activation-count badges,
+the per-caller readonly pill and the ⋯ folder-export menu; invalid rows;
+orphan-activation rows (deactivate-only); and the footer SPACE switch
+(`RailIconSwitch` Workspace / Codespace, label hidden when narrow; Codespace
+is reserved and shows an unsupported notice — pure FE state, locally
+persisted). A NEW draft is a phantom active row in the My group with an
+`Unsaved` pill — the rail grammar has no "nothing selected" state.
+
+The workspace has NO edit mode. `editable = draftIsNew || (!readonly &&
+!enabled)` derives straight from the BE availability gate (PUT / promote are
+refused while enabled); a locked canvas explains itself with a banner
+(`canvas.lockedEnabled` / `editor.readOnlyShared`) and node clicks are inert.
+Layout, top to bottom: `PipelineHeader` — orientation only (breadcrumb
+`Pipelines › name` via the shared `Crumb`, scope Badge, `StatusPill`
+unsaved / readonly / enabled / disabled, Wiring ⇄ Execution toggle; no
+buttons) → ONE `ChangedBar` (shared with config/agents; `common:changedBar.*`)
+rendered on BOTH views → the save/availability error strip → the view body.
+The bar covers THREE drafts in `pipelineSlice`: `pipelineDraft` (definition,
+vs `pipelineSavedDef`), `pipelineEditorsDraft` (org editors) and
+`pipelineApproversDraft` (per-activation gate rosters, keyed by projectId).
+`selectPipelineDirty` reports them as one `{ definition, editors, approvers[],
+count }` (null when clean), `savePipelineAll` writes them in order — definition
+(the only leg that mints an id and meets the enabled gate) → editors →
+approvers, stopping at the first failure so what is left stays dirty for the
+retry — and `discardPipelineAll` restores all three; `usePipelineDiscardGuard`
+is the one owner of the "discard unsaved changes?" confirm (rail row select,
+`+`, header root crumb, space switch). Save is gated by the shared validator +
+the `preview-fires` verdict only while the DEFINITION leg is dirty
+(`ChangedBar.saveDisabled` + `blockedReason`). **Wiring** (배선도 — the
+n8n-style canvas — reactflow + dagre — trigger/step/gate nodes, insert-after
+"+" menus) fills the inspector slot with `StepInspector` while a node is
+selected and editable, otherwise with `PipelineSettingsPanel` (both on the
+shared `InspectorShell`): Identity (name), Availability (the enable/disable
+`Toggle`; disabled while dirty or readonly), the controlled `OrgAccessCard`
+(editors — writable even while enabled, per the BE), `PromoteZone` and
+`DangerZone` (both rendered while enabled but inert, naming "disable first";
+delete is a two-click arm that resets on selection change). A new draft shows
+Identity only. **Execution** (activation rows — own rows actionable with
+run-now / deactivate / expandable per-activation run history via
 `ActivationRunHistory`; members' rows read-only with the activator shown;
-`broken` flagged — plus the "activate on project…" picker gated on enabled,
-and the read-only live-monitor canvas). The standalone run-history view is
-gone — history is a property of an activation. Every editor surface edits ONE
-draft object (`pipelineSlice.pipelineDraft` vs `pipelineSavedDef`); saving is
-gated by the shared validator client-side plus the `preview-fires` verdict;
-selecting a pipeline keeps the current view (only a new draft forces Wiring).
+`broken` flagged — plus the "activate in this project" footer gated on enabled
+and the read-only live-monitor canvas). The activation popover keeps its own
+Activate / Cancel — activation CREATES a row, so its roster is a parameter of
+`POST activate`, not a dirty draft; editing an EXISTING activation's roster is
+controlled into `pipelineApproversDraft` and saves with the bar. The
+standalone run-history view is gone — history is a property of an activation.
+Selecting a pipeline keeps the current view (only a new draft forces Wiring).
 Chat surfaces: `useChatPolicy` locks the input with `pipeline-active` /
 `pipeline-running` (judged BEFORE `isRunning`), `PipelineActiveBanner` sits
 in the chat input, the stop button on a pipeline step confirms and routes to

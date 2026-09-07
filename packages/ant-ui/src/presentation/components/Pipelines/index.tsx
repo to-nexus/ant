@@ -15,7 +15,9 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Ban } from 'lucide-react';
 import { useStore } from '@/domain/store';
+import { STORAGE_KEYS } from '@/domain/store/storage';
 import { useResizableWidth } from '../AgentSettings/useResizableWidth';
+import { RailResizeHandle } from '../shared/rail';
 import { PipelineRail } from './PipelineRail';
 import { PipelineWorkspace } from './PipelineWorkspace';
 import { ApproverRunPanel } from './ApproverRunPanel';
@@ -28,12 +30,7 @@ export function PipelinesPanel() {
   const { t } = useTranslation('pipelines');
   const loadPipelines = useStore((s) => s.loadPipelines);
   const loadAccountAgents = useStore((s) => s.loadAccountAgents);
-  const { width, isResizing, startResize } = useResizableWidth({
-    storageKey: 'ant-ui:pipelines-rail-width',
-    min: 220,
-    max: 420,
-    defaultWidth: 280,
-  });
+  const { width, isResizing, startResize } = useResizableWidth({ storageKey: STORAGE_KEYS.PIPELINE_RAIL_WIDTH });
   const [space, setSpace] = useState<PipelineSpace>(() =>
     localStorage.getItem(SPACE_STORAGE_KEY) === 'codespace' ? 'codespace' : 'workspace',
   );
@@ -53,17 +50,7 @@ export function PipelinesPanel() {
     <div style={{ height: '100%', display: 'flex', background: 'var(--bg-canvas)', minHeight: 0, overflow: 'hidden' }}>
       <div className="relative shrink-0" style={{ width, borderRight: '1px solid var(--border-1)' }}>
         <PipelineRail space={space} onSpaceChange={changeSpace} railWidth={width} />
-        <div
-          className="absolute top-0 right-0 h-full"
-          style={{
-            width: 4,
-            marginRight: -2,
-            zIndex: 10,
-            cursor: 'col-resize',
-            background: isResizing ? 'var(--violet-400)' : 'transparent',
-          }}
-          onMouseDown={startResize}
-        />
+        <RailResizeHandle isResizing={isResizing} onMouseDown={startResize} />
       </div>
       {/* relative: the approver context panel slides over the workspace side
           (an approver's whole surface — never the project or the definition). */}

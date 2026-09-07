@@ -140,5 +140,15 @@
       "recheck": "Check again",
       "signOut": "Sign out"
     }
+  },
+  "changedBar": {
+    "title": "Unsaved changes",
+    "subtitle": "Nothing is applied until you save.",
+    "discard": "Discard",
+    "save": "Save",
+    "saving": "Saving…"
+  },
+  "rail": {
+    "switchTo": "Switch to {{next}}"
   }
 }

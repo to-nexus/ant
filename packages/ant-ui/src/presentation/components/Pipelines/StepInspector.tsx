@@ -11,7 +11,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Trash2, Plus, FolderOpen } from 'lucide-react';
+import { Trash2, Plus, FolderOpen } from 'lucide-react';
 import {
   GENERAL_INTENT,
   PIPELINE_TEMPLATE_VARS,
@@ -31,6 +31,7 @@ import { HintBadge } from '../common/HintBadge';
 import { Tooltip } from '../common/Tooltip';
 import { FileTreePicker } from '../common/FileTreePicker';
 import { CronBuilder } from './CronBuilder';
+import { InspectorShell } from './InspectorShell';
 import { TRIGGER_NODE_ID, descendantsOf, effectiveNeedsOf, removeStep, setStepNeeds, setTriggerMode, triggerModeOf, updateRunCompleted, updateSchedule, updateStep, type TriggerMode } from './draft';
 import { upstreamOutputSuggestions } from './upstreamOutputs';
 
@@ -75,51 +76,24 @@ export function StepInspector({ def, nodeId, onChange, onClose, onCronValidity }
   }, [def, step, isTrigger, stepIndex, customAgents]);
 
   return (
-    <div
-      style={{
-        width: 360,
-        flexShrink: 0,
-        height: '100%',
-        borderLeft: '1px solid var(--border-1)',
-        background: 'var(--bg-surface)',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 14px',
-          borderBottom: '1px solid var(--border-1)',
-        }}
-      >
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{title}</span>
-        <button aria-label={t('inspector.close', 'Close')} onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer' }}>
-          <X size={15} />
-        </button>
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {body}
-        {!isTrigger && step && (
-          <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid var(--border-1)' }}>
-            <Button
-              variant="danger"
-              size="sm"
-              fullWidth
-              onClick={() => {
-                onChange(removeStep(def, step.id));
-                onClose();
-              }}
-            >
-              {t('inspector.deleteStep', 'Remove step')}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
+    <InspectorShell title={title} onClose={onClose}>
+      {body}
+      {!isTrigger && step && (
+        <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid var(--border-1)' }}>
+          <Button
+            variant="danger"
+            size="sm"
+            fullWidth
+            onClick={() => {
+              onChange(removeStep(def, step.id));
+              onClose();
+            }}
+          >
+            {t('inspector.deleteStep', 'Remove step')}
+          </Button>
+        </div>
+      )}
+    </InspectorShell>
   );
 }
 

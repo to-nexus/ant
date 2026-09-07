@@ -8,6 +8,8 @@ export interface DangerZoneProps {
   buttonText: string;
   loadingText?: string;
   isLoading?: boolean;
+  /** Inert while a precondition (e.g. "disable first") is unmet — explain it in `description`. */
+  disabled?: boolean;
   onAction: () => void | Promise<void>;
 }
 
@@ -21,6 +23,7 @@ export function DangerZone({
   buttonText,
   loadingText,
   isLoading = false,
+  disabled = false,
   onAction,
 }: DangerZoneProps) {
   return (
@@ -92,7 +95,7 @@ export function DangerZone({
             {description}
           </p>
           <DangerSolidButton
-            disabled={isLoading}
+            disabled={isLoading || disabled}
             onClick={onAction}
           >
             {isLoading ? loadingText || buttonText : buttonText}

@@ -16,11 +16,13 @@ import type { PipelinePendingApproval } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { Button } from '../aurora';
+import { RailGroup } from '../shared/rail';
 
 export function ApprovalInbox() {
   const { t } = useTranslation('pipelines');
   const approvals = useStore((s) => s.pipelineApprovals);
   const [notice, setNotice] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   if (approvals.length === 0) return null;
 
@@ -28,12 +30,10 @@ export function ApprovalInbox() {
   const mine = approvals.filter((a) => a.role !== 'approver');
 
   return (
-    <div style={{ padding: '10px 10px 4px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <ShieldCheck size={12} style={{ color: 'var(--amber-500, #f59e0b)' }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-          {t('inbox.title', 'Waiting for you')}
-        </span>
+    <RailGroup
+      icon={ShieldCheck}
+      label={t('inbox.title', 'Waiting for you')}
+      pill={
         <span
           style={{
             fontSize: 10,
@@ -51,11 +51,14 @@ export function ApprovalInbox() {
         >
           {approvals.length}
         </span>
-      </div>
-      {notice && (
-        <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 6 }}>{notice}</div>
-      )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      }
+      count={approvals.length}
+      collapsed={collapsed}
+      onToggle={() => setCollapsed((v) => !v)}
+      toggleLabel={collapsed ? t('rail.expand', 'Expand') : t('rail.collapse', 'Collapse')}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '2px 0 4px' }}>
+        {notice && <div style={{ fontSize: 11, color: 'var(--text-2)' }}>{notice}</div>}
         {asApprover.length > 0 && mine.length > 0 && (
           <GroupLabel label={t('inbox.groupApprover', 'Approval requests')} />
         )}
@@ -69,7 +72,7 @@ export function ApprovalInbox() {
           <ApprovalRow key={a.gateId} approval={a} onNotice={setNotice} />
         ))}
       </div>
-    </div>
+    </RailGroup>
   );
 }
 

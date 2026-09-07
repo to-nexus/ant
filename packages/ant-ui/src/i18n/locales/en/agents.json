@@ -226,9 +226,7 @@
     "ownerUnknown": "unknown (managed by org admins)",
     "editors": "Editors",
     "noMembers": "No other members in this organization yet.",
-    "self": "(you)",
-    "saving": "Saving…",
-    "save": "Save editors"
+    "self": "(you)"
   },
   "danger": {
     "agentTitle": "Delete this agent",

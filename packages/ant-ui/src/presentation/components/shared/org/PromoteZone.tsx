@@ -17,6 +17,8 @@ export function PromoteZone({
   resourceName,
   isPromoting,
   onPromote,
+  disabled = false,
+  disabledReason,
 }: {
   id: string;
   /** i18n namespace carrying `promote.*` keys ('agents' | 'pipelines'). */
@@ -24,6 +26,9 @@ export function PromoteZone({
   resourceName: string;
   isPromoting: boolean;
   onPromote: () => void;
+  /** Precondition unmet (pipelines: disable first) — button inert, reason shown below it. */
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const { t } = useTranslation(ns);
   const { showConfirm } = useAlertModalContext();
@@ -53,10 +58,13 @@ export function PromoteZone({
         'Share this with your whole organization. It moves out of your personal scope; every member can see and use it, and you remain its owner.',
       )}
     >
-      <div>
-        <Button size="sm" type="button" disabled={isPromoting} onClick={confirm}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+        <Button size="sm" type="button" disabled={isPromoting || disabled} onClick={confirm}>
           {isPromoting ? t('promote.promoting', 'Promoting…') : t('promote.button', 'Promote to organization')}
         </Button>
+        {disabled && disabledReason && (
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{disabledReason}</span>
+        )}
       </div>
     </SectionCard>
   );

@@ -34,6 +34,7 @@ import {
   updatePipelineEditors,
 } from '@/infrastructure/http/api/pipelines';
 import { ApiError } from '@/infrastructure/http/api/client';
+import { editorsEqual } from '@/presentation/components/shared/org/editors';
 
 /**
  * pipelineSlice — FE state for the pipeline scheduler tab.
@@ -46,9 +47,13 @@ import { ApiError } from '@/infrastructure/http/api/client';
  * project and loaded per selected project + folded by SSE.
  *
  * Dirty-buffer doctrine: `pipelineDraft` (the object every editor surface —
- * canvas, inspector, header — writes) vs `pipelineSavedDef` (server truth).
- * Dirty = deep-unequal. Discard = one assignment. The canvas, the inspector
- * and the header are three views over ONE draft, never three buffers.
+ * canvas, inspector, settings panel — writes) vs `pipelineSavedDef` (server
+ * truth). Dirty = deep-unequal. Discard = one assignment. The canvas, the
+ * inspector and the panel are three views over ONE draft, never three buffers.
+ * Two more drafts ride the same ChangedBar — `pipelineEditorsDraft` (org
+ * editors) and `pipelineApproversDraft` (per-activation gate rosters) —
+ * reported together by `selectPipelineDirty` and written in one ordered pass
+ * by `savePipelineAll`.
  *
  * Everything transient (runs, approvals, run detail, activations) is a
  * projection the `pipeline` SSE event keeps fresh via `applyPipelineEvent`;
@@ -81,12 +86,12 @@ export interface PipelineSliceState {
   pipelineDraftIsNew: boolean;
   pipelineSaveError: string | null;
   pipelinePanelView: 'editor' | 'execution';
-  /**
-   * Wiring view mode. 'view' = read-only canvas; 'edit' = mutable draft
-   * (still gated by the BE availability machine — enabled/readonly lock it).
-   * A NEW draft is forced-edit regardless of this flag.
-   */
-  pipelineWiringMode: 'view' | 'edit';
+  /** Org editors draft for the selected pipeline — null = untouched. */
+  pipelineEditorsDraft: string[] | null;
+  /** Per-activation gate-roster drafts keyed by projectId — absent key = untouched. */
+  pipelineApproversDraft: Record<string, Record<string, string[]>>;
+  /** `savePipelineAll` in flight. */
+  pipelineSaving: boolean;
   /** Canvas selection — a step id, or the trigger pseudo-node. */
   selectedPipelineNodeId: string | null;
   /** Per-activation run history — see `activationRunsKey`. */
@@ -113,6 +118,11 @@ export interface PipelineSliceActions {
   setPipelineDraft: (def: PipelineDef) => void;
   discardPipelineDraft: () => void;
   savePipelineDraft: () => Promise<boolean>;
+  setPipelineEditorsDraft: (editors: string[] | null) => void;
+  setPipelineApproversDraft: (projectId: string, roster: Record<string, string[]> | null) => void;
+  /** Definition → editors → approvers; stops at the first failure so the rest stays dirty for a retry. */
+  savePipelineAll: () => Promise<boolean>;
+  discardPipelineAll: () => void;
   deletePipelineById: (pipelineId: string) => Promise<void>;
   enablePipelineById: (pipelineId: string) => Promise<boolean>;
   disablePipelineById: (pipelineId: string) => Promise<boolean>;
@@ -137,7 +147,6 @@ export interface PipelineSliceActions {
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject', note?: string) => Promise<void>;
   answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
   setPipelinePanelView: (view: 'editor' | 'execution') => void;
-  setPipelineWiringMode: (mode: 'view' | 'edit') => void;
   selectPipelineNode: (nodeId: string | null) => void;
   applyPipelineEvent: (event: PipelineEventData) => void;
 }
@@ -149,6 +158,46 @@ export const pipelineDraftIsDirty = (draft: PipelineDef | null, saved: PipelineD
   if (!saved) return true;
   return JSON.stringify(draft) !== JSON.stringify(saved);
 };
+
+/** Roster identity ignores key order and empty gates (the server drops both). */
+const normalizeRoster = (roster: Record<string, string[]> | undefined): string =>
+  JSON.stringify(
+    Object.entries(roster ?? {})
+      .filter(([, list]) => list.length > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([gateId, list]) => [gateId, [...list].sort()]),
+  );
+
+export interface PipelineDirtyReport {
+  definition: boolean;
+  editors: boolean;
+  /** Project ids whose own-activation roster draft differs from the saved one. */
+  approvers: string[];
+  count: number;
+}
+
+type PipelineDirtyState = Pick<
+  PipelineSliceState,
+  'pipelines' | 'selectedPipelineId' | 'pipelineDraft' | 'pipelineSavedDef' | 'pipelineEditorsDraft' | 'pipelineApproversDraft'
+>;
+
+/** The ChangedBar's one signal across the three drafts — null when nothing is dirty. */
+export const selectPipelineDirty = (s: PipelineDirtyState): PipelineDirtyReport | null => {
+  const definition = pipelineDraftIsDirty(s.pipelineDraft, s.pipelineSavedDef);
+  const entry = s.selectedPipelineId ? s.pipelines.find((p) => p.id === s.selectedPipelineId) : undefined;
+  const editors = !!entry && s.pipelineEditorsDraft != null && !editorsEqual(s.pipelineEditorsDraft, entry.org?.editors ?? []);
+  const approvers: string[] = [];
+  if (entry) {
+    for (const [projectId, roster] of Object.entries(s.pipelineApproversDraft)) {
+      const own = entry.activations.find((a) => a.mine && a.projectId === projectId);
+      if (own && normalizeRoster(roster) !== normalizeRoster(own.approvers)) approvers.push(projectId);
+    }
+  }
+  const count = (definition ? 1 : 0) + (editors ? 1 : 0) + approvers.length;
+  return count === 0 ? null : { definition, editors, approvers, count };
+};
+
+const CLEAN_DRAFTS = { pipelineEditorsDraft: null, pipelineApproversDraft: {} } as const;
 
 export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (set, get) => ({
   pipelines: [],
@@ -162,7 +211,9 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineDraftIsNew: false,
   pipelineSaveError: null,
   pipelinePanelView: 'editor',
-  pipelineWiringMode: 'view',
+  pipelineEditorsDraft: null,
+  pipelineApproversDraft: {},
+  pipelineSaving: false,
   selectedPipelineNodeId: null,
   pipelineRunsByActivation: {},
   pipelineRunDetail: null,
@@ -192,11 +243,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
 
   selectPipeline: async (pipelineId: string | null) => {
     if (pipelineId === null) {
-      set({ selectedPipelineId: null, pipelineDraft: null, pipelineSavedDef: null, pipelineDraftIsNew: false, pipelineSaveError: null, pipelineWiringMode: 'view', selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null });
+      set({ selectedPipelineId: null, pipelineDraft: null, pipelineSavedDef: null, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null, ...CLEAN_DRAFTS });
       return;
     }
     // The current view survives selection — only a NEW draft forces the editor.
-    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, pipelineWiringMode: 'view', selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null });
+    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null, ...CLEAN_DRAFTS });
     try {
       const detail = await fetchPipeline(pipelineId);
       // Stale guard — the user may have clicked another pipeline meanwhile.
@@ -233,10 +284,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       pipelineDraftIsNew: true,
       pipelineSaveError: null,
       pipelinePanelView: 'editor',
-      pipelineWiringMode: 'edit',
-      selectedPipelineNodeId: 'trigger',
+      // No node selected: the inspector slot opens on the settings panel (name lives there).
+      selectedPipelineNodeId: null,
       pipelineRunDetail: null,
       pipelineActivationError: null,
+      ...CLEAN_DRAFTS,
     });
   },
 
@@ -272,6 +324,51 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     }
   },
 
+  setPipelineEditorsDraft: (editors) => set({ pipelineEditorsDraft: editors }),
+
+  setPipelineApproversDraft: (projectId, roster) => {
+    const { [projectId]: _dropped, ...rest } = get().pipelineApproversDraft;
+    set({ pipelineApproversDraft: roster ? { ...rest, [projectId]: roster } : rest });
+  },
+
+  savePipelineAll: async () => {
+    const dirty = selectPipelineDirty(get());
+    if (!dirty) return true;
+    set({ pipelineSaving: true, pipelineSaveError: null });
+    try {
+      // Definition first: it is the only leg that mints an id (create) and the
+      // only one the enabled gate refuses; the other two need an existing id.
+      if (dirty.definition && !(await get().savePipelineDraft())) return false;
+      const pipelineId = get().selectedPipelineId;
+      if (!pipelineId) return false;
+      if (dirty.editors) {
+        try {
+          await get().savePipelineEditors(pipelineId, get().pipelineEditorsDraft ?? []);
+          set({ pipelineEditorsDraft: null });
+        } catch (e) {
+          set({ pipelineSaveError: e instanceof Error ? e.message : String(e) });
+          return false;
+        }
+      }
+      for (const projectId of dirty.approvers) {
+        const roster = get().pipelineApproversDraft[projectId] ?? {};
+        if (!(await get().updateActivationApproversTo(pipelineId, projectId, roster))) {
+          set({ pipelineSaveError: get().pipelineActivationError });
+          return false;
+        }
+        get().setPipelineApproversDraft(projectId, null);
+      }
+      return true;
+    } finally {
+      set({ pipelineSaving: false });
+    }
+  },
+
+  discardPipelineAll: () => {
+    get().discardPipelineDraft();
+    set({ ...CLEAN_DRAFTS });
+  },
+
   deletePipelineById: async (pipelineId: string) => {
     try {
       await deletePipeline(pipelineId);
@@ -282,7 +379,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     if (get().selectedPipelineId === pipelineId) {
       await get().selectPipeline(null);
     }
-    set({ pipelineWiringMode: 'view' });
+    set({ ...CLEAN_DRAFTS });
     void get().loadPipelines();
   },
 
@@ -511,8 +608,6 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   },
 
   setPipelinePanelView: (view) => set({ pipelinePanelView: view }),
-
-  setPipelineWiringMode: (mode) => set({ pipelineWiringMode: mode }),
 
   selectPipelineNode: (nodeId) => set({ selectedPipelineNodeId: nodeId }),
 
