@@ -42,7 +42,7 @@ export function PipelineRail({
   const pipelines = useStore((s) => s.pipelines);
   const invalid = useStore((s) => s.pipelinesInvalid);
   const orphans = useStore((s) => s.pipelineOrphanActivations);
-  const loading = useStore((s) => s.pipelinesLoading);
+  const loading = useStore((s) => s.pipelinesStatus === 'loading');
   const selectedId = useStore((s) => s.selectedPipelineId);
   const draftIsNew = useStore((s) => s.pipelineDraftIsNew);
   const draft = useStore((s) => s.pipelineDraft);

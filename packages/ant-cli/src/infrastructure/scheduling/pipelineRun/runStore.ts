@@ -163,6 +163,7 @@ export async function listPendingApprovals(
           prompt: s.gate.prompt,
           armedAt: s.gate.armedAt,
           timeoutAt: s.gate.timeoutAt,
+          ...(s.gate.onTimeout && { onTimeout: s.gate.onTimeout }),
           ...(isTool && s.jobId && { jobId: s.jobId }),
         });
       } else if (s.status === 'awaiting_clarify' && s.clarify) {
@@ -247,6 +248,7 @@ export async function listApproverPendingApprovals(
         prompt: s.gate.prompt,
         armedAt: s.gate.armedAt,
         timeoutAt: s.gate.timeoutAt,
+        ...(s.gate.onTimeout && { onTimeout: s.gate.onTimeout }),
         role: 'approver',
         ownerUserId: owner.userId,
       });

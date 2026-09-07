@@ -732,6 +732,8 @@ export interface PipelinePendingApproval {
   prompt: string;
   armedAt: string;
   timeoutAt?: string;
+  /** Gate rows: which way the timeout decides — the inbox says "auto-approves at …", not just "auto-decides". */
+  onTimeout?: GateTimeoutAction;
   /** Clarify rows only: the asking job (funnel key). */
   jobId?: string;
   /**

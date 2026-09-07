@@ -88,3 +88,41 @@ describe('pipelineSaveWarnings — the save response\'s catalogWarnings reach th
     expect(useStore.getState().pipelineSaveWarnings).toEqual(['old']);
   });
 });
+
+describe('run history — per-run detail, per-activation selection, fetch status', () => {
+  const RUN = (runId: string, status = 'completed') => ({ runId, pipelineId: 'p1', projectId: 'proj-a', status, firedBy: 'manual', fireEpoch: 1, startedAt: '2026-09-07T00:00:00.000Z' });
+  const DETAIL = (runId: string, status = 'completed') => ({ ...RUN(runId, status), steps: [] });
+
+  it('a failed history fetch is recorded as an error, never rendered as "no runs yet"', async () => {
+    const useStore = buildStore();
+    api.fetchPipelineRuns.mockRejectedValueOnce(new Error('boom'));
+    await useStore.getState().loadActivationRuns('p1', 'proj-a');
+    const key = 'p1:me:proj-a';
+    expect(useStore.getState().pipelineRunsStatus[key]).toEqual({ status: 'error', error: 'boom' });
+    expect(useStore.getState().pipelineRunsByActivation[key]).toBeUndefined();
+  });
+
+  it('opening a run in one activation does not evict another activation\'s live detail', async () => {
+    const useStore = buildStore();
+    api.fetchPipelineRun.mockImplementation(async (runId: string) => ({ run: DETAIL(runId, runId === 'live-b' ? 'running' : 'completed') }));
+    useStore.getState().selectActivationRun('p1:me:proj-b', 'live-b', 'proj-b');
+    useStore.getState().selectActivationRun('p1:me:proj-a', 'old-a', 'proj-a');
+    await new Promise((r) => setTimeout(r, 0));
+    const st = useStore.getState();
+    expect(Object.keys(st.pipelineRunDetails).sort()).toEqual(['live-b', 'old-a']);
+    expect(st.pipelineSelectedRunByActivation).toEqual({ 'p1:me:proj-b': 'live-b', 'p1:me:proj-a': 'old-a' });
+    useStore.getState().selectActivationRun('p1:me:proj-a', null, 'proj-a');
+    expect(useStore.getState().pipelineSelectedRunByActivation).toEqual({ 'p1:me:proj-b': 'live-b' });
+  });
+
+  it('a live run opens itself only while nothing is open in that activation', async () => {
+    const useStore = buildStore();
+    api.fetchPipelineRuns.mockResolvedValue({ runs: [RUN('live', 'running'), RUN('old')] });
+    api.fetchPipelineRun.mockImplementation(async (runId: string) => ({ run: DETAIL(runId) }));
+    await useStore.getState().loadActivationRuns('p1', 'proj-a');
+    expect(useStore.getState().pipelineSelectedRunByActivation['p1:me:proj-a']).toBe('live');
+    useStore.getState().selectActivationRun('p1:me:proj-a', 'old', 'proj-a');
+    await useStore.getState().loadActivationRuns('p1', 'proj-a');
+    expect(useStore.getState().pipelineSelectedRunByActivation['p1:me:proj-a']).toBe('old');
+  });
+});

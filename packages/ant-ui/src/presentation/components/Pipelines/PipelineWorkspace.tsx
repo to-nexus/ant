@@ -20,7 +20,7 @@ import { useStore } from '@/domain/store';
 import { selectPipelineDirty } from '@/domain/store/slices/pipelineSlice';
 import { ChangedBar } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
-import { describeCron } from './cronDescribe';
+import { describeTrigger } from './cronDescribe';
 import { StepInspector } from './StepInspector';
 import { PipelineSettingsPanel } from './PipelineSettingsPanel';
 import { PipelineHeader } from './PipelineHeader';
@@ -42,7 +42,10 @@ export function PipelineWorkspace() {
   const approversDraft = useStore((s) => s.pipelineApproversDraft);
   const view = useStore((s) => s.pipelinePanelView);
   const selectedNodeId = useStore((s) => s.selectedPipelineNodeId);
-  const runDetail = useStore((s) => s.pipelineRunDetail);
+  // Design-view run overlay: the live run of THIS pipeline's activation on the
+  // selected project — derived, never a separately held slot.
+  const selectedProject = useStore((s) => s.selectedProject);
+  const runDetails = useStore((s) => s.pipelineRunDetails);
   const pipelines = useStore((s) => s.pipelines);
   const accountAgents = useStore((s) => s.accountAgents) as CustomAgentSummary[];
   const saveWarnings = useStore((s) => s.pipelineSaveWarnings);
@@ -110,11 +113,9 @@ export function PipelineWorkspace() {
     setPipelineDraft(next);
   };
 
-  const cronSummary = draft.on?.schedule
-    ? describeCron(draft.on.schedule.cron, draft.on.schedule.tz, t, i18n.language)
-    : draft.on?.runCompleted
-      ? t('trigger.chainedSummary', 'After "{{id}}"', { id: draft.on.runCompleted.pipelineId || '…' })
-      : t('trigger.manualOnly', 'Manual only');
+  const cronSummary = describeTrigger(draft, t, i18n.language);
+  const overlayRunId = entry?.activations.find((a) => a.mine && a.projectId === selectedProject)?.currentRunId;
+  const overlayRun = overlayRunId ? runDetails[overlayRunId] ?? null : null;
 
   const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate') => {
     if (!editable) return;
@@ -206,7 +207,7 @@ export function PipelineWorkspace() {
                 def={draft}
                 customAgents={accountAgents}
                 cronSummary={cronSummary}
-                run={runDetail && runDetail.pipelineId === (selectedId ?? '') ? runDetail : null}
+                run={overlayRun}
                 advisoryStepIds={advisoryStepIds}
                 selectedNodeId={editable ? selectedNodeId : null}
                 onSelectNode={editable ? selectPipelineNode : noop}

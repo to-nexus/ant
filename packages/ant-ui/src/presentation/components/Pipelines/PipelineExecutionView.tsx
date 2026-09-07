@@ -21,7 +21,7 @@ import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { Badge, Button } from '../aurora';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
-import { describeCron } from './cronDescribe';
+import { describeTrigger } from './cronDescribe';
 import { ActivationRunHistory } from './ActivationRunHistory';
 import { ApproversEditor, type ApproverGateInfo } from './ApproversEditor';
 
@@ -70,11 +70,7 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
 
   const activations = entry?.activations ?? [];
   const enabled = entry?.enabled ?? false;
-  const cronSummary = def.on?.schedule
-    ? describeCron(def.on.schedule.cron, def.on.schedule.tz, t, i18n.language)
-    : def.on?.runCompleted
-      ? t('trigger.chainedSummary', 'After "{{id}}"', { id: def.on.runCompleted.pipelineId })
-      : t('trigger.manualOnly', 'Manual only');
+  const cronSummary = describeTrigger(def, t, i18n.language);
 
   const projectNameOf = useMemo(() => {
     const names = new Map(activatableProjects.map((p) => [p.id, p.name]));
@@ -161,6 +157,7 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
             key={`${a.projectId}:${a.activatedBy}`}
             view={a}
             def={def}
+            gateInfos={gateInfos}
             accountAgents={accountAgents}
             cronSummary={cronSummary}
             projectName={projectNameOf(a.projectId)}
@@ -210,7 +207,7 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-1)',
               borderRadius: 'var(--r-md)',
-              boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.16))',
+              boxShadow: 'var(--shadow-lg)',
               padding: 14,
             }}
           >
@@ -317,6 +314,7 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
 function ActivationSection({
   view,
   def,
+  gateInfos,
   accountAgents,
   cronSummary,
   projectName,
@@ -329,6 +327,7 @@ function ActivationSection({
 }: {
   view: PipelineActivationView;
   def: PipelineDef;
+  gateInfos: ApproverGateInfo[];
   accountAgents: Array<{ id: string; name: string; jobs: Array<{ id: string; name: string }> }>;
   cronSummary: string;
   projectName: string | undefined;
@@ -340,7 +339,8 @@ function ActivationSection({
   onDeactivate: () => void;
 }) {
   const { t } = useTranslation('pipelines');
-  const runDetail = useStore((s) => s.pipelineRunDetail);
+  // The live run's detail, keyed per run — another section's history click cannot evict it.
+  const runDetail = useStore((s) => (view.currentRunId ? s.pipelineRunDetails[view.currentRunId] : undefined));
   const loadPipelineRunDetail = useStore((s) => s.loadPipelineRunDetail);
   // Roster edits are a ChangedBar draft (saved with the pipeline), so the
   // pencil only opens/closes the editor — closing is not a discard.
@@ -348,10 +348,6 @@ function ActivationSection({
   const setPipelineApproversDraft = useStore((s) => s.setPipelineApproversDraft);
   const [editingApprovers, setEditingApprovers] = useState(false);
 
-  const gateInfos: ApproverGateInfo[] = useMemo(
-    () => def.steps.filter(isApprovalStep).map((s) => ({ id: s.id, prompt: s.prompt })),
-    [def],
-  );
   const approverNames = useMemo(
     () => [...new Set(Object.values(view.approvers ?? {}).flat())],
     [view.approvers],
@@ -363,7 +359,7 @@ function ActivationSection({
       : view.state === 'running'
         ? { state: 'checking' as const, label: t('execution.stateRunning', 'Working') }
         : view.state === 'awaiting_human'
-          ? { state: 'warning' as const, label: t('execution.stateAwaiting', 'Awaiting approval') }
+          ? { state: 'warning' as const, label: t('execution.stateAwaiting', 'Awaiting input') }
           : { state: 'connected' as const, label: t('execution.stateWaiting', 'Waiting') };
   const live = view.state === 'running' || view.state === 'awaiting_human';
   // On-demand progress monitor: my live run only — run detail + runUpdate SSE
@@ -470,7 +466,7 @@ function ActivationSection({
       )}
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-1)' }}>
-          {showProgress && runDetail && runDetail.runId === view.currentRunId && (
+          {showProgress && runDetail && (
             <div style={{ height: 320, borderBottom: '1px solid var(--border-1)', position: 'relative' }}>
               <PipelineCanvas
                 def={def}
@@ -488,7 +484,7 @@ function ActivationSection({
             <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-1)', display: 'flex', flexDirection: 'column', gap: 3 }}>
               {Object.entries(view.approvers).map(([gateId, list]) => (
                 <div key={gateId} style={{ display: 'flex', gap: 8, fontSize: 11 }}>
-                  <span style={{ fontFamily: 'monospace', color: 'var(--text-3)', flexShrink: 0 }}>{gateId}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-3)', flexShrink: 0 }}>{gateId}</span>
                   <span style={{ color: 'var(--text-2)', overflowWrap: 'anywhere' }}>→ {list.join(', ')}</span>
                 </div>
               ))}

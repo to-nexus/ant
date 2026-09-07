@@ -189,6 +189,7 @@ export async function armGate(
     prompt: step.prompt,
     armedAt,
     timeoutAt,
+    ...(timeoutAt && { onTimeout: hitl.onTimeout }),
   });
 }
 
@@ -454,6 +455,7 @@ export async function republishArmedGates(ctx: PipelineRunOps, owner: PipelineOw
       prompt: step.gate.prompt,
       armedAt: step.gate.armedAt,
       timeoutAt: step.gate.timeoutAt,
+      ...(step.gate.onTimeout && { onTimeout: step.gate.onTimeout }),
     });
   }
 }

@@ -7,6 +7,8 @@
  * timezone is always appended so the silent-UTC default is visible.
  */
 
+import type { PipelineDef } from '@ant/shared';
+
 interface DescribeT {
   (key: string, defaultValue: string, options?: Record<string, unknown>): string;
 }
@@ -80,4 +82,11 @@ export function describeCron(cron: string, tz: string | undefined, t: DescribeT,
     }
   }
   return `${text ?? cron}${tzSuffix}`;
+}
+
+/** The trigger summary the canvas trigger node and the activation rows share. */
+export function describeTrigger(def: PipelineDef, t: DescribeT, locale: string): string {
+  if (def.on?.schedule) return describeCron(def.on.schedule.cron, def.on.schedule.tz, t, locale);
+  if (def.on?.runCompleted) return t('trigger.chainedSummary', 'After "{{id}}"', { id: def.on.runCompleted.pipelineId || '…' });
+  return t('trigger.manualOnly', 'Manual only');
 }

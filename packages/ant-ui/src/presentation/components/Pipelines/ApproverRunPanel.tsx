@@ -14,6 +14,8 @@ import { useStore } from '@/domain/store';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { Badge, Button } from '../aurora';
 import { RunTimeline } from './ActivationRunHistory';
+import { GateDecisionForm } from './GateDecisionForm';
+import { gateDecisionLabel, isApprovedDecision } from './runStepPresentation';
 
 export function ApproverRunPanel() {
   const { t } = useTranslation('pipelines');
@@ -24,8 +26,6 @@ export function ApproverRunPanel() {
   const close = useStore((s) => s.closeApproverPanel);
   const openApproverPanel = useStore((s) => s.openApproverPanel);
   const resolve = useStore((s) => s.resolvePipelineApprovalById);
-  const [rejecting, setRejecting] = useState(false);
-  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -56,7 +56,6 @@ export function ApproverRunPanel() {
       }
     }
     setBusy(false);
-    setRejecting(false);
   };
 
   return (
@@ -73,13 +72,13 @@ export function ApproverRunPanel() {
         flexDirection: 'column',
         background: 'var(--bg-surface)',
         borderLeft: '1px solid var(--border-1)',
-        boxShadow: 'var(--shadow-lg, -8px 0 24px rgba(0,0,0,0.12))',
+        boxShadow: 'var(--shadow-lg)',
       }}
     >
       {/* Header — run identity, never project surfaces. */}
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-1)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ShieldCheck size={14} style={{ color: 'var(--amber-500, #f59e0b)', flexShrink: 0 }} />
+          <ShieldCheck size={14} style={{ color: 'var(--amber-500)', flexShrink: 0 }} />
           <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {panel.pipelineName}
           </span>
@@ -111,27 +110,30 @@ export function ApproverRunPanel() {
           style={{
             margin: 12,
             padding: '10px 12px',
-            border: '1px dashed var(--amber-500, #f59e0b)',
+            border: '1px dashed var(--amber-500)',
             borderRadius: 'var(--r-md)',
-            background: 'color-mix(in srgb, var(--amber-500, #f59e0b) 6%, var(--bg-surface))',
+            background: 'var(--intent-amber-bg)',
           }}
         >
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber-500, #f59e0b)', marginBottom: 4 }}>
-            ⚠ {panel.stepId}
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber-500)', marginBottom: 4 }}>
+            {panel.kind === 'tool'
+              ? t('approverPanel.toolHeading', 'Tool approval · {{step}}', { step: panel.stepId })
+              : t('approverPanel.gateHeading', 'Approval gate · {{step}}', { step: panel.stepId })}
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--text-1)', whiteSpace: 'pre-wrap', marginBottom: 8 }}>{panel.prompt}</div>
           {panel.timeoutAt && !decision && (
             <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 8 }}>
-              {t('inbox.timeout', 'Auto-decides {{when}}', { when: new Date(panel.timeoutAt).toLocaleString() })}
+              {panel.onTimeout === 'approve'
+                ? t('inbox.timeoutApprove', 'Auto-approves {{when}}', { when: new Date(panel.timeoutAt).toLocaleString() })
+                : panel.onTimeout === 'reject'
+                  ? t('inbox.timeoutReject', 'Auto-rejects {{when}}', { when: new Date(panel.timeoutAt).toLocaleString() })
+                  : t('inbox.timeout', 'Auto-decides {{when}}', { when: new Date(panel.timeoutAt).toLocaleString() })}
             </div>
           )}
           {notice && <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8 }}>{notice}</div>}
           {decision ? (
-            <div style={{ fontSize: 12, fontWeight: 600, color: decision === 'approved' ? 'var(--emerald-500)' : 'var(--red-500)' }}>
-              {decision === 'approved' || decision === 'expired_approve'
-                ? t('approverPanel.decidedApproved', '✓ Approved')
-                : t('approverPanel.decidedRejected', '✗ Rejected')}
-              {gateStep?.gate?.decidedBy && ` · ${gateStep.gate.decidedBy}`}
+            <div style={{ fontSize: 12, fontWeight: 600, color: isApprovedDecision(decision) ? 'var(--status-done-fg)' : 'var(--status-error-fg)' }}>
+              {gateDecisionLabel(t, decision, gateStep?.gate?.decidedBy)}
               {gateStep?.gate?.decisionNote && (
                 <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-2)', marginTop: 3, fontStyle: 'italic' }}>
                   “{gateStep.gate.decisionNote}”
@@ -139,43 +141,7 @@ export function ApproverRunPanel() {
               )}
             </div>
           ) : stillPending ? (
-            rejecting ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder={t('inbox.rejectNotePlaceholder', 'Reason (optional) — the owner uses it to decide the next move')}
-                  rows={2}
-                  style={{
-                    width: '100%',
-                    fontSize: 11.5,
-                    padding: '6px 8px',
-                    borderRadius: 'var(--r-sm, 6px)',
-                    border: '1px solid var(--border-1)',
-                    background: 'var(--bg-surface)',
-                    color: 'var(--text-1)',
-                    resize: 'vertical',
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <Button size="xs" variant="danger" disabled={busy} onClick={() => void decide('reject', note)}>
-                    {t('inbox.rejectConfirm', 'Confirm reject')}
-                  </Button>
-                  <Button size="xs" variant="ghost" disabled={busy} onClick={() => setRejecting(false)}>
-                    {t('inbox.rejectCancel', 'Back')}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button size="sm" variant="primary" disabled={busy} onClick={() => void decide('approve')}>
-                  ✓ {t('inbox.approve', 'Approve')}
-                </Button>
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setRejecting(true)}>
-                  ✗ {t('inbox.reject', 'Reject')}
-                </Button>
-              </div>
-            )
+            <GateDecisionForm busy={busy} size="sm" onDecide={decide} />
           ) : (
             <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t('approverPanel.resolvedElsewhere', 'This gate is no longer waiting for you.')}</div>
           )}
@@ -204,7 +170,7 @@ export function ApproverRunPanel() {
 
       {/* Footer — audit identity. */}
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border-1)' }}>
-        <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-3)' }}>{panel.runId}</div>
+        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>{panel.runId}</div>
         {currentUser && (
           <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>
             {t('approverPanel.auditLine', 'Your decision is recorded on the run history as {{who}}.', { who: currentUser })}

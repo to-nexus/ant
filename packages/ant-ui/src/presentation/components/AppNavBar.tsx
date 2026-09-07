@@ -47,6 +47,12 @@ export function AppNavBar({}: AppNavBarProps) {
   const pendingInvites = useStore((state) => state.pendingInvites);
   const undismissAllInvites = useStore((state) => state.undismissAllInvites);
   const pendingApprovalCount = useStore((state) => selectPipelineApprovalCount(state as any));
+  const loadPipelineApprovals = useStore((state) => state.loadPipelineApprovals);
+  // The badge reads account-wide approvals; they used to load only once the
+  // Pipelines tab was opened, so a gate armed before that was invisible here.
+  useEffect(() => {
+    void loadPipelineApprovals();
+  }, [loadPipelineApprovals]);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);

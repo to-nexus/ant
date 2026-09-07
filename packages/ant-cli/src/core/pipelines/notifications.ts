@@ -11,7 +11,7 @@
  * `GET /approvals` refetch is what heals a missed event.
  */
 
-import type { GateDecision, PipelineEventData } from '@ant/shared';
+import type { GateDecision, PipelineEventData, GateTimeoutAction } from '@ant/shared';
 import { getRealtimeBroadcastChannel } from '../constants/redis';
 import type { StateStorePort } from '../ports/stateStore';
 import { logger } from '../../utils/logger';
@@ -39,6 +39,8 @@ export interface PipelineNotice {
   /** Required on requested/reminder notices; resolved notices may omit it. */
   armedAt?: string;
   timeoutAt?: string;
+  /** Which way the gate's timeout decides — rides with `timeoutAt`. */
+  onTimeout?: GateTimeoutAction;
   /** In-app routing token today; Phase C promotes it to a magic-link. */
   deepLink: string;
   /** approvalResolved only. */
@@ -90,6 +92,7 @@ export class InAppChannel implements NotificationChannelPort {
               prompt: notice.prompt,
               armedAt: notice.armedAt ?? new Date().toISOString(),
               ...(notice.timeoutAt && { timeoutAt: notice.timeoutAt }),
+              ...(notice.onTimeout && { onTimeout: notice.onTimeout }),
               ...(recipient.role === 'approver' && { role: 'approver' as const, ownerUserId: notice.ownerUserId }),
             },
           };

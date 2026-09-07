@@ -11,6 +11,7 @@ import { Clock, Bot, ShieldCheck, Plus, Zap, Ban } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { GateDecision, PipelineStepStatus } from '@ant/shared';
 import { TRIGGER_NODE_ID } from '../draft';
+import { LIVE_STEP_STATUSES, STEP_STATUS_COLOR, gateDecisionLabel, isApprovedDecision, stepStatusLabel } from '../runStepPresentation';
 
 /** Card width — PipelineCanvas feeds it to dagre alongside the height estimate. */
 export const NODE_WIDTH = 230;
@@ -37,16 +38,6 @@ export interface PipelineNodeData {
   gateDecision?: { decision: GateDecision; decidedBy?: string };
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  running: 'var(--violet-500)',
-  dispatched: 'var(--violet-500)',
-  awaiting_gate: 'var(--amber-500, #f59e0b)',
-  awaiting_clarify: 'var(--amber-500, #f59e0b)',
-  succeeded: 'var(--emerald-500)',
-  failed: 'var(--red-500)',
-  skipped: 'var(--text-3)',
-  cancelled: 'var(--text-3)',
-};
 
 function AddButton({ data }: { data: PipelineNodeData }) {
   const { t } = useTranslation('pipelines');
@@ -55,7 +46,7 @@ function AddButton({ data }: { data: PipelineNodeData }) {
   return (
     <div style={{ position: 'absolute', right: -14, top: '50%', transform: 'translateY(-50%)', zIndex: 5 }}>
       <button
-        aria-label="add step"
+        aria-label={t('canvas.addStep', 'Add step')}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
@@ -136,7 +127,7 @@ const menuItemStyle: React.CSSProperties = {
 };
 
 function shell(data: PipelineNodeData, accentVar: string): React.CSSProperties {
-  const statusColor = data.status ? STATUS_COLOR[data.status] : undefined;
+  const statusColor = data.status ? STEP_STATUS_COLOR[data.status] : undefined;
   return {
     position: 'relative',
     width: NODE_WIDTH,
@@ -162,9 +153,10 @@ function AdvisoryDot({ data }: { data: PipelineNodeData }) {
 }
 
 function StatusChip({ status }: { status?: PipelineStepStatus }) {
+  const { t } = useTranslation('pipelines');
   if (!status || status === 'pending') return null;
-  const color = STATUS_COLOR[status] ?? 'var(--text-3)';
-  const pulse = status === 'running' || status === 'dispatched' || status === 'awaiting_gate' || status === 'awaiting_clarify';
+  const color = STEP_STATUS_COLOR[status] ?? 'var(--text-3)';
+  const pulse = LIVE_STEP_STATUSES.has(status);
   return (
     <span
       style={{
@@ -186,7 +178,7 @@ function StatusChip({ status }: { status?: PipelineStepStatus }) {
           animation: pulse ? 'pulse-soft 1.4s ease-in-out infinite' : undefined,
         }}
       />
-      {status.replace(/_/g, ' ')}
+      {stepStatusLabel(t, status)}
     </span>
   );
 }
@@ -274,13 +266,13 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
   const { t } = useTranslation('pipelines');
   const awaiting = data.status === 'awaiting_gate';
   const decided = data.gateDecision;
-  const approved = decided && (decided.decision === 'approved' || decided.decision === 'expired_approve');
+  const approved = decided && isApprovedDecision(decided.decision);
   return (
     <div
       style={{
-        ...shell(data, 'var(--amber-500, #f59e0b)'),
+        ...shell(data, 'var(--amber-500)'),
         borderStyle: 'dashed',
-        background: awaiting ? 'color-mix(in srgb, var(--amber-500, #f59e0b) 8%, var(--bg-surface))' : 'var(--bg-surface)',
+        background: awaiting ? 'color-mix(in srgb, var(--amber-500) 8%, var(--bg-surface))' : 'var(--bg-surface)',
       }}
     >
       <NodeHeader icon={<ShieldCheck size={14} />} title={data.title} subtitle={data.subtitle} invalid={data.invalid} />
@@ -292,14 +284,8 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
       )}
       <StatusChip status={data.status} />
       {decided && (
-        <div style={{ fontSize: 10, fontWeight: 600, marginTop: 3, color: approved ? 'var(--emerald-500)' : 'var(--red-500)' }}>
-          {decided.decidedBy
-            ? approved
-              ? t('canvas.gateApprovedBy', '✓ approved by {{who}}', { who: decided.decidedBy })
-              : t('canvas.gateRejectedBy', '✗ rejected by {{who}}', { who: decided.decidedBy })
-            : approved
-              ? t('canvas.gateAutoApproved', '⏱ auto-approved')
-              : t('canvas.gateAutoRejected', '⏱ auto-rejected')}
+        <div style={{ fontSize: 10, fontWeight: 600, marginTop: 3, color: approved ? 'var(--status-done-fg)' : 'var(--status-error-fg)' }}>
+          {gateDecisionLabel(t, decided.decision, decided.decidedBy)}
         </div>
       )}
       <AdvisoryDot data={data} />

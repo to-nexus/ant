@@ -78,7 +78,6 @@ export interface PipelineSliceState {
   pipelinesInvalid: Array<{ id: string; error: string; scope: PipelineScope }>;
   /** Own activations whose pinned definition no longer resolves (deactivate-only rows). */
   pipelineOrphanActivations: PipelineActivationView[];
-  pipelinesLoading: boolean;
   /**
    * Whether `pipelines` is a real answer. An empty list is ambiguous on its own
    * — "no pipelines" and "never fetched" render identically — so the `_pipelines`
@@ -105,7 +104,12 @@ export interface PipelineSliceState {
   selectedPipelineNodeId: string | null;
   /** Per-activation run history — see `activationRunsKey`. */
   pipelineRunsByActivation: Record<string, PipelineRunSummary[]>;
-  pipelineRunDetail: PipelineRunPublic | null;
+  /** Fetch state of each activation's history — an empty list and a failed fetch must not look alike. */
+  pipelineRunsStatus: Record<string, { status: 'loading' | 'ready' | 'error'; error?: string }>;
+  /** Run detail keyed by runId — two activations can be watched at once. */
+  pipelineRunDetails: Record<string, PipelineRunPublic>;
+  /** The run a person opened in each activation's history (`activationRunsKey` → runId). */
+  pipelineSelectedRunByActivation: Record<string, string>;
   pipelineApprovals: PipelinePendingApproval[];
   /**
    * Approver context panel (slideover) — self-contained on run data: an
@@ -154,6 +158,8 @@ export interface PipelineSliceActions {
   loadActivePipeline: (projectId: string) => Promise<void>;
   loadActivationRuns: (pipelineId: string, projectId: string, userId?: string) => Promise<void>;
   loadPipelineRunDetail: (runId: string, projectId: string) => Promise<void>;
+  /** Open (or close with null) one run in an activation's history; loads its detail. */
+  selectActivationRun: (activationKey: string, runId: string | null, projectId: string) => void;
   loadPipelineApprovals: () => Promise<void>;
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject', note?: string) => Promise<void>;
   answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
@@ -214,7 +220,6 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelines: [],
   pipelinesInvalid: [],
   pipelineOrphanActivations: [],
-  pipelinesLoading: false,
   pipelinesStatus: 'idle',
   pipelinesError: null,
   selectedPipelineId: null,
@@ -229,7 +234,9 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineSaving: false,
   selectedPipelineNodeId: null,
   pipelineRunsByActivation: {},
-  pipelineRunDetail: null,
+  pipelineRunsStatus: {},
+  pipelineRunDetails: {},
+  pipelineSelectedRunByActivation: {},
   pipelineApprovals: [],
   approverPanel: null,
   approverPanelRun: null,
@@ -238,20 +245,19 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineActivationError: null,
 
   loadPipelines: async () => {
-    set({ pipelinesLoading: true, pipelinesStatus: 'loading' });
+    set({ pipelinesStatus: 'loading' });
     try {
       const { pipelines, invalid, orphanActivations } = await fetchPipelines();
       set({
         pipelines,
         pipelinesInvalid: invalid ?? [],
         pipelineOrphanActivations: orphanActivations ?? [],
-        pipelinesLoading: false,
         pipelinesStatus: 'ready',
         pipelinesError: null,
       });
       void get().loadPipelineApprovals();
     } catch (e) {
-      set({ pipelinesLoading: false, pipelinesStatus: 'error', pipelinesError: e instanceof Error ? e.message : String(e) });
+      set({ pipelinesStatus: 'error', pipelinesError: e instanceof Error ? e.message : String(e) });
     }
   },
 
@@ -263,11 +269,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
 
   selectPipeline: async (pipelineId: string | null) => {
     if (pipelineId === null) {
-      set({ selectedPipelineId: null, pipelineDraft: null, pipelineSavedDef: null, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null, ...CLEAN_DRAFTS });
+      set({ selectedPipelineId: null, pipelineDraft: null, pipelineSavedDef: null, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineSelectedRunByActivation: {}, pipelineActivationError: null, ...CLEAN_DRAFTS });
       return;
     }
     // The current view survives selection — only a NEW draft forces the editor.
-    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null, ...CLEAN_DRAFTS });
+    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineSelectedRunByActivation: {}, pipelineActivationError: null, ...CLEAN_DRAFTS });
     try {
       const detail = await fetchPipeline(pipelineId);
       // Stale guard — the user may have clicked another pipeline meanwhile.
@@ -308,7 +314,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       pipelinePanelView: 'editor',
       // No node selected: the inspector slot opens on the settings panel (name lives there).
       selectedPipelineNodeId: null,
-      pipelineRunDetail: null,
+      pipelineSelectedRunByActivation: {},
       pipelineActivationError: null,
       ...CLEAN_DRAFTS,
     });
@@ -523,30 +529,42 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   },
 
   loadActivationRuns: async (pipelineId: string, projectId: string, userId?: string) => {
+    const key = activationRunsKey(pipelineId, projectId, userId);
+    set({ pipelineRunsStatus: { ...get().pipelineRunsStatus, [key]: { status: 'loading' } } });
     try {
       const { runs } = await fetchPipelineRuns(pipelineId, projectId, userId);
       set({
-        pipelineRunsByActivation: {
-          ...get().pipelineRunsByActivation,
-          [activationRunsKey(pipelineId, projectId, userId)]: runs,
-        },
+        pipelineRunsByActivation: { ...get().pipelineRunsByActivation, [key]: runs },
+        pipelineRunsStatus: { ...get().pipelineRunsStatus, [key]: { status: 'ready' } },
       });
       if (!userId) {
+        // A live run opens itself when nothing is open yet — the person did not
+        // click it, so a run they DID open is never displaced.
         const live = runs.find((r) => r.status === 'running' || r.status === 'awaiting_human');
-        if (live) void get().loadPipelineRunDetail(live.runId, projectId);
+        if (live && !get().pipelineSelectedRunByActivation[key]) get().selectActivationRun(key, live.runId, projectId);
       }
-    } catch {
-      /* keeps last-good */
+    } catch (e) {
+      // The list keeps its last-good value; the failure is recorded, not swallowed
+      // into an empty state that reads as "no runs yet".
+      set({ pipelineRunsStatus: { ...get().pipelineRunsStatus, [key]: { status: 'error', error: e instanceof Error ? e.message : String(e) } } });
     }
   },
 
   loadPipelineRunDetail: async (runId: string, projectId: string) => {
     try {
       const { run } = await fetchPipelineRun(runId, projectId);
-      set({ pipelineRunDetail: run });
+      set({ pipelineRunDetails: { ...get().pipelineRunDetails, [run.runId]: run } });
     } catch {
       /* keep previous */
     }
+  },
+
+  selectActivationRun: (activationKey, runId, projectId) => {
+    const next = { ...get().pipelineSelectedRunByActivation };
+    if (runId === null) delete next[activationKey];
+    else next[activationKey] = runId;
+    set({ pipelineSelectedRunByActivation: next });
+    if (runId !== null) void get().loadPipelineRunDetail(runId, projectId);
   },
 
   loadPipelineApprovals: async () => {
@@ -706,11 +724,10 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
             : [summary, ...runs];
           set({ pipelineRunsByActivation: { ...get().pipelineRunsByActivation, [runsKey]: next } });
         }
-        // Open run detail (canvas overlay + timeline) follows live.
-        if (state.pipelineRunDetail?.runId === run.runId || state.selectedPipelineId === event.pipelineId) {
-          if (!state.pipelineRunDetail || state.pipelineRunDetail.runId === run.runId || state.pipelineRunDetail.status === 'completed') {
-            set({ pipelineRunDetail: run });
-          }
+        // Run detail follows live for every run already held, and for the
+        // selected pipeline's runs (the design-view overlay reads them).
+        if (state.pipelineRunDetails[run.runId] || state.selectedPipelineId === event.pipelineId) {
+          set({ pipelineRunDetails: { ...get().pipelineRunDetails, [run.runId]: run } });
         }
         // A terminal run can not hold gates.
         if (terminal) {

@@ -36,10 +36,9 @@ export function PipelineApprovalVariant({ presented, resolved }: VariantProps) {
   const subtitleParts = [
     pipelineName && stepId ? `${pipelineName} · ${stepId}` : pipelineName,
     timeoutAt
-      ? t('card.timeoutHint', 'auto-{{action}} {{when}}', {
-          action: onTimeout === 'approve' ? 'approves' : 'rejects',
-          when: new Date(timeoutAt).toLocaleString(),
-        })
+      ? onTimeout === 'approve'
+        ? t('card.timeoutApprove', 'auto-approves {{when}}', { when: new Date(timeoutAt).toLocaleString() })
+        : t('card.timeoutReject', 'auto-rejects {{when}}', { when: new Date(timeoutAt).toLocaleString() })
       : undefined,
   ].filter(Boolean);
 

@@ -41,7 +41,7 @@
     "deactivate": "비활성화",
     "stateWaiting": "대기",
     "stateRunning": "작업 중",
-    "stateAwaiting": "승인 대기",
+    "stateAwaiting": "사람 응답 대기",
     "stateBroken": "손상됨",
     "nextFire": "다음 실행: {{when}}",
     "selectProjectFirst": "먼저 프로젝트를 선택해야 이 파이프라인을 활성화할 수 있습니다.",
@@ -103,7 +103,14 @@
     "rejectCancel": "뒤로",
     "alreadyDecided": "이미 결정된 게이트입니다.",
     "alreadyDecidedBy": "이미 {{who}}이(가) 결정했습니다.",
-    "authorityRevoked": "이 게이트에 대한 승인 권한이 회수되었습니다."
+    "authorityRevoked": "이 게이트에 대한 승인 권한이 회수되었습니다.",
+    "timeoutApprove": "{{when}} 자동 승인",
+    "timeoutReject": "{{when}} 자동 거절",
+    "openExecution": "실행 보기",
+    "clarifyKind": "스텝의 질문",
+    "clarifyFileHint": "파일은 답변에 담을 수 없습니다 — 프로젝트 아티팩트에 업로드하고 그 경로를 답하세요.",
+    "clarifyBrowse": "파일 경로 넣기",
+    "clarifyBrowseTitle": "아티팩트 경로 넣기 — {{project}}"
   },
   "editor": {
     "pickOne": "왼쪽에서 파이프라인을 선택하거나\n새로 만들어 보세요.",
@@ -122,17 +129,14 @@
     "noTimeout": "타임아웃 없음",
     "addJobStep": "잡 스텝",
     "addGate": "승인 게이트",
-    "gateApprovedBy": "✓ {{who}} 승인",
-    "gateRejectedBy": "✗ {{who}} 거절",
-    "gateAutoApproved": "⏱ 자동 승인",
-    "gateAutoRejected": "⏱ 자동 거절",
     "lockedEnabled": "게시된 파이프라인의 설계는 잠깁니다 — 편집하려면 헤더에서 초안으로 되돌리세요.",
     "triggerMode": {
       "schedule": "스케줄",
       "manual": "수동 실행",
       "runCompleted": "체인"
     },
-    "openExecution": "실행 보기 →"
+    "openExecution": "실행 보기 →",
+    "addStep": "스텝 추가"
   },
   "inspector": {
     "trigger": "트리거·정책",
@@ -282,16 +286,38 @@
     "manual": "수동",
     "event": "체인",
     "running": "실행 중",
-    "awaiting": "승인 대기",
+    "awaiting": "사람 응답 대기",
     "completed": "완료",
     "failed": "실패",
     "partial": "부분 완료",
     "cancelled": "취소됨",
-    "gateExpired": "타임아웃 → {{action}}",
-    "gateDecided": "{{who}}이(가) {{decision}}",
     "clarifyAsked": "Q{{round}}: {{question}}",
     "clarifyAnswered": "{{who}} 답변",
-    "clarifyWaiting": "답변 대기 중"
+    "clarifyWaiting": "답변 대기 중",
+    "step": {
+      "pending": "대기",
+      "dispatched": "디스패치됨",
+      "running": "실행 중",
+      "awaiting_gate": "승인 대기",
+      "awaiting_clarify": "답변 대기",
+      "succeeded": "성공",
+      "failed": "실패",
+      "skipped": "건너뜀",
+      "cancelled": "취소됨"
+    },
+    "decision": {
+      "approved": "✓ {{who}} 승인",
+      "rejected": "✗ {{who}} 거절",
+      "autoApproved": "⏱ 타임아웃으로 자동 승인",
+      "autoRejected": "⏱ 타임아웃으로 자동 거절"
+    },
+    "unknownActor": "알 수 없음",
+    "verdict": "판정: {{v}}",
+    "verdictHint": "인텐트가 봉인한 결정 — 판정 분기가 이 값으로 라우팅됩니다",
+    "retries": "재시도 {{n}}회",
+    "unresolvedTemplates": "빈 값으로 치환됨: {{refs}} — 디스패치 시점에 참조한 스텝의 출력이 없었습니다",
+    "openArtifact": "편집기에서 열기",
+    "loadError": "실행 이력을 불러오지 못했습니다."
   },
   "danger": {
     "title": "이 파이프라인 삭제",
@@ -306,7 +332,8 @@
     "reject": "거절",
     "approved": "승인됨",
     "rejected": "거절됨",
-    "timeoutHint": "{{when}} 자동 {{action}}"
+    "timeoutApprove": "{{when}} 자동 승인",
+    "timeoutReject": "{{when}} 자동 거절"
   },
   "time": {
     "inMinutes": "{{n}}분 후",
@@ -337,12 +364,12 @@
     "roleBadge": "승인 권한만 보유",
     "close": "닫기",
     "started": "{{when}} 시작",
-    "decidedApproved": "✓ 승인함",
-    "decidedRejected": "✗ 거부함",
     "resolvedElsewhere": "더 이상 내 결정을 기다리지 않는 게이트입니다.",
     "loading": "실행 컨텍스트 불러오는 중…",
     "retry": "다시 시도",
-    "auditLine": "이 결정은 실행 기록에 {{who}}(으)로 남습니다."
+    "auditLine": "이 결정은 실행 기록에 {{who}}(으)로 남습니다.",
+    "gateHeading": "승인 게이트 · {{step}}",
+    "toolHeading": "툴 승인 · {{step}}"
   },
   "header": {
     "root": "파이프라인",

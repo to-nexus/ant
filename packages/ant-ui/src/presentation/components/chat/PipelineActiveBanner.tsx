@@ -21,7 +21,7 @@ export function PipelineActiveBanner() {
   if (!active) return null;
 
   const running = active.state === 'running' || active.state === 'awaiting_human';
-  const stateColor = running ? 'var(--green-500, #22c55e)' : 'var(--violet-400)';
+  const stateColor = running ? 'var(--emerald-500)' : 'var(--violet-400)';
 
   return (
     <div
