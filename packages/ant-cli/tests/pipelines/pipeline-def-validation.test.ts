@@ -583,4 +583,42 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
       ),
     ).toHaveLength(0);
   });
+
+  // The F34 shape (chained pipelines only): the chain restriction over-applied,
+  // so a consumer downstream of a glob-declaring producer ships with zero pins.
+  const chainDef = (steps: unknown[]): PipelineDef =>
+    ({
+      version: PIPELINE_DEF_VERSION,
+      name: 'n',
+      on: { runCompleted: { pipelineId: 'up' } },
+      steps,
+    } as unknown as PipelineDef);
+
+  it('chained pipeline: flags a pinless consumer whose upstream step declares stop globs (F34)', () => {
+    const advisories = collectPipelineCatalogAdvisories(
+      chainDef([step('publishing', 'publishing'), step('mail', 'mail')]),
+      CATALOG,
+    );
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]).toMatch(/chained pipeline: step "mail" pins nothing while its upstream steps declare "terms\/\*\/publishing-request\.md"/);
+    expect(advisories[0]).toMatch(/within this pipeline the duty is unchanged/);
+  });
+
+  it('chained pipeline: silent for the entry step, and for a consumer that pins its upstream glob', () => {
+    expect(
+      collectPipelineCatalogAdvisories(
+        chainDef([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'] })]),
+        CATALOG,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('not a chained pipeline: the pinless-consumer advisory does not fire (scope = on.runCompleted only)', () => {
+    expect(
+      collectPipelineCatalogAdvisories(
+        def([step('publishing', 'publishing'), step('mail', 'mail')]),
+        CATALOG,
+      ),
+    ).toHaveLength(0);
+  });
 });

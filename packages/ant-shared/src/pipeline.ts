@@ -1339,6 +1339,25 @@ export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: Pipel
       );
     }
   }
+  // Chained pipelines only (the observed failure mode): the trigger comment's
+  // "pin only what this pipeline's own steps produce" gets over-applied and a
+  // consumer ships with no pins at all, while its upstream steps DECLARE stop
+  // globs. Advisory, never the hard gate — a consumer that truly needs no
+  // upstream file stays saveable.
+  if (def.on?.runCompleted !== undefined) {
+    for (const step of def.steps) {
+      if (isApprovalStep(step)) continue;
+      if ((step.context ?? []).length > 0) continue;
+      const ancestors = closureOf(step.id);
+      const upstreamGlobs = [...producersByGlob.entries()]
+        .filter(([, producers]) => producers.some((p) => p !== step.id && ancestors.has(p)))
+        .map(([glob]) => glob);
+      if (upstreamGlobs.length === 0) continue;
+      advisories.push(
+        `chained pipeline: step "${step.id}" pins nothing while its upstream steps declare ${upstreamGlobs.map((g) => `"${g}"`).join(', ')} — only the UPSTREAM RUN's artifacts are out of pin reach; within this pipeline the duty is unchanged: pin the upstream step's stop glob, or leave the step pinless only if it truly consumes none of it`,
+      );
+    }
+  }
   return advisories;
 }
 
