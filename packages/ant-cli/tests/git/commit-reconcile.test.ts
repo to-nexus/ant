@@ -103,6 +103,10 @@ describe('CommitOperation — stale pathspecs cannot abort the commit', () => {
   beforeEach(() => {
     repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-commit-reconcile-'));
     git(repo, 'init', '-q');
+    // Auto maintenance detaches a background process that writes into
+    // .git/objects/pack — it outlives the test and races the teardown rm.
+    git(repo, 'config', 'gc.auto', '0');
+    git(repo, 'config', 'maintenance.auto', 'false');
     git(repo, 'config', 'user.email', 'test@test');
     git(repo, 'config', 'user.name', 'test');
     fs.writeFileSync(path.join(repo, 'base.ts'), 'base\n');
@@ -119,7 +123,7 @@ describe('CommitOperation — stale pathspecs cannot abort the commit', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   });
 
   it('user path: drops the ghost path and commits the survivors', async () => {
@@ -211,6 +215,10 @@ describe('CommitOperation — index-resident ghosts (status lists, add rejects)'
   beforeEach(() => {
     repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-commit-ghost-'));
     git(repo, 'init', '-q');
+    // Auto maintenance detaches a background process that writes into
+    // .git/objects/pack — it outlives the test and races the teardown rm.
+    git(repo, 'config', 'gc.auto', '0');
+    git(repo, 'config', 'maintenance.auto', 'false');
     git(repo, 'config', 'user.email', 'test@test');
     git(repo, 'config', 'user.name', 'test');
     fs.writeFileSync(path.join(repo, 'base.ts'), 'base\n');
@@ -227,7 +235,7 @@ describe('CommitOperation — index-resident ghosts (status lists, add rejects)'
   });
 
   afterEach(() => {
-    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   });
 
   it('user path: ghost in selection is healed, survivors commit, index is clean after', async () => {
