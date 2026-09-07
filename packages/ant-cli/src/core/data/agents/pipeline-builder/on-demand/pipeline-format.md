@@ -27,7 +27,10 @@ on:                             # OPTIONAL — omit `on` entirely for a
                                 # run just sealed — so the upstream run's
                                 # artifacts sit in another container, out of
                                 # pin reach: pin only what this pipeline's
-                                # own steps produce.
+                                # own steps produce — and DO pin those:
+                                # WITHIN this pipeline the duty is unchanged;
+                                # a consumer still pins its own upstream
+                                # steps' stop globs (what you pin, you needs).
 defaults:
   onStepFailure: abort          # abort (default) | continue
 steps:
