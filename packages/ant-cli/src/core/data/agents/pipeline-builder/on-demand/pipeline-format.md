@@ -141,9 +141,10 @@ steps:
 
 - `prompt` is what the approver reads — say what happened upstream and what
   approving will run. Same length ceiling as a directive. Resolving a gate
-  sends `decision` (`approve` | `reject`) and nothing else: there is no field
-  for a note, a value or a file, so a prompt that asks the approver to enter
-  something describes a channel that does not exist.
+  sends `decision` (`approve` | `reject`) plus an optional note that lands in
+  the run's audit record only — nothing the approver types reaches any step,
+  so a prompt that asks the approver to enter a value describes a channel
+  that does not exist.
 - A gate must have an upstream step (it cannot be the entry step): its card in
   chat anchors to the producing job's turn. It arms as soon as its `needs` are
   satisfied — a sibling job step still in flight does not hold it back (the
