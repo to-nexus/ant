@@ -456,6 +456,25 @@ export const UNIVERSAL_PIPELINE_RUNS_DIRNAME = 'pipeline-runs' as const;
 export const UNIVERSAL_AGENTS_DIRNAME = '_agents' as const;
 
 /**
+ * Reserved top-level node in the universal AGENT PLANE — the read-only mount of
+ * pipeline DEFINITIONS (`_pipelines/{pipelineId}/pipeline.yaml`), the `_agents`
+ * twin. Distinct from `pipeline-runs` (run logs). BE↔FE name SSOT.
+ */
+export const UNIVERSAL_PIPELINES_DIRNAME = '_pipelines' as const;
+
+/**
+ * Top-level names a universal ARTIFACTS write may never target — the explorer
+ * grafts and the agent-plane mounts. One list for the artifacts sub-router,
+ * the transfer seam and the FE send picker, so the three cannot disagree.
+ */
+export const UNIVERSAL_RESERVED_ROOT_DIRNAMES: readonly string[] = [
+  'sessions',
+  UNIVERSAL_PIPELINE_RUNS_DIRNAME,
+  UNIVERSAL_AGENTS_DIRNAME,
+  UNIVERSAL_PIPELINES_DIRNAME,
+];
+
+/**
  * id charset for agentId / jobId / intentId / MCP server name — strict
  * kebab-case: `a-z0-9` segments joined by SINGLE hyphens, no leading or
  * trailing hyphen. agent and job ids are directory names, so a doubled or

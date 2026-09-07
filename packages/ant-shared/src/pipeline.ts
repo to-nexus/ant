@@ -24,7 +24,7 @@
  * store throws, the HTTP gate answers 400, the editor form disables saving.
  */
 
-import { parseCustomJobRef, isValidCustomId, validateArtifactGlob, GENERAL_INTENT } from './custom-agents';
+import { parseCustomJobRef, isValidCustomId, validateArtifactGlob, GENERAL_INTENT, UNIVERSAL_PIPELINES_DIRNAME } from './custom-agents';
 import { DIRECTIVE_MAX_CHARS } from './session-log';
 import type { CustomAgentOrgPermissions } from './custom-agents';
 
@@ -234,6 +234,32 @@ export const PIPELINE_EXPORT_FILE_NAMES: readonly string[] = [
 
 export function isExportablePipelineFile(relPath: string): boolean {
   return PIPELINE_EXPORT_FILE_NAMES.includes(relPath.replace(/\\/g, '/'));
+}
+
+/** Does this path address the pipeline-definition mount at all? (prefix test only — see `isUniversalAgentRef`.) */
+export function isUniversalPipelineRef(rel: string): boolean {
+  const normalized = rel.replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized === UNIVERSAL_PIPELINES_DIRNAME || normalized.startsWith(`${UNIVERSAL_PIPELINES_DIRNAME}/`);
+}
+
+/**
+ * Split `_pipelines/{pipelineId}[/pipeline.yaml]` into id + remainder. The
+ * splitter IS the whitelist: only the definition folder (folder-unit attach)
+ * and `pipeline.yaml` resolve. `owner.json` carries the author's account
+ * coordinates and `availability.json` is operational state — neither is
+ * definition, so every plane (picker, accept gate, sandbox, prompt band)
+ * refuses them by getting `null` here, with no second rule to drift.
+ */
+export function parseUniversalPipelineRef(
+  rel: string,
+): { pipelineId: string; rest: '' | typeof PIPELINE_FILE_NAME } | null {
+  if (!isUniversalPipelineRef(rel)) return null;
+  const [, pipelineId, ...rest] = rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/');
+  if (!pipelineId || !isValidCustomId(pipelineId)) return null;
+  const remainder = rest.join('/');
+  if (remainder === '') return { pipelineId, rest: '' };
+  if (remainder === PIPELINE_FILE_NAME) return { pipelineId, rest: PIPELINE_FILE_NAME };
+  return null;
 }
 
 // ============================================
