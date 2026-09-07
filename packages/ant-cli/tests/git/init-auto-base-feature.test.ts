@@ -22,6 +22,7 @@ import { RemoteChecker } from '../../src/periphery/adapters/http/services/GitSer
 import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
 import { readBranchBase } from '../../src/core/utils/branchUtils';
 import type { GitHubAuthService } from '../../src/periphery/adapters/auth/GitHubAuthService';
+import { disableAutoMaintenance, rmTempDir } from './helpers/tempRepo';
 
 vi.mock('../../src/periphery/adapters/http/services/GitService/remote/helpers/RemoteChecker', () => ({
   RemoteChecker: { exists: vi.fn() },
@@ -66,6 +67,7 @@ beforeEach(() => {
   // The "GitHub repo" the stub auth service resolves to — bare so it accepts pushes.
   remotePath = path.join(base, 'remote.git');
   execFileSync('git', ['init', '--bare', remotePath]);
+  disableAutoMaintenance(remotePath);
 
   createRepo = vi.fn(async () => undefined);
   const authStub = {
@@ -80,7 +82,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
-  fs.rmSync(base, { recursive: true, force: true });
+  rmTempDir(base);
 });
 
 describe('InitOperation — featureless project', () => {

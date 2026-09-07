@@ -31,6 +31,7 @@ import {
   GitOperationError,
 } from '../../src/periphery/adapters/http/services/GitService/errors';
 import type { GitHubAuthService } from '../../src/periphery/adapters/auth/GitHubAuthService';
+import { disableAutoMaintenance, rmTempDir } from './helpers/tempRepo';
 
 const uc = { userId: 'u', organizationId: 'o' };
 const PROJECT = 'proj';
@@ -109,6 +110,7 @@ async function materializeWorkspace(): Promise<void> {
 
   remoteBare = path.join(base, 'remote.git');
   execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remoteBare]);
+  disableAutoMaintenance(remoteBare);
   fs.writeFileSync(
     path.join(projectPath, 'config.json'),
     JSON.stringify({ repoType: 'cloud', githubRepo: remoteBare, branchBase: 'main' }),
@@ -119,12 +121,14 @@ async function materializeWorkspace(): Promise<void> {
   // machine" that pushes while the workspace is not looking.
   collaborator = path.join(base, 'collaborator');
   execFileSync('git', ['clone', '-q', remoteBare, collaborator]);
+  disableAutoMaintenance(collaborator);
   git(collaborator, 'config', 'user.email', 'c@c');
   git(collaborator, 'config', 'user.name', 'c');
   commit(collaborator, 'shared.txt', 'base', 'base');
   git(collaborator, 'push', '-q', '-u', 'origin', 'main');
 
   execFileSync('git', ['clone', '-q', '--bare', remoteBare, anchorPath]);
+  disableAutoMaintenance(anchorPath);
   execFileSync('git', [
     '--git-dir', anchorPath, 'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*',
   ]);
@@ -141,7 +145,7 @@ afterEach(() => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
-  fs.rmSync(base, { recursive: true, force: true });
+  rmTempDir(base);
 });
 
 describe('pullArgs — strategy whitelist', () => {

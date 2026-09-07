@@ -15,6 +15,7 @@ import simpleGit from 'simple-git';
 import type { UserContext } from '../../src/core/types/user';
 import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
 import { GitHelper } from '../../src/periphery/adapters/http/services/GitService/helper/GitHelper';
+import { rmTempDirAsync } from './helpers/tempRepo';
 
 const userContext: UserContext = {
   organizationId: 'test-org',
@@ -46,7 +47,7 @@ describe('GitAnchorSSOT', () => {
   afterEach(async () => {
     while (tmpRoots.length > 0) {
       const root = tmpRoots.pop()!;
-      await fs.promises.rm(root, { recursive: true, force: true });
+      await rmTempDirAsync(root);
     }
   });
 

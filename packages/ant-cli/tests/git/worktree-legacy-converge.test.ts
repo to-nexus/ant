@@ -24,6 +24,7 @@ import { WorktreeService } from '../../src/periphery/adapters/http/services/GitS
 import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
 import { isBranchBaseLocked, readBranchBase } from '../../src/periphery/adapters/http/services/GitService/anchor/branchBaseLifecycle';
 import type { GitHubAuthService } from '../../src/periphery/adapters/auth/GitHubAuthService';
+import { disableAutoMaintenance, rmTempDir } from './helpers/tempRepo';
 
 const uc = { userId: 'u', organizationId: 'o' };
 const PROJECT = 'proj';
@@ -74,6 +75,7 @@ beforeEach(() => {
   remoteDir = path.join(base, 'remote-src');
   fs.mkdirSync(remoteDir, { recursive: true });
   git(remoteDir, 'init', '-b', 'main');
+  disableAutoMaintenance(remoteDir);
   git(remoteDir, 'config', 'user.email', 't@t');
   git(remoteDir, 'config', 'user.name', 't');
   commit(remoteDir, 'main.txt', 'm', 'main-1');
@@ -83,7 +85,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  fs.rmSync(base, { recursive: true, force: true });
+  rmTempDir(base);
 });
 
 describe('createWorktree — lazy origin convergence (legacy project, no anchor)', () => {
@@ -132,6 +134,7 @@ describe('createWorktree — lazy origin convergence (legacy project, no anchor)
     const masterRemote = path.join(base, 'remote-master');
     fs.mkdirSync(masterRemote, { recursive: true });
     git(masterRemote, 'init', '-b', 'master');
+    disableAutoMaintenance(masterRemote);
     git(masterRemote, 'config', 'user.email', 't@t');
     git(masterRemote, 'config', 'user.name', 't');
     const masterTip = commit(masterRemote, 'a.txt', 'a', 'master-1');
@@ -151,6 +154,7 @@ describe('createWorktree — refspec backfill on a pre-refspec bare-clone anchor
   it('backfills remote.origin.fetch and tracks the CURRENT remote tip', async () => {
     // Anchor bare-cloned by an old build: origin exists, refspec does NOT.
     git(base, 'clone', '--bare', remoteDir, anchorPath);
+    disableAutoMaintenance(anchorPath);
     expect(() => anchorGitRaw('config', '--get', 'remote.origin.fetch')).toThrow();
 
     // Remote advances after the clone.
@@ -184,6 +188,7 @@ describe('createWorktree — transactional rollback keeps unconnected anchors un
     const emptyRemote = path.join(base, 'remote-empty');
     fs.mkdirSync(emptyRemote, { recursive: true });
     git(emptyRemote, 'init', '-b', 'main');
+    disableAutoMaintenance(emptyRemote);
 
     const worktrees = serviceWithRemoteUrl(emptyRemote);
     const info = await worktrees.createWorktree(PROJECT, 'first', uc);

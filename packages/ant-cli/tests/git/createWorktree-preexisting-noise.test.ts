@@ -15,6 +15,7 @@ import type { UserContext } from '../../src/core/types/user';
 import { logger } from '../../src/utils/logger';
 import { ProjectCrudService } from '../../src/periphery/adapters/http/services/ProjectService/ProjectCrudService';
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
+import { rmTempDirAsync } from './helpers/tempRepo';
 
 const userContext: UserContext = {
   organizationId: 'org-test',
@@ -33,7 +34,7 @@ describe('createWorktree.preExisting — no-git-file vs diagnostic warn', () => 
   afterEach(async () => {
     while (tmpRoots.length > 0) {
       const root = tmpRoots.pop()!;
-      await fs.promises.rm(root, { recursive: true, force: true });
+      await rmTempDirAsync(root);
     }
     vi.restoreAllMocks();
   });

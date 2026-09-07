@@ -21,6 +21,7 @@ import { ensureGitRepository } from '../../src/periphery/adapters/http/services/
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
 import { GitHelper } from '../../src/periphery/adapters/http/services/GitService/helper/GitHelper';
 import { GitConfigError } from '../../src/periphery/adapters/http/services/GitService/errors';
+import { rmTempDir } from './helpers/tempRepo';
 
 const userContext: UserContext = {
   organizationId: 'org-test',
@@ -56,7 +57,7 @@ describe('ensureGitRepository — anchor model + Stage-4 worktree validity self-
   afterEach(() => {
     while (tmpRoots.length > 0) {
       const root = tmpRoots.pop()!;
-      rmSync(root, { recursive: true, force: true });
+      rmTempDir(root);
     }
   });
 

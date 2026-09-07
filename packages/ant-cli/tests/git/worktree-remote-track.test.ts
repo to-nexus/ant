@@ -22,6 +22,7 @@ import { execFileSync } from 'child_process';
 import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
 import type { GitHubAuthService } from '../../src/periphery/adapters/auth/GitHubAuthService';
+import { disableAutoMaintenance, rmTempDir } from './helpers/tempRepo';
 
 const uc = { userId: 'u', organizationId: 'o' };
 const PROJECT = 'proj';
@@ -61,6 +62,7 @@ beforeEach(() => {
   remoteDir = path.join(base, 'remote-src');
   fs.mkdirSync(remoteDir, { recursive: true });
   git(remoteDir, 'init', '-b', 'main');
+  disableAutoMaintenance(remoteDir);
   git(remoteDir, 'config', 'user.email', 't@t');
   git(remoteDir, 'config', 'user.name', 't');
   commit(remoteDir, 'main.txt', 'm', 'main-1');
@@ -68,7 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  fs.rmSync(base, { recursive: true, force: true });
+  rmTempDir(base);
 });
 
 describe('createWorktree — remote branch tracking precedence', () => {
@@ -78,6 +80,7 @@ describe('createWorktree — remote branch tracking precedence', () => {
 
     // Bare clone: imports feature/base + main as local heads, no fetch refspec.
     git(base, 'clone', '--bare', remoteDir, anchorPath);
+    disableAutoMaintenance(anchorPath);
     // clone --bare omits the fetch refspec — production adds it (CloneOperation.ts).
     execFileSync('git', ['--git-dir', anchorPath, 'config', 'remote.origin.fetch',
       '+refs/heads/*:refs/remotes/origin/*'], { encoding: 'utf-8' });
@@ -99,6 +102,7 @@ describe('createWorktree — remote branch tracking precedence', () => {
   it('greenfield: feature with no remote counterpart is a new local branch with no upstream', async () => {
     commit(remoteDir, 'f.txt', '1', 'feature-1');
     git(base, 'clone', '--bare', remoteDir, anchorPath);
+    disableAutoMaintenance(anchorPath);
     execFileSync('git', ['--git-dir', anchorPath, 'config', 'remote.origin.fetch',
       '+refs/heads/*:refs/remotes/origin/*'], { encoding: 'utf-8' });
 

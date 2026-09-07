@@ -23,6 +23,7 @@ import { GitHelper } from '../../src/periphery/adapters/http/services/GitService
 import { CloneOperation } from '../../src/periphery/adapters/http/services/GitService/remote/operations/CloneOperation';
 import { ensureBaseFeature } from '../../src/periphery/adapters/http/services/GitService/remote/operations/helpers/ensureBaseFeature';
 import { readBranchBase } from '../../src/core/utils/branchUtils';
+import { rmTempDir } from './helpers/tempRepo';
 
 const uc = { userId: 'u', organizationId: 'o' };
 const PROJECT = 'proj';
@@ -53,7 +54,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  fs.rmSync(base, { recursive: true, force: true });
+  rmTempDir(base);
 });
 
 describe('bare anchor first-feature bootstrap', () => {

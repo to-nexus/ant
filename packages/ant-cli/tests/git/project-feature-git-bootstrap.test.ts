@@ -19,6 +19,7 @@ import { FeatureCrudService } from '../../src/periphery/adapters/http/services/P
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
 import { GitHelper } from '../../src/periphery/adapters/http/services/GitService/helper/GitHelper';
 import { readBranchBase } from '../../src/core/utils/branchUtils';
+import { rmTempDirAsync } from './helpers/tempRepo';
 
 const userContext: UserContext = {
   organizationId: 'org-test',
@@ -64,7 +65,7 @@ describe('project/feature git bootstrap invariant', () => {
   afterEach(async () => {
     while (tmpRoots.length > 0) {
       const root = tmpRoots.pop()!;
-      await fs.promises.rm(root, { recursive: true, force: true });
+      await rmTempDirAsync(root);
     }
   });
 

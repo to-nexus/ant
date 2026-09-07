@@ -27,6 +27,7 @@ import {
 } from '../../src/periphery/adapters/http/services/GitService/anchor/branchBaseLifecycle';
 import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
 import { featureNameToSlug } from '@ant/shared';
+import { disableAutoMaintenance, rmTempDir } from './helpers/tempRepo';
 
 const uc = { userId: 'u', organizationId: 'o' };
 
@@ -53,7 +54,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  fs.rmSync(projectPath, { recursive: true, force: true });
+  rmTempDir(projectPath);
 });
 
 describe('branchBase lifecycle', () => {
@@ -189,6 +190,7 @@ describe('branchBase lifecycle', () => {
       const remoteDir = path.join(projectPath, 'remote-src');
       fs.mkdirSync(remoteDir, { recursive: true });
       execFileSync('git', ['-C', remoteDir, 'init', '-b', defaultBranch]);
+      disableAutoMaintenance(remoteDir);
       execFileSync('git', ['-C', remoteDir, 'config', 'user.email', 't@t']);
       execFileSync('git', ['-C', remoteDir, 'config', 'user.name', 't']);
       fs.writeFileSync(path.join(remoteDir, 'a.txt'), 'a');

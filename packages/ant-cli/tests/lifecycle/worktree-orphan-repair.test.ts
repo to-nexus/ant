@@ -27,6 +27,7 @@ import simpleGit from 'simple-git';
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
 import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
 import type { UserContext } from '../../src/core/types/user';
+import { disableAutoMaintenance, rmTempDir } from '../git/helpers/tempRepo';
 
 const userContext: UserContext = {
   organizationId: 'org-test',
@@ -40,7 +41,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  rmTempDir(tmp);
 });
 
 function listMetaDirs(anchorPath: string): string[] {
@@ -58,6 +59,7 @@ async function initAnchor(anchorPath: string, branch: string) {
     userContext,
   });
   await gitAnchor.createInitialCommitOnBranch(anchorPath, branch, userContext);
+  disableAutoMaintenance(anchorPath);
   // Explicit GIT_DIR keeps bare usage legal under `safe.bareRepository=explicit`;
   // env whitelist avoids simple-git's unsafe-env guard (PAGER / GIT_EDITOR / ...).
   return simpleGit(anchorPath).env({
