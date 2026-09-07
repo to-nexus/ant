@@ -16,7 +16,7 @@ create_file {
 - The `path` argument MUST match a target path listed in the "Target Path(s)" section above. Do NOT call `create_file` for any other path.
 - Most plans are a SINGLE document. When the system prompt lists MULTIPLE target paths, issue one `create_file` per path and partition the sections across them with NO overlap (MECE); each file must be complete.
 - The `content` argument is the document content. Do NOT wrap it in code fences — raw markdown only. It streams to the user live as you generate the call's arguments.
-- For a long document, write the first chunk with `create_file` and continue with `append_file` calls at the same path until the document is complete.
+- Write the whole document in ONE `create_file` call — a planning document fits the output budget. `append_file` at the same path is ONLY for resuming after an output-limit cut; do NOT pre-split a document that fits.
 - In generate mode `create_file` is the ONLY write path; document content placed in text output is NOT saved.
 - A brief acknowledgement to the user (one or two sentences) goes in a `<reply>...</reply>` tag. Free text outside any registered tag is silently dropped.
 

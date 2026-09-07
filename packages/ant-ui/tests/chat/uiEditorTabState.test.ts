@@ -234,6 +234,42 @@ describe('uiSlice editor tab transitions', () => {
     expect(h.state().mainPanelActiveTab).toBe(realTab.id);
   });
 
+  it('append stream on an existing real tab keeps the disk view (no chunk-only preview)', () => {
+    const realTab = makeRealTab({
+      id: 'editor:real:plan/prd.md',
+      title: 'prd.md',
+      path: 'plan/prd.md',
+      source: 'plan',
+    });
+    const h = createHarness({
+      selectedJobType: 'plan',
+      chatEvents: [{ turnId: 'turn-1', jobType: 'plan', jobId: 'job-1' }],
+      editorTabs: [realTab],
+      activeEditorTabId: realTab.id,
+      mainPanelActiveTab: realTab.id,
+      mainPanelTabOrder: [realTab.id],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-1:_main_': {
+        turnId: 'turn-1',
+        pendingCards: {
+          'card-2': {
+            cardId: 'card-2',
+            statusType: 'file_creating',
+            metadata: { filePath: 'plan/prd.md', append: true },
+            streamedOutput: '## §8 Functional Requirements',
+          },
+        },
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(1);
+    expect(h.state().editorTabs[0]).toMatchObject({ id: realTab.id, kind: 'real', status: 'ready' });
+    expect(h.state().editorTabs[0].streamPreviewContent).toBeUndefined();
+    expect(h.state().editorTabs[0].streamingSourceCardId).toBeUndefined();
+  });
+
   it('restores streamed real tab to ready when pending preview disappears', () => {
     const realTab = makeRealTab({
       id: 'editor:real:architecture/spec/spec-main.md',

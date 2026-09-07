@@ -37,6 +37,15 @@ const THINKING_TOGGLE_PROVIDERS: Record<string, string> = {
 };
 
 /**
+ * OpenAI-compatible providers that batch `tool_calls[].function.arguments` into
+ * ONE chunk unless the request opts in with `tool_stream: true` (Z.ai "Tool
+ * Streaming Output"). Without it no `tool_use_delta` is ever emitted and the
+ * live file card degrades to terminal-only rendering — while
+ * `getToolArgStreaming()` still reports 'incremental' for the model.
+ */
+const TOOL_STREAM_PROVIDERS = new Set<string>(['glm']);
+
+/**
  * Normalize an OpenAI-compatible `usage` object to the disjoint {@link TaskTokenUsage}
  * contract. OpenAI-compatible providers (OpenAI, DeepSeek, GLM/Zhipu) report
  * `prompt_tokens` INCLUDING the cached portion, with
@@ -339,6 +348,12 @@ export class OpenAILLMClient implements LLMClient {
         ? { tool_choice: resolvedTools.mode }
         : {};
 
+    // Incremental tool-argument streaming is opt-in on GLM (see TOOL_STREAM_PROVIDERS).
+    const toolStreamParam =
+      resolvedTools.tools?.length && TOOL_STREAM_PROVIDERS.has(this.provider)
+        ? { tool_stream: true }
+        : {};
+
     // `stopSequences` → OpenAI `stop` (max 4 strings per API contract).
     // Anthropic/Gemini already honored the port option; this adapter silently
     // dropped it, making e.g. runPlanWithTools' `</plan>` hard-stop a no-op
@@ -363,6 +378,7 @@ export class OpenAILLMClient implements LLMClient {
       messages: openAIMessages,
       ...toolsConfig,
       ...toolChoiceParam,
+      ...toolStreamParam,
       ...stopParam,
       ...samplingParams,
       max_tokens: options?.maxTokens || 16000,

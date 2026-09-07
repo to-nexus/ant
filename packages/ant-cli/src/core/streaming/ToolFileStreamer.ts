@@ -26,7 +26,8 @@ import { LineBufferManager } from './strategies/common/LineBuffer';
 
 /** Chat surface subset the streamer drives. ChatAPIClient satisfies it. */
 export interface ToolFileStreamSink {
-  startFileCreation(filePath: string): Promise<void>;
+  /** `append` marks an append_file stream — the FE keeps the on-disk view instead of previewing the chunk alone. */
+  startFileCreation(filePath: string, opts?: { append?: boolean }): Promise<void>;
   streamFileContent(filePath: string, content: string): Promise<void>;
   startFileEdit(filePath: string): Promise<void>;
   streamFileDiff(filePath: string, diffBefore: string, diffAfter: string): Promise<void>;
@@ -173,7 +174,7 @@ export class ToolFileStreamer {
       if (stream.toolName === 'edit_file') {
         await this.sink.startFileEdit(path);
       } else {
-        await this.sink.startFileCreation(path);
+        await this.sink.startFileCreation(path, stream.toolName === 'append_file' ? { append: true } : undefined);
       }
     });
     if (stream.preShellContent) {

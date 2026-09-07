@@ -65,8 +65,8 @@ export function buildAuthoringMessage(directive: string, targets: string[], mode
       : `Author the planning documents per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce it verbatim — transform it into document sections. Write **one \`create_file\` tool call per file** at exactly these paths, partitioning the sections across them with NO overlap (MECE) — each file must be complete: ${list}\n\nDirective (verbatim):\n${directive}`;
   }
   return isKorean
-    ? `아래 지시에 따라 기획 문서를 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 브리프나 분석 내용을 그대로 옮기지 말고 문서 섹션으로 변환하세요. 완성된 문서 전체를 \`create_file\` 도구 호출(path: "${primary}")로 작성하세요. 문서가 매우 길면 첫 청크를 create_file로, 이어지는 청크를 append_file로 작성하세요.\n\n지시(원문):\n${directive}`
-    : `Author the planning document per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce the brief or any analysis verbatim — transform it into the document's sections. Write the complete document via a \`create_file\` tool call with path "${primary}" (for a very long document, write the first chunk with create_file and continue with append_file).\n\nDirective (verbatim):\n${directive}`;
+    ? `아래 지시에 따라 기획 문서를 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 브리프나 분석 내용을 그대로 옮기지 말고 문서 섹션으로 변환하세요. 완성된 문서 전체를 **한 번의** \`create_file\` 도구 호출(path: "${primary}")로 작성하세요. append_file은 출력 한도로 끊긴 뒤 이어 쓸 때만 사용합니다 — 미리 나누지 마세요.\n\n지시(원문):\n${directive}`
+    : `Author the planning document per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce the brief or any analysis verbatim — transform it into the document's sections. Write the complete document in ONE \`create_file\` tool call with path "${primary}" (append_file is only for resuming after an output-limit cut — do not pre-split).\n\nDirective (verbatim):\n${directive}`;
 }
 
 export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {

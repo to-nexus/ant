@@ -934,8 +934,8 @@ export class LLMResponseService {
   // `fileCardByPath` tracker so callers stay churn-free.
   // ═══════════════════════════════════════════════════════════════════
 
-  async startFileCreation(filePath: string): Promise<string> {
-    return this.startFileOp(filePath, 'file_creating');
+  async startFileCreation(filePath: string, opts?: { append?: boolean }): Promise<string> {
+    return this.startFileOp(filePath, 'file_creating', opts?.append ? { append: true } : undefined);
   }
 
   async streamFileContent(filePath: string, content: string): Promise<void> {
@@ -1263,11 +1263,12 @@ export class LLMResponseService {
   private async startFileOp(
     filePath: string,
     progressType: 'file_creating' | 'file_editing' | 'file_deleting',
+    extraMeta?: Record<string, unknown>,
   ): Promise<string> {
     if (!this.enabled || !filePath || !this.getTurnId()) return '';
     const cardId = this.mintCardId('file');
     this.getWorkerState().fileCardByPath.set(filePath, cardId);
-    await this.registerPendingCard(cardId, progressType, { filePath });
+    await this.registerPendingCard(cardId, progressType, { filePath, ...(extraMeta ?? {}) });
     return cardId;
   }
 

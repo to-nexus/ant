@@ -151,7 +151,9 @@ export interface ModelSpec {
    * provider name):
    *   - 'incremental': argument JSON streams as fragments (Anthropic
    *     input_json_delta, OpenAI-compat tool_calls / function_call_arguments
-   *     deltas) → live file-card rendering.
+   *     deltas) → live file-card rendering. GLM batches the arguments unless
+   *     the request carries `tool_stream: true` — OpenAILLMClient's
+   *     TOOL_STREAM_PROVIDERS is what makes 'incremental' true for it.
    *   - 'complete': arguments arrive whole (Gemini functionCall.args) →
    *     terminal-only rendering; binding such a model to a file-writing
    *     execute node logs a one-time warning.

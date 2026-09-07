@@ -537,5 +537,3 @@ Before generating output, verify:
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
 
 {{> jobs/shared/injections/explore-delegation}}
-
-{{> jobs/design/nodes/execute/injections/file-authoring-channel}}

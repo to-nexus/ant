@@ -316,10 +316,10 @@ export class ChatAPIClient {
   // File operations
   // ─────────────────────────────────────────────────────────────────────
 
-  async startFileCreation(filePath: string): Promise<void> {
+  async startFileCreation(filePath: string, opts?: { append?: boolean }): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
-    await service?.startFileCreation(filePath);
+    await service?.startFileCreation(filePath, opts);
   }
 
   async streamFileContent(filePath: string, content: string): Promise<void> {

@@ -167,6 +167,11 @@ describe('E2E: Code execute — default/feature', () => {
     assertSystemContains(result, FP.ACTION_CONTEXT, 'action-context');
   });
 
+  it('stage 3: the composed-ONCE invariant (1a) reaches code execute exactly once (inline copy removed)', () => {
+    expect(result.system.match(/### Invariant 1a — A file body is composed ONCE/g)?.length).toBe(1);
+    expect(result.system.match(/composed ONCE/g)?.length).toBe(1);
+  });
+
   it('stage 3: sections are non-empty', () => {
     expect(result.sections.systemBase.length).toBeGreaterThan(0);
     expect(result.sections.rules.length).toBeGreaterThan(0);
@@ -301,6 +306,38 @@ describe('E2E: Code execute — error + fullstack', () => {
 // 4. Design System-Design
 // ============================================
 
+describe('E2E: Plan execute — always-on policy reaches the document-authoring node', () => {
+  let result: PromptBuildResult;
+
+  beforeAll(async () => {
+    result = await promptBuilder.build({
+      templates: {
+        base: 'jobs/plan/nodes/execute/variants/default/base',
+        rules: 'jobs/plan/nodes/execute/variants/default/rules',
+      },
+      pipeline: { sanitizeInput: true, applyPolicyGuardrails: false },
+      vars: {
+        directive: 'Plan a scheduling app',
+        mode: 'generate',
+        targetPath: 'plan/prd.md',
+        hasPlanText: true,
+        planText: '{"proposedOutline":["§1 Summary"]}',
+      },
+    });
+  });
+
+  it('stage 1: output-tag-policy is injected', () => {
+    expect(result.injections).toContain('jobs/shared/injections/output-tag-policy');
+  });
+
+  it('stage 3: the composed-ONCE invariant (1a) is in the system prompt exactly once', () => {
+    // tame-milling-ghost: the rule existed in code + design copies only; the plan
+    // job drafted the whole PRD in reasoning before the create_file call.
+    const heading = /### Invariant 1a — A file body is composed ONCE/g;
+    expect(result.system.match(heading)?.length).toBe(1);
+  });
+});
+
 describe('E2E: Design system-design (FE)', () => {
   let result: PromptBuildResult;
 
@@ -340,6 +377,10 @@ describe('E2E: Design system-design (FE)', () => {
   it('stage 1: Tier I frontend-guide injected, backend-guide excluded', () => {
     expect(result.injections).toContain('jobs/design/base/injections/frontend-guide');
     expect(result.injections).not.toContain('jobs/design/base/injections/backend-guide');
+  });
+
+  it('stage 3: the composed-ONCE invariant (1a) reaches design execute exactly once (no per-job copy)', () => {
+    expect(result.system.match(/### Invariant 1a — A file body is composed ONCE/g)?.length).toBe(1);
   });
 
   it('stage 1: design execute gets document-language', () => {

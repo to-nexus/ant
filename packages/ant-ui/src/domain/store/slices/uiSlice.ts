@@ -21,6 +21,7 @@ import {
 import {
   buildTurnInfoMap,
   getPendingCardFilePath,
+  isAppendPendingCard,
   resolveVirtualTabSource,
   shouldRenderVirtualPreviewCard,
 } from '../editor/virtualTabModel';
@@ -1155,6 +1156,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             (tab) => tab.kind === 'real' && tab.path === filePath,
           );
           if (existingRealTab) {
+            // An append streams only the NEW tail; previewing it alone would
+            // replace the document the real tab already shows. Keep the disk
+            // view — the terminal file_create promotion reloads the full file.
+            if (isAppendPendingCard(card)) continue;
             const previousStatus = existingRealTab.status;
             seenStreamingRealIds.add(existingRealTab.id);
             byId.set(existingRealTab.id, {

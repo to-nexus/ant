@@ -57,6 +57,11 @@ export function getPendingCardFilePath(card: PendingCardSnapshot): string | unde
   return raw.trim().length > 0 ? raw : undefined;
 }
 
+/** An `append_file` stream: the chunk extends a file that already exists on disk. */
+export function isAppendPendingCard(card: PendingCardSnapshot): boolean {
+  return card.metadata?.append === true;
+}
+
 export function isFileStreamingPendingCard(card: PendingCardSnapshot): boolean {
   return FILE_STREAMING_STATUS_TYPES.has(card.statusType);
 }

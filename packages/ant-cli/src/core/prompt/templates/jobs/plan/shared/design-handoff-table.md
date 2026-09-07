@@ -10,6 +10,7 @@ The PRD does not stop at "what" — it also commits **where each section lands i
 **Usage rules**:
 
 - The table below is **authoritative**: every domain-overlay section MUST appear in exactly one row. A section without a hand-off row is a planning omission.
+- The table is authoring guidance consulted WHILE writing — it is NOT a section of the document. Do NOT reproduce it (or a hand-off chapter) inside the PRD; the domain overlay's section map is the only list of sections the document carries.
 - Mark cells `(indirect)` when the design axis only secondarily depends on the section, `(rare)` when the dependency is exceptional but legal, and leave it blank when the axis genuinely does not consume the section.
 - A "Content/UX Level" row in the design `Abstraction Level` table on the system-design side mirrors this hand-off — together they enforce the rule **PRD owns content; design owns architecture and tokens**.
 - Refine-mode: if the directive changes a section, surface every hand-off row impacted by that change so downstream design can selectively invalidate.

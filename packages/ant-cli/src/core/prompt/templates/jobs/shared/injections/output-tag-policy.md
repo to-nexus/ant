@@ -31,6 +31,15 @@ write a coherent opening chunk with `create_file`, then continue with
 `append_file` calls, each ending at a natural boundary (end of a section,
 function, or rule block).
 
+### Invariant 1a — A file body is composed ONCE, in the write tool's argument
+
+Reasoning decides structure, naming, ordering, and trade-offs; it does NOT
+draft the file text. A body drafted in reasoning is generated twice — double
+the latency for zero information, and on providers where reasoning shares
+the output budget it can exhaust that budget before the tool call begins.
+When the decisions are made, call the write tool and author the content
+there directly.
+
 ### Invariant 1b — Status markers are records, not actions
 
 After a write lands, the transcript may compact it to

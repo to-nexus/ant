@@ -67,6 +67,11 @@ describe('Output Tag Policy — partial content invariants', () => {
     expect(body).toMatch(/no `<file>`, `<append>`, `<edit>`, or `<delete>` tag/);
   });
 
+  it('declares Invariant 1a — a file body is composed ONCE, in the write tool argument', () => {
+    expect(body).toMatch(/Invariant 1a — A file body is composed ONCE, in the write tool's argument/);
+    expect(body).toMatch(/does NOT\s+draft the file text/);
+  });
+
   it('declares Invariant 1b — status markers are records, not actions', () => {
     expect(body).toMatch(/Invariant 1b — Status markers are records, not actions/);
     expect(body).toMatch(/Only a tool call writes/);
@@ -105,6 +110,29 @@ describe('Output Tag Policy — partial content invariants', () => {
     expect(body).toMatch(/`<reply>`/);
     expect(body).toMatch(/`<clarify>`/);
     expect(body.toLowerCase()).toMatch(/halts the job/);
+  });
+});
+
+describe('Output Tag Policy — single-home invariants', () => {
+  // Invariant 1a was copied job-by-job twice (code → design) and the plan job
+  // was skipped both times. The policy partial is the ONE home for every
+  // build() job; the universal agent skips the partial by design and carries
+  // the rule in its own Output Channel section. Any third copy is drift.
+  const COMPOSED_ONCE = /file body is composed ONCE/i;
+  const ALLOWED_HOMES = new Set([
+    POLICY_PATH,
+    join(TEMPLATES_DIR, 'jobs/universal/nodes/agent/rules.md'),
+  ]);
+
+  it('composed-ONCE lives only in the policy partial and the universal output channel', () => {
+    const homes = ALL_TEMPLATES.filter((p) => COMPOSED_ONCE.test(readFileSync(p, 'utf8')));
+    expect(new Set(homes)).toEqual(ALLOWED_HOMES);
+  });
+
+  it('the design-scoped copy is gone (tombstone)', () => {
+    expect(
+      ALL_TEMPLATES.some((p) => p.endsWith('jobs/design/nodes/execute/injections/file-authoring-channel.md')),
+    ).toBe(false);
   });
 });
 

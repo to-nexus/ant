@@ -103,6 +103,10 @@ marker and never the round's answer. Guard:
 
 **Invariant**: file creation / extension / modification / deletion is carried EXCLUSIVELY by the tool channel (`create_file` / `append_file` / `edit_file` / `delete_file`). The historical `<file>` / `<append>` streaming tags (and the never-implemented `<edit>` / `<delete>` entries) were retired in the tool-protocol cutover — a file body placed in text output is not saved. Live rendering rides `tool_use_delta` argument fragments (`ToolFileStreamer` → the same `card_output` surface `FileRenderer` used to drive).
 
+**Invariant (composed ONCE)**: a file body is authored exactly once, inside the write tool's argument — reasoning decides structure and trade-offs, it does not draft the file text. The rule lives in `output-tag-policy.md` (Invariant 1a) and in the universal agent's own Output Channel section (the one job that skips the policy partial) — nowhere else. It was first added to the code job alone (navy-dropping-crowd), then copied to design (small-longing-drive), and the plan job — which writes a whole PRD in one `create_file` argument — was missed twice (tame-milling-ghost: a 29K-char reasoning draft of the document, 4 minutes, before the tool call). Per-job copies are the regression; `tests/core/output-tag-policy-lint.test.ts` refuses a third home.
+
+On GLM (Z.ai) the live path additionally requires `tool_stream: true` on the request — without it the provider batches `tool_calls[].function.arguments` into one chunk, no `tool_use_delta` is ever emitted, and the card settles terminal-only while `getToolArgStreaming()` still reports `'incremental'`. `OpenAILLMClient.TOOL_STREAM_PROVIDERS` owns that opt-in.
+
 ## Text-Channel Discipline
 
 **Invariant**: in the TEXT channel there is no "outside any tag" lane — free text between tags is discarded. If narrative is needed, write it inside `<reply>` from the start. The two-channel contract (tools = actions, tags = signals) is injected always-on into every LLM node by the [`output-tag-policy.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/output-tag-policy.md) partial.

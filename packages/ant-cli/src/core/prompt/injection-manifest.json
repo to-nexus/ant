@@ -245,8 +245,7 @@
       "appendAnchor"
     ],
     "spec-impl-guide-service": [],
-    "spec-impl-guide-game": [],
-    "file-authoring-channel": []
+    "spec-impl-guide-game": []
   },
   "jobs/design/nodes/plan/injections": {
     "plan-tools-batch": []

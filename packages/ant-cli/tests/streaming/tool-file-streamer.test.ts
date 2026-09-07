@@ -18,7 +18,7 @@ import type { LLMStreamEvent } from '../../src/core/ports/llm';
 function makeSink() {
   const calls: Array<{ method: string; args: any[] }> = [];
   const sink: ToolFileStreamSink = {
-    async startFileCreation(path) { calls.push({ method: 'startFileCreation', args: [path] }); },
+    async startFileCreation(path, opts) { calls.push({ method: 'startFileCreation', args: opts === undefined ? [path] : [path, opts] }); },
     async streamFileContent(path, content) { calls.push({ method: 'streamFileContent', args: [path, content] }); },
     async startFileEdit(path) { calls.push({ method: 'startFileEdit', args: [path] }); },
     async streamFileDiff(path, before, after) { calls.push({ method: 'streamFileDiff', args: [path, before, after] }); },
@@ -49,6 +49,20 @@ describe('ToolFileStreamer', () => {
     expect(streamed).toBe('line1\nline2\ntail-no-newline');
     expect(s.getOpenToolFile()).toBeNull(); // completed → no salvage context
     expect(s.getStreamedPaths()).toEqual(['codebase/src/a.ts']);
+  });
+
+  it('append_file: opens the shell with the append marker so the FE keeps the on-disk view', async () => {
+    const { sink, calls } = makeSink();
+    const s = new ToolFileStreamer(sink);
+    const json = JSON.stringify({ path: 'plan/prd.md', content: '## §8\nrow\n' });
+
+    for (let i = 0; i < json.length; i += 7) s.handleEvent(delta('t4', 'append_file', json.slice(i, i + 7)));
+    s.handleEvent(terminal('t4', 'append_file', JSON.parse(json)));
+    await s.settle();
+
+    expect(calls[0]).toEqual({ method: 'startFileCreation', args: ['plan/prd.md', { append: true }] });
+    const streamed = calls.filter(c => c.method === 'streamFileContent').map(c => c.args[1]).join('');
+    expect(streamed).toBe('## §8\nrow\n');
   });
 
   it('edit_file: opens edit shell and streams new_str into the diff-after channel', async () => {

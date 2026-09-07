@@ -145,6 +145,32 @@ describe('OpenAI-compat thinking toggle (parity with AnthropicLLMClient)', () =>
     expect(payload.thinking).toBeUndefined();
   });
 
+  /**
+   * tool_stream (tame-milling-ghost RCA): Z.ai batches tool-call arguments
+   * into one chunk unless the request opts in, so ToolFileStreamer never saw a
+   * tool_use_delta and the plan document landed as a single terminal card.
+   */
+  const ONE_TOOL = [{ name: 'create_file', description: 'write', input_schema: { type: 'object', properties: {} } }];
+
+  it('GLM: tools declared → tool_stream:true rides the streaming request', async () => {
+    delete process.env.GLM_THINKING;
+    const payload = await captureCreatePayload('glm', { tools: ONE_TOOL });
+    expect(payload.tool_stream).toBe(true);
+  });
+
+  it('GLM: no tools → no tool_stream field', async () => {
+    delete process.env.GLM_THINKING;
+    const payload = await captureCreatePayload('glm', {});
+    expect(payload.tool_stream).toBeUndefined();
+  });
+
+  it('DeepSeek / real OpenAI: never attach tool_stream (provider-gated, not shape-inferred)', async () => {
+    for (const provider of ['deepseek', 'openai']) {
+      const payload = await captureCreatePayload(provider, { tools: ONE_TOOL });
+      expect(payload.tool_stream).toBeUndefined();
+    }
+  });
+
   it('GLM: thinkingBudget is NOT a channel — no budget field reaches the request', async () => {
     // metal-killing-crowd RCA: hard-toggle providers accept only
     // `thinking:{type}` — a caller-passed thinkingBudget is silently dropped,
