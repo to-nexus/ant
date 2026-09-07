@@ -17,7 +17,8 @@
     "destinationNotSelected": "(destination not selected)",
     "samePath": "(same path)",
     "history": "Sent Request History",
-    "removeFromHistory": "Remove from history"
+    "removeFromHistory": "Remove from history",
+    "workspace": "Workspace"
   },
   "receive": {
     "title": "Received Transfer Requests",

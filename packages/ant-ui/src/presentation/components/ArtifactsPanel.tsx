@@ -17,6 +17,7 @@ import {
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { cn } from '@/shared/utils/design-system';
 import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
+import { useSendToTransfer } from '@/application/hooks/ui/useSendToTransfer';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
@@ -256,18 +257,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     }
   };
 
-  const handleSend = (path: string, type: 'file' | 'directory') => {
-    if (!selectedProject || !selectedFeature) return;
-    openTransferTab({
-      subTab: 'send',
-      preselectedSource: {
-        projectId: selectedProject,
-        featureId: selectedFeature,
-        path,
-        type,
-      },
-    });
-  };
+  const handleSend = useSendToTransfer(selectedProject, selectedFeature);
 
   const handleDownload = async (path: string) => {
     if (!selectedProject || !selectedFeature) return;

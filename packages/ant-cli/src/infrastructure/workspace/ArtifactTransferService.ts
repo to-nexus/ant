@@ -1,16 +1,21 @@
 /**
  * ArtifactTransferService
- * 
+ *
  * Business logic for transferring artifacts (files/directories) between
  * projects, features, and users. Handles both self-transfer (immediate)
  * and cross-user transfer (approval-based).
- * 
+ *
  * Key features:
  * - Redis distributed locking for concurrent transfer serialization
- * - sessions/ directory auto-exclusion
+ * - Reserved-root exclusion (sessions/ on every plane; the universal grafts)
  * - Merge semantics for directory transfers
- * - Canonical directory move protection
+ * - Move protection for canonical directories
  * - Snapshot-based cross-user transfers with 7-day expiry
+ *
+ * Every root is resolved through the artifact-root seam
+ * (`core/customAgents/artifactRoot.ts`), so a workspace (universal) project
+ * and a codespace (canonical) feature are both legal endpoints, in any
+ * combination.
  */
 
 import * as fs from 'fs';
@@ -20,7 +25,16 @@ import { WorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { REDIS_KEYS, REDIS_TTL } from '../state/redisConstants';
 import { logger } from '../../utils/logger';
-import { isCanonicalDir, CANONICAL_FEATURE_DIRS, clearCanonicalDirectory } from '../../core/utils/sessionPaths';
+import { clearCanonicalDirectory } from '../../core/utils/sessionPaths';
+import {
+  isMoveProtectedRoot,
+  reservedRootOf,
+  resolveArtifactPath,
+  resolveArtifactRoot,
+  type ArtifactRoot,
+  type ArtifactRootKind,
+} from '../../core/customAgents/artifactRoot';
+import { ensureUniversalContainer } from '../../core/customAgents/universalContainer';
 import type { UserContext } from '../../core/types/user';
 import type {
   TransferParams,
@@ -32,12 +46,10 @@ import { TRANSFER_ERROR_CODES } from '../../core/types/transfer';
 
 const COMPONENT = 'ArtifactTransferService';
 
-/**
- * Check if a path is under sessions/ directory
- */
-function isSessionPath(relativePath: string): boolean {
-  const normalized = relativePath.replace(/\\/g, '/');
-  return normalized === 'sessions' || normalized.startsWith('sessions/');
+interface TransferLocation {
+  projectId: string;
+  featureId: string;
+  path: string;
 }
 
 export class ArtifactTransferService {
@@ -60,38 +72,28 @@ export class ArtifactTransferService {
   async transferOwn(params: TransferParams): Promise<TransferResult> {
     const { userContext, source, destination, mode } = params;
 
-    // Validate paths (same location = same project + feature)
-    const sameLocation = source.projectId === destination.projectId && source.featureId === destination.featureId;
-    this.validateTransferPaths(source.path, destination.path, mode, sameLocation);
-
-    const srcUserContext: UserContext = {
+    const ctx: UserContext = {
       userId: userContext.userId,
       organizationId: userContext.organizationId,
     };
 
-    // Resolve full paths
-    const srcFeaturePath = this.workspaceResolver.getFeaturePath(
-      srcUserContext, source.projectId, source.featureId
-    );
-    const destFeaturePath = this.workspaceResolver.getFeaturePath(
-      srcUserContext, destination.projectId, destination.featureId
-    );
+    const srcRoot = this.resolveRootOrThrow(ctx, source, 'source');
+    const destRoot = this.resolveRootOrThrow(ctx, destination, 'destination');
 
-    const srcFullPath = path.join(srcFeaturePath, source.path);
-    const destFullPath = path.join(destFeaturePath, destination.path);
+    // Same location = same project + feature
+    const sameLocation = source.projectId === destination.projectId && source.featureId === destination.featureId;
+    this.validateTransferPaths(source.path, destination.path, mode, sameLocation, srcRoot.kind, destRoot.kind);
 
-    // Verify source exists
+    const srcFullPath = this.resolvePathOrThrow(srcRoot, source.path);
+    const destFullPath = this.resolvePathOrThrow(destRoot, destination.path);
+
     if (!fs.existsSync(srcFullPath)) {
       throw this.createError(404, TRANSFER_ERROR_CODES.SOURCE_NOT_FOUND);
     }
-
-    // Verify destination project/feature exist
-    if (!fs.existsSync(this.workspaceResolver.getProjectPath(srcUserContext, destination.projectId))) {
+    if (!fs.existsSync(destRoot.projectPath)) {
       throw this.createError(404, TRANSFER_ERROR_CODES.DEST_PROJECT_NOT_FOUND);
     }
-    if (!fs.existsSync(destFeaturePath)) {
-      throw this.createError(404, TRANSFER_ERROR_CODES.DEST_FEATURE_NOT_FOUND);
-    }
+    this.ensureDestinationRoot(destRoot);
 
     // Acquire distributed lock for destination
     const lockKey = this.buildLockKey(
@@ -116,8 +118,7 @@ export class ArtifactTransferService {
         }
 
         if (mode === 'move') {
-          // Remove source (but preserve canonical dirs if at feature root)
-          await this.removeSourceAfterMove(srcFullPath, source.path);
+          await this.removeSourceAfterMove(srcFullPath, source.path, srcRoot.kind);
         }
       } else {
         // Single file transfer
@@ -167,9 +168,6 @@ export class ArtifactTransferService {
       throw this.createError(400, TRANSFER_ERROR_CODES.SELF_TRANSFER_NOT_ALLOWED);
     }
 
-    // Validate paths
-    this.validateTransferPaths(source.path, destination.path, mode);
-
     // Verify recipient exists (check if their workspace directory exists)
     const recipientUserContext: UserContext = {
       userId: recipient.userId,
@@ -184,23 +182,24 @@ export class ArtifactTransferService {
       throw this.createError(404, TRANSFER_ERROR_CODES.RECIPIENT_NOT_FOUND);
     }
 
-    // Verify recipient's destination project/feature exist
+    // Recipient's destination is judged with the RECIPIENT's context — the
+    // project kind is theirs, not the sender's.
     if (!fs.existsSync(this.workspaceResolver.getProjectPath(recipientUserContext, destination.projectId))) {
       throw this.createError(404, TRANSFER_ERROR_CODES.DEST_PROJECT_NOT_FOUND);
     }
-    if (!fs.existsSync(this.workspaceResolver.getFeaturePath(recipientUserContext, destination.projectId, destination.featureId))) {
-      throw this.createError(404, TRANSFER_ERROR_CODES.DEST_FEATURE_NOT_FOUND);
-    }
+    const destRoot = this.resolveRootOrThrow(recipientUserContext, destination, 'destination');
 
-    // Verify source exists
     const senderUserContext: UserContext = {
       userId: sender.userId,
       organizationId: sender.orgId,
     };
-    const srcFeaturePath = this.workspaceResolver.getFeaturePath(
-      senderUserContext, source.projectId, source.featureId
-    );
-    const srcFullPath = path.join(srcFeaturePath, source.path);
+    const srcRoot = this.resolveRootOrThrow(senderUserContext, source, 'source');
+
+    this.validateTransferPaths(source.path, destination.path, mode, false, srcRoot.kind, destRoot.kind);
+    this.resolvePathOrThrow(destRoot, destination.path);
+    this.ensureDestinationRoot(destRoot);
+
+    const srcFullPath = this.resolvePathOrThrow(srcRoot, source.path);
     if (!fs.existsSync(srcFullPath)) {
       throw this.createError(404, TRANSFER_ERROR_CODES.SOURCE_NOT_FOUND);
     }
@@ -316,10 +315,9 @@ export class ArtifactTransferService {
         userId: request.recipient.userId,
         organizationId: request.recipient.orgId,
       };
-      const destFeaturePath = this.workspaceResolver.getFeaturePath(
-        recipientUserContext, request.destination.projectId, request.destination.featureId
-      );
-      const destFullPath = path.join(destFeaturePath, request.destination.path);
+      const destRoot = this.resolveRootOrThrow(recipientUserContext, request.destination, 'destination');
+      const destFullPath = this.resolvePathOrThrow(destRoot, request.destination.path);
+      this.ensureDestinationRoot(destRoot);
 
       logger.info(`📦 [${COMPONENT}] Resolve approve: payload=${request.payloadPath}, dest=${destFullPath}`, { component: COMPONENT });
 
@@ -369,12 +367,14 @@ export class ArtifactTransferService {
             userId: request.sender.userId,
             organizationId: request.sender.orgId,
           };
-          const srcFeaturePath = this.workspaceResolver.getFeaturePath(
-            senderUserContext, request.source.projectId, request.source.featureId
+          const srcRoot = resolveArtifactRoot(
+            this.workspaceResolver, senderUserContext, request.source.projectId, request.source.featureId
           );
-          const srcFullPath = path.join(srcFeaturePath, request.source.path);
-          if (fs.existsSync(srcFullPath)) {
-            await this.removeSourceAfterMove(srcFullPath, request.source.path);
+          if (srcRoot) {
+            const srcFullPath = this.resolvePathOrThrow(srcRoot, request.source.path);
+            if (fs.existsSync(srcFullPath)) {
+              await this.removeSourceAfterMove(srcFullPath, request.source.path, srcRoot.kind);
+            }
           }
         }
 
@@ -438,42 +438,83 @@ export class ArtifactTransferService {
   // Internal Helpers
   // ============================================
 
+  /** Artifact root of a location, or the side's 404. */
+  private resolveRootOrThrow(ctx: UserContext, loc: TransferLocation, side: 'source' | 'destination'): ArtifactRoot {
+    const root = resolveArtifactRoot(this.workspaceResolver, ctx, loc.projectId, loc.featureId);
+    if (root) return root;
+    throw this.createError(
+      404,
+      side === 'source' ? TRANSFER_ERROR_CODES.SOURCE_NOT_FOUND : TRANSFER_ERROR_CODES.DEST_FEATURE_NOT_FOUND,
+    );
+  }
+
+  /** Absolute path under the root; an escaping path is a 400, never a skip. */
+  private resolvePathOrThrow(root: ArtifactRoot, rel: string): string {
+    try {
+      return resolveArtifactPath(root, rel);
+    } catch {
+      throw this.createError(400, TRANSFER_ERROR_CODES.INVALID_PATH);
+    }
+  }
+
   /**
-   * Validate transfer paths
-   * @param srcPath - Source relative path
-   * @param destPath - Destination relative path
-   * @param mode - Transfer mode
+   * A canonical feature must already exist; a universal container is
+   * materialized lazily (same rule as the feature CRUD seam).
+   */
+  private ensureDestinationRoot(root: ArtifactRoot): void {
+    if (root.kind === 'universal') {
+      ensureUniversalContainer(root.projectPath);
+      return;
+    }
+    if (!fs.existsSync(root.root)) {
+      throw this.createError(404, TRANSFER_ERROR_CODES.DEST_FEATURE_NOT_FOUND);
+    }
+  }
+
+  /**
+   * Validate transfer paths against both planes' policies.
    * @param sameLocation - True if source and destination are in the same project+feature
    */
-  private validateTransferPaths(srcPath: string, destPath: string, mode: 'copy' | 'move', sameLocation: boolean = false): void {
-    // Check empty paths
+  private validateTransferPaths(
+    srcPath: string,
+    destPath: string,
+    mode: 'copy' | 'move',
+    sameLocation: boolean,
+    srcKind: ArtifactRootKind,
+    destKind: ArtifactRootKind,
+  ): void {
     if (!srcPath || !destPath) {
       throw this.createError(400, TRANSFER_ERROR_CODES.INVALID_PATH);
     }
 
-    // Check path traversal
+    // Reserved roots are judged on the normalized shape (before the traversal
+    // check) so `artifacts/../sessions` is refused for what it is.
+    this.assertNotReserved(srcKind, srcPath);
+    this.assertNotReserved(destKind, destPath);
+
     if (srcPath.includes('..') || destPath.includes('..')) {
       throw this.createError(400, TRANSFER_ERROR_CODES.INVALID_PATH);
     }
 
-    // Normalize paths
     const normalizedSrc = srcPath.replace(/\\/g, '/').replace(/\/$/, '');
     const normalizedDest = destPath.replace(/\\/g, '/').replace(/\/$/, '');
 
-    // Check sessions paths
-    if (isSessionPath(normalizedSrc) || isSessionPath(normalizedDest)) {
-      throw this.createError(400, TRANSFER_ERROR_CODES.SESSION_PATH_BLOCKED);
-    }
-
-    // Check same path only when source and destination are truly the same location
     if (sameLocation && normalizedSrc === normalizedDest) {
       throw this.createError(400, TRANSFER_ERROR_CODES.SAME_PATH);
     }
 
-    // Check canonical directory move
-    if (mode === 'move' && isCanonicalDir(normalizedSrc)) {
+    if (mode === 'move' && isMoveProtectedRoot(srcKind, normalizedSrc)) {
       throw this.createError(400, TRANSFER_ERROR_CODES.MOVE_CANONICAL_BLOCKED);
     }
+  }
+
+  private assertNotReserved(kind: ArtifactRootKind, rel: string): void {
+    const reserved = reservedRootOf(kind, rel);
+    if (reserved === null) return;
+    throw this.createError(
+      400,
+      reserved === 'sessions' ? TRANSFER_ERROR_CODES.SESSION_PATH_BLOCKED : TRANSFER_ERROR_CODES.RESERVED_PATH_BLOCKED,
+    );
   }
 
   /**
@@ -489,7 +530,7 @@ export class ArtifactTransferService {
     currentRelative: string = ''
   ): Promise<{ files: number; sessionsSkipped: boolean }> {
     await fs.promises.mkdir(destPath, { recursive: true });
-    
+
     let fileCount = 0;
     let sessionsSkipped = false;
 
@@ -522,15 +563,20 @@ export class ArtifactTransferService {
   }
 
   /**
-   * Remove source after move, handling canonical directories.
-   * Delegates to the shared clearCanonicalDirectory utility with sessions skip.
+   * Remove source after move. Canonical dirs are cleared, not deleted (their
+   * skeleton must survive); universal artifacts have no skeleton below the
+   * move-protected roots, so the directory goes whole.
    */
-  private async removeSourceAfterMove(srcFullPath: string, relativePath: string): Promise<void> {
+  private async removeSourceAfterMove(srcFullPath: string, relativePath: string, kind: ArtifactRootKind): Promise<void> {
     const stat = await fs.promises.stat(srcFullPath);
-    if (stat.isDirectory()) {
+    if (!stat.isDirectory()) {
+      await fs.promises.unlink(srcFullPath);
+      return;
+    }
+    if (kind === 'canonical') {
       await clearCanonicalDirectory(srcFullPath, relativePath, { skipSessions: true });
     } else {
-      await fs.promises.unlink(srcFullPath);
+      await fs.promises.rm(srcFullPath, { recursive: true, force: true });
     }
   }
 

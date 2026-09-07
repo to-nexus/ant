@@ -130,3 +130,74 @@ describe('GET/PUT /api/user/config — account.visibility', () => {
     await app.close();
   });
 });
+
+// Recipient destination picker — a workspace (universal) project has no
+// features plane: its single "feature" is the universal container, and its
+// directory list is the artifacts root minus the reserved grafts.
+describe('GET /api/org/members/:userId/projects{,/:projectId/features,/…/directories} — project kind', () => {
+  const caller = { userId: 'me@x.com', orgId: 'individual', kind: 'individual' };
+
+  async function seedProjects() {
+    await seedUser('individual', caller.userId);
+    const user = path.join(tmpRoot, 'individual', caller.userId);
+    await fsp.mkdir(path.join(user, 'cs', 'features', 'main', 'plan'), { recursive: true });
+    await fsp.writeFile(path.join(user, 'cs', 'config.json'), JSON.stringify({ repositoryName: 'cs' }));
+    const artifacts = path.join(user, 'ws', 'universal', 'artifacts');
+    for (const d of ['plan', 'notes', 'sessions', 'pipeline-runs', '_agents', '_pipelines', '.hidden']) {
+      await fsp.mkdir(path.join(artifacts, d), { recursive: true });
+    }
+    await fsp.writeFile(path.join(artifacts, 'readme.md'), '');
+    await fsp.writeFile(path.join(user, 'ws', 'config.json'), JSON.stringify({ projectType: 'universal' }));
+    await fsp.mkdir(path.join(user, 'lazy'), { recursive: true });
+    await fsp.writeFile(path.join(user, 'lazy', 'config.json'), JSON.stringify({ projectType: 'universal' }));
+  }
+
+  it('/projects carries projectType per project', async () => {
+    await seedProjects();
+    const app = await startApp(caller);
+    const res = await fetch(`${app.url}/api/org/members/${encodeURIComponent(caller.userId)}/projects`);
+    const { projects } = await res.json();
+    expect(projects).toEqual(expect.arrayContaining([
+      { projectId: 'cs', projectType: 'canonical' },
+      { projectId: 'ws', projectType: 'universal' },
+      { projectId: 'lazy', projectType: 'universal' },
+    ]));
+    await app.close();
+  });
+
+  it("/features of a universal project is exactly [{ featureId: 'universal' }] — no features plane read", async () => {
+    await seedProjects();
+    const app = await startApp(caller);
+    const res = await fetch(`${app.url}/api/org/members/${encodeURIComponent(caller.userId)}/projects/ws/features`);
+    expect(await res.json()).toEqual({ features: [{ featureId: 'universal' }] });
+    const canonical = await fetch(`${app.url}/api/org/members/${encodeURIComponent(caller.userId)}/projects/cs/features`);
+    expect(await canonical.json()).toEqual({ features: [{ featureId: 'main' }] });
+    await app.close();
+  });
+
+  it('/directories of a universal project lists artifact dirs minus reserved grafts and dotfiles', async () => {
+    await seedProjects();
+    const app = await startApp(caller);
+    const res = await fetch(`${app.url}/api/org/members/${encodeURIComponent(caller.userId)}/projects/ws/features/universal/directories`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ directories: ['notes', 'plan'] });
+    await app.close();
+  });
+
+  it('/directories of a lazy (unmaterialized) universal container is an empty list, not a 404', async () => {
+    await seedProjects();
+    const app = await startApp(caller);
+    const res = await fetch(`${app.url}/api/org/members/${encodeURIComponent(caller.userId)}/projects/lazy/features/universal/directories`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ directories: [] });
+    await app.close();
+  });
+
+  it("/directories with featureId 'universal' on a CANONICAL project stays a feature lookup (404)", async () => {
+    await seedProjects();
+    const app = await startApp(caller);
+    const res = await fetch(`${app.url}/api/org/members/${encodeURIComponent(caller.userId)}/projects/cs/features/universal/directories`);
+    expect(res.status).toBe(404);
+    await app.close();
+  });
+});

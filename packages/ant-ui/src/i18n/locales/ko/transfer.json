@@ -17,7 +17,8 @@
     "destinationNotSelected": "(받을 곳 미선택)",
     "samePath": "(동일 경로)",
     "history": "보낸 요청 히스토리",
-    "removeFromHistory": "히스토리에서 제거"
+    "removeFromHistory": "히스토리에서 제거",
+    "workspace": "워크스페이스"
   },
   "receive": {
     "title": "받은 전송 요청",

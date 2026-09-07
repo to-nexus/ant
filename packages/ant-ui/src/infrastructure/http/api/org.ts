@@ -74,9 +74,15 @@ export async function lookupAccountByEmail(
   return res.member;
 }
 
+export interface MemberProject {
+  projectId: string;
+  /** Absent on older servers; treat as `'canonical'`. */
+  projectType?: 'canonical' | 'universal';
+}
+
 export function fetchMemberProjects(
   userId: string,
-): Promise<{ projects: Array<{ projectId: string }> }> {
+): Promise<{ projects: MemberProject[] }> {
   return apiGet(`${API_BASE()}/org/members/${encodeURIComponent(userId)}/projects`);
 }
 

@@ -54,7 +54,8 @@ job-agent catalog and is a different concept from a custom agent definition.
 
 Still bare and not yet moved: `/api/user/config`, `/api/org/config`,
 `/api/github/pat` (a `{org, user}` credential — the clearest remaining
-inconsistency), `/api/artifacts/transfer*`.
+inconsistency), `/api/artifacts/transfer*` (endpoints are `project + (feature |
+'universal')`; workspace projects transfer through the same routes — doc 40).
 
 ## Health
 

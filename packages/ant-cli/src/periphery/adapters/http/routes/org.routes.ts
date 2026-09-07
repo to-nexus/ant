@@ -17,7 +17,9 @@ import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { hasMinRole, resolveLiveTeamMembership } from './helpers/teamRole';
 import { logger } from '../../../../utils/logger';
-import { CANONICAL_FEATURE_DIRS, ROLE_FORBIDDEN, featureSlugToName, featureNameToSlug } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, ROLE_FORBIDDEN, UNIVERSAL_FEATURE, featureSlugToName, featureNameToSlug } from '@ant/shared';
+import { getUniversalContainerPathOf, isUniversalProject, UNIVERSAL_ARTIFACTS_DIRNAME } from '../../../../core/customAgents/universalContainer';
+import { reservedRootOf } from '../../../../core/customAgents/artifactRoot';
 import { OrgConfig } from '../../../../core/types/orgConfig';
 import {
   UserConfig,
@@ -26,6 +28,9 @@ import {
   readUserVisibility,
 } from './helpers/userConfigStore';
 import { purgeAccount, type PurgeAccountDeps } from '../../../../core/account/purgeAccount';
+
+/** Upper bound on workspace top-level dirs the picker is handed (display-only). */
+const UNIVERSAL_DIRECTORY_LIST_CAP = 200;
 
 export interface OrgRoutesDeps {
   workspaceResolver: any;
@@ -226,9 +231,14 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       }
 
       const entries = await fs.promises.readdir(userPath, { withFileTypes: true });
+      // `projectType` lets the send picker collapse the feature slot for a
+      // workspace destination (its only "feature" is the universal container).
       const projects = entries
         .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-        .map(e => ({ projectId: e.name }));
+        .map(e => ({
+          projectId: e.name,
+          projectType: isUniversalProject(path.join(userPath, e.name)) ? 'universal' : 'canonical',
+        }));
 
       res.json({ projects });
     } catch (error: any) {
@@ -250,8 +260,15 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
-      const featuresPath = path.join(workspacesPath, orgId, targetUserId, projectId, 'features');
+      const projectPath = path.join(workspacesPath, orgId, targetUserId, projectId);
 
+      // A workspace project has no features plane — its single destination is
+      // the universal pseudo-feature.
+      if (isUniversalProject(projectPath)) {
+        return res.json({ features: [{ featureId: UNIVERSAL_FEATURE }] });
+      }
+
+      const featuresPath = path.join(projectPath, 'features');
       if (!fs.existsSync(featuresPath)) {
         return res.json({ features: [] });
       }
@@ -284,7 +301,27 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
-      const featurePath = path.join(workspacesPath, orgId, targetUserId, projectId, 'features', featureNameToSlug(featureId));
+      const projectPath = path.join(workspacesPath, orgId, targetUserId, projectId);
+
+      // Workspace destination: top-level artifact dirs minus the reserved grafts.
+      // The container is lazy, so a missing artifacts dir is an empty list.
+      if (featureId === UNIVERSAL_FEATURE && isUniversalProject(projectPath)) {
+        const artifactsRoot = path.join(getUniversalContainerPathOf(projectPath), UNIVERSAL_ARTIFACTS_DIRNAME);
+        let dirents: fs.Dirent[] = [];
+        try {
+          dirents = await fs.promises.readdir(artifactsRoot, { withFileTypes: true });
+        } catch {
+          dirents = [];
+        }
+        const directories = dirents
+          .filter(e => e.isDirectory() && !e.name.startsWith('.') && reservedRootOf('universal', e.name) === null)
+          .map(e => e.name)
+          .sort()
+          .slice(0, UNIVERSAL_DIRECTORY_LIST_CAP);
+        return res.json({ directories });
+      }
+
+      const featurePath = path.join(projectPath, 'features', featureNameToSlug(featureId));
 
       if (!fs.existsSync(featurePath)) {
         return res.status(404).json({ error: '피처를 찾을 수 없습니다.' });

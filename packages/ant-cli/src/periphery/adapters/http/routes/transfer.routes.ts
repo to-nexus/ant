@@ -19,31 +19,38 @@ import { readUserVisibility } from './helpers/userConfigStore';
 import { TRANSFER_ERROR_MESSAGES } from '../../../../core/types/transfer';
 import { RedisStateStore } from '../../../../infrastructure/state/RedisStateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
+import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
+import {
+  resolveArtifactPath,
+  resolveArtifactRoot,
+  type ArtifactRootResolver,
+} from '../../../../core/customAgents/artifactRoot';
 
 export interface TransferRoutesDeps {
   transferService: ArtifactTransferService;
   stateStore: RedisStateStore;
-  workspaceResolver?: any;  // For resolving feature paths (unseen artifact tracking)
+  /** Artifact-root resolution (unseen tracking) + workspaces root (visibility). */
+  workspaceResolver?: ArtifactRootResolver & Pick<WorkspaceResolver, 'getPhysicalWorkspacesPath'>;
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
 }
 
 /**
- * Recursively collect all file paths under a directory (feature-relative).
+ * Recursively collect all file paths under a directory (root-relative).
  */
-async function collectFilePaths(fullPath: string, featurePath: string): Promise<string[]> {
+async function collectFilePaths(fullPath: string, rootPath: string): Promise<string[]> {
   const results: string[] = [];
   try {
     const stat = await fs.promises.stat(fullPath);
     if (stat.isFile()) {
-      results.push(path.relative(featurePath, fullPath).replace(/\\/g, '/'));
+      results.push(path.relative(rootPath, fullPath).replace(/\\/g, '/'));
     } else if (stat.isDirectory()) {
       const entries = await fs.promises.readdir(fullPath, { withFileTypes: true });
       for (const entry of entries) {
         const entryPath = path.join(fullPath, entry.name);
         if (entry.isFile()) {
-          results.push(path.relative(featurePath, entryPath).replace(/\\/g, '/'));
+          results.push(path.relative(rootPath, entryPath).replace(/\\/g, '/'));
         } else if (entry.isDirectory()) {
-          const sub = await collectFilePaths(entryPath, featurePath);
+          const sub = await collectFilePaths(entryPath, rootPath);
           results.push(...sub);
         }
       }
@@ -52,6 +59,20 @@ async function collectFilePaths(fullPath: string, featurePath: string): Promise<
     // Ignore errors (destination may not exist yet)
   }
   return results;
+}
+
+/**
+ * Files that landed under a destination, root-relative — through the artifact
+ * root seam, so a workspace destination never resolves to `features/universal`.
+ */
+async function collectLandedPaths(
+  resolver: ArtifactRootResolver,
+  ctx: { userId: string; organizationId: string },
+  destination: { projectId: string; featureId: string; path: string },
+): Promise<string[]> {
+  const root = resolveArtifactRoot(resolver, ctx, destination.projectId, destination.featureId);
+  if (!root) return [];
+  return collectFilePaths(resolveArtifactPath(root, destination.path), root.root);
 }
 
 interface FileNodeDTO {
@@ -145,11 +166,7 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
       // Add unseen artifact notifications for transferred files
       if (workspaceResolver && result.success) {
         try {
-          const destFeaturePath = workspaceResolver.getFeaturePath(
-            userContext, destination.projectId, destination.featureId
-          );
-          const destFullPath = path.join(destFeaturePath, destination.path);
-          const transferredPaths = await collectFilePaths(destFullPath, destFeaturePath);
+          const transferredPaths = await collectLandedPaths(workspaceResolver, userContext, destination);
           if (transferredPaths.length > 0) {
             await stateStore.addUnseenArtifacts(
               userContext.userId, destination.projectId, destination.featureId, transferredPaths
@@ -415,11 +432,7 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
             userId: result.recipient.userId,
             organizationId: result.recipient.orgId,
           };
-          const destFeaturePath = workspaceResolver.getFeaturePath(
-            recipientUserContext, result.destination.projectId, result.destination.featureId
-          );
-          const destFullPath = path.join(destFeaturePath, result.destination.path);
-          const transferredPaths = await collectFilePaths(destFullPath, destFeaturePath);
+          const transferredPaths = await collectLandedPaths(workspaceResolver, recipientUserContext, result.destination);
           if (transferredPaths.length > 0) {
             await stateStore.addUnseenArtifacts(
               result.recipient.userId, result.destination.projectId,

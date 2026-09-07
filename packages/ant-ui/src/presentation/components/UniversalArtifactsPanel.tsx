@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   UI_PANEL_TOP_LEVEL_DIRS,
+  UNIVERSAL_FEATURE,
   UNIVERSAL_PIPELINE_RUNS_DIRNAME,
   getUniversalArtifactDirPolicy,
   type ArtifactPermissions,
 } from '@ant/shared';
+import { useSendToTransfer } from '@/application/hooks/ui/useSendToTransfer';
 import type { FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import {
@@ -20,6 +22,7 @@ import {
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { ArtifactsSection } from './ArtifactsPanel/ArtifactsSection';
+import { TransferToolbar } from './ArtifactsPanel/TransferToolbar';
 
 /**
  * Artifacts tree for universal (workspace) projects — the same surface as
@@ -32,12 +35,17 @@ import { ArtifactsSection } from './ArtifactsPanel/ArtifactsSection';
  *    canonical `plan` dir first and the `sessions` node last);
  *  - the root itself is writable (`rootDirPath=''`), so the section header
  *    carries the shared ⋯ menu for root-level create/upload;
- *  - Transfer is not wired yet (future), so no header toolbar.
+ *  - Transfer rides the constant `UNIVERSAL_FEATURE` as the feature slot; the
+ *    reserved grafts (`sessions` / `pipeline-runs`) carry `send: false`.
  */
-export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { explorerWidth: number }) {
+export function UniversalArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const { t } = useTranslation(['artifacts', 'common']);
   const selectedProject = useStore((state) => state.selectedProject);
   const isRunning = useStore((state) => state.isRunning);
+  const openTransferTab = useStore((state) => state.openTransferTab);
+  const pendingTransferCount = useStore((state) => state.pendingTransferCount);
+  const handleSend = useSendToTransfer(selectedProject, UNIVERSAL_FEATURE);
+  const isNarrow = explorerWidth < 260;
   // fileTree SSE tick — tool-node writes broadcast notifyFileTreeUpdate;
   // the panel's own tree comes from the universal artifacts API, so the
   // shared fileTree state is used purely as a refresh trigger.
@@ -193,11 +201,19 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
         sectionPrefix={undefined}
         rootDirPath=""
         headerAction={
-          uploading ? (
-            <span style={{ fontSize: 10, color: 'var(--text-3)' }}>
-              {t('artifacts:universal.uploading', { defaultValue: 'Uploading…' })}
-            </span>
-          ) : undefined
+          <>
+            {uploading && (
+              <span style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                {t('artifacts:universal.uploading', { defaultValue: 'Uploading…' })}
+              </span>
+            )}
+            <TransferToolbar
+              isNarrow={isNarrow}
+              onOpenTransfer={(subTab) => openTransferTab({ subTab })}
+              pendingTransferCount={pendingTransferCount}
+              t={t}
+            />
+          </>
         }
         getNodePermissions={getNodePermissions}
         resolveDirPolicy={getUniversalArtifactDirPolicy}
@@ -220,6 +236,7 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
           void mutate(() => renameUniversalArtifact(selectedProject, oldPath, newName))
         }
         onDelete={(filePath) => void mutate(() => deleteUniversalArtifact(selectedProject, filePath))}
+        onSend={handleSend}
         onDownload={(path) =>
           window.open(getUniversalArtifactDownloadUrl(selectedProject, path), '_blank')
         }

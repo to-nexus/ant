@@ -460,6 +460,39 @@ leaked. The email param is shape-validated and rejects path separators.
 must be `public` (or self), else `403 RECIPIENT_NOT_PUBLIC`; `local` is rejected;
 `team` keeps same-org behavior.
 
+## Transfer destinations — any project kind, one root seam
+
+A transfer endpoint is `project + (feature | 'universal')`. Codespace
+(canonical) projects address a real feature; a workspace (universal) project
+has no `features/` plane and addresses the constant `UNIVERSAL_FEATURE`. Every
+combination is legal — codespace ↔ codespace, workspace ↔ workspace, and across
+kinds — because both the service and the routes resolve roots through ONE seam,
+`core/customAgents/artifactRoot.ts`:
+
+| Question | Owner |
+|---|---|
+| Where does `plan/x.md` live for `(project, feature)`? | `resolveArtifactRoot` → `features/{slug}` or `{project}/universal/artifacts`; `null` for a workspace addressed with anything but `'universal'` |
+| Is this path a reserved root? | `reservedRootOf(kind, rel)` — normalized first segment; canonical reserves `sessions` only, universal reserves `UNIVERSAL_RESERVED_ROOT_DIRNAMES` (`sessions` / `pipeline-runs` / `_agents` / `_pipelines`). The universal artifacts router takes its `reserved-name-*` verdict from the same predicate |
+| May it be moved? | `isMoveProtectedRoot(kind, rel)` — `isCanonicalDir` / `UNIVERSAL_ARTIFACT_CANONICAL_DIRS` (`plan`) |
+| Absolute path | `resolveArtifactPath(root, rel)` — containment-asserted, escape throws |
+
+Consequences: `getFeaturePath` is never called by `ArtifactTransferService` or
+`transfer.routes.ts`, so a workspace destination can no longer mint a phantom
+`features/universal` directory; a workspace destination is materialized lazily
+(`ensureUniversalContainer`) instead of 404ing; `sessions` → `SESSION_PATH_BLOCKED`,
+the other grafts → `RESERVED_PATH_BLOCKED`, both judged on the normalized path so
+`artifacts/../sessions` is refused for what it is. The recipient picker
+(`GET /api/org/members/:userId/projects{,/:id/features,/…/directories}`) carries
+`projectType`, answers `[{ featureId: 'universal' }]` for a workspace, and lists
+its top-level artifact dirs minus the reserved grafts (cap 200). The FE shows
+the pseudo-feature as "Workspace" (`transfer:send.workspace`), hides the feature
+dropdown for a workspace destination, and shapes the source tree per kind in
+`shared/utils/transferSourceTree.ts`.
+
+Guards: `tests/workspace/artifact-transfer-root.test.ts`,
+`tests/http/org-individual-policy.test.ts` (project-kind rows),
+`packages/ant-ui/tests/transfer/universal-transfer.test.ts`.
+
 ## Visibility policies (two, orthogonal)
 
 1. **Account visibility** (individual) — per-user `account.visibility` in

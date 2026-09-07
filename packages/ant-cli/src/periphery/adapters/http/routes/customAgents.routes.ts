@@ -10,7 +10,6 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { isReservedSessionRelativePath } from '../../../../core/utils/sessionPaths';
 import * as yaml from 'js-yaml';
 import multer from 'multer';
 import { writeBufferVerifiedContained } from '../../../../core/utils/binaryIntegrity';
@@ -22,6 +21,7 @@ import { treeRateLimiter } from '../middleware/rateLimiter';
 import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { isValidCustomId, UNIVERSAL_FEATURE } from '@ant/shared';
+import { reservedRootOf } from '../../../../core/customAgents/artifactRoot';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
 import {
@@ -41,6 +41,7 @@ import {
   UNIVERSAL_SESSIONS_NODE,
   UNIVERSAL_PIPELINE_RUNS_NODE,
   UNIVERSAL_AGENTS_NODE,
+  UNIVERSAL_PIPELINES_NODE,
   buildUniversalMergedTree,
   resolveUniversalMergedPath,
   type UniversalTreeNode,
@@ -272,33 +273,33 @@ export function createCustomAgentRoutes(deps: {
   /** Reserved top-level node name — grafted pipeline run logs (read-only). */
   const PIPELINE_RUNS_NODE = UNIVERSAL_PIPELINE_RUNS_NODE;
 
-  /**
-   * First segment of the NORMALIZED path. `artifacts/../sessions` has a first
-   * segment of `artifacts` but resolves into the grafted reserved tree, and the
-   * merged-path resolver normalizes before writing — so the verdict has to be
-   * taken on the same shape the write lands on (M-NEW-029).
-   */
+  /** First segment of the NORMALIZED path (delete-route run-log guard). */
   function firstSegment(rel: string): string {
     const cleaned = (rel ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
     if (cleaned === '') return '';
     return path.posix.normalize(cleaned).split('/')[0] ?? '';
   }
 
-  /** 400 body for a mutation aimed at a reserved grafted root, or null. */
+  /**
+   * 400 body for a mutation aimed at a reserved grafted root, or null. The
+   * verdict is the artifact-root seam's (`reservedRootOf`, shared with the
+   * transfer service); only the per-name copy lives here.
+   */
   function reservedRootViolation(rel: string): { error: string; code: string } | null {
-    const first = firstSegment(rel);
-    // Sessions verdict has one owner across both planes (files.routes.ts uses
-    // the same predicate for the canonical feature root).
-    if (isReservedSessionRelativePath(rel) || first === SESSIONS_NODE) {
-      return { error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' };
+    const reserved = reservedRootOf('universal', rel);
+    if (reserved === null) return null;
+    switch (reserved) {
+      case SESSIONS_NODE:
+        return { error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' };
+      case PIPELINE_RUNS_NODE:
+        return { error: `"${PIPELINE_RUNS_NODE}" is a read-only pipeline run-log folder`, code: 'reserved-name-pipeline-runs' };
+      case UNIVERSAL_AGENTS_NODE:
+        return { error: `"${UNIVERSAL_AGENTS_NODE}" is the read-only agent-definition mount`, code: 'reserved-name-agents' };
+      case UNIVERSAL_PIPELINES_NODE:
+        return { error: `"${UNIVERSAL_PIPELINES_NODE}" is the read-only pipeline-definition mount`, code: 'reserved-name-pipelines' };
+      default:
+        return { error: `"${reserved}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' };
     }
-    if (first === PIPELINE_RUNS_NODE) {
-      return { error: `"${PIPELINE_RUNS_NODE}" is a read-only pipeline run-log folder`, code: 'reserved-name-pipeline-runs' };
-    }
-    if (first === UNIVERSAL_AGENTS_NODE) {
-      return { error: `"${UNIVERSAL_AGENTS_NODE}" is the read-only agent-definition mount`, code: 'reserved-name-agents' };
-    }
-    return null;
   }
 
   /** Account scope for the cluster-wide concurrency budget. */

@@ -335,6 +335,7 @@ whole bug class:
 |---|---|---|
 | **Explorer** — codespace panel, `GET /projects/:id/features/:feature/files`, `FileTreeBroadcaster` | `resolveUniversalMergedPath` / `buildUniversalMergedTreeResult` | artifacts ∪ `sessions` ∪ `pipeline-runs` |
 | **Agent** — tool sandbox, `@ctx:` accept gate, the Attached Context prompt band | `resolveUniversalAgentPlanePath` (`core/customAgents/universalAgentPlane.ts`) | artifacts ∪ `pipeline-runs` ∪ `_agents` ∪ `_pipelines` — never `sessions` |
+| **Transfer** — `POST /artifacts/transfer*`, recipient destination picker (`org.routes.ts`) | `resolveArtifactRoot` / `reservedRootOf` (`core/customAgents/artifactRoot.ts`) | artifacts only — every reserved root (`sessions` ∪ `pipeline-runs` ∪ `_agents` ∪ `_pipelines`) refused at the seam; see doc 40 |
 
 **The attachable set is the agent plane.** Before this split, the gate and the
 band resolved through the *container* resolver while the tools resolved through

@@ -162,14 +162,17 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
     expect(src).not.toMatch(/fs\.writeFile\(\s*filePath\s*,\s*newLines/);
   });
 
-  // The reserved-namespace verdict has one owner and runs on the normalized
-  // path — a raw first-segment split re-introduces the `..%2f` bypass.
+  // The reserved-namespace verdict has one owner per plane and runs on the
+  // normalized path — a raw first-segment split re-introduces the `..%2f`
+  // bypass. Canonical routes use the sessions predicate; the universal
+  // artifacts router uses the artifact-root seam (shared with transfer).
   it('the file-API mutation guards use the shared reserved-path predicate', () => {
-    for (const file of [
-      'src/periphery/adapters/http/routes/files.routes.ts',
-      'src/periphery/adapters/http/routes/customAgents.routes.ts',
-    ]) {
-      expect(read(path.join(process.cwd(), file))).toMatch(/isReservedSessionRelativePath\(/);
+    const rows: Array<[string, RegExp]> = [
+      ['src/periphery/adapters/http/routes/files.routes.ts', /isReservedSessionRelativePath\(/],
+      ['src/periphery/adapters/http/routes/customAgents.routes.ts', /reservedRootOf\(/],
+    ];
+    for (const [file, predicate] of rows) {
+      expect(read(path.join(process.cwd(), file))).toMatch(predicate);
     }
   });
 

@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { selectServerMode, selectUserOrgKind } from '@/domain/store/selectors/auth';
-import { UI_VISIBLE_TOP_LEVEL_DIRS, pruneFileTreeForWorkspaceDomain } from '@ant/shared';
+import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { PathPicker } from '../common/PathPicker';
 import { MemberPicker } from '../common/MemberPicker';
 import {
@@ -29,6 +29,7 @@ import {
   fetchFileTree,
   fetchProjectConfig,
   type FileNode,
+  type MemberProject,
   type TransferRequest,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -38,6 +39,7 @@ import { TransferFileList, countFilesUnderPath } from './TransferFileList';
 import { Button } from '@/presentation/components/aurora';
 import { cn } from '@/shared/utils/design-system';
 import { normalizePaths } from '@/shared/utils/path-utils';
+import { autoSelectFeature, filterTransferSourceTree } from '@/shared/utils/transferSourceTree';
 
 export function SendSubTab() {
   const { t } = useTranslation('transfer');
@@ -76,7 +78,7 @@ export function SendSubTab() {
   // Destination state (other)
   const [members, setMembers] = useState<Array<{ userId: string; isSelf: boolean }>>([]);
   const [targetUserId, setTargetUserId] = useState('');
-  const [otherProjects, setOtherProjects] = useState<Array<{ projectId: string }>>([]);
+  const [otherProjects, setOtherProjects] = useState<MemberProject[]>([]);
   const [otherFeatures, setOtherFeatures] = useState<Array<{ featureId: string }>>([]);
   const [otherProjectId, setOtherProjectId] = useState('');
   const [otherFeatureId, setOtherFeatureId] = useState('');
@@ -91,7 +93,7 @@ export function SendSubTab() {
   const [otherFeaturesLoaded, setOtherFeaturesLoaded] = useState(false);
 
   // Self projects
-  const [selfProjects, setSelfProjects] = useState<Array<{ projectId: string }>>([]);
+  const [selfProjects, setSelfProjects] = useState<MemberProject[]>([]);
   const [selfUserId, setSelfUserId] = useState('');
 
   // Sync preselected source
@@ -131,8 +133,7 @@ export function SendSubTab() {
     }).catch(() => {});
   }, []);
 
-  // Load source file tree (only show artifact dirs from UI_VISIBLE_TOP_LEVEL_DIRS:
-  // plan / architecture / visual / assets / meta — sessions/codebase 는 제외)
+  // Load source file tree — shaped per project kind (see transferSourceTree.ts).
   useEffect(() => {
     if (!srcProjectId || !srcFeatureId) {
       setSrcFileTree([]);
@@ -141,17 +142,18 @@ export function SendSubTab() {
     Promise.all([fetchFileTree(srcProjectId, srcFeatureId), fetchProjectConfig(srcProjectId)])
       .then(([tree, cfg]) => {
         const domain = cfg?.domain === 'game' || cfg?.domain === 'service' ? cfg.domain : 'service';
-        const filtered = filterArtifactDirs(tree || []);
-        setSrcFileTree(pruneFileTreeForWorkspaceDomain(filtered, domain));
+        setSrcFileTree(filterTransferSourceTree(tree || [], { projectType: cfg?.projectType, domain }));
       })
       .catch(() => setSrcFileTree([]));
   }, [srcProjectId, srcFeatureId]);
 
-  // Load dest features
+  // Load dest features — a workspace destination has exactly one, pre-selected.
   useEffect(() => {
     if (!destProjectId || !selfUserId) { setDestFeatures([]); return; }
     fetchMemberFeatures(selfUserId, destProjectId).then(({ features }) => {
       setDestFeatures(features);
+      const auto = autoSelectFeature(features);
+      if (auto) setDestFeatureId(auto);
     }).catch(() => setDestFeatures([]));
   }, [destProjectId, selfUserId]);
 
@@ -185,6 +187,8 @@ export function SendSubTab() {
     setOtherFeaturesLoaded(false);
     fetchMemberFeatures(targetUserId, otherProjectId).then(({ features }) => {
       setOtherFeatures(features);
+      const auto = autoSelectFeature(features);
+      if (auto) setOtherFeatureId(auto);
       setOtherFeaturesLoaded(true);
     }).catch(() => {
       setOtherFeatures([]);
@@ -283,7 +287,7 @@ export function SendSubTab() {
         setSrcPaths([]);
         useStore.getState().refreshFileTree();
         const modeLabel = mode === 'copy' ? t('mode.copy') : t('mode.move');
-        toast.success(t('success.selfTransfer', { count: srcPaths.length, mode: modeLabel, project: destProjectId, feature: destFeatureId }));
+        toast.success(t('success.selfTransfer', { count: srcPaths.length, mode: modeLabel, project: destProjectId, feature: featureLabel(destFeatureId) }));
       } else {
         // Use source path as destination path (same relative location)
         if (!targetUserId) {
@@ -347,6 +351,11 @@ export function SendSubTab() {
 
   const otherMembers = members.filter(m => !m.isSelf);
 
+  // The universal pseudo-feature is an implementation constant; users see "Workspace".
+  const featureLabel = (id: string) => (id === UNIVERSAL_FEATURE ? t('send.workspace') : id);
+  const isWorkspaceProject = (projects: MemberProject[], projectId: string) =>
+    projects.find(p => p.projectId === projectId)?.projectType === 'universal';
+
   return (
     <div className="p-4 space-y-4">
       {/* ── 1. Source ── */}
@@ -358,8 +367,8 @@ export function SendSubTab() {
             {srcProjectId || '—'}
           </span>
           <span className="text-[color:var(--text-4)]">/</span>
-          <span className="px-2 py-1 rounded bg-[color:var(--bg-surface-2)] font-medium truncate max-w-[200px]" title={srcFeatureId}>
-            {srcFeatureId || '—'}
+          <span className="px-2 py-1 rounded bg-[color:var(--bg-surface-2)] font-medium truncate max-w-[200px]" title={featureLabel(srcFeatureId)}>
+            {srcFeatureId ? featureLabel(srcFeatureId) : '—'}
           </span>
         </div>
 
@@ -498,6 +507,8 @@ export function SendSubTab() {
               onProjectChange={(v) => { setDestProjectId(v); setDestFeatureId(''); }}
               onFeatureChange={(v) => { setDestFeatureId(v); }}
               disableFeature={!destProjectId}
+              hideFeature={isWorkspaceProject(selfProjects, destProjectId)}
+              featureLabel={featureLabel}
             />
             {destProjectId && destFeatures.length === 0 && (
               <InlineWarning message={t('error.noFeatureInProject')} />
@@ -521,6 +532,8 @@ export function SendSubTab() {
                   onFeatureChange={(v) => { setOtherFeatureId(v); }}
                   disableProject={!targetUserId}
                   disableFeature={!otherProjectId}
+                  hideFeature={isWorkspaceProject(otherProjects, otherProjectId)}
+                  featureLabel={featureLabel}
                 />
 
                 {/* No projects warning */}
@@ -549,9 +562,9 @@ export function SendSubTab() {
             <ArrowRight className="w-3 h-3 shrink-0" />
             <span className="truncate">
               {sendTarget === 'self'
-                ? (destProjectId && destFeatureId ? `${destProjectId}/${destFeatureId}/` : t('send.destinationNotSelected'))
+                ? (destProjectId && destFeatureId ? `${destProjectId}/${featureLabel(destFeatureId)}/` : t('send.destinationNotSelected'))
                 : (targetUserId
-                    ? `${targetUserId}/${otherProjectId || '…'}/${otherFeatureId || '…'}/`
+                    ? `${targetUserId}/${otherProjectId || '…'}/${otherFeatureId ? featureLabel(otherFeatureId) : '…'}/`
                     : t('send.destinationNotSelected'))
               }
               <span className="text-[color:var(--text-4)]">{t('send.samePath')}</span>
@@ -607,6 +620,7 @@ function InlineProjectFeature({
   projectOptions, featureOptions,
   onProjectChange, onFeatureChange,
   disableProject, disableFeature,
+  hideFeature, featureLabel = (id) => id,
 }: {
   projectValue: string;
   featureValue: string;
@@ -616,6 +630,9 @@ function InlineProjectFeature({
   onFeatureChange: (v: string) => void;
   disableProject?: boolean;
   disableFeature?: boolean;
+  /** Workspace destination: the feature slot is implied, so the dropdown is dropped. */
+  hideFeature?: boolean;
+  featureLabel?: (id: string) => string;
 }) {
   const { t } = useTranslation('transfer');
   return (
@@ -634,21 +651,25 @@ function InlineProjectFeature({
         </option>
         {projectOptions.map(id => <option key={id} value={id}>{id}</option>)}
       </select>
-      <span className="text-[color:var(--text-4)] text-sm">/</span>
-      <select
-        value={featureValue}
-        onChange={(e) => onFeatureChange(e.target.value)}
-        disabled={disableFeature || featureOptions.length === 0}
-        className={cn(
-          'flex-1 min-w-0 px-2 py-1.5 text-sm rounded border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-1)]',
-          (disableFeature || featureOptions.length === 0) && 'opacity-50 cursor-not-allowed'
-        )}
-      >
-        <option value="">
-          {disableFeature ? '—' : featureOptions.length === 0 ? t('send.noFeature') : t('send.selectFeature')}
-        </option>
-        {featureOptions.map(id => <option key={id} value={id}>{id}</option>)}
-      </select>
+      {!hideFeature && (
+        <>
+          <span className="text-[color:var(--text-4)] text-sm">/</span>
+          <select
+            value={featureValue}
+            onChange={(e) => onFeatureChange(e.target.value)}
+            disabled={disableFeature || featureOptions.length === 0}
+            className={cn(
+              'flex-1 min-w-0 px-2 py-1.5 text-sm rounded border border-[color:var(--border-2)] bg-[color:var(--bg-surface)] text-[color:var(--text-1)]',
+              (disableFeature || featureOptions.length === 0) && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            <option value="">
+              {disableFeature ? '—' : featureOptions.length === 0 ? t('send.noFeature') : t('send.selectFeature')}
+            </option>
+            {featureOptions.map(id => <option key={id} value={id}>{featureLabel(id)}</option>)}
+          </select>
+        </>
+      )}
     </div>
   );
 }
@@ -849,19 +870,3 @@ function InlineWarning({ message }: { message: string }) {
     </div>
   );
 }
-
-/**
- * Filter file tree to only include canonical artifact top-level dirs
- * (`plan` / `architecture` / `visual` / `assets` / `meta`). Excludes
- * `sessions` / `codebase` / non-canonical entries. The whitelist is pulled
- * from the canonical SSOT (`UI_VISIBLE_TOP_LEVEL_DIRS`) so adding a new
- * UI-visible top-level dir auto-propagates here. This matches
- * `ArtifactsPanel`'s filtering logic; domain narrowing uses
- * `pruneFileTreeForWorkspaceDomain` from `@ant/shared` (same as ArtifactsPanel).
- */
-const ALLOWED_TOP_LEVEL = new Set(UI_VISIBLE_TOP_LEVEL_DIRS.map(d => d.name));
-
-function filterArtifactDirs(tree: FileNode[]): FileNode[] {
-  return tree.filter(node => ALLOWED_TOP_LEVEL.has(node.name));
-}
-
