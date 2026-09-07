@@ -32,6 +32,24 @@ A tag's semantics map to exactly 1 cell across 4 orthogonal axes. Two tags in th
 | `consumed-suppressed` | SpecialTagTransformer silently consumes it (zero UI surface) |
 | `post-stream` | After the stream ends, a dedicated extractor cuts the body out into state |
 
+**`consumed-suppressed` is chunk-independent.** `SpecialTagTransformer.transform()`
+is single-shot per chunk: it suppresses a tag only when the opening *and* closing
+delimiter land in the same chunk. Since `XMLStreamParser` emits free text up to the
+last newline, a multi-line suppressed block used to reach the live `streaming_delta`
+(and the Redis TURN_BUFFER) as raw text while the durable `chat.jsonl` line stayed
+clean — the flush path re-runs `transformAndStrip` over the whole buffer. The
+chunk-split window is closed by
+[`SuppressedTagStreamGate`](../../packages/ant-cli/src/core/streaming/transformers/SuppressedTagStreamGate.ts),
+mounted in `ResponseRenderer` upstream of `sendLLMEvent`, which withholds text from a
+suppressed opener until its close arrives and then drops the block.
+
+The gate owns **enforcement only** — the suppressed set is derived from this matrix via
+`suppressedTagNames()`, so registering a new `consumed-suppressed` entry extends the
+hold-back with no change to the gate. An unterminated tag degrades: the dangling
+opener is stripped and the remaining prose is released, so a contract slip costs the
+marker and never the round's answer. Guard:
+`tests/core/tag-leak-surface.test.ts` Surface F.
+
 ### Axis C · Persistence (persistence surface)
 
 | Value | Meaning |

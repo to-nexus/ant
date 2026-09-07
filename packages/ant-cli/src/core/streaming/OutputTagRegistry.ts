@@ -328,6 +328,86 @@ export function tagsByIntent(intent: TagAxisIntent): readonly OutputTagSpec[] {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Derived tag patterns — consumed by the streaming hold-back gate
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Escape a tag name for literal use inside a RegExp source. */
+function escapeForPattern(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Names of every entry declared `consumed-suppressed` — the tags whose
+ * body has zero chat surface by policy.
+ *
+ * Derived, never hand-listed. `SuppressedTagStreamGate` reads this so a
+ * newly registered suppressed tag is held back from the live stream
+ * without the gate being touched: the policy stays owned here.
+ */
+export function suppressedTagNames(): readonly string[] {
+  return Array.from(REGISTRY.values())
+    .filter((t) => t.axis.processing.includes('consumed-suppressed'))
+    .map((t) => t.name);
+}
+
+/** One suppressed entry's delimiter shape, derived from its own pattern. */
+export interface SuppressedTagShape {
+  name: string;
+  /**
+   * The entry carries a body, so a hold-back consumer must wait for
+   * `</name>`. False for bodyless markers (`<plan-unchanged/>`,
+   * `<eval type="…"/>`) — waiting on a close that never comes would
+   * swallow the rest of the round.
+   */
+  requiresClose: boolean;
+}
+
+/**
+ * Suppressed entries paired with their delimiter shape.
+ *
+ * `requiresClose` is read off the entry's own `pattern` (does it demand a
+ * closing delimiter?) rather than being declared a second time, so a
+ * bodied tag cannot be mistaken for a bodyless one when its pattern
+ * changes.
+ */
+export function suppressedTagShapes(): readonly SuppressedTagShape[] {
+  return Array.from(REGISTRY.values())
+    .filter((t) => t.axis.processing.includes('consumed-suppressed'))
+    .map((t) => ({
+      name: t.name,
+      // Drop the pattern's escapes so `<\/checklist` reads as `</checklist`.
+      requiresClose: t.pattern.source
+        .replace(/\\/g, '')
+        .includes(`</${t.name}`),
+    }));
+}
+
+/**
+ * Matches a COMPLETE opening tag of any suppressed entry
+ * (`<checklist plan="p.md">`, `<analysis>`, `<plan-unchanged/>`), with
+ * group 1 the tag name.
+ *
+ * Only complete openers match — a partial `<checkl` is the caller's
+ * concern. Returned fresh per call so no `lastIndex` leaks between
+ * callers. The name-boundary lookahead is what keeps `<directHints>`
+ * from being mis-attributed to the shorter `direct` entry.
+ */
+export function suppressedOpenTagPattern(): RegExp {
+  const names = suppressedTagNames().map(escapeForPattern).join('|');
+  return new RegExp(`<(${names})(?=[\\s/>])[^>]*>`, 'i');
+}
+
+/** Matches one named tag's opening delimiter, attributes included. */
+export function tagOpenPattern(name: string, global = false): RegExp {
+  return new RegExp(`<${escapeForPattern(name)}(?:\\s[^>]*)?/?>`, global ? 'gi' : 'i');
+}
+
+/** Matches one named tag's closing delimiter. */
+export function tagClosePattern(name: string): RegExp {
+  return new RegExp(`</${escapeForPattern(name)}\\s*>`, 'i');
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Surface-side leak guards
 // ────────────────────────────────────────────────────────────────────────────
 

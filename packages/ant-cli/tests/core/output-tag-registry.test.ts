@@ -26,6 +26,10 @@ import {
   tagsByIntent,
   stripRegisteredTags,
   transformAndStrip,
+  suppressedTagNames,
+  suppressedTagShapes,
+  suppressedOpenTagPattern,
+  tagClosePattern,
 } from '../../src/core/streaming/OutputTagRegistry';
 import { DECISION_TAG_REGISTRY } from '../../src/core/llm-response/DecisionTagRegistry';
 
@@ -227,5 +231,62 @@ describe('OutputTagRegistry — surface-side leak guards', () => {
       'en',
     );
     expect(out).toBe('context answer trailer');
+  });
+});
+
+describe('OutputTagRegistry — derived suppression patterns', () => {
+  it('suppressedTagNames is derived from the processing axis, not hand-listed', () => {
+    const derived = [...suppressedTagNames()].sort();
+    const fromAxis = allTags()
+      .filter((t) => t.axis.processing.includes('consumed-suppressed'))
+      .map((t) => t.name)
+      .sort();
+    expect(derived).toEqual(fromAxis);
+    // The gate would silently stop holding anything if this emptied out.
+    expect(derived.length).toBeGreaterThan(0);
+    expect(derived).toContain('checklist');
+  });
+
+  it('suppressedOpenTagPattern matches complete openers only, capturing the name', () => {
+    const withAttrs = '<checklist plan="plan/p.md">'.match(suppressedOpenTagPattern());
+    expect(withAttrs?.[1]).toBe('checklist');
+    expect('<analysis>'.match(suppressedOpenTagPattern())?.[1]).toBe('analysis');
+    expect('<plan-unchanged/>'.match(suppressedOpenTagPattern())?.[1]).toBe(
+      'plan-unchanged',
+    );
+    // Partial openers are the caller's problem (the gate holds the tail).
+    expect(suppressedOpenTagPattern().test('<checklist plan="pl')).toBe(false);
+    // A non-suppressed tag must not be captured.
+    expect(suppressedOpenTagPattern().test('<reply>')).toBe(false);
+  });
+
+  it('the name-boundary lookahead keeps <directHints> off the shorter <direct> entry', () => {
+    expect(suppressedTagNames()).toContain('direct');
+    expect(suppressedTagNames()).toContain('directHints');
+    expect('<directHints>'.match(suppressedOpenTagPattern())?.[1]).toBe(
+      'directHints',
+    );
+  });
+
+  it('suppressedTagShapes reads requiresClose off each entry own pattern', () => {
+    const shapes = suppressedTagShapes();
+    expect(shapes.map((s) => s.name).sort()).toEqual(
+      [...suppressedTagNames()].sort(),
+    );
+
+    const shapeOf = (name: string) => shapes.find((s) => s.name === name);
+    // Bodyless markers — a hold-back consumer must not wait for a close
+    // that never arrives (it would swallow the rest of the round).
+    expect(shapeOf('plan-unchanged')?.requiresClose).toBe(false);
+    expect(shapeOf('eval')?.requiresClose).toBe(false);
+    // Bodied entries.
+    expect(shapeOf('checklist')?.requiresClose).toBe(true);
+    expect(shapeOf('analysis')?.requiresClose).toBe(true);
+  });
+
+  it('tagClosePattern matches the closing delimiter with incidental whitespace', () => {
+    expect(tagClosePattern('checklist').test('</checklist>')).toBe(true);
+    expect(tagClosePattern('checklist').test('</checklist  >')).toBe(true);
+    expect(tagClosePattern('checklist').test('</checklists>')).toBe(false);
   });
 });

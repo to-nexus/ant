@@ -4,6 +4,7 @@
 
 import { ChatAPIClient } from '../../../adapters/ChatAPIClient';
 import { SpecialTagTransformer } from '../../transformers/SpecialTagTransformer';
+import { SuppressedTagStreamGate } from '../../transformers/SuppressedTagStreamGate';
 import { ParsedAction } from '../../types';
 import { stripRegisteredTags } from '../../OutputTagRegistry';
 
@@ -11,6 +12,13 @@ export class ResponseRenderer {
   private chatAPI: ChatAPIClient;
   private tagTransformer: SpecialTagTransformer;
   private thinkingStartTime?: number;
+  /**
+   * Chunk-boundary hold-back for `consumed-suppressed` tags. The
+   * transformer below only suppresses a tag complete within one chunk;
+   * this withholds a split one so no raw marker reaches the live delta
+   * or the TURN_BUFFER. See `SuppressedTagStreamGate`.
+   */
+  private readonly suppressionGate = new SuppressedTagStreamGate();
   
   constructor(chatAPI: ChatAPIClient, tagTransformer: SpecialTagTransformer) {
     this.chatAPI = chatAPI;
@@ -101,8 +109,16 @@ export class ResponseRenderer {
       return;
     }
     
+    // Withhold suppressed-tag text that straddles chunk boundaries. The
+    // transformer below is single-shot per chunk and would let a split
+    // `<checklist>` through as raw text.
+    const gated = this.suppressionGate.feed(content);
+    if (!gated) {
+      return;
+    }
+
     // Transform special tags
-    const transformed = this.tagTransformer.transform(content);
+    const transformed = this.tagTransformer.transform(gated);
     
     if (transformed.consumed) {
       if (transformed.text) {
@@ -116,8 +132,31 @@ export class ResponseRenderer {
     
     await this.chatAPI.sendLLMEvent({
       type: 'text',
-      text: transformed.text || content
+      text: transformed.text || gated
     });
+  }
+
+  /**
+   * Release any text the suppression gate still withholds at the end of
+   * a stream round. An unterminated suppressed tag degrades to
+   * marker-stripped prose rather than losing the round's answer.
+   */
+  async flushSuppressionGate(): Promise<void> {
+    const pending = this.suppressionGate.flush();
+    if (!pending.trim()) return;
+
+    const transformed = this.tagTransformer.transform(pending);
+    if (transformed.consumed && !transformed.text) return;
+
+    await this.chatAPI.sendLLMEvent({
+      type: 'text',
+      text: transformed.text || pending
+    });
+  }
+
+  /** Drop withheld gate state (stream retry — the residue is dead). */
+  resetSuppressionGate(): void {
+    this.suppressionGate.reset();
   }
 }
 

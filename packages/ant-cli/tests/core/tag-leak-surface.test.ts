@@ -305,3 +305,148 @@ describe('Surface E — assistant_message flush helper', () => {
     expect(out).toBe('final answer');
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Surface F — live streaming delta (suppressed-tag hold-back)
+//
+// `SpecialTagTransformer` is single-shot per chunk, so before the gate a
+// suppressed block split across chunks reached `sendLLMEvent` as raw text
+// and was published as a `streaming_delta` (the durable line stayed clean
+// because the flush path re-runs `transformAndStrip`). These rows pin that
+// the live channel is now chunk-independent.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Surface F — streaming delta hold-back', () => {
+  function textOf(calls: { method: string; args: any[] }[]): string {
+    return findCalls(calls, 'sendLLMEvent', (args) => args[0]?.type === 'text')
+      .map((c) => c.args[0].text as string)
+      .join('');
+  }
+
+  async function feedChunks(
+    strategy: CommonRenderStrategy,
+    chunks: string[],
+  ): Promise<void> {
+    for (const content of chunks) {
+      await strategy.render({ type: 'response', data: { content } } as ParsedAction);
+    }
+  }
+
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('drops a <checklist> block split across chunks and keeps the surrounding prose', async () => {
+    const { fake, calls } = makeChatAPIFake();
+    const strategy = new CommonRenderStrategy(fake, 'en');
+
+    await feedChunks(strategy, [
+      'Here is the plan.\n',
+      '<checklist plan="plan/p.md">\n',
+      '- [ ] first\n- [ ] second\n',
+      '</checklist>\nNow starting.\n',
+    ]);
+
+    const text = textOf(calls);
+    expect(text).not.toMatch(/<\/?checklist/);
+    expect(text).toContain('Here is the plan.');
+    expect(text).toContain('Now starting.');
+    expect(text).not.toContain('- [ ] first');
+  });
+
+  it('withholds a chunk-final partial opener until the delimiter completes', async () => {
+    const { fake, calls } = makeChatAPIFake();
+    const strategy = new CommonRenderStrategy(fake, 'en');
+
+    // The parser's own `/<[a-z]*$/` hold-back does not cover an
+    // attribute-bearing fragment, so the gate must.
+    await feedChunks(strategy, [
+      'Intro line.\n<checklist plan="plan/p',
+      '.md">\n- [ ] only\n</checklist>\nDone.',
+    ]);
+
+    const text = textOf(calls);
+    expect(text).not.toMatch(/<\/?checklist/);
+    expect(text).not.toContain('plan/p');
+    expect(text).toContain('Intro line.');
+    expect(text).toContain('Done.');
+  });
+
+  it('is generic over the registry — a split <analysis> block is held too', async () => {
+    const { fake, calls } = makeChatAPIFake();
+    const strategy = new CommonRenderStrategy(fake, 'en');
+
+    await feedChunks(strategy, [
+      '<analysis>\nroot cause reasoning\n',
+      '</analysis>\nverdict text',
+    ]);
+
+    const text = textOf(calls);
+    expect(text).not.toMatch(/<\/?analysis/);
+    expect(text).not.toContain('root cause reasoning');
+    expect(text).toContain('verdict text');
+  });
+
+  it('degrades an unterminated suppressed tag to marker-stripped prose at finalize', async () => {
+    const { fake, calls } = makeChatAPIFake();
+    const strategy = new CommonRenderStrategy(fake, 'en');
+
+    await feedChunks(strategy, ['<checklist plan="plan/p.md">\n- [ ] a\nStill talking.\n']);
+    expect(textOf(calls)).toBe('');
+
+    await strategy.finalize(true);
+
+    const text = textOf(calls);
+    expect(text).not.toMatch(/<\/?checklist/);
+    expect(text).toContain('Still talking.');
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('drops a bodyless suppressed marker without waiting for a close', async () => {
+    const { fake, calls } = makeChatAPIFake();
+    const strategy = new CommonRenderStrategy(fake, 'en');
+
+    // `<plan-unchanged/>` and `<eval type="…"/>` have no closing
+    // delimiter. Holding for one would swallow the rest of the round, so
+    // the trailing prose must be emitted WITHOUT a finalize().
+    await feedChunks(strategy, [
+      'Report received. ',
+      '<plan-unchanged/>',
+      '\nKeeping the sealed plan.',
+      '<eval type="rubric-a"/>',
+      ' Wrapping up.',
+    ]);
+
+    const text = textOf(calls);
+    expect(text).not.toMatch(/<plan-unchanged|<eval/);
+    expect(text).toContain('Report received.');
+    expect(text).toContain('Keeping the sealed plan.');
+    expect(text).toContain('Wrapping up.');
+  });
+
+  it('leaves a non-suppressed tag on its existing transformer path', async () => {
+    const { fake, calls } = makeChatAPIFake();
+    const strategy = new CommonRenderStrategy(fake, 'en');
+
+    await feedChunks(strategy, ['<reply>the answer</reply>']);
+
+    const text = textOf(calls);
+    expect(text).not.toMatch(/<\/?reply>/);
+    expect(text).toContain('the answer');
+  });
+
+  it('reset() drops withheld state so a retry does not inherit it', async () => {
+    const { fake, calls } = makeChatAPIFake();
+    const strategy = new CommonRenderStrategy(fake, 'en');
+
+    await feedChunks(strategy, ['<checklist plan="plan/p.md">\n- [ ] a\n']);
+    strategy.reset();
+    await feedChunks(strategy, ['fresh stream text']);
+    await strategy.finalize(true);
+
+    const text = textOf(calls);
+    expect(text).toBe('fresh stream text');
+    expect(text).not.toContain('- [ ] a');
+  });
+});

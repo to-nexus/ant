@@ -168,6 +168,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
   }
 
   async finalize(hasToolCalls: boolean = false): Promise<void> {
+    // Release text the suppression gate withheld while waiting for a
+    // closing delimiter that never arrived. Runs at every round's stream
+    // end (StreamOrchestrator.finalize), before the message is closed,
+    // so an unterminated suppressed tag costs the marker and not the
+    // round's prose. No-op on the parallel card path (that branch never
+    // feeds the gate).
+    await this.responseRenderer.flushSuppressionGate();
+
     if (this.taskResponseIndex !== undefined) {
       // `<done>true</done>` side-effect — the parallel task_response
       // buffer path never runs per-chunk `tagTransformer.transform`
@@ -241,5 +249,6 @@ export class CommonRenderStrategy implements IRenderStrategy {
     this.taskResponseBuffer = '';
     this.planContentIndex = undefined;
     this.planContentBuffer = '';
+    this.responseRenderer.resetSuppressionGate();
   }
 }
