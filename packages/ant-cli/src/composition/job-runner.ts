@@ -443,17 +443,24 @@ async function main(): Promise<void> {
     // project-path derivation stays as BC for in-flight jobs spawned by a
     // pre-upgrade worker. NEVER derive the kind from the org id here — a
     // local tenant named like a team org would be misclassified.
-    const scopeRoots = params.orgKind
-      ? deriveCustomAgentScopeRootsForTenant({
+    const tenant = params.orgKind
+      ? {
           workspacesPath: params.workspacesRoot
             ?? path.dirname(path.dirname(path.dirname(params.projectPath))),
           userId: params.userId,
           organizationId: params.orgId,
           organizationKind: params.orgKind,
-        })
+        }
+      : null;
+    const scopeRoots = tenant
+      ? deriveCustomAgentScopeRootsForTenant(tenant)
       : deriveCustomAgentScopeRoots(params.projectPath);
+    // Pipeline roots have no project-path derivation; a pre-upgrade worker
+    // (no org kind) simply gets no `_pipelines/**` mount for that job.
+    const { derivePipelineScopeRootsForTenant } = await import('../core/pipelines/scopeRoots');
+    const pipelineScopeRoots = tenant ? derivePipelineScopeRootsForTenant(tenant) : [];
     const resolved = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
-    activateCustomJob(resolved, scopeRoots);
+    activateCustomJob(resolved, scopeRoots, pipelineScopeRoots);
     console.log(`🧩 [JobRunner] Custom job activated: ${params.customJobRef} (scope: ${resolved.scope})`);
   }
 

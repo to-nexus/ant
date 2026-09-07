@@ -450,7 +450,9 @@ describe('buildAttachedContextSection — gate + peer labelling', () => {
   // path belongs to). Instruction prose stays unpinned.
   let container: string;
   let agentsRoot: string;
+  let pipelinesRoot: string;
   const roots = () => [{ scope: 'user' as const, root: agentsRoot, readonly: false }];
+  const pipelineRoots = () => [{ scope: 'user' as const, root: pipelinesRoot, readonly: false }];
 
   beforeEach(() => {
     container = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-band-'));
@@ -461,11 +463,15 @@ describe('buildAttachedContextSection — gate + peer labelling', () => {
     fs.mkdirSync(path.join(agent, 'jobs', 'settle'), { recursive: true });
     fs.writeFileSync(path.join(agent, 'agent.yaml'), 'id: payments-ops\n');
     fs.writeFileSync(path.join(agent, 'jobs', 'settle', 'job.yaml'), 'id: settle\n');
+    pipelinesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-band-pipelines-'));
+    fs.mkdirSync(path.join(pipelinesRoot, 'nightly'), { recursive: true });
+    fs.writeFileSync(path.join(pipelinesRoot, 'nightly', 'pipeline.yaml'), 'name: nightly\n');
   });
 
   afterEach(() => {
     fs.rmSync(container, { recursive: true, force: true });
     fs.rmSync(agentsRoot, { recursive: true, force: true });
+    fs.rmSync(pipelinesRoot, { recursive: true, force: true });
   });
 
   it('nothing attached → no section at all', () => {
@@ -488,6 +494,19 @@ describe('buildAttachedContextSection — gate + peer labelling', () => {
 
   it('a peer path that no longer resolves degrades, never throws', () => {
     const section = buildAttachedContextSection(container, ['_agents/ghost-agent/agent.yaml'], roots())!;
+    expect(section).toContain('no longer exists');
+  });
+
+  it('a pipeline definition row names WHICH pipeline it is', () => {
+    const rel = '_pipelines/nightly/pipeline.yaml';
+    const section = buildAttachedContextSection(container, [rel], roots(), pipelineRoots())!;
+    expect(section).toContain(rel);
+    expect(section).toContain('definition of pipeline `nightly`');
+    expect(section).not.toContain('definition of agent');
+  });
+
+  it('a pipeline path with no pipeline roots degrades, never throws', () => {
+    const section = buildAttachedContextSection(container, ['_pipelines/nightly/pipeline.yaml'], roots())!;
     expect(section).toContain('no longer exists');
   });
 });

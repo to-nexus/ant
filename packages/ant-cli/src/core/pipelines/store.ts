@@ -29,6 +29,7 @@ import {
 } from '@ant/shared';
 import { atomicWriteFile } from '../utils/atomicWriteFile';
 import { checkMinInterval } from './cron';
+import type { PipelineScopeRoot } from './scopeRoots';
 import {
   activationDir,
   activationFilePath,
@@ -93,6 +94,17 @@ export function listPipelines(root: string): PipelineListItem[] {
 
 export function pipelineExists(root: string, pipelineId: string): boolean {
   return fs.existsSync(pipelineDefPath(root, pipelineId));
+}
+
+/** Closest-wins definition resolve across ordered scope roots (user > org) — the HTTP routes and the agent plane share it. */
+export function findPipelineRoot(
+  scopeRoots: PipelineScopeRoot[],
+  pipelineId: string,
+): { scopeRoot: PipelineScopeRoot } | null {
+  for (const scopeRoot of scopeRoots) {
+    if (pipelineExists(scopeRoot.root, pipelineId)) return { scopeRoot };
+  }
+  return null;
 }
 
 export function loadPipeline(root: string, pipelineId: string): PipelineDef {

@@ -19,6 +19,7 @@ import {
   findActivationsForPipeline,
   loadAvailability,
   saveAvailability,
+  findPipelineRoot,
   PipelineValidationError,
 } from '../../src/core/pipelines/store';
 import { reconcilePipelines } from '../../src/infrastructure/scheduling/PipelineReconciler';
@@ -164,6 +165,43 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
     expect(fs.existsSync(path.join(actRoot(), 'proj-a', 'activation.json'))).toBe(false);
     expect(published[0].data).toMatchObject({ pipelineId: 'p1', activation: null });
+  });
+});
+
+describe('findPipelineRoot — closest-wins across ordered scope roots', () => {
+  // One resolver for the HTTP routes AND the universal agent plane
+  // (`_pipelines/{id}`), so the two cannot disagree about which root wins.
+  const defRoot = (name: string) => {
+    const root = path.join(tmp, name);
+    fs.mkdirSync(root, { recursive: true });
+    return root;
+  };
+  const write = (root: string, id: string) => {
+    fs.mkdirSync(path.join(root, id), { recursive: true });
+    fs.writeFileSync(path.join(root, id, 'pipeline.yaml'), 'name: x\n');
+  };
+
+  it('the first root holding pipeline.yaml wins (user before org)', () => {
+    const user = defRoot('user');
+    const org = defRoot('org');
+    write(user, 'shared');
+    write(org, 'shared');
+    write(org, 'org-only');
+    const roots = [
+      { scope: 'user' as const, root: user, readonly: false },
+      { scope: 'org' as const, root: org, readonly: false, aclGoverned: true },
+    ];
+    expect(findPipelineRoot(roots, 'shared')?.scopeRoot.root).toBe(user);
+    expect(findPipelineRoot(roots, 'org-only')?.scopeRoot.scope).toBe('org');
+  });
+
+  it('a dir without pipeline.yaml, an unknown id, or no roots → null', () => {
+    const user = defRoot('user');
+    fs.mkdirSync(path.join(user, 'husk'), { recursive: true });
+    const roots = [{ scope: 'user' as const, root: user, readonly: false }];
+    expect(findPipelineRoot(roots, 'husk')).toBeNull();
+    expect(findPipelineRoot(roots, 'ghost')).toBeNull();
+    expect(findPipelineRoot([], 'ghost')).toBeNull();
   });
 });
 

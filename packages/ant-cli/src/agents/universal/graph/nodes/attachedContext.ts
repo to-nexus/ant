@@ -19,8 +19,9 @@
  */
 
 import * as fs from 'fs';
-import { parseUniversalAgentRef } from '@ant/shared';
+import { parseUniversalAgentRef, parseUniversalPipelineRef } from '@ant/shared';
 import type { CustomAgentScopeRoot } from '../../../../core/customAgents/CustomAgentLoader';
+import type { PipelineScopeRoot } from '../../../../core/pipelines/scopeRoots';
 import type { ImageContentBlock } from '../../../../core/ports/llm';
 import { resolveUniversalAgentPlanePath } from '../../../../core/customAgents/universalAgentPlane';
 import { compactContent } from '../../../../core/utils/contentCompactor';
@@ -113,6 +114,7 @@ export function buildAttachedContext(
   attachedContext: readonly string[],
   scopeRoots: CustomAgentScopeRoot[] = [],
   vision: VisionOptions = { enabled: false },
+  pipelineScopeRoots: PipelineScopeRoot[] = [],
 ): AttachedContextResult {
   if (attachedContext.length === 0) return { section: null, imageBlocks: [] };
 
@@ -121,7 +123,7 @@ export function buildAttachedContext(
   let totalImageBytes = 0;
 
   const lines = attachedContext.map((rel) => {
-    const ctx = { containerPath, scopeRoots };
+    const ctx = { containerPath, scopeRoots, pipelineScopeRoots };
     let full: string | null = null;
     let stat: fs.Stats | null = null;
     try {
@@ -130,10 +132,15 @@ export function buildAttachedContext(
     } catch {
       stat = null;
     }
-    // A peer definition is named by WHOSE it is — `job.yaml` alone tells the
-    // model nothing about which agent it is looking at.
+    // A definition is named by WHOSE it is — `job.yaml` / `pipeline.yaml`
+    // alone tells the model nothing about which agent or pipeline it is.
     const peer = parseUniversalAgentRef(rel);
-    const label = peer ? `\`${rel}\` — definition of agent \`${peer.agentId}\`` : `\`${rel}\``;
+    const pipeline = parseUniversalPipelineRef(rel);
+    const label = peer
+      ? `\`${rel}\` — definition of agent \`${peer.agentId}\``
+      : pipeline
+        ? `\`${rel}\` — definition of pipeline \`${pipeline.pipelineId}\``
+        : `\`${rel}\``;
     const isFile = stat !== null && !stat.isDirectory();
     const kind = classifyAttachedEntry({
       exists: stat !== null,
@@ -210,6 +217,7 @@ export function buildAttachedContextSection(
   containerPath: string,
   attachedContext: readonly string[],
   scopeRoots: CustomAgentScopeRoot[] = [],
+  pipelineScopeRoots: PipelineScopeRoot[] = [],
 ): string | null {
-  return buildAttachedContext(containerPath, attachedContext, scopeRoots).section;
+  return buildAttachedContext(containerPath, attachedContext, scopeRoots, { enabled: false }, pipelineScopeRoots).section;
 }

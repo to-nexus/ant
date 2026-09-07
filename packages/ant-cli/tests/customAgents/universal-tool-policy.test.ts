@@ -8,7 +8,10 @@
  * is registered and dispatchable but invisible to the LLM.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
+import * as nodeFs from 'fs';
+import * as os from 'os';
+import * as nodePath from 'path';
 import {
   UNIVERSAL_BUILTIN_TOOLS,
   MUTATING_BUILTIN_TOOLS,
@@ -32,6 +35,7 @@ import {
   createUniversalFileSystem,
   definitionMount,
   peerAgentsMount,
+  pipelineDefinitionsMount,
   pipelineRunsMount,
 } from '../../src/agents/universal/graph/runtime';
 import type { FileSystemPort } from '../../src/core/ports/filesystem';
@@ -297,6 +301,30 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
       resolveAbsolute: (p: string) => `/root/${tag}/${p}`,
     }) as unknown as FileSystemPort;
 
+  // `findPipelineRoot` reads disk (`pipeline.yaml` presence), so the pipeline
+  // mount gets a real root; its per-dir port stays a stub whose listing carries
+  // the two sidecars the whitelist must hide.
+  let pipelinesRoot: string;
+  beforeAll(() => {
+    pipelinesRoot = nodeFs.mkdtempSync(nodePath.join(os.tmpdir(), 'ant-tool-policy-pipelines-'));
+    nodeFs.mkdirSync(nodePath.join(pipelinesRoot, 'nightly'), { recursive: true });
+    nodeFs.writeFileSync(nodePath.join(pipelinesRoot, 'nightly', 'pipeline.yaml'), 'name: nightly\n');
+    nodeFs.writeFileSync(nodePath.join(pipelinesRoot, 'nightly', 'owner.json'), '{}');
+  });
+  afterAll(() => {
+    nodeFs.rmSync(pipelinesRoot, { recursive: true, force: true });
+  });
+  const pipelineDirPort = (): FileSystemPort =>
+    ({
+      ...(port('pipe') as any),
+      readDirectory: async () => [
+        { name: 'pipeline.yaml', isDirectory: false },
+        { name: 'owner.json', isDirectory: false },
+        { name: 'availability.json', isDirectory: false },
+      ],
+      listFiles: async () => ['pipeline.yaml', 'owner.json', 'availability.json'],
+    }) as unknown as FileSystemPort;
+
   const build = () =>
     createUniversalFileSystem(port('artifacts'), [
       definitionMount(port('own-def')),
@@ -304,12 +332,14 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
         [{ scope: 'user', root: '/scope', readonly: false }],
         (root) => port(`peer:${root}`),
       ),
+      pipelineDefinitionsMount([{ scope: 'user', root: pipelinesRoot, readonly: false }], () => pipelineDirPort()),
       pipelineRunsMount('/runs', () => port('runs')),
     ]);
 
   it.each([
     ['artifact path → artifacts root', 'plan/notes.md', 'artifacts:plan/notes.md'],
     ['own definition mount strips its prefix', '_agent-definition/agent.yaml', 'own-def:agent.yaml'],
+    ['pipeline definition mount strips its prefix', '_pipelines/nightly/pipeline.yaml', 'pipe:pipeline.yaml'],
     ['run log mount strips its prefix', 'pipeline-runs/r1.jsonl', 'runs:r1.jsonl'],
   ] as const)('%s', async (_label, p, expected) => {
     await expect(build().readFile(p)).resolves.toBe(expected);
@@ -350,15 +380,34 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
     await expect(build().listFiles('plan')).resolves.toEqual(['artifacts:plan']);
   });
 
-  it('bare _agents root is a mount error, never a fall-through to the artifacts root', () => {
-    // Peer listing needs an agent id; the honest answer is the mount's own
-    // refusal, not the artifacts adapter's "missing".
-    expect(() => build().listFiles('_agents')).toThrow(/Cannot resolve mounted path/);
+  it.each([
+    ['_agents'],
+    ['_pipelines'],
+  ] as const)('bare %s root is a mount error, never a fall-through to the artifacts root', (p) => {
+    // Listing needs an id; the honest answer is the mount's own refusal, not
+    // the artifacts adapter's "missing".
+    expect(() => build().listFiles(p)).toThrow(/Cannot resolve mounted path/);
+  });
+
+  it('_pipelines/{id} lists ONLY pipeline.yaml — sidecars are not definition', async () => {
+    await expect(build().readDirectory('_pipelines/nightly')).resolves.toEqual([
+      { name: 'pipeline.yaml', isDirectory: false },
+    ]);
+    await expect(build().listFiles('_pipelines/nightly')).resolves.toEqual(['pipeline.yaml']);
+  });
+
+  it.each([
+    ['owner.json (authorship)', '_pipelines/nightly/owner.json'],
+    ['availability.json (operational state)', '_pipelines/nightly/availability.json'],
+    ['an unknown pipeline id', '_pipelines/no-such-pipeline/pipeline.yaml'],
+  ] as const)('%s is unreadable through the pipeline mount', (_label, p) => {
+    expect(() => build().readFile(p)).toThrow(/Cannot resolve mounted path/);
   });
 
   it.each([
     ['_agent-definition'],
     ['_agents'],
+    ['_pipelines'],
     ['pipeline-runs'],
   ] as const)('bare mount root %s refuses writes (no shadow directory in artifacts)', (p) => {
     const fs = build();
@@ -377,6 +426,7 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
   it.each([
     ['_agent-definition/', '_agent-definition/agent.yaml'],
     ['_agents/', '_agents/payments-ops/agent.yaml'],
+    ['_pipelines/', '_pipelines/nightly/pipeline.yaml'],
     ['pipeline-runs/', 'pipeline-runs/r1.jsonl'],
   ] as const)('every mount is read-only (%s)', (_prefix, p) => {
     const fs = build();
@@ -392,16 +442,18 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
   // path in a plane that has none. A definition mount names the one route
   // that writes; the run-log mount has no such route and stays bare.
   it.each([
-    ['_agent-definition/agent.yaml', true],
-    ['_agents/payments-ops/agent.yaml', true],
-    ['pipeline-runs/r1.jsonl', false],
-  ] as const)('%s refusal names the write route: %s', (p, named) => {
+    ['_agent-definition/agent.yaml', /PUT \/definitions\/agents/],
+    ['_agents/payments-ops/agent.yaml', /PUT \/definitions\/agents/],
+    ['_pipelines/nightly/pipeline.yaml', /POST\|PUT \/definitions\/pipelines/],
+    ['pipeline-runs/r1.jsonl', null],
+  ] as const)('%s refusal names the write route: %s', (p, route) => {
     const fs = build();
     const msg = (() => {
       try { fs.writeFile(p, 'x'); return ''; } catch (e) { return (e as Error).message; }
     })();
     expect(msg).toMatch(/read-only/);
-    expect(/PUT \/definitions\/agents/.test(msg)).toBe(named);
+    if (route) expect(msg).toMatch(route);
+    else expect(msg).not.toMatch(/\/definitions\//);
   });
 
   it('readFile forwards FileReadOptions on both branches (M-032 maxBytes backstop)', async () => {

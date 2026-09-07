@@ -39,7 +39,11 @@ import { buildCustomJobSystemBlock, DEFINITION_MOUNT_PREFIX } from '../../../../
 import { getToolsByNames } from '../../../common/tool/toolSchemas';
 import { ToolName } from '../../../common/tool/toolCatalog';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../common/subagent';
-import { getActiveCustomAgentScopeRoots, requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
+import {
+  getActiveCustomAgentScopeRoots,
+  getActivePipelineScopeRoots,
+  requireActiveCustomJob,
+} from '../../../../core/customAgents/activeCustomJob';
 import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
 import { requiresApproval, isClarifyEnabled, UNIVERSAL_CLARIFY_BUDGET } from '../../../../core/customAgents/universalToolPolicy';
 import { CLARIFY_TOOL_DEFINITION } from '../../../common/clarify/tool';
@@ -235,9 +239,13 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
   // RAC/pool); image pins become vision blocks on the current user message.
   // Section text and blocks come from ONE pass so they cannot disagree.
   const attached = state.featurePath
-    ? buildAttachedContext(state.featurePath, state.turnContext?.context ?? [], getActiveCustomAgentScopeRoots(), {
-        enabled: llm.provider === 'anthropic',
-      })
+    ? buildAttachedContext(
+        state.featurePath,
+        state.turnContext?.context ?? [],
+        getActiveCustomAgentScopeRoots(),
+        { enabled: llm.provider === 'anthropic' },
+        getActivePipelineScopeRoots(),
+      )
     : { section: null, imageBlocks: [] as ImageContentBlock[] };
   const systemPrompt = await buildSystemPrompt(state, resolved, attached.section);
   const includeClarify =

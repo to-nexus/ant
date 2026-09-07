@@ -30,9 +30,9 @@ import {
 } from '../../../../../core/pipelines/scopeRoots';
 import {
   findActivationsForPipeline,
+  findPipelineRoot,
   listAccountActivations,
   loadAvailability,
-  pipelineExists,
   readRunIndex,
 } from '../../../../../core/pipelines/store';
 import type { OrganizationRepositoryPort } from '../../../../../core/ports/organizationRepository';
@@ -109,17 +109,6 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
 
   function actRootOf(owner: PipelineOwner): string {
     return deriveActivationsRoot(ctxOf(owner));
-  }
-
-  /** Closest-wins definition resolve across the caller's scope roots. */
-  function findPipelineRoot(
-    scopeRoots: PipelineScopeRoot[],
-    pipelineId: string,
-  ): { scopeRoot: PipelineScopeRoot } | null {
-    for (const scopeRoot of scopeRoots) {
-      if (pipelineExists(scopeRoot.root, pipelineId)) return { scopeRoot };
-    }
-    return null;
   }
 
   /** Any-scope resolve (org pipelines are viewable by every member) or 400/404. */

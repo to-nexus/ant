@@ -8,18 +8,24 @@
  */
 
 import type { CustomAgentScopeRoot } from './CustomAgentLoader.js';
+import type { PipelineScopeRoot } from '../pipelines/scopeRoots.js';
 import type { ResolvedCustomJob } from './types.js';
 
 let active: ResolvedCustomJob | null = null;
 let activeScopeRoots: CustomAgentScopeRoot[] = [];
+let activePipelineScopeRoots: PipelineScopeRoot[] = [];
 
 /**
- * `scopeRoots` rides along because the agent plane resolves PEER definitions
- * (`_agents/{agentId}/…`) from the same ordered roots the child already
- * derived to load this job — a second derivation site would be a second
- * authority.
+ * `scopeRoots` / `pipelineScopeRoots` ride along because the agent plane
+ * resolves PEER definitions (`_agents/{agentId}/…`, `_pipelines/{id}/…`) from
+ * the same ordered roots the child already derived to load this job — a
+ * second derivation site would be a second authority.
  */
-export function activateCustomJob(job: ResolvedCustomJob, scopeRoots: CustomAgentScopeRoot[] = []): void {
+export function activateCustomJob(
+  job: ResolvedCustomJob,
+  scopeRoots: CustomAgentScopeRoot[] = [],
+  pipelineScopeRoots: PipelineScopeRoot[] = [],
+): void {
   if (active) {
     throw new Error(
       `Custom job already active (${active.agentId}/${active.jobId}) — activation is once-per-process (job-runner child only)`,
@@ -27,11 +33,17 @@ export function activateCustomJob(job: ResolvedCustomJob, scopeRoots: CustomAgen
   }
   active = job;
   activeScopeRoots = scopeRoots;
+  activePipelineScopeRoots = pipelineScopeRoots;
 }
 
 /** Definition scope roots of the activated job (empty outside a universal child). */
 export function getActiveCustomAgentScopeRoots(): CustomAgentScopeRoot[] {
   return activeScopeRoots;
+}
+
+/** Pipeline definition scope roots of the activated job (empty outside a universal child). */
+export function getActivePipelineScopeRoots(): PipelineScopeRoot[] {
+  return activePipelineScopeRoots;
 }
 
 /** Returns null when the process runs a builtin job (or the server). */
@@ -51,4 +63,5 @@ export function requireActiveCustomJob(): ResolvedCustomJob {
 export function _resetActiveCustomJobForTests(): void {
   active = null;
   activeScopeRoots = [];
+  activePipelineScopeRoots = [];
 }

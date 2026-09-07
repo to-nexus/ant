@@ -415,6 +415,72 @@ describe('validateUniversalTurnMeta — accept gate', () => {
     });
   });
 
+  // ── pipeline definitions (`_pipelines/{pipelineId}/pipeline.yaml`) ────────
+  describe('_pipelines context paths', () => {
+    let pipelinesRoot: string;
+    const opts = () => ({ pipelineScopeRoots: [{ scope: 'user' as const, root: pipelinesRoot, readonly: false }] });
+
+    beforeEach(() => {
+      pipelinesRoot = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'ant-turn-meta-pipelines-'));
+      const dir = nodePath.join(pipelinesRoot, 'nightly');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(nodePath.join(dir, 'pipeline.yaml'), 'name: nightly\n');
+      // Sidecars exist on disk — still not definition, still refused.
+      fs.writeFileSync(nodePath.join(dir, 'owner.json'), '{}');
+      fs.writeFileSync(nodePath.join(dir, 'availability.json'), '{"enabled":false}');
+    });
+
+    afterEach(() => {
+      fs.rmSync(pipelinesRoot, { recursive: true, force: true });
+    });
+
+    it('accepts the definition file', async () => {
+      const validate = await load();
+      const rel = '_pipelines/nightly/pipeline.yaml';
+      const result = await validate(container, CATALOG, [], [rel], undefined, ['read_file'], [], opts());
+      expect(result).toEqual({ ok: true, meta: { intents: [], context: [rel] } });
+    });
+
+    it('accepts the pipeline folder as a unit when list_files is granted', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['_pipelines/nightly'], undefined, ['read_file', 'list_files'], [], opts());
+      expect(result).toEqual({ ok: true, meta: { intents: [], context: ['_pipelines/nightly'] } });
+    });
+
+    it('the pipeline folder without list_files → 400 context-dir-not-listable', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['_pipelines/nightly'], undefined, ['read_file'], [], opts());
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'context-dir-not-listable' });
+    });
+
+    it.each([
+      ['owner.json (authorship, not definition)', '_pipelines/nightly/owner.json'],
+      ['availability.json (operational state, not definition)', '_pipelines/nightly/availability.json'],
+      ['unknown pipeline', '_pipelines/no-such-pipeline/pipeline.yaml'],
+      ['bare _pipelines (a picker group row, not a directory)', '_pipelines'],
+      ['traversal out of the pipeline dir', '_pipelines/nightly/../../escape.md'],
+    ] as const)('refuses %s → 400 invalid-context-path', async (_label, rel) => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], [rel], undefined, ['read_file', 'list_files'], [], opts());
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
+
+    it('with no pipeline scope roots supplied every pipeline path is refused (no ambient discovery)', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['_pipelines/nightly/pipeline.yaml'], undefined, ['read_file']);
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
+
+    it('a _pipelines glob pin is refused — globs address the artifacts tree only', async () => {
+      const validate = await load();
+      const result = await validate(
+        container, CATALOG, [], ['_pipelines/*/pipeline.yaml'], undefined, ['read_file'], [],
+        { expandContextGlobs: true, ...opts() },
+      );
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
+  });
+
   // ── glob pin expansion (pipeline dispatch only) ────────────────────────────
   describe('glob pins — expandContextGlobs', () => {
     const OPTS = { expandContextGlobs: true };

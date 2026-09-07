@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger';
 import { isBillingEnabled } from '../config/billingCapability';
 import { peekCloudModule } from '../cloud/cloudPlugin';
 import type { CustomAgentScopeRoot } from '../customAgents/CustomAgentLoader';
+import type { PipelineScopeRoot } from '../pipelines/scopeRoots';
 
 // ============================================
 // Definition / turn-meta accept gates (moved verbatim from job.routes.ts)
@@ -58,6 +59,8 @@ export async function resolveUniversalExecuteContext(
        * consumer list — a fourth derivation site is a drift vector).
        */
       scopeRoots: CustomAgentScopeRoot[];
+      /** Pipeline definition scope roots (same tenant ctx) — `_pipelines/**` attachments resolve against them. */
+      pipelineScopeRoots: PipelineScopeRoot[];
       /**
        * intentId → `hooks.stop` artifact globs — each intent's declared
        * OUTPUT contract. The pipeline coordinator captures a completed step's
@@ -90,17 +93,21 @@ export async function resolveUniversalExecuteContext(
   let declaresSelfApi = false;
   let builtinTools: string[] = [];
   let scopeRoots: CustomAgentScopeRoot[] = [];
+  let pipelineScopeRoots: PipelineScopeRoot[] = [];
   let intentStopGlobs: Record<string, string[]> = {};
   let intentOutcomes: Record<string, string[]> = {};
   try {
     const { deriveCustomAgentScopeRootsForTenant } = await import('../customAgents/scopeRoots');
+    const { derivePipelineScopeRootsForTenant } = await import('../pipelines/scopeRoots');
     const { loadCustomJob } = await import('../customAgents/CustomAgentLoader');
-    scopeRoots = deriveCustomAgentScopeRootsForTenant({
+    const tenant = {
       workspacesPath: workspaceResolver.getPhysicalWorkspacesPath(),
       userId: userContext.userId,
       organizationId: userContext.organizationId,
       organizationKind: userContext.organizationKind ?? 'local',
-    });
+    };
+    scopeRoots = deriveCustomAgentScopeRootsForTenant(tenant);
+    pipelineScopeRoots = derivePipelineScopeRootsForTenant(tenant);
     const loaded = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
     intentIds = new Set(loaded.intents.map((i) => i.id));
     builtinTools = [...loaded.builtinTools];
@@ -119,7 +126,7 @@ export async function resolveUniversalExecuteContext(
   const { ensureUniversalContainer } = await import('../customAgents/universalContainer');
   ensureUniversalContainer(projectPath);
   const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
-  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots, intentStopGlobs, intentOutcomes };
+  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots, pipelineScopeRoots, intentStopGlobs, intentOutcomes };
 }
 
 /**
@@ -189,7 +196,7 @@ function walkArtifactFiles(rootAbs: string): string[] {
 /**
  * Validate the explicit turn meta (`@intent:` / `@ctx:` / `@plan` mentions)
  * against the job's catalog and the AGENT PLANE (artifacts ∪ `pipeline-runs`
- * ∪ `_agents` peer definitions — never `sessions`). Explicit
+ * ∪ `_agents` peer definitions ∪ `_pipelines` definitions — never `sessions`). Explicit
  * input is user intent — an unknown id is a 400 (`unknown-intent`), never a
  * silent drop (that contract belongs to the inference channel). `@plan` is
  * job-independent: a boolean per-turn flag, adopted only when strictly true.
@@ -207,7 +214,7 @@ export async function validateUniversalTurnMeta(
   rawPlan?: unknown,
   builtinTools?: readonly string[],
   scopeRoots: CustomAgentScopeRoot[] = [],
-  opts: { expandContextGlobs?: boolean } = {},
+  opts: { expandContextGlobs?: boolean; pipelineScopeRoots?: PipelineScopeRoot[] } = {},
 ): Promise<
   | { ok: true; meta: { intents: string[]; context: string[]; plan?: boolean } | null; contextExpanded?: Record<string, number> }
   | { ok: false; status: number; error: string; code: string }
@@ -220,12 +227,19 @@ export async function validateUniversalTurnMeta(
 
   let contextExpanded: Record<string, number> | undefined;
   if (opts.expandContextGlobs && context.some((c) => c.includes('*'))) {
-    const { validateArtifactGlob, UNIVERSAL_PIPELINE_RUNS_DIRNAME } = await import('@ant/shared');
+    const { validateArtifactGlob, UNIVERSAL_PIPELINE_RUNS_DIRNAME, UNIVERSAL_AGENTS_DIRNAME, UNIVERSAL_PIPELINES_DIRNAME } =
+      await import('@ant/shared');
     const { matchArtifactGlob } = await import('../customAgents/stopHooks');
     const { UNIVERSAL_ARTIFACTS_DIRNAME } = await import('../customAgents/universalContainer');
-    // The walk root is the artifacts dir itself — `sessions/` and the
-    // `pipeline-runs` graft live under other physical roots, so a glob can
-    // only ever address the artifacts tree.
+    // The walk root is the artifacts dir itself — `sessions/`, the
+    // `pipeline-runs` graft and the definition mounts live under other
+    // physical roots, so a glob can only ever address the artifacts tree.
+    const nonArtifactRoots = new Set<string>([
+      'sessions',
+      UNIVERSAL_PIPELINE_RUNS_DIRNAME,
+      UNIVERSAL_AGENTS_DIRNAME,
+      UNIVERSAL_PIPELINES_DIRNAME,
+    ]);
     const artifactsRoot = path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME);
     const files = walkArtifactFiles(artifactsRoot);
     const expanded: string[] = [];
@@ -238,7 +252,7 @@ export async function validateUniversalTurnMeta(
       const glob = rel.trim();
       const globErr =
         validateArtifactGlob(glob, 'context') ??
-        (glob.split('/')[0] === 'sessions' || glob.split('/')[0] === UNIVERSAL_PIPELINE_RUNS_DIRNAME
+        (nonArtifactRoots.has(glob.split('/')[0])
           ? `context glob "${glob}" may only address the artifacts tree`
           : null);
       if (globErr) {
@@ -288,13 +302,18 @@ export async function validateUniversalTurnMeta(
 
   // Attachability is judged against the AGENT PLANE — the same roots the tool
   // sandbox mounts. `sessions/**` throws here (outside the sandbox), `_agents/**`
-  // resolves to a peer definition, everything else to the artifacts tree.
+  // resolves to a peer definition, `_pipelines/**` to a pipeline definition
+  // (its splitter is the whitelist), everything else to the artifacts tree.
   const { resolveUniversalAgentPlanePath } = await import('../customAgents/universalAgentPlane');
   const { isAllowedDefinitionPath, classifyDefinitionDir, parseUniversalAgentRef } = await import('@ant/shared');
   for (const rel of context) {
     let resolved: { absPath: string; root: string; agentId?: string };
     try {
-      resolved = resolveUniversalAgentPlanePath(rel, { containerPath, scopeRoots });
+      resolved = resolveUniversalAgentPlanePath(rel, {
+        containerPath,
+        scopeRoots,
+        pipelineScopeRoots: opts.pipelineScopeRoots ?? [],
+      });
     } catch (e) {
       return {
         ok: false,

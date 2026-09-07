@@ -334,7 +334,7 @@ whole bug class:
 | Plane | Owner | Roots |
 |---|---|---|
 | **Explorer** — codespace panel, `GET /projects/:id/features/:feature/files`, `FileTreeBroadcaster` | `resolveUniversalMergedPath` / `buildUniversalMergedTreeResult` | artifacts ∪ `sessions` ∪ `pipeline-runs` |
-| **Agent** — tool sandbox, `@ctx:` accept gate, the Attached Context prompt band | `resolveUniversalAgentPlanePath` (`core/customAgents/universalAgentPlane.ts`) | artifacts ∪ `pipeline-runs` ∪ `_agents` — never `sessions` |
+| **Agent** — tool sandbox, `@ctx:` accept gate, the Attached Context prompt band | `resolveUniversalAgentPlanePath` (`core/customAgents/universalAgentPlane.ts`) | artifacts ∪ `pipeline-runs` ∪ `_agents` ∪ `_pipelines` — never `sessions` |
 
 **The attachable set is the agent plane.** Before this split, the gate and the
 band resolved through the *container* resolver while the tools resolved through
@@ -349,11 +349,13 @@ The facade's mount table (`composition/orchestrator.ts`) IS that plane:
 |---|---|---|
 | `_agent-definition/` | the running job's own `agentDir` | self-reference — `buildCustomJobSystemBlock` emits `read_file` pointers into it |
 | `_agents/{agentId}/` | peer definitions via `findAgentRoot(scopeRoots, id)` | the `@ctx:` designation channel (below) |
+| `_pipelines/{pipelineId}/` | pipeline definitions via `findPipelineRoot(pipelineScopeRoots, id)` (`core/pipelines/store.ts`, the same resolver the pipelines routes use), wrapped so ONLY `pipeline.yaml` is readable/listable | designating a pipeline for `pipeline-builder` (below) |
 | `pipeline-runs/` | `getPipelineRunsRootOf(containerPath)` | same-tenant project data the explorer already showed |
 
 Every mount is read-only: a write refuses if EITHER operand is mounted, so a
 copy out of a mount is still a mount write. Definition writes keep their single
-funnel (`PUT /definitions/agents/:agentId/file` → `gateDefinitionSave`) — the mount
+funnel (`PUT /definitions/agents/:agentId/file` → `gateDefinitionSave`; pipelines
+`POST|PUT /definitions/pipelines`, which each refusal message names) — the mount
 never becomes a second write path.
 
 **`_agents/` — designating a peer definition.** `agent-builder` could always
@@ -388,25 +390,54 @@ an agent / job / intent directory.
   happens to sit in the dir — so the picker and the save funnel name the same
   set of files.
 
+**`_pipelines/` — designating a pipeline definition.** The `_agents` shape one
+resource over, all-or-none across the same five surfaces (resolver, accept gate,
+mount, prompt band, picker graft):
+
+- `parseUniversalPipelineRef` / `isUniversalPipelineRef` (`@ant/shared`) are the
+  one splitter, and **the splitter IS the whitelist**: only `_pipelines/{id}`
+  (folder unit) and `_pipelines/{id}/pipeline.yaml` parse. `owner.json` (the
+  author's account coordinates) and `availability.json` (operational state) are
+  not definition, so every plane refuses them by getting `null` — there is no
+  second vocabulary check to drift from the agents one.
+- Scope roots: `derivePipelineScopeRootsForTenant` (user > org), derived ONCE
+  per dispatch in `resolveUniversalExecuteContext` (returned as
+  `pipelineScopeRoots`, handed to `validateUniversalTurnMeta` via
+  `opts.pipelineScopeRoots`) and once per child in `job-runner.ts`
+  (`activateCustomJob(job, scopeRoots, pipelineScopeRoots)` →
+  `getActivePipelineScopeRoots()` for the mount and the band). A pre-upgrade
+  worker that supplies no org kind gets no `_pipelines` mount for that job.
+- The mount wraps each pipeline dir in a whitelisted read-only port:
+  `readDirectory`/`listFiles` filter to `pipeline.yaml`, any other read throws
+  `Cannot resolve mounted path`. The root is unlistable (needs an id), like
+  `_agents/`, so `listableMountRoots` is unchanged.
+- The band labels a row `` `rel` — definition of pipeline `{id}` ``; glob pins
+  refuse `_agents`/`_pipelines` first segments (globs address artifacts only).
+
 **Known limitation:** `search_files`/`search_code` run ripgrep at
 `fileSystem.getRootPath()` (the artifacts root), so no mount is searchable —
 true for `_agent-definition/` since it existed. The supported path is the band's
 `list_files` → `read_file` instruction.
 
-**The `_agents` subtree is NOT in the container tree.** Definitions are
-account-owned; the project file-tree endpoint is Redis-cached per
+**The `_agents` / `_pipelines` subtrees are NOT in the container tree.**
+Definitions are account-owned; the project file-tree endpoint is Redis-cached per
 (user, project, feature) for 24h and re-broadcast by `FileTreeBroadcaster`, and
 a definition saved through the account-scoped write funnel could never bust that
 key — a file `agent-builder` had just written would stay unattachable for up to
-a day. The picker grafts it client-side instead
-(`useAgentDefinitionPickerTree` → `useArtifactPickerTree`, gated on
-`projectType === 'universal'`), sourced from `ensureDefinitionTree`, the same
-deduped per-agent cache the settings rail uses. Typeahead, Browse modal and chip
-row therefore still read ONE tree.
+a day. The picker grafts them client-side instead (`useArtifactPickerTree`,
+gated on `projectType === 'universal'`): `_agents` from `ensureDefinitionTree`,
+the same deduped per-agent cache the settings rail uses; `_pipelines` from the
+pipeline list (`loadPipelines`), one `pipeline.yaml` node per pipeline.
+`buildUniversalMergedTreeResult` filters both reserved names
+(`UNIVERSAL_AGENTS_NODE` / `UNIVERSAL_PIPELINES_NODE`) so a user-created
+`artifacts/_agents/` or `artifacts/_pipelines/` cannot shadow a mount. Typeahead,
+Browse modal and chip row therefore still read ONE tree.
 
-Guards: `universal-container.test.ts` (agent-plane routing truth table),
-`universal-turn-context.test.ts` (`_agents` accept rows),
-`universal-tool-policy.test.ts` (mount table + read-only contract),
+Guards: `universal-container.test.ts` (agent-plane routing truth table, `_agents`
++ `_pipelines` rows), `universal-turn-context.test.ts` (`_agents` / `_pipelines`
+accept rows), `universal-tool-policy.test.ts` (mount table + read-only contract +
+the `pipeline.yaml`-only whitelist), `universal-prompt-injection.test.ts` (band
+labels), `pipelines/pipeline-activation.test.ts` (`findPipelineRoot`),
 `selectionDisplay.test.ts`, `mentionDomainSurface.test.ts`.
 
 ## MCP connections, declared REST APIs & the credential plane (A16/A13)

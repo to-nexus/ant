@@ -11,10 +11,20 @@
  * this module hands out must never be replaced, only populated.
  */
 
-import { UNIVERSAL_AGENTS_DIRNAME, UNIVERSAL_PIPELINE_RUNS_DIRNAME, parseUniversalAgentRef } from '@ant/shared';
+import {
+  PIPELINE_FILE_NAME,
+  UNIVERSAL_AGENTS_DIRNAME,
+  UNIVERSAL_PIPELINES_DIRNAME,
+  UNIVERSAL_PIPELINE_RUNS_DIRNAME,
+  parseUniversalAgentRef,
+  parseUniversalPipelineRef,
+} from '@ant/shared';
 import type { FileSystemPort } from '../../../core/ports/filesystem';
 import { ESTIMATE_CHARS_PER_TOKEN } from '../../../core/utils/tokenBudget';
 import { findAgentRoot, type CustomAgentScopeRoot } from '../../../core/customAgents/CustomAgentLoader';
+import { pipelineDir } from '../../../core/pipelines/paths';
+import type { PipelineScopeRoot } from '../../../core/pipelines/scopeRoots';
+import { findPipelineRoot } from '../../../core/pipelines/store';
 import { McpConnectionManager, type McpToolInfo } from '../../../core/customAgents/McpConnectionManager';
 import { DEFINITION_MOUNT_PREFIX } from '../../../core/customAgents/promptBlock';
 import { XMLStreamParser } from '../../../core/streaming/parsers/XMLStreamParser';
@@ -274,6 +284,76 @@ export function peerAgentsMount(
   };
 }
 
+/**
+ * Read-only port over `inner` that serves ONLY the whitelisted file names at
+ * its root: listings filter to them, any other read throws. Sibling sidecars
+ * (`owner.json`, `availability.json`) stay invisible rather than merely
+ * unlisted.
+ */
+function whitelistedReadOnlyPort(inner: FileSystemPort, allowed: readonly string[]): FileSystemPort {
+  const isAllowed = (p: string): boolean => allowed.includes(p.replace(/^\.?\/+/, ''));
+  const guard = (p: string): string => {
+    if (!isAllowed(p)) throw new Error(`Cannot resolve mounted path: ${p}`);
+    return p;
+  };
+  const isRoot = (p: string): boolean => p === '' || p === '.' || p === '/';
+  const refuse = (op: string): never => {
+    throw new Error(`${op}: mount is read-only`);
+  };
+  return {
+    readFile: (p, opts) => inner.readFile(guard(p), opts),
+    fileExists: (p) => inner.fileExists(guard(p)),
+    readDirectory: (p) => {
+      if (!isRoot(p)) throw new Error(`Cannot resolve mounted path: ${p}`);
+      return inner.readDirectory(p).then((entries) => entries.filter((e) => !e.isDirectory && isAllowed(e.name)));
+    },
+    listFiles: (p, exclude) => {
+      if (!isRoot(p)) throw new Error(`Cannot resolve mounted path: ${p}`);
+      return inner.listFiles(p, exclude).then((files) => files.filter((f) => isAllowed(f)));
+    },
+    isDirectory: (p) => (isRoot(p) ? Promise.resolve(true) : inner.isDirectory(guard(p))),
+    writeFile: () => refuse('writeFile'),
+    deleteFile: () => refuse('deleteFile'),
+    createDirectory: () => refuse('createDirectory'),
+    copyFile: () => refuse('copyFile'),
+    moveFile: () => refuse('moveFile'),
+    copyDirectory: () => refuse('copyDirectory'),
+    moveDirectory: () => refuse('moveDirectory'),
+    getRootPath: () => inner.getRootPath(),
+    resolveAbsolute: (p) => inner.resolveAbsolute(guard(p)),
+  };
+}
+
+/**
+ * Pipeline-definition mount (`_pipelines/{pipelineId}/pipeline.yaml`) — the
+ * `peerAgentsMount` mirror over the pipeline scope roots (`findPipelineRoot`,
+ * user > org), the same roots `GET /definitions/pipelines` lists. Each
+ * pipeline dir is wrapped so ONLY `pipeline.yaml` is readable or listable —
+ * `owner.json` / `availability.json` are not definition. The root itself is
+ * unlistable (needs a pipeline id), exactly like `_agents/`.
+ */
+export function pipelineDefinitionsMount(
+  pipelineScopeRoots: PipelineScopeRoot[],
+  createFs: (root: string) => FileSystemPort,
+): UniversalReadOnlyMount {
+  const cache = new Map<string, FileSystemPort>();
+  return {
+    prefix: `${UNIVERSAL_PIPELINES_DIRNAME}/`,
+    resolve: (rel) => {
+      const parsed = parseUniversalPipelineRef(`${UNIVERSAL_PIPELINES_DIRNAME}/${rel}`);
+      if (!parsed) return null;
+      let fs = cache.get(parsed.pipelineId);
+      if (!fs) {
+        const found = findPipelineRoot(pipelineScopeRoots, parsed.pipelineId);
+        if (!found) return null;
+        fs = whitelistedReadOnlyPort(createFs(pipelineDir(found.scopeRoot.root, parsed.pipelineId)), [PIPELINE_FILE_NAME]);
+        cache.set(parsed.pipelineId, fs);
+      }
+      return { fs, path: parsed.rest };
+    },
+  };
+}
+
 /** Pipeline run-log mount — the grafted node the explorer already shows, now
  * readable by the tools that were being handed its paths. */
 export function pipelineRunsMount(
@@ -290,7 +370,8 @@ export function pipelineRunsMount(
 /**
  * N-root sandbox facade: `universal/artifacts/` read-write, plus read-only
  * mounts (the agent's own definition dir at {@link DEFINITION_MOUNT_PREFIX},
- * peer definitions at `_agents/`, run logs at `pipeline-runs/`). Everything
+ * peer definitions at `_agents/`, pipeline definitions at `_pipelines/`, run
+ * logs at `pipeline-runs/`). Everything
  * else delegates verbatim to the artifacts adapter (whose `resolveAbsolute`
  * supplies path-traversal protection for every root).
  *
@@ -316,12 +397,16 @@ export function createUniversalFileSystem(
   // does write, since it is the only one.
   const readOnly = (op: string, prefix: string): never => {
     const isDefinition = prefix === DEFINITION_MOUNT_PREFIX || prefix === `${UNIVERSAL_AGENTS_DIRNAME}/`;
+    const isPipeline = prefix === `${UNIVERSAL_PIPELINES_DIRNAME}/`;
     throw new Error(
       `${op}: the ${prefix} mount is read-only`
       + (isDefinition
         ? ' — definition files are written only by PUT /definitions/agents/{agentId}/file,'
           + ' which replaces the whole file (there is no partial edit)'
-        : ''),
+        : isPipeline
+          ? ' — pipeline definitions are written only by POST|PUT /definitions/pipelines,'
+            + ' which takes the whole definition as JSON'
+          : ''),
     );
   };
 
@@ -340,7 +425,7 @@ export function createUniversalFileSystem(
    * undiscoverable: a job told to read `pipeline-runs/…` listed the root, did
    * not see it, and reported the folder does not exist (two pipeline-builder
    * review rounds did exactly that). Mounts whose root cannot be listed at all
-   * (`_agents/` needs an agent id) stay out. Both `readDirectory` — what the
+   * (`_agents/` needs an agent id, `_pipelines/` a pipeline id) stay out. Both `readDirectory` — what the
    * `list_files` tool actually calls — and `listFiles` are augmented.
    */
   const listableMountRoots = (existing: string[]): string[] => {

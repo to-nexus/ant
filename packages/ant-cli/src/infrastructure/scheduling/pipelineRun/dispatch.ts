@@ -97,7 +97,7 @@ export async function dispatchJobStep(
     resolved.scopeRoots,
     // Glob pins (upstream stop-hook artifact contracts) expand here only —
     // interactive @ctx stays concrete-path-only.
-    { expandContextGlobs: true },
+    { expandContextGlobs: true, pipelineScopeRoots: resolved.pipelineScopeRoots },
   );
   if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
 

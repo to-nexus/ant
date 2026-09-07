@@ -437,13 +437,16 @@ debugging session.
   `billableTaskCount`.
 - Offering a path in the `@ctx:` picker that the tool sandbox cannot resolve.
   The attachable set is DERIVED from the agent plane
-  (`resolveUniversalAgentPlanePath` — artifacts ∪ `pipeline-runs` ∪ `_agents`,
-  never `sessions`); adding a mount without teaching that resolver, or the
-  reverse, re-creates the attachable-but-unreadable bug.
+  (`resolveUniversalAgentPlanePath` — artifacts ∪ `pipeline-runs` ∪ `_agents` ∪
+  `_pipelines`, never `sessions`); adding a mount without teaching that
+  resolver, or the reverse, re-creates the attachable-but-unreadable bug. The
+  `_pipelines` splitter (`parseUniversalPipelineRef`) IS its whitelist — only
+  the folder and `pipeline.yaml` resolve; `owner.json` / `availability.json`
+  are refused on every plane by that one rule.
 - Grafting an account-scoped root (agent definitions) into the project file-tree
   endpoint. It is cached per project × feature for 24h and the account-scoped
-  write funnel cannot bust that key — the `_agents` subtree is a picker-side
-  client merge.
+  write funnel cannot bust that key — the `_agents` / `_pipelines` subtrees are
+  picker-side client merges.
 - Re-judging the project × jobType gate anywhere other than the truth table,
   or letting a definition error crash the worker child instead of answering 400
   at accept.
@@ -542,6 +545,8 @@ rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolve
 rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal            # Expected: 0
 # The attachable set has ONE owner; the gate and the band both go through it.
 rg -n "resolveUniversalMergedPath" packages/ant-cli/src/core/scheduling packages/ant-cli/src/agents/universal  # Expected: 0
+# Reserved mount names come from @ant/shared (UNIVERSAL_AGENTS_DIRNAME / UNIVERSAL_PIPELINES_DIRNAME), never literals.
+rg -n "'_agents'|'_pipelines'" packages/ant-cli/src packages/ant-ui/src  # Expected: 0
 # The pin is one rule, mounted whole-surface on each cookie/bearer server — never re-judged per route.
 rg -n "createSelfApiScopeGuard\(" packages/ant-cli/src                              # Expected: 3 (definition + api mount + realtime mount)
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0

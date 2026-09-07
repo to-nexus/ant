@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FileNode } from '@ant/shared';
-import { CANONICAL_FEATURE_DIRS, UNIVERSAL_AGENTS_DIRNAME, UNIVERSAL_FEATURE, UNIVERSAL_PIPELINE_RUNS_DIRNAME, createEmptyFigmaData } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, UNIVERSAL_AGENTS_DIRNAME, UNIVERSAL_FEATURE, UNIVERSAL_PIPELINE_RUNS_DIRNAME, UNIVERSAL_PIPELINES_DIRNAME, createEmptyFigmaData } from '@ant/shared';
 import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../pipelines/paths';
 import { WorkspacePathResolver } from '../config/WorkspacePathResolver';
@@ -353,6 +353,9 @@ export const UNIVERSAL_PIPELINE_RUNS_NODE = UNIVERSAL_PIPELINE_RUNS_DIRNAME;
  */
 export const UNIVERSAL_AGENTS_NODE = UNIVERSAL_AGENTS_DIRNAME;
 
+/** Reserved top-level node name — the pipeline-definition mount; same status as `_agents` (account-owned, never a container node). */
+export const UNIVERSAL_PIPELINES_NODE = UNIVERSAL_PIPELINES_DIRNAME;
+
 /**
  * Activation run-log dir for the project that owns this container. Structural
  * mapping, no activation required: containerPath is
@@ -567,15 +570,17 @@ export function buildUniversalMergedTreeResult(containerPath: string): Universal
   // bounding each root separately would double the worst case.
   const budget: TraversalBudget = { remaining: UNIVERSAL_TREE_MAX_ENTRIES };
 
-  // Reserved names: agent-created `artifacts/sessions/`, `artifacts/pipeline-runs/`
-  // or `artifacts/_agents/` dirs are shadowed (user creation is blocked at
-  // upload/mkdir). `_agents` has no grafted node here — it is an agent-plane
-  // mount only, merged into the `@ctx:` picker client-side.
+  // Reserved names: agent-created `artifacts/sessions/`, `artifacts/pipeline-runs/`,
+  // `artifacts/_agents/` or `artifacts/_pipelines/` dirs are shadowed (user
+  // creation is blocked at upload/mkdir). `_agents` / `_pipelines` have no
+  // grafted node here — they are agent-plane mounts only, merged into the
+  // `@ctx:` picker client-side.
   const artifactNodes = buildSubtree(artifactsRoot, '', '', 0, budget).filter(
     (n) =>
       n.name !== UNIVERSAL_SESSIONS_NODE &&
       n.name !== UNIVERSAL_PIPELINE_RUNS_NODE &&
-      n.name !== UNIVERSAL_AGENTS_NODE,
+      n.name !== UNIVERSAL_AGENTS_NODE &&
+      n.name !== UNIVERSAL_PIPELINES_NODE,
   );
 
   const canonicalNodes: UniversalTreeNode[] = UNIVERSAL_ARTIFACT_CANONICAL_DIRS.map(

@@ -9,7 +9,8 @@
  *   `sessions` ∪ `pipeline-runs`.
  * - AGENT plane (here): what `read_file` / `list_files` can resolve, and
  *   therefore what the composer may attach with `@ctx:` — artifacts ∪
- *   `pipeline-runs` ∪ `_agents` (peer definitions), NEVER `sessions`.
+ *   `pipeline-runs` ∪ `_agents` (peer definitions) ∪ `_pipelines` (pipeline
+ *   definitions), NEVER `sessions`.
  *
  * Those two used to be answered by one function plus a hard-coded sandbox
  * facade that disagreed with it, which is how `pipeline-runs/…` became
@@ -19,9 +20,18 @@
  */
 
 import * as path from 'path';
-import { UNIVERSAL_PIPELINE_RUNS_DIRNAME, isUniversalAgentRef, parseUniversalAgentRef } from '@ant/shared';
+import {
+  UNIVERSAL_PIPELINE_RUNS_DIRNAME,
+  isUniversalAgentRef,
+  isUniversalPipelineRef,
+  parseUniversalAgentRef,
+  parseUniversalPipelineRef,
+} from '@ant/shared';
 import { findAgentRoot } from './CustomAgentLoader';
 import type { CustomAgentScopeRoot } from './CustomAgentLoader';
+import { pipelineDir } from '../pipelines/paths';
+import type { PipelineScopeRoot } from '../pipelines/scopeRoots';
+import { findPipelineRoot } from '../pipelines/store';
 import {
   UNIVERSAL_ARTIFACTS_DIRNAME,
   UNIVERSAL_SESSIONS_NODE,
@@ -30,13 +40,15 @@ import {
 } from './universalContainer';
 
 /** Which root a merged-view path landed in — the prompt band labels by this. */
-export type UniversalAgentPlaneRoot = 'artifacts' | 'pipeline-runs' | 'agents';
+export type UniversalAgentPlaneRoot = 'artifacts' | 'pipeline-runs' | 'agents' | 'pipelines';
 
 export interface UniversalAgentPlaneContext {
   /** `{project}/universal`. */
   containerPath: string;
   /** Definition scope roots, in priority order (user > org > builtin). */
   scopeRoots: CustomAgentScopeRoot[];
+  /** Pipeline definition scope roots (user > org); absent = no `_pipelines/**` resolves. */
+  pipelineScopeRoots?: PipelineScopeRoot[];
 }
 
 export interface UniversalAgentPlanePath {
@@ -44,6 +56,8 @@ export interface UniversalAgentPlanePath {
   root: UniversalAgentPlaneRoot;
   /** Set only for `root === 'agents'`. */
   agentId?: string;
+  /** Set only for `root === 'pipelines'`. */
+  pipelineId?: string;
 }
 
 /**
@@ -70,6 +84,19 @@ export function resolveUniversalAgentPlanePath(
       absPath: resolveWithinRoot(found.agentDir, parsed.rest),
       root: 'agents',
       agentId: parsed.agentId,
+    };
+  }
+
+  if (isUniversalPipelineRef(normalized)) {
+    // The splitter is the whitelist: only the folder and `pipeline.yaml` parse.
+    const parsed = parseUniversalPipelineRef(normalized);
+    if (!parsed) throw new Error(`Invalid pipeline reference: ${rel}`);
+    const found = findPipelineRoot(ctx.pipelineScopeRoots ?? [], parsed.pipelineId);
+    if (!found) throw new Error(`Pipeline not found: ${parsed.pipelineId}`);
+    return {
+      absPath: resolveWithinRoot(pipelineDir(found.scopeRoot.root, parsed.pipelineId), parsed.rest),
+      root: 'pipelines',
+      pipelineId: parsed.pipelineId,
     };
   }
 

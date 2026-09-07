@@ -632,10 +632,11 @@ export async function orchestrator(params: {
 
       // Agent-plane sandbox (D6): artifacts rw + read-only mounts. The
       // definition was activated by job-runner main() before orchestration.
-      const { requireActiveCustomJob, getActiveCustomAgentScopeRoots } = await import('../core/customAgents/activeCustomJob');
-      const { createUniversalFileSystem, definitionMount, peerAgentsMount, pipelineRunsMount } = await import(
-        '../agents/universal/graph/runtime'
+      const { requireActiveCustomJob, getActiveCustomAgentScopeRoots, getActivePipelineScopeRoots } = await import(
+        '../core/customAgents/activeCustomJob'
       );
+      const { createUniversalFileSystem, definitionMount, peerAgentsMount, pipelineDefinitionsMount, pipelineRunsMount } =
+        await import('../agents/universal/graph/runtime');
       const activeDef = requireActiveCustomJob();
 
       // Per-(agentId, jobId) session — {container}/sessions/{agentId}/{jobId}.json,
@@ -647,13 +648,14 @@ export async function orchestrator(params: {
       const artifactsRoot = process.env.ANT_CODEBASE_PATH || path.join(projectPath, 'universal', 'artifacts');
       const artifactsFs = AdapterFactory.createFileSystemAdapterWithPath(artifactsRoot);
       // Mount set == the agent plane (`resolveUniversalAgentPlanePath`): own
-      // definition, peer definitions, run logs. `sessions/` is deliberately
-      // absent from both.
+      // definition, peer definitions, pipeline definitions, run logs.
+      // `sessions/` is deliberately absent from both.
       const { getPipelineRunsRootOf } = await import('../core/customAgents/universalContainer');
       const createFs = (root: string) => AdapterFactory.createFileSystemAdapterWithPath(root);
       const fileSystem = createUniversalFileSystem(artifactsFs, [
         definitionMount(createFs(activeDef.agentDir)),
         peerAgentsMount(getActiveCustomAgentScopeRoots(), createFs),
+        pipelineDefinitionsMount(getActivePipelineScopeRoots(), createFs),
         pipelineRunsMount(getPipelineRunsRootOf(featurePath), createFs),
       ]);
 
