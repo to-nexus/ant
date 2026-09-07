@@ -44,11 +44,15 @@
       "description": "플랜 턴 — 작업 대신 계획을 먼저 산출"
     },
     "group": {
-      "suggested": "★ 추천",
-      "all": "전체 파일",
-      "artifacts": "산출물",
-      "agentDefinitions": "에이전트 정의"
-    }
+      "agentDefinitions": "에이전트 정의",
+      "pipelineDefinitions": "파이프라인 정의"
+    },
+    "nav": {
+      "root": "전체 파일",
+      "enterHint": "Tab ›",
+      "attachHint": "↵"
+    },
+    "more": "{{count}}개 더… 폴더 트리에서 찾기"
   },
   "panelTabs": {
     "chat": "대화",

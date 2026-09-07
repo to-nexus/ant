@@ -22,7 +22,12 @@ vi.mock('@/infrastructure/http/api/accountAgents', () => ({
   promoteAccountAgent: (...a: unknown[]) => apiMock.promoteAccountAgent(...a),
 }));
 
-import { createAgentSettingsSlice, type AgentSettingsSlice } from '../../src/domain/store/slices/agentSettingsSlice';
+import {
+  createAgentSettingsSlice,
+  shouldFetchDefinitionTree,
+  type AgentSettingsSlice,
+  type DefinitionTreeEntry,
+} from '../../src/domain/store/slices/agentSettingsSlice';
 
 interface HostState extends AgentSettingsSlice {
   projectType: string;
@@ -183,6 +188,47 @@ describe('definitionTrees map (rail file view)', () => {
     expect(apiMock.fetchDefinitionTree).toHaveBeenCalledTimes(1);
   });
 
+  // A failed fetch used to be recorded as `{ tree: [] }` — indistinguishable from
+  // "no files", and `ensureDefinitionTree` then never retried for the session.
+  it('a failed load is recorded as status:error and the next ensure retries it', async () => {
+    const s = makeStore();
+    apiMock.fetchDefinitionTree.mockRejectedValueOnce(new Error('HTTP 500'));
+    await s.getState().ensureDefinitionTree('ops');
+    expect(s.getState().definitionTrees.ops).toEqual({ tree: [], readonly: false, status: 'error' });
+
+    await s.getState().ensureDefinitionTree('ops');
+    expect(apiMock.fetchDefinitionTree).toHaveBeenCalledTimes(2);
+    expect(s.getState().definitionTrees.ops.status).toBe('ready');
+  });
+
+  it('a definition save marks every loaded tree stale (kept rendered) and ensure re-reads it', async () => {
+    const s = makeStore({ projectType: 'universal', selectedProject: 'proj-1' });
+    await s.getState().ensureDefinitionTree('ops');
+    await s.getState().loadDefinitionTree('assistant');
+    expect(apiMock.fetchDefinitionTree).toHaveBeenCalledTimes(2);
+
+    s.getState().syncComposerAgents();
+    expect(s.getState().definitionTrees.ops).toMatchObject({ status: 'stale' });
+    expect(s.getState().definitionTrees.assistant).toMatchObject({ status: 'stale' });
+    expect(s.getState().definitionTrees.ops.tree).toHaveLength(1); // the old tree stays visible
+
+    await s.getState().ensureDefinitionTree('ops');
+    expect(apiMock.fetchDefinitionTree).toHaveBeenCalledTimes(3);
+    expect(s.getState().definitionTrees.ops.status).toBe('ready');
+    expect(s.getState().definitionTrees.assistant.status).toBe('stale'); // untouched until asked
+  });
+
+  it('invalidateDefinitionTrees(agentId) scopes to one agent and ignores error entries', async () => {
+    const s = makeStore();
+    await s.getState().loadDefinitionTree('ops');
+    apiMock.fetchDefinitionTree.mockRejectedValueOnce(new Error('HTTP 500'));
+    await s.getState().loadDefinitionTree('broken');
+
+    s.getState().invalidateDefinitionTrees('ops');
+    expect(s.getState().definitionTrees.ops.status).toBe('stale');
+    expect(s.getState().definitionTrees.broken.status).toBe('error');
+  });
+
   it('a vanished agent is evicted from the map with its selection', async () => {
     const s = makeStore();
     s.getState().selectAgentSettingsNode('ghost');
@@ -308,5 +354,21 @@ describe('external navigation request (actions tab → settings deep link)', () 
 
     s.getState().clearAgentSettingsOpenRequest();
     expect(s.getState().agentSettingsOpenRequest).toBeNull();
+  });
+});
+
+describe('shouldFetchDefinitionTree — the one skip rule', () => {
+  const entry = (status: DefinitionTreeEntry['status']): DefinitionTreeEntry => ({ tree: [], readonly: false, status });
+  it.each([
+    ['absent, idle', undefined, false, true],
+    ['absent, in flight', undefined, true, false],
+    ['ready, idle', entry('ready'), false, false],
+    ['ready, in flight', entry('ready'), true, false],
+    ['error, idle', entry('error'), false, true],
+    ['error, in flight', entry('error'), true, false],
+    ['stale, idle', entry('stale'), false, true],
+    ['stale, in flight', entry('stale'), true, false],
+  ])('%s → %s', (_label, e, inFlight, expected) => {
+    expect(shouldFetchDefinitionTree(e, inFlight)).toBe(expected);
   });
 });

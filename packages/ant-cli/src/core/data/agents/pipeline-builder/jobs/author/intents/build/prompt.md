@@ -1,7 +1,8 @@
 **Gather the material.**
 
-- Fetch the definitions of every agent the pipeline will run — the jobs, the
-  intents, and each intent's prose. The operating-context section at the end of
+- Read the definitions of every agent the pipeline will run — the attached
+  `_agents/{id}/…` files first, the API only for agents that were not attached
+  — the jobs, the intents, and each intent's prose. The operating-context section at the end of
   an intent's prompt is this job's input: the cadence the work ran on, what
   feeds it, what its output feeds — requirements for the schedule and the
   chain, never text to copy into a directive.

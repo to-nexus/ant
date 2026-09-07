@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
-import { X, Target, BookOpen, ClipboardList, Folder, Bot } from 'lucide-react';
+import { X, Target, BookOpen, ClipboardList, Folder, Bot, Workflow } from 'lucide-react';
 import { compressSelection, removeSelectedEntry } from '@/shared/utils/selectionDisplay';
-import { ctxAgentIdOf } from './hooks/universalMentionSurface';
+import { ctxAgentIdOf, ctxPipelineIdOf } from './hooks/universalMentionSurface';
 import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 
 /**
@@ -76,13 +76,15 @@ export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { clas
         ),
       )}
       {contextEntries.map(entry => {
-        // A peer definition chip is named by WHOSE it is — a bare `job.yaml`
-        // is indistinguishable from an artifact of the same name.
+        // A definition chip is named by WHOSE it is — a bare `job.yaml` or
+        // `pipeline.yaml` is indistinguishable from an artifact of the same name.
         const agentId = ctxAgentIdOf(entry.rawPath);
-        const display = agentId ? `${agentId} · ${entry.display}` : entry.display;
+        const pipelineId = agentId ? null : ctxPipelineIdOf(entry.rawPath);
+        const owner = agentId ?? pipelineId;
+        const display = owner ? `${owner} · ${entry.display}` : entry.display;
         return chip(
           `ctx:${entry.rawPath}`,
-          agentId ? Bot : entry.isFolder ? Folder : BookOpen,
+          agentId ? Bot : pipelineId ? Workflow : entry.isFolder ? Folder : BookOpen,
           entry.fileCount !== undefined ? `${display} (${entry.fileCount})` : display,
           'bg-[color:var(--bg-surface-2)] border-[color:var(--border-1)] text-[color:var(--text-3)]',
           () => setContextMentions(removeSelectedEntry(meta.context, entry) ?? []),

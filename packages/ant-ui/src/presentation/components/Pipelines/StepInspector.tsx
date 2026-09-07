@@ -282,7 +282,9 @@ function JobStepPanel({
   // dispatch). Free text stays the primary input.
   const selectedProject = useStore((s) => s.selectedProject);
   const projectType = useStore((s) => s.projectType);
-  const pickerTree = useArtifactPickerTree();
+  // Pins resolve against the ARTIFACTS tree only — the definition mounts are
+  // not pinnable, so they are neither shown nor fetched here.
+  const pickerTree = useArtifactPickerTree({ definitionMounts: false });
   const [pickerOpen, setPickerOpen] = useState(false);
   const canBrowse = !!selectedProject && projectType === 'universal' && pickerTree.length > 0;
 

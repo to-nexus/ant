@@ -1,7 +1,9 @@
-import { useEffect, useRef, Fragment } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MentionSuggestion } from './hooks/useMentionAutocomplete';
-import { Target, Crosshair, FileText, BookOpen, Zap, FolderTree, ClipboardList, Bot } from 'lucide-react';
+import {
+  Target, Crosshair, FileText, BookOpen, Zap, FolderTree, ClipboardList, Bot, Workflow, Folder, ChevronRight,
+} from 'lucide-react';
 
 const TYPE_ICONS: Record<string, any> = {
   intent: Target,
@@ -9,6 +11,7 @@ const TYPE_ICONS: Record<string, any> = {
   ref: FileText,
   context: BookOpen,
   agentCtx: Bot,
+  pipelineCtx: Workflow,
   explicit: Zap,
   plan: ClipboardList,
   browse: FolderTree,
@@ -20,19 +23,10 @@ const TYPE_COLORS: Record<string, string> = {
   ref: 'text-emerald-500',
   context: 'text-gray-500',
   agentCtx: 'text-cyan-500',
+  pipelineCtx: 'text-fuchsia-500',
   explicit: 'text-indigo-500',
   plan: 'text-amber-500',
   browse: 'text-violet-500',
-};
-
-/** Group header i18n keys under `chat:mention.group`. Keyed by
- * `MentionSuggestion.group` so a new namespace is one row here, not another
- * ternary. */
-const GROUP_LABEL_KEYS: Record<string, string> = {
-  suggested: 'suggested',
-  all: 'all',
-  artifacts: 'artifacts',
-  agents: 'agentDefinitions',
 };
 
 const COMMAND_ICON_MAP: Record<string, { icon: any; color: string }> = {
@@ -47,11 +41,16 @@ const COMMAND_ICON_MAP: Record<string, { icon: any; color: string }> = {
 interface MentionDropdownProps {
   suggestions: MentionSuggestion[];
   selectedIndex: number;
+  /** Attach the row — or, for a directory that cannot be attached, enter it. */
   onSelect: (suggestion: MentionSuggestion) => void;
+  /** Descend into a directory row (the › affordance). */
+  onEnter?: (suggestion: MentionSuggestion) => void;
   onHover: (index: number) => void;
+  /** Where the user is in the tree while a file prefix is armed. */
+  breadcrumb?: { prefix: string; crumbs: string[] } | null;
 }
 
-export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover }: MentionDropdownProps) {
+export function MentionDropdown({ suggestions, selectedIndex, onSelect, onEnter, onHover, breadcrumb }: MentionDropdownProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation('chat');
 
@@ -64,12 +63,9 @@ export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover 
 
   if (suggestions.length === 0) return null;
 
-  const hasGroups = suggestions.some(s => s.group);
-
   return (
     <div
-      ref={listRef}
-      className="overflow-hidden z-50 max-h-48 overflow-y-auto mb-1"
+      className="overflow-hidden z-50 mb-1 flex flex-col"
       style={{
         background: 'var(--bg-surface)',
         border: '1px solid var(--border-1)',
@@ -77,72 +73,96 @@ export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover 
         boxShadow: 'var(--shadow-lg)',
       }}
     >
-      {suggestions.map((s, idx) => {
-        const prevGroup = idx > 0 ? suggestions[idx - 1].group : undefined;
-        const showGroupHeader = hasGroups && s.group && s.group !== prevGroup;
+      {breadcrumb && (
+        <div
+          className="flex items-center gap-1 px-3 py-1 text-[10px] text-[color:var(--text-4)] select-none shrink-0"
+          style={{ borderBottom: '1px solid var(--border-1)' }}
+        >
+          <span className="font-mono">{breadcrumb.prefix}</span>
+          {breadcrumb.crumbs.length === 0 ? (
+            <>
+              <span>›</span>
+              <span>{t('mention.nav.root')}</span>
+            </>
+          ) : (
+            breadcrumb.crumbs.map((crumb, i) => (
+              <span key={`${i}-${crumb}`} className="flex items-center gap-1 min-w-0">
+                <span>›</span>
+                <span className="truncate">{crumb}</span>
+              </span>
+            ))
+          )}
+        </div>
+      )}
+      <div ref={listRef} className="max-h-72 overflow-y-auto">
+        {suggestions.map((s, idx) => {
+          const isCommand = s.type === 'command';
+          const isDir = s.nodeType === 'directory';
+          const cmdMapping = isCommand ? COMMAND_ICON_MAP[s.id] : null;
+          const Icon = cmdMapping?.icon || (isDir && s.type !== 'agentCtx' && s.type !== 'pipelineCtx' ? Folder : TYPE_ICONS[s.type]) || FileText;
+          const color = cmdMapping?.color || TYPE_COLORS[s.type] || 'text-gray-500';
+          const isSelected = idx === selectedIndex;
+          const hint = isCommand
+            ? s.id
+            : s.selectable
+              ? t('mention.nav.attachHint')
+              : s.enterable
+                ? t('mention.nav.enterHint')
+                : '';
 
-        const isCommand = s.type === 'command';
-        const cmdMapping = isCommand ? COMMAND_ICON_MAP[s.id] : null;
-        const Icon = cmdMapping?.icon || TYPE_ICONS[s.type] || FileText;
-        const color = cmdMapping?.color || TYPE_COLORS[s.type] || 'text-gray-500';
-        const isSelected = idx === selectedIndex;
-
-        return (
-          <Fragment key={`${s.type}-${s.id}-${idx}`}>
-            {showGroupHeader && (
-              <>
-                {prevGroup && (
-                  <div style={{ borderTop: '1px solid var(--border-1)' }} />
-                )}
-                <div className="px-3 py-1 text-[10px] font-medium text-[color:var(--text-4)] uppercase tracking-wider select-none">
-                  {t(`mention.group.${GROUP_LABEL_KEYS[s.group!] ?? 'all'}`)}
-                </div>
-              </>
-            )}
-            <button
+          return (
+            <div
+              key={`${s.type}-${s.id}-${idx}`}
               data-suggestion-idx={idx}
-              type="button"
-              className={`relative w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[color:var(--bg-hover)]`}
-              style={
-                isSelected
-                  ? { background: 'oklch(from var(--violet-500) l c h / 0.10)' }
-                  : undefined
-              }
+              className="relative w-full flex items-stretch text-sm transition-colors hover:bg-[color:var(--bg-hover)]"
+              style={isSelected ? { background: 'oklch(from var(--violet-500) l c h / 0.10)' } : undefined}
               onMouseEnter={() => onHover(idx)}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onSelect(s);
-              }}
             >
               {isSelected && (
                 <span
                   aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 2,
-                    background: 'var(--gradient-aurora)',
-                  }}
+                  style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, background: 'var(--gradient-aurora)' }}
                 />
               )}
-              <Icon className={`w-4 h-4 shrink-0 ${color}`} />
-              <div className="flex-1 min-w-0">
-                <span className="font-medium text-[color:var(--text-1)]">{s.label}</span>
-                {s.description && s.description !== s.label && (
-                  <span className="ml-2 text-xs text-[color:var(--text-3)] truncate">{s.description}</span>
+              <button
+                type="button"
+                className="flex-1 min-w-0 flex items-center gap-2.5 px-3 py-2 text-left"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelect(s);
+                }}
+              >
+                <Icon className={`w-4 h-4 shrink-0 ${color}`} />
+                <div className="flex-1 min-w-0 flex items-baseline">
+                  {s.group === 'suggested' && (
+                    <span className="mr-1 text-[10px] text-[color:var(--text-4)]" aria-hidden="true">★</span>
+                  )}
+                  <span className="font-medium text-[color:var(--text-1)] truncate">{s.label}</span>
+                  {s.description && s.description !== s.label && (
+                    <span className="ml-2 text-xs text-[color:var(--text-3)] truncate">{s.description}</span>
+                  )}
+                </div>
+                {hint && (
+                  <span className="text-[10px] text-[color:var(--text-4)] shrink-0 font-mono">{hint}</span>
                 )}
-              </div>
-              {isCommand ? (
-                <span className="text-[10px] text-[color:var(--text-4)] shrink-0 font-mono">{s.id}</span>
-              ) : (
-                <span className="text-[10px] text-[color:var(--text-4)] shrink-0 uppercase">{s.type}</span>
+              </button>
+              {s.enterable && onEnter && (
+                <button
+                  type="button"
+                  aria-label={t('mention.nav.enterHint')}
+                  className="shrink-0 px-2 flex items-center text-[color:var(--text-4)] hover:text-[color:var(--text-1)]"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onEnter(s);
+                  }}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               )}
-            </button>
-          </Fragment>
-        );
-      })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

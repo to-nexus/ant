@@ -2,12 +2,15 @@ Turn what the user describes into a pipeline definition, through the API.
 
 Work in this order:
 
-1. **Look first.** List the user's pipelines. For an edit, fetch the exact
-   definition you intend to change. For something new, check that the id is
-   free and the account is under its pipeline cap.
+1. **Look first.** Whatever the turn attached is the user's choice: a
+   `_pipelines/{id}/pipeline.yaml` under Attached Context is the pipeline to
+   edit, `_agents/{id}/…` files are the agents to run — read those before
+   anything else. Then list the user's pipelines. For an edit, fetch the exact
+   definition you intend to change unless it was attached. For something new,
+   check that the id is free and the account is under its pipeline cap.
 2. **Resolve every step against a real job.** A step runs `{agentId}/{jobId}`
-   with at most one pinned intent, so read the agents the user names — the
-   catalog decides what a step may address, not the request. The agent's own
+   with at most one pinned intent, so read the agents the user names or
+   attached — the catalog decides what a step may address, not the request. The agent's own
    definition is also where the schedule knowledge lives: the agent builder
    quarantines calendars, cadence, and run order into an operating-context
    section at the end of each intent's prompt, written for exactly this job to

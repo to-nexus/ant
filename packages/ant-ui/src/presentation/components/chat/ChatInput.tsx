@@ -58,6 +58,13 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   // Unified folder-tree picker (opened from the mention "Browse" row).
   const pickerTree = useArtifactPickerTree();
 
+  const applyMentionResult = ({ newMessage, newCursorPos }: { newMessage: string; newCursorPos: number }) => {
+    setMessage(newMessage);
+    requestAnimationFrame(() => {
+      textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+    });
+  };
+
   // PR-2 baseline gauge — fire-and-forget hook. Debounced 300ms inside.
   // Writes `kanban.baselinePhaseTokenUsage` so `TurnTokenRing` renders
   // the predicted next-call floor when no live job is running.
@@ -192,14 +199,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         <MentionDropdown
           suggestions={mention.suggestions}
           selectedIndex={mention.selectedIndex}
-          onSelect={(s) => {
-            const { newMessage, newCursorPos } = mention.applySuggestion(s);
-            setMessage(newMessage);
-            requestAnimationFrame(() => {
-              textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
-            });
-          }}
+          onSelect={(s) => applyMentionResult(mention.applySuggestion(s))}
+          onEnter={(s) => applyMentionResult(mention.enterDirectory(s))}
           onHover={mention.setSelectedIndex}
+          breadcrumb={mention.navBreadcrumb}
         />
       )}
 
@@ -213,6 +216,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           accent={mention.browseField === 'refs' ? 'emerald' : mention.browseField === 'target' ? 'orange' : 'violet'}
           fileTree={pickerTree}
           initialSelected={mention.browseInitialSelected}
+          suggestedDirs={mention.browseSuggestedDirs}
           selectableTypes={mention.browseField === 'target' ? ['file'] : ['file', 'directory']}
           singleSelect={mention.browseField === 'target'}
           onConfirm={mention.applyBrowseSelection}

@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { compressPathsByFolderCore, type FileNode } from '@ant/shared';
+import { UNIVERSAL_PIPELINES_DIRNAME, compressPathsByFolderCore, type FileNode } from '@ant/shared';
 import {
   collectRepresentablePaths,
   compressSelection,
@@ -178,6 +178,24 @@ describe('compressSelection — render-ready entries', () => {
     ];
     expect(compressSelection(['_agents/payments-ops'], grafted)).toEqual([
       { isFolder: true, display: 'payments-ops/', fileCount: 1, rawPath: '_agents/payments-ops' },
+    ]);
+  });
+
+  it('the `_pipelines` graft resolves the same way — folder unit and its single file', () => {
+    const grafted: FileNode[] = [
+      dir('Pipeline definitions', UNIVERSAL_PIPELINES_DIRNAME, [
+        dir('Nightly digest · org', `${UNIVERSAL_PIPELINES_DIRNAME}/nightly`, [
+          file('pipeline.yaml', `${UNIVERSAL_PIPELINES_DIRNAME}/nightly/pipeline.yaml`),
+        ]),
+      ]),
+    ];
+    expect(compressSelection([`${UNIVERSAL_PIPELINES_DIRNAME}/nightly`], grafted)).toEqual([
+      { isFolder: true, display: 'nightly/', fileCount: 1, rawPath: `${UNIVERSAL_PIPELINES_DIRNAME}/nightly` },
+    ]);
+    // The one file picked on its own stays a file entry (the tree-backed
+    // listDir walks by node NAME, so a display-name folder never collapses).
+    expect(compressSelection([`${UNIVERSAL_PIPELINES_DIRNAME}/nightly/pipeline.yaml`], grafted)).toEqual([
+      { isFolder: false, display: 'pipeline.yaml', rawPath: `${UNIVERSAL_PIPELINES_DIRNAME}/nightly/pipeline.yaml` },
     ]);
   });
 });

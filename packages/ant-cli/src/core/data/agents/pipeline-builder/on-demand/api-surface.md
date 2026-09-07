@@ -6,9 +6,16 @@ base — pass them exactly as written, starting with `/`.
 
 ## Authoring order
 
+0. Read what the turn attached. When the `## Attached Context` band carries
+   `_agents/{agentId}/…` files or `_pipelines/{pipelineId}/pipeline.yaml`,
+   those ARE the agents and the pipeline the user chose — `read_file` them
+   first. They are the same bytes the API would return, one round trip
+   cheaper. Fall back to `GET /definitions/agents` discovery only when nothing
+   is attached.
 1. `GET /definitions/pipelines` — see what exists; ids are taken across scopes.
 2. `GET /definitions/agents` (plus per-agent file reads) — confirm every
-   step's agent, job, and intent before designing.
+   step's agent, job, and intent before designing, for any agent whose
+   definition was not attached.
 3. `POST /definitions/pipelines` or `PUT /definitions/pipelines/{id}` — save
    the whole definition.
 4. `POST /definitions/pipelines/preview-fires` — check the trigger. Do this
@@ -24,6 +31,15 @@ base — pass them exactly as written, starting with `/`.
 | `GET /definitions/pipelines/activatable-projects` | `{ projects: [{ id, name, activePipelineId }] }` — where a person could activate the draft |
 | `GET /definitions/agents` | every agent this user can see, with its jobs and their intents |
 | `GET /definitions/agents/{agentId}/files`, `…/file?path=…` | an agent's definition tree and one file's content — where the operating-context sections live |
+
+Definitions are also readable with `read_file`: any agent's files at
+`_agents/{agentId}/{path}` and any pipeline's definition at
+`_pipelines/{pipelineId}/pipeline.yaml`. Both mounts are read-only and do NOT
+appear in `list_files` output at their root — read a path you were given (or
+built from an id) rather than looking for the directory. A `pipeline.yaml` read
+this way is the same definition `GET /definitions/pipelines/{id}` returns as
+`def`; to change it, send it back as JSON in the `def` of a `PUT`, never as
+YAML text. Writes have no mount: they go through the calls below.
 
 ## Writes
 

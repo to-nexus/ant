@@ -1,9 +1,11 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   INTENT_DEFINITIONS,
   ACTION_DEFINITIONS,
+  UNIVERSAL_AGENTS_DIRNAME,
+  UNIVERSAL_PIPELINES_DIRNAME,
   getConfigSlotsForDomain,
   isActionSurfaced,
   getIntentLabel,
@@ -16,17 +18,16 @@ import {
 import type { FileNode } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
+import {
+  buildNavSuggestions,
+  navBreadcrumb,
+  popNavLevel,
+  splitNavQuery,
+  type MentionSuggestion,
+  type NavSuggestionOptions,
+} from './mentionSuggestions';
 
-export interface MentionSuggestion {
-  /** `agentCtx` arms the SAME `context[]` slot as `context` — the distinct
-   * type exists so the row can carry a peer icon and an agent breadcrumb
-   * instead of a raw `_agents/…` path. */
-  type: 'intent' | 'target' | 'ref' | 'context' | 'agentCtx' | 'explicit' | 'plan' | 'command' | 'browse';
-  id: string;
-  label: string;
-  description?: string;
-  group?: 'suggested' | 'all' | 'artifacts' | 'agents';
-}
+export type { MentionSuggestion } from './mentionSuggestions';
 
 /** Which RAC field the folder-tree picker should target when opened from chat. */
 export type BrowseField = 'refs' | 'context' | 'target';
@@ -41,7 +42,7 @@ const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@explicit']
 // removal / keyboard nav) is shared; only vocabulary, cardinality, and the
 // target store field differ. The pure data rules live in
 // `universalMentionSurface.ts` (store-free, directly testable).
-import { UNIVERSAL_MENTION_PREFIXES, ctxAgentIdOf, isUniversalCtxSuggestible } from './universalMentionSurface';
+import { UNIVERSAL_MENTION_PREFIXES, ctxAgentIdOf, ctxPipelineIdOf, isUniversalCtxSuggestible } from './universalMentionSurface';
 
 type MentionPrefix =
   | (typeof MENTION_PREFIXES)[number]
@@ -62,23 +63,25 @@ function peerDescription(path: string, agentId: string): string {
   return crumbs.join(' › ');
 }
 
-/**
- * Every path the tree can address. Keyed on `node.path`, never on a chain of
- * `node.name` — a node's display name is not required to equal its path
- * segment (the `_agents` graft labels rows with agent display names), and the
- * BE ships `path` on every node anyway.
- */
-function flattenTreePaths(nodes: FileNode[], includeDirs: boolean): string[] {
-  const paths: string[] = [];
-  for (const node of nodes) {
-    if (node.type === 'file' || (includeDirs && node.type === 'directory')) {
-      paths.push(node.path);
-    }
-    if (node.children) {
-      paths.push(...flattenTreePaths(node.children, includeDirs));
-    }
-  }
-  return paths;
+/** Universal `@ctx:` rows: the definition mounts get their own type (icon) and owner breadcrumb. */
+function universalRowFor(node: FileNode): Partial<MentionSuggestion> {
+  const agentId = ctxAgentIdOf(node.path);
+  if (agentId) return { type: 'agentCtx', description: peerDescription(node.path, agentId) };
+  const pipelineId = ctxPipelineIdOf(node.path);
+  if (pipelineId) return { type: 'pipelineCtx', description: pipelineId };
+  if (node.path === UNIVERSAL_AGENTS_DIRNAME) return { type: 'agentCtx' };
+  if (node.path === UNIVERSAL_PIPELINES_DIRNAME) return { type: 'pipelineCtx' };
+  return {};
+}
+
+/** `@target:` may address writable artifact domains only — `architecture/`, `visual/`, `meta/evals/`. */
+function isWritableArtifactPath(p: string): boolean {
+  return p.startsWith('architecture/') || p.startsWith('visual/') || p.startsWith('meta/evals/');
+}
+
+/** The grafted session log sits outside every job's reach — same exclusion the Browse picker applies. */
+function isSessionsPath(p: string): boolean {
+  return p === 'sessions' || p.startsWith('sessions/');
 }
 
 interface SuggestedSlots {
@@ -128,61 +131,13 @@ function getSuggestedSlots(
   return { dirs: [...dirs], excludedPaths };
 }
 
-function basename(path: string): string {
-  return path.split('/').pop() || path;
-}
-
-function buildGroupedFileSuggestions(
-  type: 'target' | 'ref' | 'context',
-  prefix: FileMentionPrefix,
-  allFilePaths: string[],
-  query: string,
-  intent: IntentId | undefined,
-  domain: Domain | undefined,
-): MentionSuggestion[] {
-  const q = query.toLowerCase();
-  // `@target:` should suggest files in writable artifact domains only —
-  // `architecture/`, `visual/`, `meta/evals/` (replaces legacy `outputs/`).
-  const isWritableArtifactPath = (p: string): boolean =>
-    p.startsWith('architecture/') ||
-    p.startsWith('visual/') ||
-    p.startsWith('meta/evals/');
-  const slotInfo = intent
-    ? getSuggestedSlots(intent, prefix, domain)
-    : { dirs: [] as string[], excludedPaths: new Set<string>() };
-  const baseFilter = prefix === '@target:'
-    ? (p: string) => p.toLowerCase().includes(q) && isWritableArtifactPath(p) && !slotInfo.excludedPaths.has(p)
-    : (p: string) => p.toLowerCase().includes(q) && !slotInfo.excludedPaths.has(p);
-  const filtered = allFilePaths.filter(baseFilter);
-
-  const suggestedDirs = slotInfo.dirs;
-  if (suggestedDirs.length === 0) {
-    return filtered.slice(0, 10).map(p => ({
-      type, id: p, label: basename(p), description: p,
-    }));
-  }
-
-  const isSuggested = (path: string) =>
-    suggestedDirs.some(dir => path.startsWith(dir + '/') || path === dir);
-  const suggested = filtered.filter(isSuggested);
-  const rest = filtered.filter(p => !isSuggested(p));
-
-  return [
-    ...suggested.slice(0, 8).map(p => ({
-      type, id: p, label: basename(p), description: p, group: 'suggested' as const,
-    })),
-    ...rest.slice(0, 8).map(p => ({
-      type, id: p, label: basename(p), description: p, group: 'all' as const,
-    })),
-  ];
-}
-
 export function useMentionAutocomplete(message: string, cursorPos: number) {
   const [, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   // When set, ChatInput opens the unified folder-tree picker for this field
-  // (the tree replaces the flat file list — see MentionDropdown "Browse" row).
-  const [browseField, setBrowseField] = useState<BrowseField | null>(null);
+  // (see the MentionDropdown "Browse" row), expanded at the level the user was
+  // navigating — captured here because opening it strips the mention token.
+  const [browse, setBrowse] = useState<{ field: BrowseField; suggestedDirs: string[] } | null>(null);
   // Same domain-pruned tree the Browse picker renders — the typeahead and the
   // modal must never disagree on what exists.
   const fileTree = useArtifactPickerTree();
@@ -200,6 +155,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
   const universalContext = useStore(s => s.universalTurnMeta.context);
   const setUniversalPlanMention = useStore(s => s.setUniversalPlanMention);
   const universalPlanOn = useStore(s => s.universalTurnMeta.plan);
+  const ensureDefinitionTree = useStore(s => s.ensureDefinitionTree);
   const { canStartChat } = useActionFooterPolicy();
   const { t } = useTranslation('chat');
 
@@ -239,11 +195,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     description: t('mention.explicit.description'),
   }), [t]);
 
-  const allFilePaths = useMemo(() => flattenTreePaths(fileTree, false), [fileTree]);
-  // Files + directories — `@ref:`/`@ctx:` accept folder-unit mentions;
-  // `@target:` stays files-only (writable-path filter + single-select contract).
-  const allPaths = useMemo(() => flattenTreePaths(fileTree, true), [fileTree]);
-
   const activePrefixes: readonly MentionPrefix[] = isUniversal ? UNIVERSAL_MENTION_PREFIXES : MENTION_PREFIXES;
 
   const { prefix, query, matchStart, commandQuery } = useMemo(() => {
@@ -266,6 +217,26 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
     return { prefix: null as MentionPrefix | null, query: '', matchStart: -1, commandQuery: null as string | null };
   }, [message, cursorPos, activePrefixes]);
+
+  const isFilePrefix = prefix === '@target:' || prefix === '@ref:' || prefix === '@ctx:';
+  const { dirPrefix, remainder } = useMemo(() => splitNavQuery(isFilePrefix ? query : ''), [isFilePrefix, query]);
+
+  // Level change = a new list; the highlight restarts at the top.
+  useEffect(() => { setSelectedIndex(0); }, [prefix, dirPrefix]);
+
+  // Click-to-fetch: descending into `_agents/{id}/` re-reads a tree whose
+  // earlier load failed or went stale (a `ready` tree is a no-op).
+  useEffect(() => {
+    if (!isUniversal || !isFilePrefix) return;
+    const agentId = ctxAgentIdOf(dirPrefix);
+    if (agentId) void ensureDefinitionTree(agentId);
+  }, [isUniversal, isFilePrefix, dirPrefix, ensureDefinitionTree]);
+
+  const navLabels = useMemo<NavSuggestionOptions['labels']>(() => ({
+    browse: t('mention.browse.label'),
+    browseDescription: t('mention.browse.description'),
+    more: (n: number) => t('mention.more', { count: n }),
+  }), [t]);
 
   // `@explicit` suggestion surfaces iff it's both settable (canStartChat) and not already on.
   // Mirrors the ActionFooter button policy so the two entry points are symmetrical.
@@ -291,21 +262,15 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
           .map(i => ({ type: 'intent' as const, id: i.id, label: i.id, description: i.infer }));
       }
       if (prefix === '@ctx:') {
-        // Two namespaces in one field: the project's artifacts and the peer
-        // agent definitions grafted at `_agents/`. Capped per GROUP so a large
-        // definition set cannot crowd out the artifacts a user usually wants.
-        const matches = allPaths.filter(p => isUniversalCtxSuggestible(p) && p.toLowerCase().includes(q));
-        const row = (p: string) => {
-          const agentId = ctxAgentIdOf(p);
-          return agentId
-            ? { type: 'agentCtx' as const, id: p, label: basename(p), description: peerDescription(p, agentId), group: 'agents' as const }
-            : { type: 'context' as const, id: p, label: basename(p), description: p, group: 'artifacts' as const };
-        };
-        return [
-          { type: 'browse' as const, id: 'context', label: t('mention.browse.label'), description: t('mention.browse.description') },
-          ...matches.filter(p => !ctxAgentIdOf(p)).slice(0, 10).map(row),
-          ...matches.filter(p => ctxAgentIdOf(p)).slice(0, 10).map(row),
-        ];
+        // One tree, three namespaces (artifacts, `_agents/`, `_pipelines/`),
+        // browsed a level at a time — the mounts are directories like any other.
+        return buildNavSuggestions(fileTree, query, {
+          field: 'context',
+          selectableTypes: ['file', 'directory'],
+          isOffered: n => isUniversalCtxSuggestible(n.path),
+          rowFor: universalRowFor,
+          labels: navLabels,
+        });
       }
       if (prefix === '@plan') {
         if (universalPlanOn || q !== '') return [];
@@ -352,22 +317,29 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       }
 
       case '@target:':
-        return [
-          { type: 'browse', id: 'target', label: t('mention.browse.label'), description: t('mention.browse.description') },
-          ...buildGroupedFileSuggestions('target', '@target:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain),
-        ];
-
       case '@ref:':
-        return [
-          { type: 'browse', id: 'refs', label: t('mention.browse.label'), description: t('mention.browse.description') },
-          ...buildGroupedFileSuggestions('ref', '@ref:', allPaths, query, actionMetadata.intent, actionMetadata.domain),
-        ];
-
-      case '@ctx:':
-        return [
-          { type: 'browse', id: 'context', label: t('mention.browse.label'), description: t('mention.browse.description') },
-          ...buildGroupedFileSuggestions('context', '@ctx:', allPaths, query, actionMetadata.intent, actionMetadata.domain),
-        ];
+      case '@ctx:': {
+        const slots = actionMetadata.intent
+          ? getSuggestedSlots(actionMetadata.intent, prefix, actionMetadata.domain)
+          : { dirs: [] as string[], excludedPaths: new Set<string>() };
+        // `@target:` is files-only under the writable domains (single-select
+        // revise contract); `@ref:` / `@ctx:` take files and folder units.
+        return prefix === '@target:'
+          ? buildNavSuggestions(fileTree, query, {
+              field: 'target',
+              selectableTypes: ['file'],
+              isOffered: n => n.type === 'file' && isWritableArtifactPath(n.path) && !slots.excludedPaths.has(n.path),
+              suggestedDirs: slots.dirs,
+              labels: navLabels,
+            })
+          : buildNavSuggestions(fileTree, query, {
+              field: prefix === '@ref:' ? 'ref' : 'context',
+              selectableTypes: ['file', 'directory'],
+              isOffered: n => !isSessionsPath(n.path) && !slots.excludedPaths.has(n.path),
+              suggestedDirs: slots.dirs,
+              labels: navLabels,
+            });
+      }
 
       case '@explicit':
         if (!explicitSettable) return [];
@@ -377,11 +349,25 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       default:
         return [];
     }
-  }, [prefix, query, commandQuery, allFilePaths, allPaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, t, isUniversal, universalJobIntents, universalPlanOn]);
+  }, [prefix, query, commandQuery, fileTree, navLabels, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, t, isUniversal, universalJobIntents, universalPlanOn]);
 
   const showSuggestions = (prefix !== null || commandQuery !== null) && suggestions.length > 0;
 
+  /** Rewrite the mention query to `{dirPath}/` — the dropdown now lists that directory. */
+  const setNavQuery = useCallback((nextQuery: string): { newMessage: string; newCursorPos: number } => {
+    const start = matchStart + (prefix?.length ?? 0);
+    const newMessage = message.slice(0, start) + nextQuery + message.slice(cursorPos);
+    setSelectedIndex(0);
+    return { newMessage, newCursorPos: start + nextQuery.length };
+  }, [message, cursorPos, matchStart, prefix]);
+
+  const enterDirectory = useCallback((suggestion: MentionSuggestion) => setNavQuery(`${suggestion.id}/`), [setNavQuery]);
+
   const applySuggestion = useCallback((suggestion: MentionSuggestion): { newMessage: string; newCursorPos: number } => {
+    // A directory that cannot be attached (the `_agents` / `_pipelines` roots,
+    // any directory on `@target:`) is entered instead — the one gesture works.
+    if (suggestion.selectable === false && suggestion.enterable) return enterDirectory(suggestion);
+
     const beforeMention = message.slice(0, matchStart);
     const afterCursor = message.slice(cursorPos);
 
@@ -417,7 +403,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     // Browse: strip the mention token and open the folder-tree picker for
     // this field (ChatInput observes `browseField`).
     if (suggestion.type === 'browse') {
-      setBrowseField(suggestion.id as BrowseField);
+      setBrowse({ field: suggestion.id as BrowseField, suggestedDirs: dirPrefix ? [dirPrefix.replace(/\/$/, '')] : [] });
       setIsOpen(false);
       setSelectedIndex(0);
       return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
@@ -428,7 +414,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     // slot (a run binds at most one intent — last pick replaces).
     if (isUniversal) {
       if (suggestion.type === 'intent') addUniversalIntentMention(suggestion.id);
-      else if (suggestion.type === 'context' || suggestion.type === 'agentCtx') addUniversalContextMention(suggestion.id);
+      else if (suggestion.type === 'context' || suggestion.type === 'agentCtx' || suggestion.type === 'pipelineCtx') addUniversalContextMention(suggestion.id);
       else if (suggestion.type === 'plan') setUniversalPlanMention(true);
       setIsOpen(false);
       setSelectedIndex(0);
@@ -468,10 +454,11 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     setIsOpen(false);
     setSelectedIndex(0);
     return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
-  }, [message, cursorPos, matchStart, updateActionMetadata, actionMetadata, canStartChat, isUniversal, addUniversalIntentMention, addUniversalContextMention, setUniversalPlanMention]);
+  }, [message, cursorPos, matchStart, dirPrefix, enterDirectory, updateActionMetadata, actionMetadata, canStartChat, isUniversal, addUniversalIntentMention, addUniversalContextMention, setUniversalPlanMention]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent): false | { newMessage: string; newCursorPos: number } => {
     if (!showSuggestions) return false;
+    const current = suggestions[selectedIndex];
 
     switch (e.key) {
       case 'ArrowDown':
@@ -483,12 +470,23 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         setSelectedIndex(i => (i - 1 + suggestions.length) % suggestions.length);
         return { newMessage: message, newCursorPos: cursorPos };
       case 'Tab':
+        if (!current) return false;
+        e.preventDefault();
+        return current.enterable ? enterDirectory(current) : applySuggestion(current);
+      case 'ArrowRight':
+        if (!current?.enterable) return false;
+        e.preventDefault();
+        return enterDirectory(current);
       case 'Enter':
-        if (suggestions[selectedIndex]) {
-          e.preventDefault();
-          return applySuggestion(suggestions[selectedIndex]);
-        }
-        return false;
+        if (!current) return false;
+        e.preventDefault();
+        return applySuggestion(current);
+      case 'ArrowLeft':
+      case 'Backspace':
+        // With nothing typed at this level, step back up one directory.
+        if (!isFilePrefix || dirPrefix === '' || remainder !== '') return false;
+        e.preventDefault();
+        return setNavQuery(popNavLevel(query));
       case 'Escape':
         e.preventDefault();
         setIsOpen(false);
@@ -496,10 +494,13 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       default:
         return false;
     }
-  }, [showSuggestions, suggestions, selectedIndex, applySuggestion, message, cursorPos]);
+  }, [showSuggestions, suggestions, selectedIndex, applySuggestion, enterDirectory, setNavQuery, isFilePrefix, dirPrefix, remainder, query, message, cursorPos]);
+
+  const navCrumbs = useMemo(() => (isFilePrefix ? navBreadcrumb(fileTree, dirPrefix) : []), [isFilePrefix, fileTree, dirPrefix]);
 
   // Picker wiring — universal confirms into `universalTurnMeta.context`
   // (replace contract), canonical into the armed actionMetadata field.
+  const browseField = browse?.field ?? null;
   const browseInitialSelected = useMemo((): string[] => {
     if (!browseField) return [];
     if (isUniversal) return universalContext;
@@ -521,12 +522,17 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     selectedIndex,
     setSelectedIndex,
     applySuggestion,
+    enterDirectory,
+    /** `{ prefix, crumbs }` for the dropdown header while a file prefix is armed; null otherwise. */
+    navBreadcrumb: isFilePrefix && prefix ? { prefix, crumbs: navCrumbs } : null,
     handleKeyDown,
     isOpen: showSuggestions,
     setIsOpen,
     browseField,
+    /** The level the user was browsing when the picker opened — it expands there. */
+    browseSuggestedDirs: browse?.suggestedDirs ?? [],
     browseInitialSelected,
     applyBrowseSelection,
-    clearBrowseField: () => setBrowseField(null),
+    clearBrowseField: () => setBrowse(null),
   };
 }

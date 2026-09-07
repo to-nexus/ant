@@ -4,7 +4,12 @@
  * `useMentionAutocomplete`; only universal-specific data rules live here.
  */
 
-import { UNIVERSAL_AGENTS_DIRNAME, parseUniversalAgentRef } from '@ant/shared';
+import {
+  UNIVERSAL_AGENTS_DIRNAME,
+  UNIVERSAL_PIPELINES_DIRNAME,
+  parseUniversalAgentRef,
+  parseUniversalPipelineRef,
+} from '@ant/shared';
 
 /**
  * Universal exposes `@intent:` (the selected job's own catalog, MULTIPLE
@@ -21,16 +26,22 @@ export const UNIVERSAL_MENTION_PREFIXES = ['@intent:', '@ctx:', '@plan'] as cons
  *
  * - `sessions/**` is grafted into the universal tree but sits OUTSIDE the agent
  *   sandbox — offering it would attach a file the tools cannot open.
- * - bare `_agents` is the picker's synthetic group row, not a directory; the
- *   paths UNDER it are peer definitions and are attachable.
+ * - bare `_agents` / `_pipelines` are the picker's synthetic group rows, not
+ *   directories the plane resolves; the paths UNDER them are definitions and
+ *   are attachable.
  */
 export function isUniversalCtxSuggestible(path: string): boolean {
   if (path === 'sessions' || path.startsWith('sessions/')) return false;
-  if (path === UNIVERSAL_AGENTS_DIRNAME) return false;
+  if (path === UNIVERSAL_AGENTS_DIRNAME || path === UNIVERSAL_PIPELINES_DIRNAME) return false;
   return true;
 }
 
 /** Peer-definition path (`_agents/{agentId}/…`) → its agent id, else null. */
 export function ctxAgentIdOf(path: string): string | null {
   return parseUniversalAgentRef(path)?.agentId ?? null;
+}
+
+/** Pipeline-definition path (`_pipelines/{id}[/pipeline.yaml]`) → its pipeline id, else null. */
+export function ctxPipelineIdOf(path: string): string | null {
+  return parseUniversalPipelineRef(path)?.pipelineId ?? null;
 }

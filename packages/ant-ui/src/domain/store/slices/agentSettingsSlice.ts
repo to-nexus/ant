@@ -27,6 +27,19 @@ export interface AgentSettingsSelection {
 export interface DefinitionTreeEntry {
   tree: CustomAgentDefinitionFileNode[];
   readonly: boolean;
+  /**
+   * `ready` = the tree is a real answer. `error` = the fetch failed (tree is
+   * empty, NOT "this agent has no files"). `stale` = a definition was saved
+   * since; the old tree stays rendered while the next `ensureDefinitionTree`
+   * re-reads it. Only `ready` short-circuits the lazy load.
+   */
+  status: 'ready' | 'stale' | 'error';
+}
+
+/** The one skip rule for `ensureDefinitionTree` — pure, so its table is testable. */
+export function shouldFetchDefinitionTree(entry: DefinitionTreeEntry | undefined, inFlight: boolean): boolean {
+  if (inFlight) return false;
+  return entry?.status !== 'ready';
 }
 
 export interface AgentSettingsState {
@@ -67,8 +80,10 @@ export interface AgentSettingsActions {
   loadAccountAgents: () => Promise<void>;
   selectAgentSettingsNode: (agentId: string | undefined, jobId?: string, intentId?: string) => void;
   loadDefinitionTree: (agentId: string) => Promise<void>;
-  /** Lazy per-agent tree load for the rail's file view — no-op when present or in flight. */
+  /** Lazy per-agent tree load for the rail's file view — no-op when `ready` or in flight. */
   ensureDefinitionTree: (agentId: string) => Promise<void>;
+  /** Mark loaded trees `stale` (one agent, or all) so the next `ensureDefinitionTree` re-reads them. */
+  invalidateDefinitionTrees: (agentId?: string) => void;
   openDefinitionFileBuffer: (agentId: string, path: string) => Promise<void>;
   setDefinitionFileContent: (content: string) => void;
   /** Save via the single write funnel; returns false when the 400 gate refused. */
@@ -169,14 +184,14 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
       const { tree, readonly } = await fetchDefinitionTree(agentId);
       // Write the per-agent map AND — for the selected agent — the single
       // mirror slot the detail pane's readers consume.
-      const trees = { ...(get().definitionTrees as Record<string, DefinitionTreeEntry>), [agentId]: { tree, readonly } };
+      const trees = { ...(get().definitionTrees as Record<string, DefinitionTreeEntry>), [agentId]: { tree, readonly, status: 'ready' as const } };
       const mirror = get().agentSettingsSelection.agentId === agentId
         ? { definitionTree: tree, definitionReadonly: readonly }
         : {};
       set({ definitionTrees: trees, ...mirror });
     } catch (e) {
       console.warn('[agentSettingsSlice] Failed to load definition tree:', e);
-      const trees = { ...(get().definitionTrees as Record<string, DefinitionTreeEntry>), [agentId]: { tree: [], readonly: false } };
+      const trees = { ...(get().definitionTrees as Record<string, DefinitionTreeEntry>), [agentId]: { tree: [], readonly: false, status: 'error' as const } };
       const mirror = get().agentSettingsSelection.agentId === agentId
         ? { definitionTree: [], definitionReadonly: false }
         : {};
@@ -185,7 +200,8 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
   },
 
   ensureDefinitionTree: async (agentId) => {
-    if ((get().definitionTrees as Record<string, DefinitionTreeEntry>)[agentId] || treeLoadsInFlight.has(agentId)) return;
+    const entry = (get().definitionTrees as Record<string, DefinitionTreeEntry>)[agentId];
+    if (!shouldFetchDefinitionTree(entry, treeLoadsInFlight.has(agentId))) return;
     treeLoadsInFlight.add(agentId);
     try {
       await get().loadDefinitionTree(agentId);
@@ -236,7 +252,24 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
 
   clearAgentSettingsOpenRequest: () => set({ agentSettingsOpenRequest: null }),
 
+  invalidateDefinitionTrees: (agentId) => {
+    const trees = get().definitionTrees as Record<string, DefinitionTreeEntry>;
+    const ids = agentId ? [agentId] : Object.keys(trees);
+    const next = { ...trees };
+    let changed = false;
+    for (const id of ids) {
+      if (next[id]?.status === 'ready') {
+        next[id] = { ...next[id], status: 'stale' };
+        changed = true;
+      }
+    }
+    if (changed) set({ definitionTrees: next });
+  },
+
   syncComposerAgents: () => {
+    // A save changed a definition the picker graft may hold — the rail's own
+    // re-read is the window-wake refresh, the composer's is this invalidation.
+    get().invalidateDefinitionTrees();
     const state = get();
     if (state.projectType === 'universal' && state.selectedProject && typeof state.loadCustomAgents === 'function') {
       void state.loadCustomAgents(state.selectedProject);

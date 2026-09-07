@@ -78,6 +78,12 @@ export interface PipelineSliceState {
   /** Own activations whose pinned definition no longer resolves (deactivate-only rows). */
   pipelineOrphanActivations: PipelineActivationView[];
   pipelinesLoading: boolean;
+  /**
+   * Whether `pipelines` is a real answer. An empty list is ambiguous on its own
+   * — "no pipelines" and "never fetched" render identically — so the `_pipelines`
+   * picker graft reads this, not the array length, to decide whether to fetch.
+   */
+  pipelinesStatus: 'idle' | 'loading' | 'ready' | 'error';
   pipelinesError: string | null;
   selectedPipelineId: string | null;
   /** null = nothing being edited; '' pipelineDraftIsNew = unsaved new draft. */
@@ -113,6 +119,8 @@ export interface PipelineSliceState {
 
 export interface PipelineSliceActions {
   loadPipelines: () => Promise<void>;
+  /** Fetch the list once — no-op while loading or when a real answer is held. */
+  ensurePipelinesLoaded: () => Promise<void>;
   selectPipeline: (pipelineId: string | null) => Promise<void>;
   newPipelineDraft: () => void;
   setPipelineDraft: (def: PipelineDef) => void;
@@ -204,6 +212,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelinesInvalid: [],
   pipelineOrphanActivations: [],
   pipelinesLoading: false,
+  pipelinesStatus: 'idle',
   pipelinesError: null,
   selectedPipelineId: null,
   pipelineDraft: null,
@@ -225,7 +234,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineActivationError: null,
 
   loadPipelines: async () => {
-    set({ pipelinesLoading: true });
+    set({ pipelinesLoading: true, pipelinesStatus: 'loading' });
     try {
       const { pipelines, invalid, orphanActivations } = await fetchPipelines();
       set({
@@ -233,12 +242,19 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
         pipelinesInvalid: invalid ?? [],
         pipelineOrphanActivations: orphanActivations ?? [],
         pipelinesLoading: false,
+        pipelinesStatus: 'ready',
         pipelinesError: null,
       });
       void get().loadPipelineApprovals();
     } catch (e) {
-      set({ pipelinesLoading: false, pipelinesError: e instanceof Error ? e.message : String(e) });
+      set({ pipelinesLoading: false, pipelinesStatus: 'error', pipelinesError: e instanceof Error ? e.message : String(e) });
     }
+  },
+
+  ensurePipelinesLoaded: async () => {
+    const status = get().pipelinesStatus as PipelineSliceState['pipelinesStatus'];
+    if (status === 'loading' || status === 'ready') return;
+    await get().loadPipelines();
   },
 
   selectPipeline: async (pipelineId: string | null) => {

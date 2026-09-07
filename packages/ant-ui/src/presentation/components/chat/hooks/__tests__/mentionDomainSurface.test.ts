@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { UNIVERSAL_AGENTS_DIRNAME, UNIVERSAL_PIPELINES_DIRNAME } from '@ant/shared';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -88,23 +89,10 @@ describe('universal mention surface (D-E) — source-level invariants', () => {
     expect(useMentionSrc).toMatch(/!isUniversal && canStartChat && actionMetadata\.explicit !== true/);
   });
 
-  it('universal @ctx: offers the Browse row (folder-tree picker entry point)', () => {
-    // The universal branch must surface the same tree-picker entry the
-    // canonical slots have — a flat top-10 list cannot express folders.
-    expect(useMentionSrc).toMatch(/prefix === '@ctx:'[\s\S]{0,900}type: 'browse' as const, id: 'context'/);
-  });
-
   it('picker confirm routes to universalTurnMeta on universal, never actionMetadata', () => {
     // applyBrowseSelection is the single confirm funnel; its universal arm
     // must return before the updateActionMetadata call.
     expect(useMentionSrc).toMatch(/if \(isUniversal\) \{\s*setUniversalContextMentions\(paths\.filter\(isUniversalCtxSuggestible\)\);\s*return;/);
-  });
-
-  it('typeahead suggests directories for @ref:/@ctx: but @target: stays files-only', () => {
-    expect(useMentionSrc).toMatch(/flattenTreePaths\(fileTree, true\)/);
-    expect(useMentionSrc).toMatch(/buildGroupedFileSuggestions\('target', '@target:', allFilePaths/);
-    expect(useMentionSrc).toMatch(/buildGroupedFileSuggestions\('ref', '@ref:', allPaths/);
-    expect(useMentionSrc).toMatch(/buildGroupedFileSuggestions\('context', '@ctx:', allPaths/);
   });
 });
 
@@ -125,22 +113,46 @@ describe('isUniversalCtxSuggestible — behavior rows', () => {
     expect(isUniversalCtxSuggestible('_agents/payments-ops')).toBe(true);
     // `_agents` itself is the picker's synthetic grouping row, not a directory
     // the agent plane can resolve — selecting it would be a dead promise.
-    expect(isUniversalCtxSuggestible('_agents')).toBe(false);
+    expect(isUniversalCtxSuggestible(UNIVERSAL_AGENTS_DIRNAME)).toBe(false);
     // Name-collision guard, same shape as the sessions row.
-    expect(isUniversalCtxSuggestible('_agents-notes/a.md')).toBe(true);
+    expect(isUniversalCtxSuggestible(`${UNIVERSAL_AGENTS_DIRNAME}-notes/a.md`)).toBe(true);
+  });
+
+  it('pipeline definition paths are suggestible; the bare _pipelines group row is not', async () => {
+    const { isUniversalCtxSuggestible } = await import('../universalMentionSurface');
+    expect(isUniversalCtxSuggestible(`${UNIVERSAL_PIPELINES_DIRNAME}/nightly/pipeline.yaml`)).toBe(true);
+    expect(isUniversalCtxSuggestible(`${UNIVERSAL_PIPELINES_DIRNAME}/nightly`)).toBe(true);
+    expect(isUniversalCtxSuggestible(UNIVERSAL_PIPELINES_DIRNAME)).toBe(false);
+    expect(isUniversalCtxSuggestible(`${UNIVERSAL_PIPELINES_DIRNAME}-notes/a.md`)).toBe(true);
   });
 });
 
 describe('ctxAgentIdOf — peer path recognition', () => {
   it.each([
-    ['_agents/payments-ops/jobs/settle/job.yaml', 'payments-ops'],
-    ['_agents/payments-ops', 'payments-ops'],
+    [`${UNIVERSAL_AGENTS_DIRNAME}/payments-ops/jobs/settle/job.yaml`, 'payments-ops'],
+    [`${UNIVERSAL_AGENTS_DIRNAME}/payments-ops`, 'payments-ops'],
     ['plan/notes.md', null],
-    ['_agents', null],
-    ['_agents-notes/a.md', null],
-    ['_agents/Not_A_Valid_Id/agent.yaml', null],
+    [UNIVERSAL_AGENTS_DIRNAME, null],
+    [`${UNIVERSAL_AGENTS_DIRNAME}-notes/a.md`, null],
+    [`${UNIVERSAL_AGENTS_DIRNAME}/Not_A_Valid_Id/agent.yaml`, null],
   ] as const)('%s → %s', async (p, expected) => {
     const { ctxAgentIdOf } = await import('../universalMentionSurface');
     expect(ctxAgentIdOf(p)).toBe(expected);
+  });
+});
+
+describe('ctxPipelineIdOf — pipeline definition path recognition (the splitter IS the whitelist)', () => {
+  it.each([
+    [`${UNIVERSAL_PIPELINES_DIRNAME}/nightly/pipeline.yaml`, 'nightly'],
+    [`${UNIVERSAL_PIPELINES_DIRNAME}/nightly`, 'nightly'],
+    [`${UNIVERSAL_PIPELINES_DIRNAME}/nightly/owner.json`, null],
+    [`${UNIVERSAL_PIPELINES_DIRNAME}/nightly/availability.json`, null],
+    [UNIVERSAL_PIPELINES_DIRNAME, null],
+    [`${UNIVERSAL_PIPELINES_DIRNAME}-notes/a.md`, null],
+    [`${UNIVERSAL_AGENTS_DIRNAME}/nightly/pipeline.yaml`, null],
+    ['plan/notes.md', null],
+  ] as const)('%s → %s', async (p, expected) => {
+    const { ctxPipelineIdOf } = await import('../universalMentionSurface');
+    expect(ctxPipelineIdOf(p)).toBe(expected);
   });
 });

@@ -44,11 +44,15 @@
       "description": "Plan turn — produce a plan first, not the work"
     },
     "group": {
-      "suggested": "★ Suggested",
-      "all": "All Files",
-      "artifacts": "Artifacts",
-      "agentDefinitions": "Agent Definitions"
-    }
+      "agentDefinitions": "Agent Definitions",
+      "pipelineDefinitions": "Pipeline Definitions"
+    },
+    "nav": {
+      "root": "All files",
+      "enterHint": "Tab ›",
+      "attachHint": "↵"
+    },
+    "more": "{{count}} more… browse in folder tree"
   },
   "panelTabs": {
     "chat": "Chat",

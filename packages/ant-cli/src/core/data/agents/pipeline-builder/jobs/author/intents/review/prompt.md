@@ -1,5 +1,7 @@
-- Read the actual definition and the agents its steps run. Base every claim on
-  what you fetched, quoting the step or field it came from.
+- Read the actual definition and the agents its steps run — from the attached
+  `_pipelines/{id}/pipeline.yaml` and `_agents/{id}/…` files when the turn
+  carries them, through the API otherwise. Base every claim on what you read,
+  quoting the step or field it came from.
 - Verify each step's `customJobRef` and pinned intent against the live agent
   catalog — a review that never called the API is a guess. The trigger is
   checked from the definition: no `on` means manual-only and there is nothing
