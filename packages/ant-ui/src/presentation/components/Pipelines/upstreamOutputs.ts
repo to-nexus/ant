@@ -30,16 +30,15 @@ interface AgentCatalogEntry {
 
 export const UPSTREAM_SUGGESTIONS_CAP = 12;
 
-export function upstreamOutputSuggestions(
-  def: PipelineDef,
-  stepId: string,
-  agents: AgentCatalogEntry[],
-  cap = UPSTREAM_SUGGESTIONS_CAP,
-): UpstreamOutputSuggestion[] {
+/**
+ * Transitive needs closure of a step (implicit-linear defs resolve to the
+ * prior step) — the ONE client copy of the validator's closure rule. Job
+ * steps only when `jobsOnly`: gates produce nothing and cannot be referenced
+ * by `{{steps.*}}`.
+ */
+export function upstreamStepIds(def: PipelineDef, stepId: string, opts: { jobsOnly?: boolean } = {}): string[] {
   const index = def.steps.findIndex((s) => s.id === stepId);
   if (index < 0) return [];
-
-  // Transitive needs closure (implicit-linear defs resolve to the prior step).
   const indexOf = new Map(def.steps.map((s, i) => [s.id, i]));
   const upstream = new Set<string>();
   const queue = [...effectiveNeedsOf(def, index)];
@@ -51,6 +50,17 @@ export function upstreamOutputSuggestions(
     upstream.add(id);
     queue.push(...effectiveNeedsOf(def, i));
   }
+  return def.steps.filter((s) => upstream.has(s.id) && (!opts.jobsOnly || !isApprovalStep(s))).map((s) => s.id);
+}
+
+export function upstreamOutputSuggestions(
+  def: PipelineDef,
+  stepId: string,
+  agents: AgentCatalogEntry[],
+  cap = UPSTREAM_SUGGESTIONS_CAP,
+): UpstreamOutputSuggestion[] {
+  const upstream = new Set(upstreamStepIds(def, stepId));
+  if (upstream.size === 0) return [];
 
   const out: UpstreamOutputSuggestion[] = [];
   const seenGlobs = new Set<string>();

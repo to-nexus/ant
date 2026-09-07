@@ -8,14 +8,18 @@
 import { describe, it, expect } from 'vitest';
 import type { PipelineDef, PipelineStepDef } from '@ant/shared';
 import {
+  STEP_ID_PATTERN,
   TRIGGER_NODE_ID,
   descendantsOf,
   effectiveNeedsOf,
   insertStepAfter,
   materializeNeeds,
   removeStep,
+  renameStep,
   setStepNeeds,
+  updateSchedule,
 } from '../../src/presentation/components/Pipelines/draft';
+import { upstreamStepIds } from '../../src/presentation/components/Pipelines/upstreamOutputs';
 
 const job = (id: string, extra: Record<string, unknown> = {}) =>
   ({ id, customJobRef: `x/${id}`, ...extra }) as PipelineStepDef;
@@ -98,5 +102,61 @@ describe('setStepNeeds / descendantsOf', () => {
     const out = descendantsOf(d, 'a');
     expect([...out].sort()).toEqual(['b', 'c']);
     expect(out.has('e')).toBe(false);
+  });
+});
+
+describe('renameStep', () => {
+  it('renames the step, every needs entry, and every {{steps.<id>.*}} reference — nothing else', () => {
+    const d = def([
+      job('lookup'),
+      job('schedule', { needs: ['lookup'], directive: '케이스: {{steps.lookup.answer}} / {{ steps.lookup.artifacts }}' }),
+      { id: 'gate', type: 'approval', prompt: 'p', needs: ['schedule'] } as unknown as PipelineStepDef,
+      job('lookup-ledger', { needs: ['gate'], directive: '{{steps.lookup-ledger.answer}} stays' }),
+    ]);
+    const r = renameStep(d, 'lookup', 'lookup-period');
+    expect(r.steps.map((s) => s.id)).toEqual(['lookup-period', 'schedule', 'gate', 'lookup-ledger']);
+    expect(r.steps[1].needs).toEqual(['lookup-period']);
+    expect((r.steps[1] as { directive?: string }).directive).toBe('케이스: {{steps.lookup-period.answer}} / {{ steps.lookup-period.artifacts }}');
+    // A different step whose id merely starts with the old id is untouched.
+    expect((r.steps[3] as { directive?: string }).directive).toBe('{{steps.lookup-ledger.answer}} stays');
+  });
+
+  it('is identity for a taken, invalid, or unchanged id', () => {
+    const d = def([job('a'), job('b')]);
+    expect(renameStep(d, 'a', 'b')).toBe(d);
+    expect(renameStep(d, 'a', 'A')).toBe(d);
+    expect(renameStep(d, 'a', '-x')).toBe(d);
+    expect(renameStep(d, 'a', 'a')).toBe(d);
+    expect(STEP_ID_PATTERN.test('lookup-period')).toBe(true);
+  });
+});
+
+describe('updateSchedule', () => {
+  // A hand-authored def may carry BOTH triggers (an error-handler pipeline
+  // with a schedule); editing the cron used to rebuild `on` as `{ schedule }`
+  // and silently delete the runCompleted half.
+  it('patches the schedule and keeps a coexisting runCompleted trigger', () => {
+    const d = {
+      ...def([job('a')]),
+      on: { schedule: { cron: '0 9 * * 1' }, runCompleted: { pipelineId: 'up', statuses: ['failed'] } },
+    } as PipelineDef;
+    const r = updateSchedule(d, { cron: '0 8 * * 1', tz: 'Asia/Seoul' });
+    expect(r.on).toEqual({ schedule: { cron: '0 8 * * 1', tz: 'Asia/Seoul' }, runCompleted: { pipelineId: 'up', statuses: ['failed'] } });
+  });
+});
+
+describe('upstreamStepIds', () => {
+  it('is the transitive needs closure, implicit edges included; jobsOnly drops gates', () => {
+    const d = def([
+      job('a'),
+      job('b'),
+      { id: 'g', type: 'approval', prompt: 'p' } as unknown as PipelineStepDef,
+      job('c', { needs: ['g'] }),
+      job('d', { needs: [] }),
+    ]);
+    expect(upstreamStepIds(d, 'c')).toEqual(['a', 'b', 'g']);
+    expect(upstreamStepIds(d, 'c', { jobsOnly: true })).toEqual(['a', 'b']);
+    expect(upstreamStepIds(d, 'd')).toEqual([]);
+    expect(upstreamStepIds(d, 'zzz')).toEqual([]);
   });
 });

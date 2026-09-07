@@ -91,6 +91,8 @@ export interface PipelineSliceState {
   pipelineSavedDef: PipelineDef | null;
   pipelineDraftIsNew: boolean;
   pipelineSaveError: string | null;
+  /** Non-blocking advisories the server returned on the last save (`catalogWarnings`). */
+  pipelineSaveWarnings: string[];
   pipelinePanelView: 'editor' | 'execution';
   /** Org editors draft for the selected pipeline — null = untouched. */
   pipelineEditorsDraft: string[] | null;
@@ -205,7 +207,7 @@ export const selectPipelineDirty = (s: PipelineDirtyState): PipelineDirtyReport 
   return count === 0 ? null : { definition, editors, approvers, count };
 };
 
-const CLEAN_DRAFTS = { pipelineEditorsDraft: null, pipelineApproversDraft: {} } as const;
+const CLEAN_DRAFTS = { pipelineEditorsDraft: null, pipelineApproversDraft: {}, pipelineSaveWarnings: [] as string[] } as const;
 
 export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (set, get) => ({
   pipelines: [],
@@ -219,6 +221,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineSavedDef: null,
   pipelineDraftIsNew: false,
   pipelineSaveError: null,
+  pipelineSaveWarnings: [],
   pipelinePanelView: 'editor',
   pipelineEditorsDraft: null,
   pipelineApproversDraft: {},
@@ -324,11 +327,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     if (!pipelineDraft) return false;
     try {
       if (pipelineDraftIsNew) {
-        const { id } = await createPipeline(pipelineDraft);
-        set({ pipelineDraftIsNew: false, selectedPipelineId: id, pipelineSavedDef: pipelineDraft, pipelineSaveError: null });
+        const { id, catalogWarnings } = await createPipeline(pipelineDraft);
+        set({ pipelineDraftIsNew: false, selectedPipelineId: id, pipelineSavedDef: pipelineDraft, pipelineSaveError: null, pipelineSaveWarnings: catalogWarnings ?? [] });
       } else if (selectedPipelineId) {
-        await updatePipeline(selectedPipelineId, pipelineDraft);
-        set({ pipelineSavedDef: pipelineDraft, pipelineSaveError: null });
+        const { catalogWarnings } = await updatePipeline(selectedPipelineId, pipelineDraft);
+        set({ pipelineSavedDef: pipelineDraft, pipelineSaveError: null, pipelineSaveWarnings: catalogWarnings ?? [] });
       } else {
         return false;
       }

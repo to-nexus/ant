@@ -115,7 +115,6 @@
     "emptyCanvas": "Press + on the trigger node to add the first step."
   },
   "canvas": {
-    "trigger": "Schedule",
     "approval": "Approval",
     "unconfigured": "Choose a job…",
     "noTimeout": "no timeout",
@@ -125,14 +124,27 @@
     "gateRejectedBy": "✗ rejected by {{who}}",
     "gateAutoApproved": "⏱ auto-approved",
     "gateAutoRejected": "⏱ auto-rejected",
-    "lockedEnabled": "Wiring is locked while the pipeline is enabled — disable it in Pipeline settings to edit."
+    "lockedEnabled": "Wiring is locked while the pipeline is enabled — disable it in Pipeline settings to edit.",
+    "triggerMode": {
+      "schedule": "Schedule",
+      "manual": "Manual",
+      "runCompleted": "Chain"
+    }
   },
   "inspector": {
     "trigger": "Trigger & policies",
     "step": "Job step",
     "gate": "Approval gate",
     "close": "Close",
-    "deleteStep": "Remove step"
+    "deleteStep": "Remove step",
+    "section": {
+      "identity": "Identity",
+      "wiring": "Wiring",
+      "work": "Work",
+      "inputs": "Inputs",
+      "policy": "Policy"
+    },
+    "unknownValue": "Unknown value: {{v}}"
   },
   "settings": {
     "title": "Pipeline settings",
@@ -184,19 +196,21 @@
     "directive": "Directive",
     "directivePlaceholder": "What should this run do? Leave empty to run the default directive.",
     "templateVars": "Template variables",
-    "templateVarsHint": "Substituted with the actual values when the schedule fires — insert at the cursor.",
+    "templateVarsHint": "Substituted with the actual values when the run is dispatched — inserted at the cursor.",
     "templateVar": {
       "fireDate": "Fire time (ISO)",
       "fireEpoch": "Fire time (epoch ms)",
-      "runId": "Run id"
+      "runId": "Run id",
+      "prevSuccessFireDate": "Previous successful run (ISO) — empty on the first run",
+      "prevSuccessFireEpoch": "Previous successful run (epoch ms) — empty on the first run"
     },
-    "context": "Context pins (@ctx)",
-    "contextHint": "Pins are resolved when this step fires — you can pre-pin a path an earlier step will create; needs-ordering means it is existence-checked only after that step finished.",
+    "context": "Context pins",
+    "contextHint": "Attached to the step when it is dispatched. A glob expands to the matching artifacts (newest first); a pin that matches nothing fails the step — pin what an upstream step guarantees.",
     "contextPlaceholder": "plan/spec.md",
     "browse": "Browse",
     "browseTitle": "Attach context — {{project}}",
     "upstreamOutputs": "Upstream step outputs",
-    "upstreamOutputsHint": "Each glob is that step intent's stop-hook output contract — needs-ordering and stop-hook enforcement guarantee it exists before this step runs; it expands to the actual files at fire time.",
+    "upstreamOutputsHint": "Each glob is that step intent's stop-hook output contract — it exists before this step runs, and expands to the actual files at dispatch.",
     "addContext": "Add",
     "removeContext": "Remove pin",
     "on": "Run when its dependencies…",
@@ -220,7 +234,24 @@
     "expectedOutputsNone": "This intent declares no artifact contract — action-only or free-form output.",
     "onMissingVerdict": "If the run seals no verdict",
     "onMissingVerdictFail": "Fail the step (default)",
-    "onMissingVerdictAssume": "Assume \"{{o}}\""
+    "onMissingVerdictAssume": "Assume \"{{o}}\"",
+    "stepId": "Step id",
+    "stepIdHint": "The handle other steps depend on and directives reference as {{steps.<id>.answer}} — lowercase letters, digits, hyphens. Renaming updates every reference.",
+    "stepIdInvalid": "Lowercase letters, digits and hyphens only, starting with a letter or digit.",
+    "stepIdTaken": "Another step already uses this id.",
+    "templateVarsManualHint": "A manual-only pipeline has no fire time and no previous fire — only the run id and upstream step results are available.",
+    "stepOutputGroup": "From step \"{{id}}\"",
+    "stepOutput": {
+      "answer": "That step's final answer, as text",
+      "artifacts": "The files that step's job wrote — this run's own, one path per line"
+    },
+    "pinVars": "Partition variables",
+    "pinVarsHint": "A pin may carry a static variable — reports/{{trigger.fireDate}}/** pins exactly this run's partition. Step outputs cannot be pinned; pin the upstream glob instead.",
+    "browseEyebrow": "CONTEXT",
+    "needsImplicit": "Inherited: previous step",
+    "onVerdictPick": "On a verdict…",
+    "onVerdictOutcomes": "Runs when the upstream verdict is one of the selected outcomes; a non-match skips this step and everything downstream of it.",
+    "onVerdictStale": "Not declared by the upstream intent any more"
   },
   "gate": {
     "prompt": "Approval prompt",
@@ -236,7 +267,9 @@
     "comingSoon": "Coming soon",
     "remindAfter": "Remind while unresolved",
     "remindAfterPlaceholder": "none — e.g. 4h, 24h",
-    "approversHint": "Approvers are assigned per gate when the pipeline is activated on a project."
+    "approversHint": "Approvers are assigned per gate when the pipeline is activated on a project.",
+    "promptHint": "Say what happened upstream and what approving runs. The approver can only approve or reject — nothing they type reaches a step.",
+    "customTimeoutPlaceholder": "e.g. 36h"
   },
   "runs": {
     "empty": "No runs yet — press Run now to test this pipeline.",
@@ -313,5 +346,13 @@
     "root": "Pipelines",
     "scopeUser": "My",
     "scopeOrg": "Organization"
+  },
+  "advisory": {
+    "title": "{{n}} advisories",
+    "more": "{{n}} more",
+    "less": "Show fewer",
+    "saved": "Saved",
+    "savedHint": "Returned by the server on the last save",
+    "nodeDot": "Has advisories — open the step"
   }
 }

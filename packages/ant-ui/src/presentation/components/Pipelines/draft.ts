@@ -166,17 +166,9 @@ export function descendantsOf(def: PipelineDef, stepId: string): Set<string> {
 
 export const DEFAULT_SCHEDULE_CRON = '0 9 * * 1';
 
+/** Patch the schedule half of `on` — a coexisting `runCompleted` trigger survives the edit. */
 export function updateSchedule(def: PipelineDef, patch: Partial<PipelineScheduleTrigger>): PipelineDef {
-  return { ...def, on: { schedule: { cron: DEFAULT_SCHEDULE_CRON, ...def.on?.schedule, ...patch } } };
-}
-
-/** Toggle the schedule trigger. Off deletes `on` entirely — a manual-only def. */
-export function setScheduleEnabled(def: PipelineDef, enabled: boolean): PipelineDef {
-  if (!enabled) {
-    const { on: _drop, ...rest } = def;
-    return rest as PipelineDef;
-  }
-  return def.on?.schedule ? def : { ...def, on: { schedule: { cron: DEFAULT_SCHEDULE_CRON } } };
+  return { ...def, on: { ...def.on, schedule: { cron: DEFAULT_SCHEDULE_CRON, ...def.on?.schedule, ...patch } } };
 }
 
 export type TriggerMode = 'schedule' | 'runCompleted' | 'manual';
@@ -205,6 +197,30 @@ export function setTriggerMode(def: PipelineDef, mode: TriggerMode): PipelineDef
 
 export function updateRunCompleted(def: PipelineDef, patch: Partial<PipelineRunCompletedTrigger>): PipelineDef {
   return { ...def, on: { ...def.on, runCompleted: { pipelineId: '', ...def.on?.runCompleted, ...patch } } };
+}
+
+/** The validator's step-id shape — ids are the handles `needs` and `{{steps.<id>.*}}` refer to. */
+export const STEP_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Rename a step everywhere it is referred to: its own id, every `needs`
+ * entry, and every `{{steps.<from>.<field>}}` reference in a directive.
+ * Identity when the new id is taken, invalid, or unchanged.
+ */
+export function renameStep(def: PipelineDef, from: string, to: string): PipelineDef {
+  if (from === to || !STEP_ID_PATTERN.test(to) || def.steps.some((s) => s.id === to)) return def;
+  const ref = new RegExp(`\\{\\{(\\s*)steps\\.${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`, 'g');
+  return {
+    ...def,
+    steps: def.steps.map((s) => {
+      const next: PipelineStepDef = { ...s, id: s.id === from ? to : s.id } as PipelineStepDef;
+      if (s.needs?.includes(from)) next.needs = s.needs.map((n) => (n === from ? to : n));
+      if (!('type' in s) && s.directive && s.directive.includes(`steps.${from}.`)) {
+        (next as JobStepDef).directive = s.directive.replace(ref, `{{$1steps.${to}.`);
+      }
+      return next;
+    }),
+  };
 }
 
 /** Client copy of the executor's implicit-needs rule for edge rendering. */

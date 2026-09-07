@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lock } from 'lucide-react';
-import { validatePipelineDef, type PipelineDef, type PipelineListEntry } from '@ant/shared';
+import { collectPipelineAdvisoryItems, validatePipelineDef, type CustomAgentSummary, type PipelineDef, type PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectPipelineDirty } from '@/domain/store/slices/pipelineSlice';
 import { ChangedBar } from '../ConfigEditor/aurora';
@@ -25,6 +25,7 @@ import { StepInspector } from './StepInspector';
 import { PipelineSettingsPanel } from './PipelineSettingsPanel';
 import { PipelineHeader } from './PipelineHeader';
 import { PipelineExecutionView } from './PipelineExecutionView';
+import { AdvisoryStrip, type AdvisoryStripItem } from './AdvisoryStrip';
 import { TRIGGER_NODE_ID, insertStepAfter, makeGateStep, makeJobStep } from './draft';
 
 const noop = () => {};
@@ -43,7 +44,8 @@ export function PipelineWorkspace() {
   const selectedNodeId = useStore((s) => s.selectedPipelineNodeId);
   const runDetail = useStore((s) => s.pipelineRunDetail);
   const pipelines = useStore((s) => s.pipelines);
-  const accountAgents = useStore((s) => s.accountAgents);
+  const accountAgents = useStore((s) => s.accountAgents) as CustomAgentSummary[];
+  const saveWarnings = useStore((s) => s.pipelineSaveWarnings);
   const setPipelineDraft = useStore((s) => s.setPipelineDraft);
   const savePipelineAll = useStore((s) => s.savePipelineAll);
   const discardPipelineAll = useStore((s) => s.discardPipelineAll);
@@ -73,6 +75,16 @@ export function PipelineWorkspace() {
     [pipelines, selectedId, draft, saved, editorsDraft, approversDraft],
   );
   const validationErrors = useMemo(() => (draft ? validatePipelineDef(draft) : []), [draft]);
+  // Save-time advisories, live over the draft (the same shared collectors the
+  // server runs) plus whatever the server returned on the last save.
+  const liveAdvisories = useMemo(() => (draft ? collectPipelineAdvisoryItems(draft, accountAgents) : []), [draft, accountAgents]);
+  const advisoryItems = useMemo<AdvisoryStripItem[]>(() => {
+    const live = liveAdvisories.map((a, i) => ({ id: `live-${i}-${a.code}-${a.stepId ?? ''}`, message: a.message, stepId: a.stepId, source: 'live' as const }));
+    const liveMessages = new Set(live.map((l) => l.message));
+    const saved = saveWarnings.filter((m) => !liveMessages.has(m)).map((m, i) => ({ id: `saved-${i}`, message: m, source: 'saved' as const }));
+    return [...live, ...saved];
+  }, [liveAdvisories, saveWarnings]);
+  const advisoryStepIds = useMemo(() => new Set(liveAdvisories.flatMap((a) => (a.stepId ? [a.stepId] : []))), [liveAdvisories]);
   const definitionValid = validationErrors.length === 0 && cronOk && (draft?.steps.length ?? 0) > 0;
   const canSave = !!dirty && (!dirty.definition || definitionValid);
   const saveBlockedReason =
@@ -148,6 +160,8 @@ export function PipelineWorkspace() {
         </div>
       )}
 
+      {view !== 'execution' && <AdvisoryStrip items={advisoryItems} onSelectStep={editable ? selectPipelineNode : undefined} />}
+
       {view === 'execution' ? (
         <div style={{ flex: 1, minHeight: 0 }}>
           <PipelineExecutionView def={draft} draftIsNew={draftIsNew} pipelineId={selectedId} entry={entry ?? null} />
@@ -180,6 +194,7 @@ export function PipelineWorkspace() {
                 customAgents={accountAgents}
                 cronSummary={cronSummary}
                 run={runDetail && runDetail.pipelineId === (selectedId ?? '') ? runDetail : null}
+                advisoryStepIds={advisoryStepIds}
                 selectedNodeId={editable ? selectedNodeId : null}
                 onSelectNode={editable ? selectPipelineNode : noop}
                 onAddAfter={editable ? handleAddAfter : undefined}
@@ -195,7 +210,15 @@ export function PipelineWorkspace() {
           </div>
           {/* Inspector slot: a node while editable, otherwise the pipeline's own settings. */}
           {editable && nodeExists && selectedNodeId ? (
-            <StepInspector def={draft} nodeId={selectedNodeId} onChange={patch} onClose={() => selectPipelineNode(null)} onCronValidity={setCronOk} />
+            <StepInspector
+              def={draft}
+              nodeId={selectedNodeId}
+              onChange={patch}
+              onClose={() => selectPipelineNode(null)}
+              onCronValidity={setCronOk}
+              advisories={liveAdvisories.filter((a) => a.stepId === selectedNodeId)}
+              onStepRenamed={selectPipelineNode}
+            />
           ) : (
             <PipelineSettingsPanel
               draft={draft}

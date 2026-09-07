@@ -115,7 +115,6 @@
     "emptyCanvas": "트리거 노드의 + 버튼으로 첫 스텝을 추가하세요."
   },
   "canvas": {
-    "trigger": "스케줄",
     "approval": "승인 게이트",
     "unconfigured": "잡을 선택하세요…",
     "noTimeout": "타임아웃 없음",
@@ -125,14 +124,27 @@
     "gateRejectedBy": "✗ {{who}} 거부",
     "gateAutoApproved": "⏱ 자동 승인",
     "gateAutoRejected": "⏱ 자동 거부",
-    "lockedEnabled": "파이프라인이 사용 가능 상태인 동안 배선도는 잠깁니다 — 편집하려면 파이프라인 설정에서 사용 불능으로 전환하세요."
+    "lockedEnabled": "파이프라인이 사용 가능 상태인 동안 배선도는 잠깁니다 — 편집하려면 파이프라인 설정에서 사용 불능으로 전환하세요.",
+    "triggerMode": {
+      "schedule": "스케줄",
+      "manual": "수동 실행",
+      "runCompleted": "체인"
+    }
   },
   "inspector": {
     "trigger": "트리거·정책",
     "step": "잡 스텝",
     "gate": "승인 게이트",
     "close": "닫기",
-    "deleteStep": "스텝 삭제"
+    "deleteStep": "스텝 삭제",
+    "section": {
+      "identity": "식별",
+      "wiring": "연결",
+      "work": "작업",
+      "inputs": "입력",
+      "policy": "정책"
+    },
+    "unknownValue": "알 수 없는 값: {{v}}"
   },
   "settings": {
     "title": "파이프라인 설정",
@@ -184,19 +196,21 @@
     "directive": "지시문",
     "directivePlaceholder": "이 run이 무엇을 해야 하나요? 비워두면 기본 지시문으로 실행됩니다.",
     "templateVars": "템플릿 변수",
-    "templateVarsHint": "발화 시점에 실제 값으로 치환되어 지시문에 들어갑니다 — 커서 위치에 삽입됩니다.",
+    "templateVarsHint": "실행이 디스패치될 때 실제 값으로 치환됩니다 — 커서 위치에 삽입됩니다.",
     "templateVar": {
       "fireDate": "발화 시각 (ISO)",
       "fireEpoch": "발화 시각 (epoch ms)",
-      "runId": "실행 ID"
+      "runId": "실행 ID",
+      "prevSuccessFireDate": "이전 성공 실행 시각 (ISO) — 첫 실행은 빈 값",
+      "prevSuccessFireEpoch": "이전 성공 실행 시각 (epoch ms) — 첫 실행은 빈 값"
     },
-    "context": "컨텍스트 핀 (@ctx)",
-    "contextHint": "핀은 이 스텝이 발화되는 시점에 해석됩니다 — 선행 스텝이 생성할 파일 경로를 미리 지정할 수 있고, needs 순서상 선행 스텝 완료 후에 존재 검사를 통과하면 첨부됩니다.",
+    "context": "컨텍스트 첨부",
+    "contextHint": "스텝이 디스패치될 때 첨부됩니다. 경로 패턴은 매칭되는 산출물로 확장되고(최신 우선), 아무것도 매칭하지 않는 첨부는 스텝을 실패시킵니다 — 선행 스텝이 보장하는 것을 첨부하세요.",
     "contextPlaceholder": "plan/spec.md",
     "browse": "찾아보기",
     "browseTitle": "컨텍스트 첨부 — {{project}}",
     "upstreamOutputs": "선행 스텝 산출물",
-    "upstreamOutputsHint": "이 글롭은 해당 스텝 인텐트의 stop-hook 산출물 계약입니다 — needs 순서와 stop-hook 강제로 이 스텝 실행 전 존재가 보장되며, 발화 시점에 실제 파일 경로로 확장됩니다.",
+    "upstreamOutputsHint": "각 경로 패턴은 그 스텝 인텐트의 stop-hook 산출물 계약입니다 — 이 스텝 실행 전 존재가 보장되며 디스패치 시 실제 파일로 확장됩니다.",
     "addContext": "추가",
     "removeContext": "핀 제거",
     "on": "의존 스텝이 …일 때 실행",
@@ -220,7 +234,24 @@
     "expectedOutputsNone": "이 인텐트는 아티팩트 계약을 선언하지 않습니다 — 액션 전용 또는 자유 형식 출력.",
     "onMissingVerdict": "실행이 verdict를 남기지 않으면",
     "onMissingVerdictFail": "스텝 실패 (기본)",
-    "onMissingVerdictAssume": "\"{{o}}\"로 간주"
+    "onMissingVerdictAssume": "\"{{o}}\"로 간주",
+    "stepId": "스텝 ID",
+    "stepIdHint": "다른 스텝이 의존하고 지시문이 {{steps.<id>.answer}}로 참조하는 손잡이입니다 — 소문자·숫자·하이픈. 바꾸면 모든 참조가 따라옵니다.",
+    "stepIdInvalid": "소문자·숫자·하이픈만, 첫 글자는 소문자나 숫자.",
+    "stepIdTaken": "다른 스텝이 이미 이 ID를 씁니다.",
+    "templateVarsManualHint": "수동 실행 파이프라인에는 발화 시각도 이전 발화도 없습니다 — 실행 ID와 선행 스텝 결과만 쓸 수 있습니다.",
+    "stepOutputGroup": "\"{{id}}\" 스텝 결과",
+    "stepOutput": {
+      "answer": "그 스텝의 최종 답변 텍스트",
+      "artifacts": "그 스텝의 잡이 쓴 파일 — 이 실행의 것, 한 줄에 경로 하나"
+    },
+    "pinVars": "파티션 변수",
+    "pinVarsHint": "첨부 경로에 정적 변수를 쓸 수 있습니다 — reports/{{trigger.fireDate}}/** 는 정확히 이 실행의 파티션을 첨부합니다. 스텝 결과는 첨부할 수 없으니 선행 경로 패턴을 첨부하세요.",
+    "browseEyebrow": "컨텍스트",
+    "needsImplicit": "기본 연결: 직전 스텝",
+    "onVerdictPick": "판정으로 분기…",
+    "onVerdictOutcomes": "선행 판정이 선택한 결과 중 하나일 때 실행합니다. 불일치면 이 스텝과 그 하류가 모두 건너뜁니다.",
+    "onVerdictStale": "선행 인텐트가 더 이상 선언하지 않는 결과"
   },
   "gate": {
     "prompt": "승인 문구",
@@ -236,7 +267,9 @@
     "comingSoon": "곧 제공됩니다",
     "remindAfter": "미결 시 리마인드",
     "remindAfterPlaceholder": "없음 — 예: 4h, 24h",
-    "approversHint": "승인자는 파이프라인을 프로젝트에 활성화할 때 게이트별로 지정합니다."
+    "approversHint": "승인자는 파이프라인을 프로젝트에 활성화할 때 게이트별로 지정합니다.",
+    "promptHint": "상류에서 무엇이 일어났고 승인하면 무엇이 실행되는지 쓰세요. 승인자는 승인/거절만 할 수 있고, 입력한 메모는 스텝에 전달되지 않습니다.",
+    "customTimeoutPlaceholder": "예: 36h"
   },
   "runs": {
     "empty": "아직 실행 이력이 없습니다 — 지금 실행으로 테스트해 보세요.",
@@ -313,5 +346,13 @@
     "root": "파이프라인",
     "scopeUser": "내 것",
     "scopeOrg": "조직"
+  },
+  "advisory": {
+    "title": "검토 사항 {{n}}건",
+    "more": "{{n}}건 더 보기",
+    "less": "접기",
+    "saved": "저장 응답",
+    "savedHint": "마지막 저장 때 서버가 돌려준 검토 사항",
+    "nodeDot": "검토 사항이 있습니다 — 스텝을 열어 확인하세요"
   }
 }

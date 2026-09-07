@@ -29,6 +29,8 @@ export interface PipelineNodeData {
   onAdd?: (afterNodeId: string, kind: 'job' | 'gate') => void;
   nodeId: string;
   invalid?: boolean;
+  /** A save-time advisory names this step — amber dot; the inspector shows the text. */
+  advisory?: boolean;
   /** Gate nodes, activation context: who may open this gate ("이 게이트는 누가 여는가"). */
   approvers?: string[];
   /** Gate nodes, run context: the landed decision ("✓ B 승인"). */
@@ -147,6 +149,18 @@ function shell(data: PipelineNodeData, accentVar: string): React.CSSProperties {
   };
 }
 
+/** Top-right amber dot — an advisory names this step (details in the inspector). */
+function AdvisoryDot({ data }: { data: PipelineNodeData }) {
+  const { t } = useTranslation('pipelines');
+  if (!data.advisory) return null;
+  return (
+    <span
+      title={t('advisory.nodeDot', 'Has advisories — open the step')}
+      style={{ position: 'absolute', top: -4, right: -4, width: 9, height: 9, borderRadius: 5, background: 'var(--amber-500)', border: '2px solid var(--bg-surface)' }}
+    />
+  );
+}
+
 function StatusChip({ status }: { status?: PipelineStepStatus }) {
   if (!status || status === 'pending') return null;
   const color = STATUS_COLOR[status] ?? 'var(--text-3)';
@@ -248,6 +262,7 @@ export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeD
         invalid={data.invalid}
       />
       <StatusChip status={data.status} />
+      <AdvisoryDot data={data} />
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
       <AddButton data={data} />
@@ -287,6 +302,7 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
               : t('canvas.gateAutoRejected', '⏱ auto-rejected')}
         </div>
       )}
+      <AdvisoryDot data={data} />
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
       <AddButton data={data} />

@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { isApprovalStep, parseCustomJobRef, type PipelineDef, type PipelineStepStatus } from '@ant/shared';
 import type { PipelineRunPublic } from '@/domain/store/slices/pipelineSlice';
 import { TriggerNode, StepNode, GateNode, NODE_WIDTH, type PipelineNodeData } from './nodes';
-import { TRIGGER_NODE_ID, effectiveNeedsOf } from '../draft';
+import { TRIGGER_NODE_ID, effectiveNeedsOf, triggerModeOf } from '../draft';
 
 const nodeTypes: NodeTypes = {
   pipelineTrigger: TriggerNode,
@@ -49,12 +49,14 @@ export interface PipelineCanvasProps {
   run?: PipelineRunPublic | null;
   /** Activation context: per-gate approver roster rendered on gate nodes. */
   approversByGate?: Record<string, string[]>;
+  /** Steps a save-time advisory names — rendered as an amber dot on the card. */
+  advisoryStepIds?: ReadonlySet<string>;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   onAddAfter?: (afterNodeId: string, kind: 'job' | 'gate') => void;
 }
 
-export function PipelineCanvas({ def, cronSummary, customAgents, run, approversByGate, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
+export function PipelineCanvas({ def, cronSummary, customAgents, run, approversByGate, advisoryStepIds, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
   const { t } = useTranslation('pipelines');
 
   const { nodes, edges } = useMemo(() => {
@@ -69,7 +71,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, approversB
         position: { x: 0, y: 0 },
         data: {
           nodeId: TRIGGER_NODE_ID,
-          title: t('canvas.trigger', 'Schedule'),
+          title: t(`canvas.triggerMode.${triggerModeOf(def)}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain' }[triggerModeOf(def)]),
           subtitle: cronSummary,
           selected: selectedNodeId === TRIGGER_NODE_ID,
           onAdd: onAddAfter,
@@ -112,6 +114,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, approversB
           status: statusOf.get(step.id),
           selected: selectedNodeId === step.id,
           invalid,
+          advisory: advisoryStepIds?.has(step.id) || undefined,
           onAdd: onAddAfter,
           ...(gate && approversByGate?.[step.id]?.length ? { approvers: approversByGate[step.id] } : {}),
           ...(gate && gateOf.get(step.id)
@@ -158,7 +161,7 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, approversB
     }
 
     return { nodes: rfNodes, edges: rfEdges };
-  }, [def, run, approversByGate, selectedNodeId, cronSummary, customAgents, onAddAfter, t]);
+  }, [def, run, approversByGate, advisoryStepIds, selectedNodeId, cronSummary, customAgents, onAddAfter, t]);
 
   return (
     <ReactFlow
