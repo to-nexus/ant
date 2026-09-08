@@ -1,6 +1,5 @@
 import {
   fetchAuthMeDetailed as fetchAuthMeDetailedShared,
-  fetchAuthMe as fetchAuthMeShared,
   signOut as signOutShared,
   type AuthMeResult,
   type AuthUser,
@@ -18,10 +17,6 @@ export type { AuthMeResult, AuthUser };
 
 export async function fetchAuthMeDetailed(): Promise<AuthMeResult> {
   return fetchAuthMeDetailedShared({ apiBase: API_BASE() });
-}
-
-export async function fetchAuthMe(): Promise<AuthUser | null> {
-  return fetchAuthMeShared({ apiBase: API_BASE() });
 }
 
 /**

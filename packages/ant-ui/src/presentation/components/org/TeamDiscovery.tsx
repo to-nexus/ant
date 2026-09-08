@@ -37,7 +37,7 @@ import {
   type OrganizationSummary,
 } from '@/infrastructure/http/api/organizations';
 import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
-import { fetchAuthMeDetailed } from '@/infrastructure/http/api/auth';
+import { refreshAuthIdentity } from '@/application/auth/refreshAuthIdentity';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { orgErrorMessage } from '@/presentation/components/org/orgErrors';
 import { JOIN_REQUEST_MESSAGE_MAX } from '@ant/shared';
@@ -61,7 +61,6 @@ export function TeamDiscovery({
 
   const memberships = useStore((s) => s.memberships);
   const pendingByOrg = useStore(selectMyPendingJoinRequestByOrg);
-  const setJoinSurface = useStore((s) => s.setJoinSurface);
   const activeOrgId = useStore((s) => s.userOrganization);
   // Raw, not `selectVisibleDomainJoinableOrgs`: that selector subtracts banner
   // dismissals, and dismissing a banner must not delete the button here.
@@ -125,19 +124,13 @@ export function TeamDiscovery({
     };
   }, [query, active]);
 
-  /** Refresh `myJoinRequests` so the rows reflect the new state. */
-  const refreshJoinSurface = async () => {
-    const result = await fetchAuthMeDetailed();
-    if (result.kind === 'user') setJoinSurface(result);
-  };
-
   const submitRequest = async (org: OrganizationSummary) => {
     if (busyOrgId) return;
     setBusyOrgId(org.id);
     setError(null);
     try {
       await createJoinRequest(org.id, message.trim() || undefined);
-      await refreshJoinSurface();
+      await refreshAuthIdentity();
       setComposingFor(null);
       setMessage('');
       toast.success(t('auth.joinRequestSent', 'Request sent to {{name}}', { name: org.name }));
@@ -155,7 +148,7 @@ export function TeamDiscovery({
     setError(null);
     try {
       await joinByDomain(org.id);
-      await refreshJoinSurface();
+      await refreshAuthIdentity();
       toast.success(t('auth.joinedToast', 'Joined {{org}}', { org: org.name }));
     } catch (err) {
       setError(orgErrorMessage(err, t));
@@ -170,7 +163,7 @@ export function TeamDiscovery({
     setError(null);
     try {
       await cancelJoinRequest(requestId);
-      await refreshJoinSurface();
+      await refreshAuthIdentity();
     } catch (err) {
       setError(orgErrorMessage(err, t));
     } finally {

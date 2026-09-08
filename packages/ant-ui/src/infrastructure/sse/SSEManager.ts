@@ -217,7 +217,7 @@ class SSEManager {
   connect(projectId: string, featureName: string, job: string = 'code'): void {
     // Hard suppress: a session-expired event was observed (locally or from
     // another tab). Don't open new connections — the next successful login
-    // clears the flag and `setUser`'s lifecycle will trigger reconnects.
+    // clears the flag and `applyAuthMe`'s lifecycle will trigger reconnects.
     if (isSessionExpired()) {
       console.log('[SSE] unified: connect suppressed (session-expired flag set)');
       return;
@@ -418,6 +418,11 @@ class SSEManager {
    *
    *   /auth/me kind='no-session' → fire session-expired cascade, STOP
    *   anything else              → schedule normal reconnect
+   *
+   * This is a liveness probe, not an identity refresh: it deliberately
+   * discards the `user` branch and does NOT go through
+   * `application/auth/refreshAuthIdentity` — `infrastructure` importing
+   * `application` would invert the layering.
    */
   private async runAuthProbeAndMaybeReconnect(
     projectId: string,

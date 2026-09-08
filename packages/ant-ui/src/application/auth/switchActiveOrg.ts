@@ -8,7 +8,7 @@
  * replaces the reload has to give SSE an org-aware identity first.
  *
  * The storage scrub here is the pre-emptive half for the gesture we control.
- * `authSlice.setUser` holds the authoritative one (it also covers a switch
+ * `authSlice.applyAuthMe` holds the authoritative one (it also covers a switch
  * made in another tab, and a re-login as a different account) — both call the
  * same `removeTenantScopedStorage`, so there is one definition of which keys
  * are tenant-scoped.

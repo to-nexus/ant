@@ -215,15 +215,20 @@ describe('I3 — authStatus state machine wiring', () => {
     );
   });
 
-  it('App.tsx sets authStatus to "verifying" before fetchAuthMeDetailed resolves', () => {
+  it('App.tsx sets authStatus to "verifying" before the /auth/me round trip', () => {
     const app = readFileSync(
       path.join(SRC_ROOT, 'presentation', 'App.tsx'),
       'utf-8',
     );
-    // At least one `setAuthStatus('verifying')` must precede the
-    // `fetchAuthMeDetailed()` call inside the cloud-mode bootstrap branch.
-    expect(app).toMatch(/setAuthStatus\(['"]verifying['"]\)/);
-    expect(app).toMatch(/fetchAuthMeDetailed\(\)/);
+    // Ordering, not mere presence: `setAuthStatus('verifying')` must precede
+    // the `/auth/me` round trip so `selectIsAuthBlocked` parks lifecycle hooks
+    // for the whole window. The round trip is owned by
+    // `application/auth/refreshAuthIdentity` — App.tsx no longer fetches.
+    const verifying = app.search(/setAuthStatus\(['"]verifying['"]\)/);
+    const roundTrip = app.search(/refreshAuthIdentity\(\)/);
+    expect(verifying).toBeGreaterThan(-1);
+    expect(roundTrip).toBeGreaterThan(-1);
+    expect(verifying).toBeLessThan(roundTrip);
   });
 
   it('App.tsx boot gate spinner covers the verifying window', () => {

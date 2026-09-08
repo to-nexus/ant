@@ -39,7 +39,8 @@ import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
 import { capturePairingStateFromUrl } from '@/application/auth/desktopPairing';
-import { fetchAuthMeDetailed, API_BASE } from '@/infrastructure/http/api';
+import { API_BASE } from '@/infrastructure/http/api';
+import { refreshAuthIdentity } from '@/application/auth/refreshAuthIdentity';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
 import { selectIsAuthBlocked, selectIsAuthenticated, selectServerMode, selectShowApprovalGate } from '@/domain/store/selectors';
 import {
@@ -161,7 +162,7 @@ function AppShell() {
 
   // ✅ Handle Google OAuth callback (always relevant regardless of BE mode —
   // the URL param itself is the trigger; if a callback landed in a local-mode
-  // build, the BE will simply respond 'no-session' to fetchAuthMeDetailed).
+  // build, the BE will simply respond 'no-session').
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const oauthCallback = urlParams.get('auth');
@@ -170,21 +171,9 @@ function AppShell() {
     if (oauthCallback === 'success') {
       useStore.getState().setAuthStatus('verifying');
       (async () => {
-        const result = await fetchAuthMeDetailed();
+        const { result } = await refreshAuthIdentity();
         if (result.kind === 'user') {
           clearSessionExpired();
-          useStore.getState().setUser(
-            result.user.email,
-            result.user.organization,
-            result.user.name,
-            result.user.picture,
-            result.user.userId,
-            result.user.orgKind,
-            result.memberships,
-            result.user.approvalStatus,
-            result.user.testAccountLevel,
-          );
-          useStore.getState().setJoinSurface(result);
           useStore.getState().fetchProjects();
           console.log('[Auth] Successfully signed in with Google:', result.user.email);
         } else {
@@ -219,32 +208,19 @@ function AppShell() {
 
     useStore.getState().setAuthStatus('verifying');
     (async () => {
-      const result = await fetchAuthMeDetailed();
+      // Always re-apply the envelope so `userName` / `userPicture` (not
+      // persisted in localStorage) are refreshed on every mount. The store
+      // seeds `userEmail` from localStorage but `name` / `picture` arrive only
+      // via BE round-trip, so a refresh would otherwise leave the avatar blank
+      // even with a valid session.
+      const { result, hadUserBefore } = await refreshAuthIdentity();
       if (result.kind === 'user') {
-        const hadEmail = !!useStore.getState().userEmail;
-        // Always re-`setUser` so `userName` / `userPicture` (not persisted in
-        // localStorage) are refreshed on every mount. The store seeds
-        // `userEmail` from localStorage but `name` / `picture` arrive only
-        // via BE round-trip, so a refresh would otherwise leave the avatar
-        // blank even with a valid session.
-        useStore.getState().setUser(
-          result.user.email,
-          result.user.organization,
-          result.user.name,
-          result.user.picture,
-          result.user.userId,
-          result.user.orgKind,
-          result.memberships,
-          result.user.approvalStatus,
-          result.user.testAccountLevel,
-        );
-        useStore.getState().setJoinSurface(result);
-        if (!hadEmail) {
+        if (!hadUserBefore) {
           useStore.getState().fetchProjects();
           console.log('[Auth] Restored session from cookie:', result.user.email);
         }
       } else if (result.kind === 'no-session') {
-        if (useStore.getState().userEmail) {
+        if (hadUserBefore) {
           console.warn('[Auth] JWT session expired, clearing stored user');
           useStore.getState().clearUser();
         } else {

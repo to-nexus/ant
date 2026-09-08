@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Clock, ShieldOff } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
-import { fetchAuthMeDetailed } from '@/infrastructure/http/api';
+import { refreshAuthIdentity } from '@/application/auth/refreshAuthIdentity';
 import { useSignOut } from '@/application/hooks/ui/useSignOut';
 
 const RECHECK_COOLDOWN_MS = 3000;
@@ -24,7 +24,6 @@ export function AccountApprovalGate() {
   const { t } = useTranslation('common');
   const userEmail = useStore((s) => s.userEmail);
   const approvalStatus = useStore((s) => s.approvalStatus);
-  const setUser = useStore((s) => s.setUser);
   const clearUser = useStore((s) => s.clearUser);
   const signOut = useSignOut();
 
@@ -42,19 +41,8 @@ export function AccountApprovalGate() {
     setChecking(true);
     setStillPending(false);
     try {
-      const result = await fetchAuthMeDetailed();
+      const { result } = await refreshAuthIdentity();
       if (result.kind === 'user') {
-        setUser(
-          result.user.email,
-          result.user.organization,
-          result.user.name,
-          result.user.picture,
-          result.user.userId,
-          result.user.orgKind,
-          result.memberships,
-          result.user.approvalStatus,
-          result.user.testAccountLevel,
-        );
         // Still gated → say so, rather than leaving the button looking inert.
         if (result.user.approvalStatus === 'pending' || result.user.approvalStatus === 'denied') {
           setStillPending(true);

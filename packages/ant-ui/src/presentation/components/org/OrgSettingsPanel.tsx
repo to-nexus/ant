@@ -66,7 +66,8 @@ import { InviteLinkChip } from './InviteLinkChip';
 import { orgErrorMessage } from './orgErrors';
 import { TeamDiscovery } from './TeamDiscovery';
 import { CreateTeamModal } from './CreateTeamModal';
-import { switchOrg } from '@/infrastructure/http/api/auth';
+import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
+import { refreshAuthIdentity } from '@/application/auth/refreshAuthIdentity';
 
 const SECTION_IDS = [
   'c3o-teams',
@@ -148,27 +149,6 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, isAdmin]);
 
-  const refetchAuth = useCallback(async () => {
-    const { fetchAuthMeDetailed } = await import('@/infrastructure/http/api/auth');
-    const result = await fetchAuthMeDetailed();
-    if (result.kind === 'user') {
-      useStore
-        .getState()
-        .setUser(
-          result.user.email,
-          result.user.organization,
-          result.user.name,
-          result.user.picture,
-          result.user.userId,
-          result.user.orgKind,
-          result.memberships,
-          result.user.approvalStatus,
-          result.user.testAccountLevel,
-        );
-      useStore.getState().setJoinSurface(result);
-    }
-  }, []);
-
   // ── General ────────────────────────────────────────────────────────────
 
   const [nameDraft, setNameDraft] = useState(orgName ?? '');
@@ -181,7 +161,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
     setSavingName(true);
     try {
       await renameOrg(orgId, nameDraft.trim());
-      await refetchAuth();
+      await refreshAuthIdentity();
       showSuccess(t('org.general.renamed', 'Organization name updated.'));
     } catch (err) {
       setNameDraft(orgName ?? '');
@@ -242,7 +222,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
         onConfirm: async () => {
           try {
             await transferOrgOwnership(orgId, member.userId);
-            await refetchAuth();
+            await refreshAuthIdentity();
             await refreshMembers();
             showSuccess(t('org.members.transferred', 'Ownership transferred.'));
           } catch (err) {
@@ -505,8 +485,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
 
   const handleSwitch = async (targetOrgId: string) => {
     try {
-      await switchOrg(targetOrgId);
-      window.location.reload();
+      await switchActiveOrg(targetOrgId);
     } catch (err) {
       showError(orgErrorMessage(err, t));
     }
@@ -1347,7 +1326,7 @@ export function OrgSettingsPanel({ onClose }: { onClose?: () => void }) {
           // Refetch FIRST: the selection guard above drops any org that is not
           // yet in `teamMemberships`, and creation does not switch the active
           // org, so nothing else would refresh that list.
-          void refetchAuth().then(() => setSelectedOrgId(org.id));
+          void refreshAuthIdentity().then(() => setSelectedOrgId(org.id));
         }}
       />
     </div>

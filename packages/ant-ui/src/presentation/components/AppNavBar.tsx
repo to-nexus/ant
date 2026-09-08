@@ -8,6 +8,7 @@ import { Slot } from '@/presentation/extensions/slots';
 import { useStore } from '@/domain/store';
 import { OAUTH_BASE } from '@/infrastructure/http/api';
 import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
+import { refreshAuthIdentity } from '@/application/auth/refreshAuthIdentity';
 import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
 import { selectPipelineApprovalCount } from '@/domain/store/selectors/pipelines';
 import { useSignOut } from '@/application/hooks/ui/useSignOut';
@@ -103,6 +104,19 @@ export function AppNavBar({}: AppNavBarProps) {
   const handleSignOut = async () => {
     setShowUserMenu(false);
     await signOut();
+  };
+
+  /**
+   * Opening the menu re-reads `/auth/me`. A membership can appear with no
+   * client-side event at all — an admin approving a join request happens
+   * entirely on their side — so the switcher heals itself on open instead of
+   * waiting for a page refresh. Fire-and-forget: the list re-renders in place
+   * when the envelope lands, and a failure leaves the current list standing.
+   */
+  const toggleUserMenu = () => {
+    const next = !showUserMenu;
+    setShowUserMenu(next);
+    if (next) void refreshAuthIdentity().catch(() => {});
   };
 
   // Switch active org. The active org changes the workspace root, so a full
@@ -476,7 +490,7 @@ export function AppNavBar({}: AppNavBarProps) {
                   <Slot name="navbar.credit" />
                   <div className="relative">
                     <button
-                      onClick={() => setShowUserMenu(!showUserMenu)}
+                      onClick={toggleUserMenu}
                       className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5"
                       style={{
                         background: 'var(--bg-surface-2)',

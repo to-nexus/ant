@@ -4,9 +4,9 @@
  *
  * Two triggers share it:
  *   - `clearUser` (sign-out / stale-session), and
- *   - `setUser` when `/auth/me` reports a different organization than the one
- *     the store was hydrated with (org switch, cross-tab switch, re-login as
- *     another account).
+ *   - `applyAuthMe` when `/auth/me` reports a different organization than the
+ *     one the store was hydrated with (org switch, cross-tab switch, re-login
+ *     as another account).
  *
  * Keeping both on one definition is the point: when they drifted, an org
  * switch left the previous org's `selectedProject` in the store, the unified

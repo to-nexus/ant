@@ -31,18 +31,11 @@ import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { Button } from '../aurora/Button';
 import { RoleBadge } from './RoleBadge';
 import { acceptOrgInvite, joinByDomain } from '@/infrastructure/http/api/organizations';
-import { fetchAuthMeDetailed } from '@/infrastructure/http/api/auth';
+import { refreshAuthIdentity } from '@/application/auth/refreshAuthIdentity';
 import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
 import { orgErrorMessage } from './orgErrors';
 
 const INVITE_TOKEN_SS_KEY = 'ant-ui:org:invite-token';
-
-async function refreshJoinSurface(): Promise<void> {
-  const result = await fetchAuthMeDetailed();
-  if (result.kind === 'user') {
-    useStore.getState().setJoinSurface(result);
-  }
-}
 
 export function OrgBanners() {
   const { t } = useTranslation('nav');
@@ -88,10 +81,10 @@ export function OrgBanners() {
         toast.success(t('auth.joinedToast', 'Joined {{org}}', { org: res.organization.name }));
         offerSwitch(res.organization.id, res.organization.name);
       }
-      await refreshJoinSurface();
+      await refreshAuthIdentity();
     } catch (err) {
       showError(orgErrorMessage(err, t));
-      await refreshJoinSurface();
+      await refreshAuthIdentity();
     } finally {
       setBusy(false);
     }
@@ -223,7 +216,7 @@ export function OrgBanners() {
                   const res = await joinByDomain(domainOrg.organizationId);
                   toast.success(t('auth.joinedToast', 'Joined {{org}}', { org: res.organization.name }));
                   offerSwitch(res.organization.id, res.organization.name);
-                  await refreshJoinSurface();
+                  await refreshAuthIdentity();
                 } catch (err) {
                   showError(orgErrorMessage(err, t));
                 } finally {

@@ -11,6 +11,7 @@
 export type {
   AuthUser,
   AuthMeResult,
+  AuthMeEnvelope,
   AuthBroadcastMessage,
   OrgRole,
   OrgMembership,

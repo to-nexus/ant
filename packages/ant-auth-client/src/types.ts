@@ -138,6 +138,14 @@ export type AuthMeResult =
   | { kind: 'shape'; raw: unknown };
 
 /**
+ * The success branch of `/auth/me`, whole. A consumer that applies it to app
+ * state takes THIS, never a subset: the account switcher reads `memberships`
+ * while the join banners read the join surface, and applying one half without
+ * the other is what left a freshly joined org invisible until a page refresh.
+ */
+export type AuthMeEnvelope = Extract<AuthMeResult, { kind: 'user' }>;
+
+/**
  * Cross-tab auth message envelope. Posted on `BroadcastChannel('ant-auth')`
  * (or the localStorage `storage`-event fallback). Receivers should NOT
  * re-broadcast — the bridge is one-way to avoid feedback loops.

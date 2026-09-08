@@ -3,25 +3,10 @@ import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { AuthState, AuthStatus, SelectedJobType } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import { resolveAgentForJobType } from '@/shared/utils/constants';
-import { isNonTaskJob, type OrganizationKind } from '@ant/shared';
+import { isNonTaskJob } from '@ant/shared';
 import { restoresLatestRunFromHistory } from './sse/restoresLatestRun';
 import { isTenantChange, tenantScrubPatch, removeTenantScopedStorage } from './auth/tenantScrub';
-import type {
-  OrgMembership,
-  AuthApprovalStatus,
-  PendingInvite,
-  DomainJoinableOrg,
-  MyJoinRequest,
-  AutoJoinedOrg,
-} from '@ant/auth-client/types';
-
-/** The `/auth/me` fields that make up the org join surface. */
-export interface JoinSurfacePatch {
-  pendingInvites: PendingInvite[];
-  domainJoinableOrgs: DomainJoinableOrg[];
-  myJoinRequests: MyJoinRequest[];
-  autoJoinedOrg: AutoJoinedOrg | null;
-}
+import type { AuthMeEnvelope } from '@ant/auth-client/types';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
@@ -40,30 +25,23 @@ export interface AuthActions {
     agent?: string;
     jobId?: string;
   }) => void;
-  setUser: (
-    email: string,
-    organization: string,
-    name?: string,
-    picture?: string,
-    userId?: string,
-    orgKind?: OrganizationKind,
-    memberships?: OrgMembership[],
-    approvalStatus?: AuthApprovalStatus,
-    testAccountLevel?: number,
-  ) => void;
+  /**
+   * Sole writer of the `/auth/me` identity — user fields, `memberships`, and
+   * the org join surface (invites, domain candidates, own join requests,
+   * auto-join notice) in one transaction.
+   *
+   * It takes the WHOLE success envelope on purpose. This used to be two
+   * actions split by field group, held together only by a comment saying to
+   * call them together — and the two sites that gain a membership mid-session
+   * (invite accept, domain join) called only the join-surface half, so a
+   * freshly joined org never reached the account switcher until a refresh.
+   * With one envelope parameter that half-apply is unspellable.
+   *
+   * Fetch-free: `application/auth/refreshAuthIdentity` owns the round trip.
+   */
+  applyAuthMe: (result: AuthMeEnvelope) => void;
   clearUser: () => void;
   setAuthStatus: (status: AuthStatus) => void;
-  /**
-   * Org join surface from the `/auth/me` envelope: pending invites, verified
-   * -domain join candidates, the caller's own pending join requests, and the
-   * notice that a login backfilled them into a team. Called alongside
-   * `setUser`; cleared by `clearUser`.
-   *
-   * The parameter is a SUBSET of the `/auth/me` success branch, so every call
-   * site passes that result straight through rather than re-listing the four
-   * fields (and drifting when a fifth arrives).
-   */
-  setJoinSurface: (surface: JoinSurfacePatch) => void;
 }
 
 export type AuthSlice = AuthState & AuthActions;
@@ -201,7 +179,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     }
   },
 
-  setUser: (email, organization, name, picture, userId, orgKind, memberships, approvalStatus, testAccountLevel) => {
+  applyAuthMe: (result) => {
+    const { user } = result;
     const state = get() as any;
     // The store hydrates `userOrganization` from storage at creation, so this
     // covers an org switch (which reloads the page), a switch made in another
@@ -209,7 +188,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     // tenant's `selectedProject` survives the reload and the unified SSE opens
     // against a project that does not exist under the new workspace root — the
     // backend 404s and the client reconnect-loops forever on "connecting".
-    const tenantChanged = isTenantChange(state.userOrganization, organization);
+    const tenantChanged = isTenantChange(state.userOrganization, user.organization);
 
     if (tenantChanged) {
       // Side-effecting half FIRST, while `authStatus` is still 'verifying' so
@@ -225,39 +204,36 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       removeTenantScopedStorage();
     }
 
-    // ONE set(): the scrub and the 'verified' flip must be atomic. Split in
-    // two, `useProjectLifecycle` (deps include both `selectedProject` and
-    // `authStatus`) can observe "verified + stale project" and fire exactly
-    // the `initializeSSE()` this is here to prevent.
+    // ONE set(): the scrub, the whole envelope and the 'verified' flip must be
+    // atomic. Split in two, `useProjectLifecycle` (deps include both
+    // `selectedProject` and `authStatus`) can observe "verified + stale
+    // project" and fire exactly the `initializeSSE()` this is here to prevent —
+    // and any reader can observe half an envelope.
     set({
       ...(tenantChanged ? tenantScrubPatch() : {}),
-      userEmail: email,
-      userOrganization: organization,
-      userName: name,
-      userPicture: picture,
-      userId,
-      userOrgKind: orgKind,
-      memberships: memberships ?? [],
-      approvalStatus,
-      testAccountLevel: testAccountLevel ?? 0,
+      userEmail: user.email,
+      userOrganization: user.organization,
+      userName: user.name,
+      userPicture: user.picture,
+      userId: user.userId,
+      userOrgKind: user.orgKind,
+      memberships: result.memberships,
+      approvalStatus: user.approvalStatus,
+      testAccountLevel: user.testAccountLevel ?? 0,
+      pendingInvites: result.pendingInvites,
+      domainJoinableOrgs: result.domainJoinableOrgs,
+      myJoinRequests: result.myJoinRequests,
+      autoJoinedOrg: result.autoJoinedOrg,
       authStatus: 'verified',
     } as any);
-    saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
-    saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, organization);
+    saveToStorage(STORAGE_KEYS.USER_EMAIL, user.email);
+    saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, user.organization);
     // `userName` / `userPicture` / `userId` / `userOrgKind` / `memberships` are
     // derived from the JWT and replayed on every `/auth/me`, so we intentionally
     // skip localStorage persistence.
   },
 
   setAuthStatus: (status) => set({ authStatus: status }),
-
-  setJoinSurface: (surface) =>
-    set({
-      pendingInvites: surface.pendingInvites,
-      domainJoinableOrgs: surface.domainJoinableOrgs,
-      myJoinRequests: surface.myJoinRequests,
-      autoJoinedOrg: surface.autoJoinedOrg,
-    }),
 
   /**
    * Single SSOT for user disappearance — used by both the explicit
@@ -292,7 +268,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     if (typeof state.reset === 'function') {
       state.reset();
     }
-    // Shared with `setUser`'s tenant-change branch so the two teardowns cannot
+    // Shared with `applyAuthMe`'s tenant-change branch so the two teardowns cannot
     // drift — see `./auth/tenantScrub`.
     set({ ...tenantScrubPatch() } as any);
     removeTenantScopedStorage();
