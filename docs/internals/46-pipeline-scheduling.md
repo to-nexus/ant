@@ -742,7 +742,12 @@ identity the run learned through clarify never reaches the consumer — the
 small-farming-medal shape's second half); and, from the def-structural set,
 an approval gate with neither `timeout` nor `remindAfter` (the authoring
 contract's "reminder on gates whose timeout is long or absent", unenforced
-until a live pipeline shipped two such gates). All of these are ONE structured
+until a live pipeline shipped two such gates); and an outcome-declaring step
+that no `verdict:` edge reads and that carries no `onMissingVerdict` (the
+smooth-mending-coral shape: four such steps, no `retry` — one forgotten
+`<verdict>` tag fails the step and aborts a run that cleared two human gates,
+for a decision nothing downstream consumes; routed steps are exempt because
+there the fallback is a routing choice). All of these are ONE structured
 source, `collectPipelineAdvisoryItems` (`{ code, stepId, field, message }`) —
 the string collectors map its `message`, the FE anchors the same item to the
 step and field — and, on

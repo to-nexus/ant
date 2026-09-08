@@ -19,14 +19,6 @@ import type { ResolvedCustomJob } from './types.js';
  */
 export const DEFINITION_MOUNT_PREFIX = '_agent-definition/';
 
-/**
- * Budget for active-intent prompt.md bodies inlined into the block (separate
- * from the base/ 8k prose cap). On overflow, a prompt demotes WHOLESALE back
- * to its read_file pointer with an "applies now" marker — a truncated
- * instruction file is worse than a pointered one.
- */
-export const INTENT_PROMPT_INLINE_CAP = 12_000;
-
 export interface CustomJobSystemBlock {
   /** The assembled boundary-tagged block text. */
   text: string;
@@ -117,20 +109,17 @@ export function buildCustomJobSystemBlock(
   const mountFor = (intentId: string): string =>
     `${DEFINITION_MOUNT_PREFIX}jobs/${resolved.jobId}/${INTENTS_DIR_NAME}/${intentId}/${INTENT_PROMPT_FILE_NAME}`;
 
-  // Inline decision in catalog order — an active intent's prompt inlines in
-  // full while the budget holds; overflow demotes it WHOLESALE to its pointer.
+  // An active intent's prompt inlines in full, whatever its length. A run
+  // binds at most one intent, so a size budget here could only ever demote
+  // THE pinned intent to a read_file pointer — which is what happened to both
+  // builtin builders for weeks: the contract sat in one early tool_result
+  // instead of the system block, and the already-read manifest then told
+  // later runs not to re-read it. Prompt length is the author's cost to weigh
+  // (reference material belongs in on-demand/), never a reason to hide the
+  // instructions the user selected.
   const inlined: string[] = [];
-  const demoted = new Set<string>();
-  let inlineBudget = INTENT_PROMPT_INLINE_CAP;
   for (const intent of resolved.intents) {
-    const body = promptOf(intent.id);
-    if (!active.has(intent.id) || body === undefined) continue;
-    if (body.length > inlineBudget) {
-      demoted.add(intent.id);
-      continue;
-    }
-    inlineBudget -= body.length;
-    inlined.push(intent.id);
+    if (active.has(intent.id) && promptOf(intent.id) !== undefined) inlined.push(intent.id);
   }
 
   if (inlined.length > 0) {
@@ -158,11 +147,9 @@ export function buildCustomJobSystemBlock(
       // round-trip, so an inlined prompt is marked instead of pathed.
       const promptLine = inlinedSet.has(intent.id)
         ? `  prompt: (inlined above — do not re-read)`
-        : demoted.has(intent.id)
-          ? `  prompt: \`${mountFor(intent.id)}\` (applies to the current request — load with \`read_file\` before acting)`
-          : promptOf(intent.id) !== undefined
-            ? `  prompt: \`${mountFor(intent.id)}\` — load with \`read_file\` when this situation applies`
-            : `  prompt: (none — this intent adds no additional instructions)`;
+        : promptOf(intent.id) !== undefined
+          ? `  prompt: \`${mountFor(intent.id)}\` — load with \`read_file\` when this situation applies`
+          : `  prompt: (none — this intent adds no additional instructions)`;
       return [head, criterion, promptLine].join('\n');
     });
     parts.push(

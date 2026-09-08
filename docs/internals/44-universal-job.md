@@ -309,8 +309,7 @@ decoration).
 - **Result sizing & decompaction**: universal's `ToolResultManager` caps are
   explicit (`UNIVERSAL_RESULT_LIMITS` in `runtime.ts`), at code-execute parity
   — the defaults would clamp reads to ~3000 tokens and make the outline →
-  `read_file(startLine/endLine)` decompaction cycle lossy (including the
-  demoted-to-pointer intent `prompt.md` over 12,000 chars). `read_state
+  `read_file(startLine/endLine)` decompaction cycle lossy. `read_state
   scope='history'` is the sanctioned recall path over the persisted
   `session:main` originals that in-flight compaction folded (`sessions/`
   stays outside the sandbox; the runner stamps each turn-opening user message
@@ -511,7 +510,7 @@ directory is named after the one thing that distinguishes it:
 | Channel | Rendered into the system block | Who decides | Prompt budget |
 |---|---|---|---|
 | `base/*.md` | the whole body, every turn | nobody — unconditional | `CUSTOM_PROSE_CAP` 8000 |
-| `intents/{i}/prompt.md` | the whole body, while that intent is active | the builder (gate) | `INTENT_PROMPT_INLINE_CAP` 12k |
+| `intents/{i}/prompt.md` | the whole body, while that intent is active | the builder (gate) | none — the pinned intent always inlines (see the demotion incident below) |
 | `on-demand/**` | the PATH only | the model (`read_file`) | none |
 
 Which channel a given fact lands in is an authoring decision — see
@@ -845,14 +844,31 @@ is never Handlebars-compiled (no partial access).
 
 Block structure (`buildCustomJobSystemBlock` in `core/customAgents/
 promptBlock.ts`): merged base prose → `## Active Intent Instructions`
-(active intents' `prompt.md` bodies inlined in full, budget
-`INTENT_PROMPT_INLINE_CAP` = 12k; overflow demotes a prompt WHOLESALE to its
-read_file pointer with an applies-now marker — truncation never) → the
+(the active intent's `prompt.md` body inlined in full, whatever its length —
+truncation never, demotion never) → the
 `## Intent Catalog` (per intent: id + stop-hook suffix, the `infer.md`
 criterion via `sanitizeBlock` — newlines kept but continuation lines
 indented, so author prose cannot mint column-0 headings/rows — and the
-prompt state: `(inlined above — do not re-read)` / active-but-demoted
-pointer / inactive pointer / `(none)`). `general` is not a catalog member,
+prompt state: `(inlined above — do not re-read)` / inactive pointer /
+`(none)`).
+
+> **Why there is no inline budget (removed 2026-09-08).** A 12k-char
+> `INTENT_PROMPT_INLINE_CAP` used to demote an oversized active prompt to its
+> read_file pointer. A run binds at most one intent, so the budget could only
+> ever hide THE pinned instructions — and it did: the pipeline-builder's build
+> prompt crossed 12k on 2026-09-04 (91b4b759b) and the agent-builder's never
+> fit (48k), so for every authoring run after that the contract existed as one
+> early `read_file` tool_result while the already-read manifest
+> (`duplicateReads.ts`, session-scoped) told later runs "do NOT call read_file
+> again" — the catalog's "load with read_file before acting" and that manifest
+> contradicted each other, and the model obeyed the manifest. Twenty-one
+> quality-loop rounds measured "prose compliance" against a contract that was
+> never in the system block; the "~250-line contract weight ceiling" they
+> recorded was the cap crossing in disguise. Prompt length is now the author's
+> cost to weigh (reference material belongs in `on-demand/`); it is never a
+> reason to hide what the user selected. Guard:
+> `tests/customAgents/builtin-agents.test.ts` "every intent prompt inlines when
+> pinned". `general` is not a catalog member,
 so a general-only turn inlines nothing (always-on prose belongs in `base/`).
 The whole definition dir is mounted read-only at `_agent-definition/`, so a
 pointer resolves via plain `read_file`. The prompt-preview endpoint

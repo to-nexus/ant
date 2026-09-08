@@ -531,6 +531,8 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
             { id: 'publishing', hooks: { stop: [{ artifact: 'terms/*/publishing-request.md' }] } },
             { id: 'extract', hooks: { stop: [{ artifact: 'terms/*/extract-request.md' }] } },
             { id: 'mail', hooks: { stop: [{ artifact: 'terms/*/mail-request.md' }, { action: 'api__ant__request' }] } },
+            // Outcome-declaring, no stop glob — only the verdict rows below pin it.
+            { id: 'judge', outcomes: ['ok', 'needs-review'] },
           ],
         },
       ],
@@ -542,6 +544,29 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
     ({ id, customJobRef: 'terms/notice', intent, ...extra });
   // Rows testing another axis thread the case, so the case-identity rule stays quiet.
   const threadRef = '이번 케이스: {{steps.publishing.answer}}';
+
+  // The smooth-mending-coral shape: four outcome-declaring intents, no verdict
+  // edge anywhere, no onMissingVerdict — one forgotten <verdict> tag fails the
+  // step and aborts a run that may have cleared two human gates, for a decision
+  // nothing downstream reads.
+  it('flags an outcome-declaring step that nothing routes on and that has no onMissingVerdict', () => {
+    const bare = collectPipelineAdvisoryItems(def([step('decide', 'judge'), step('mail', 'mail')]), CATALOG);
+    expect(bare).toHaveLength(1);
+    expect(bare[0]).toMatchObject({ code: 'unrouted-verdict-no-fallback', stepId: 'decide', field: 'onMissingVerdict' });
+    expect(bare[0].message).toMatch(/declares outcomes \(ok, needs-review\), but no edge routes on its verdict/);
+
+    // A fallback silences it — the run continues on a sealed default.
+    expect(collectPipelineAdvisoryItems(def([step('decide', 'judge', { onMissingVerdict: 'needs-review' }), step('mail', 'mail')]), CATALOG)).toHaveLength(0);
+    // A downstream verdict edge silences it — the fallback is then a routing choice, judged by the validator.
+    expect(
+      collectPipelineAdvisoryItems(
+        def([step('decide', 'judge'), step('mail', 'mail', { on: 'verdict:ok' })]),
+        CATALOG,
+      ),
+    ).toHaveLength(0);
+    // Steps whose intent declares no outcomes are never flagged.
+    expect(collectPipelineAdvisoryItems(def([step('publishing', 'publishing'), step('mail', 'mail', { context: ['terms/*/publishing-request.md'], directive: threadRef })]), CATALOG)).toHaveLength(0);
+  });
 
   it('flags a pin whose producer step is not in the needs closure (F31)', () => {
     const advisories = collectPipelineCatalogAdvisories(

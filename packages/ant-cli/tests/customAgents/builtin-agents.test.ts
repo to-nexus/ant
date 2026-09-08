@@ -27,6 +27,7 @@ import {
   loadCustomJob,
   type CustomAgentScopeRoot,
 } from '../../src/core/customAgents/CustomAgentLoader';
+import { buildCustomJobSystemBlock } from '../../src/core/customAgents/promptBlock';
 import { deriveCustomAgentScopeRoots } from '../../src/core/customAgents/scopeRoots';
 import { validateHooksFileDoc } from '../../src/core/customAgents/intents';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
@@ -102,6 +103,22 @@ describe('shipped builtin definitions — smoke', () => {
       } else {
         expect(resolved.intentPrompts[intent.id]).toBeUndefined();
       }
+    }
+  });
+
+  // The contract a builtin ships must reach the model as SYSTEM prompt, not
+  // as a file it is told to read: both builders' build prompts exceeded the
+  // former inline budget and were pointered for weeks while the quality loop
+  // measured "prose compliance" against a contract that was never in the
+  // system block. Every shipped intent prompt inlines when that intent is pinned.
+  it.each(shippedPairs)('%s/%s: every intent prompt inlines when pinned — never a pointer', (agentId, jobId) => {
+    const resolved = loadCustomJob(builtinRoots, agentId, jobId);
+    for (const intent of resolved.intents) {
+      if (!intent.hasPrompt) continue;
+      const block = buildCustomJobSystemBlock(resolved, [intent.id]);
+      expect(block.inlined, `${agentId}/${jobId}/${intent.id}`).toEqual([intent.id]);
+      expect(block.text).toContain(resolved.intentPrompts[intent.id]!.trim());
+      expect(block.text).not.toContain(`intents/${intent.id}/prompt.md\` (applies`);
     }
   });
 

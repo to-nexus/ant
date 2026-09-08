@@ -11,6 +11,7 @@ import { DependsOnField } from './fields/DependsOnField';
 import { EdgeConditionField } from './fields/EdgeConditionField';
 import { DirectiveField } from './fields/DirectiveField';
 import { ContextPinsField } from './fields/ContextPinsField';
+import { AdvisoryHints } from './AdvisoryHints';
 
 /**
  * Job step — identity → wiring → work → inputs → policy. Cascade gotchas
@@ -171,6 +172,7 @@ export function JobStepPanel({
               ...pinnedOutcomes.map((o) => ({ value: o, label: t('step.onMissingVerdictAssume', 'Assume "{{o}}"', { o }) })),
             ]}
           />
+          <AdvisoryHints advisories={advisories} field="onMissingVerdict" />
         </div>
       )}
     </>

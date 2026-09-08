@@ -15,7 +15,7 @@ import { wrapCustomJobContent } from '../../src/core/prompt/builder/InputSanitiz
 import { PromptBuilder } from '../../src/core/prompt/builder/PromptBuilder';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import { TEMPLATE_PATHS } from '../../src/core/prompt/builder/templatePaths';
-import { buildCustomJobSystemBlock, INTENT_PROMPT_INLINE_CAP, ON_DEMAND_INDEX_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
+import { buildCustomJobSystemBlock, ON_DEMAND_INDEX_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
 import type { ResolvedCustomJob } from '../../src/core/customAgents/types';
 import { buildAttachedContext, buildAttachedContextSection, classifyAttachedEntry } from '../../src/agents/universal/graph/nodes/attachedContext';
 import { attachImageBlocksToLastUserMessage } from '../../src/agents/universal/graph/nodes/agent';
@@ -286,21 +286,28 @@ describe('buildCustomJobSystemBlock — intent gate truth table', () => {
     expect(block.text).toContain(PROMPT_PATH('research'));
   });
 
-  it('overflow → the oversized prompt demotes WHOLESALE with the applies-now marker; budget still serves siblings', () => {
-    const huge = 'X'.repeat(INTENT_PROMPT_INLINE_CAP + 1);
+  // The pipeline-builder's build prompt crossed a 12k inline budget on
+  // 2026-09-04 and was silently demoted to a read_file pointer for every
+  // authoring run after — the contract lived in one early tool_result while
+  // the already-read manifest forbade re-reading it. A run binds at most one
+  // intent, so the budget could only ever hide the pinned instructions: an
+  // active prompt inlines whatever its length; inactive ones stay pointers.
+  it('an active prompt inlines whatever its length — no size demotion; inactive siblings stay pointers', () => {
+    const huge = 'X'.repeat(60_000);
     const block = buildCustomJobSystemBlock(
       makeResolved(
         [intent('big', { hasPrompt: true }), intent('small', { hasPrompt: true })],
         { big: huge, small: 'SMALL-BODY' },
       ),
-      ['big', 'small'],
+      ['big'],
     );
-    expect(block.text).not.toContain(huge);
-    expect(block.text).toContain('applies to the current request');
-    expect(block.text).toContain(PROMPT_PATH('big'));
-    expect(block.text).toContain('SMALL-BODY');
-    expect(block.inlined).toEqual(['small']);
-    expect(block.toc).toEqual(['big']);
+    expect(block.text).toContain(huge);
+    expect(block.text).not.toContain('applies to the current request');
+    expect(block.text).not.toContain(PROMPT_PATH('big'));
+    expect(block.text).not.toContain('SMALL-BODY');
+    expect(block.text).toContain(PROMPT_PATH('small'));
+    expect(block.inlined).toEqual(['big']);
+    expect(block.toc).toEqual(['small']);
   });
 
   it('no activeIntents argument (default []) → catalog-only rendering, nothing inlined', () => {

@@ -1317,7 +1317,7 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
 }
 
 /** Field an advisory anchors to — an editor renders it under that field of the named step. */
-export type PipelineAdvisoryField = 'context' | 'directive' | 'timeout' | 'needs';
+export type PipelineAdvisoryField = 'context' | 'directive' | 'timeout' | 'needs' | 'onMissingVerdict';
 
 export type PipelineAdvisoryCode =
   | 'gate-holds-nothing'
@@ -1325,7 +1325,8 @@ export type PipelineAdvisoryCode =
   | 'self-pin'
   | 'pin-not-in-needs'
   | 'case-identity-not-threaded'
-  | 'chained-pinless-consumer';
+  | 'chained-pinless-consumer'
+  | 'unrouted-verdict-no-fallback';
 
 /**
  * One save-time advisory. `message` is the wire form (the save response's
@@ -1340,14 +1341,19 @@ export interface PipelineAdvisory {
   message: string;
 }
 
-/** Effective needs (omitted = previous step in file order) and their transitive closure. */
-function needsClosureOf(def: PipelineDef): (id: string) => Set<string> {
+/** Effective needs of one step (omitted = previous step in file order). */
+function effectiveNeedsOf(def: PipelineDef): (id: string) => string[] {
   const stepByIndex = new Map(def.steps.map((s, i) => [s.id, i]));
-  const effectiveNeeds = (id: string): string[] => {
+  return (id: string): string[] => {
     const i = stepByIndex.get(id);
     if (i === undefined) return [];
     return def.steps[i].needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
   };
+}
+
+/** Transitive closure of {@link effectiveNeedsOf}. */
+function needsClosureOf(def: PipelineDef): (id: string) => Set<string> {
+  const effectiveNeeds = effectiveNeedsOf(def);
   return (id: string): Set<string> => {
     const seen = new Set<string>();
     const stack = [...effectiveNeeds(id)];
@@ -1409,6 +1415,34 @@ export function collectPipelineDefAdvisoryItems(def: PipelineDef): PipelineAdvis
 export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: PipelineCatalogAgent[]): PipelineAdvisory[] {
   const out: PipelineAdvisory[] = [];
   const agentById = new Map(agents.map((a) => [a.id, a]));
+  const intentOfStep = (step: JobStepDef): PipelineCatalogIntent | undefined => {
+    const ref = parseCustomJobRef(step.customJobRef);
+    if (ref === null || step.intent === undefined || step.intent === GENERAL_INTENT) return undefined;
+    const job = agentById.get(ref.agentId)?.jobs.find((j) => j.id === ref.jobId);
+    return job?.intents?.find((i) => i.id === step.intent);
+  };
+  // An outcome-declaring intent seals a verdict, and a missing one FAILS the
+  // step (retryable, but a step without `retry` has no budget) — even when no
+  // downstream edge reads it. Unrouted and without `onMissingVerdict`, the run
+  // dies for a decision nobody consumes. Routed steps are exempt on purpose:
+  // there the fallback is a routing choice the author must make knowingly.
+  const effectiveNeeds = effectiveNeedsOf(def);
+  const verdictReaders = new Set<string>();
+  for (const step of def.steps) {
+    if (step.on === undefined || !step.on.startsWith('verdict:')) continue;
+    for (const need of effectiveNeeds(step.id)) verdictReaders.add(need);
+  }
+  for (const step of def.steps) {
+    if (isApprovalStep(step)) continue;
+    const outcomes = intentOfStep(step)?.outcomes ?? [];
+    if (outcomes.length === 0 || step.onMissingVerdict !== undefined || verdictReaders.has(step.id)) continue;
+    out.push({
+      code: 'unrouted-verdict-no-fallback',
+      stepId: step.id,
+      field: 'onMissingVerdict',
+      message: `step "${step.id}" pins intent "${step.intent}", which declares outcomes (${outcomes.join(', ')}), but no edge routes on its verdict and no onMissingVerdict is set — a run that seals no valid verdict fails this step (and, under abort, the whole run) for a decision nothing reads; set onMissingVerdict: <outcome>, or route on the verdict`,
+    });
+  }
   // stop artifact glob → job steps whose pinned intent declares it
   const producersByGlob = new Map<string, string[]>();
   for (const step of def.steps) {
