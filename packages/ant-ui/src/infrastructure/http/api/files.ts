@@ -1,5 +1,7 @@
 import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, ApiError, featureSeg } from './client';
 import { isBinaryPath } from '@ant/shared';
+// Type-only the other way (`UploadFileEntry`), so this is not a runtime cycle.
+import { fileListToEntries, planUploadBatches, runUploadBatches } from '@/shared/utils/upload-utils';
 import type { FileNode, FileResource, FileResourceMeta, TemplateReason } from '@ant/shared';
 
 export type { FileNode, FileResource, FileResourceMeta, TemplateReason };
@@ -106,35 +108,61 @@ export function createFile(
   return saveFileContent(projectId, featureName, filePath, content);
 }
 
-/** Upload files with progress tracking and cancel support. */
+/**
+ * Upload files with progress tracking and cancel support.
+ *
+ * Batched: a folder larger than one request may carry is sent as several
+ * sequential requests (`planUploadBatches`), with progress reported
+ * cumulatively across them and the caller's `signal` honored both between and
+ * within batches. `oversized` names entries past the per-file cap, which are
+ * never sent — the client-side byte gate that did not exist before.
+ */
 export async function uploadFiles(
   projectId: string,
   featureName: string,
   dirPath: string,
   files: FileList | UploadFileEntry[],
   options?: UploadOptions,
-): Promise<{ uploadedFiles: string[]; count: number }> {
-  const formData = new FormData();
-  formData.append('dirPath', dirPath);
-
-  const isEntryArray = Array.isArray(files) && files.length > 0 && 'relativePath' in files[0];
-
-  if (isEntryArray) {
-    const entries = files as UploadFileEntry[];
-    entries.forEach((entry) => {
-      formData.append('files', entry.file);
-      formData.append('relativePaths', entry.relativePath);
-    });
-  } else {
-    Array.from(files as FileList).forEach((file) => formData.append('files', file));
-  }
+): Promise<{ uploadedFiles: string[]; count: number; oversized: UploadFileEntry[] }> {
+  const entries: UploadFileEntry[] = Array.isArray(files)
+    ? files
+    : fileListToEntries(files);
 
   const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/upload`;
+  const plan = planUploadBatches(entries);
+  const uploadedFiles: string[] = [];
 
-  if (options?.onProgress || options?.signal) {
-    return xhrUpload(url, formData, options);
-  }
+  await runUploadBatches(
+    plan,
+    async (batch, ctx) => {
+      const formData = new FormData();
+      formData.append('dirPath', dirPath);
+      for (const entry of batch) {
+        formData.append('files', entry.file);
+        formData.append('relativePaths', entry.relativePath);
+      }
 
+      // Same fork as before batching, now per batch: XHR only where the caller
+      // wants progress or cancel, so a plain upload keeps `authFetch`'s
+      // transport-failure diagnostic (a WAF/ALB answering without CORS headers
+      // reads as `NetworkError`, not a bare "network error").
+      const data =
+        options?.onProgress || options?.signal
+          ? await xhrUpload(url, formData, { ...options, onProgress: options.onProgress ? ctx.onBatchProgress : undefined })
+          : await postUploadForm(url, formData);
+      uploadedFiles.push(...data.uploadedFiles);
+    },
+    { onProgress: options?.onProgress, signal: options?.signal },
+  );
+
+  return { uploadedFiles, count: uploadedFiles.length, oversized: plan.oversized };
+}
+
+/** The non-progress arm: `authFetch`, so a transport failure stays diagnosable. */
+async function postUploadForm(
+  url: string,
+  formData: FormData,
+): Promise<{ uploadedFiles: string[]; count: number }> {
   const response = await authFetch(url, { method: 'POST', body: formData });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -144,7 +172,7 @@ export async function uploadFiles(
       err,
     );
   }
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   return { uploadedFiles: data?.uploadedFiles || [], count: data?.count || 0 };
 }
 

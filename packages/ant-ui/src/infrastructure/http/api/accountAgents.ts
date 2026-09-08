@@ -16,6 +16,7 @@ import type {
 } from '@ant/shared';
 import type { UploadFileEntry } from './files';
 import { downloadAttachment } from './download';
+import { planUploadBatches, runUploadBatches } from '@/shared/utils/upload-utils';
 
 export type { CustomAgentDefinitionFileNode, DefinitionValidationResult };
 
@@ -178,7 +179,7 @@ export interface DefinitionUploadResult {
   agentId?: string;
 }
 
-async function postMultipart(
+async function postOneBatch(
   url: string,
   entries: UploadFileEntry[],
   fields?: Record<string, string>,
@@ -201,17 +202,63 @@ async function postMultipart(
   return response.json();
 }
 
+interface MultipartBatchSpec {
+  /** Fields for the FIRST batch only — where a destructive flag belongs. */
+  firstFields?: Record<string, string>;
+  /** Destination for batches 2..K. Defaults to the first batch's URL. */
+  restUrl?: (first: DefinitionUploadResult) => string;
+  /** Path rewrite for batches 2..K (`/import` strips the agent-id segment). */
+  restPath?: (relativePath: string, first: DefinitionUploadResult) => string;
+  pinFirst?: (entry: UploadFileEntry) => boolean;
+}
+
+/**
+ * Send a definition folder as batches the server will accept.
+ *
+ * Both destructive lanes (`replaceDir`, and `/import` + `overwrite`) `fs.rmSync`
+ * the target BEFORE writing, so the destructive field must ride the FIRST batch
+ * only — batches 2..K are pure appends, or batch 2 would delete what batch 1
+ * wrote. `runUploadBatches` is sequential, which is what makes that ordering a
+ * guarantee rather than a race.
+ */
+async function postMultipart(
+  url: string,
+  entries: UploadFileEntry[],
+  spec: MultipartBatchSpec = {},
+): Promise<DefinitionUploadResult> {
+  const plan = planUploadBatches(entries, { pinFirst: spec.pinFirst });
+  const uploaded: string[] = [];
+  const skipped: Array<{ path: string; reason: string }> = [];
+  let first: DefinitionUploadResult | undefined;
+
+  await runUploadBatches(plan, async (batch, ctx) => {
+    let result: DefinitionUploadResult;
+    if (ctx.isFirst) {
+      result = await postOneBatch(url, batch, spec.firstFields);
+      first = result;
+    } else {
+      const rest = spec.restPath
+        ? batch.map((e) => ({ ...e, relativePath: spec.restPath!(e.relativePath, first!) }))
+        : batch;
+      result = await postOneBatch(spec.restUrl ? spec.restUrl(first!) : url, rest);
+    }
+    if (Array.isArray(result.uploaded)) uploaded.push(...result.uploaded);
+    if (Array.isArray(result.skipped)) skipped.push(...result.skipped);
+  });
+
+  return { success: true, uploaded, skipped, agentId: first?.agentId };
+}
+
 /** `replaceDir` makes this a directory-unit REPLACE (job / intent folder upload). */
 export function uploadDefinitionFiles(
   agentId: string,
   entries: UploadFileEntry[],
   options?: { replaceDir?: string },
 ): Promise<DefinitionUploadResult> {
-  return postMultipart(
-    `${base()}/${encodeURIComponent(agentId)}/files/upload`,
-    entries,
-    options?.replaceDir ? { replaceDir: options.replaceDir } : undefined,
-  );
+  return postMultipart(`${base()}/${encodeURIComponent(agentId)}/files/upload`, entries, {
+    // Batch 1 replaces the directory; the rest append into it.
+    firstFields: options?.replaceDir ? { replaceDir: options.replaceDir } : undefined,
+  });
 }
 
 /**
@@ -223,10 +270,24 @@ export function downloadAgentFolder(agentId: string): Promise<void> {
   return downloadAttachment(`${base()}/${encodeURIComponent(agentId)}/download`, `${agentId}.zip`);
 }
 
-/** Whole-agent import from a folder upload (webkitdirectory). */
+/**
+ * Whole-agent import from a folder upload (webkitdirectory).
+ *
+ * `/import` validates its invariants per REQUEST — exactly one top-level folder
+ * and `{agentId}/agent.yaml` at its root — so only batch 1 can go there. It
+ * creates (and, with `overwrite`, replaces) the agent; batches 2..K append
+ * through the definition-files route with the agent-id segment stripped, which
+ * is the same rewrite `/import` performs server-side.
+ */
 export function importAgentFolder(
   entries: UploadFileEntry[],
   options?: { overwrite?: boolean },
 ): Promise<DefinitionUploadResult> {
-  return postMultipart(`${base()}/import`, entries, options?.overwrite ? { overwrite: 'true' } : undefined);
+  return postMultipart(`${base()}/import`, entries, {
+    firstFields: options?.overwrite ? { overwrite: 'true' } : undefined,
+    // agent.yaml must be in the batch that hits /import, or it answers 400.
+    pinFirst: (e) => /(^|\/)agent\.yaml$/.test(e.relativePath),
+    restUrl: (first) => `${base()}/${encodeURIComponent(first.agentId ?? '')}/files/upload`,
+    restPath: (rel) => rel.split('/').slice(1).join('/'),
+  });
 }

@@ -620,6 +620,14 @@ Three rules; each later one is why the one before it kept failing:
 - Capping a field that is serialized into a durable line by its per-field length.
   Cap the SERIALIZED value — a join or a `JSON.stringify` amplifies past it.
 - A guard that enumerates the routes someone remembered. Enumerate the SET.
+- Letting a parser's own limit breach reach the framework's default error
+  handler. multer aborts with `next(new MulterError(...))`; with no handler that
+  became an HTML 500, so a folder upload the budget legitimately refused was
+  indistinguishable from a crash and the FE could only say "upload failed".
+- Choosing a multipart `fields` / `parts` cap independently of `files`. Every
+  lane pairs each file part with one `relativePaths` field, so `fields: 50`
+  refused the 50th file and the advertised count was unreachable — the caps must
+  be DERIVED from `files` or the number the client batches on is a lie.
 
 ### ✅ Correct
 
@@ -640,6 +648,20 @@ Three rules; each later one is why the one before it kept failing:
   past `JSONL_LINE_MAX_BYTES` (typed refusal, no SSE echo of a line no reader
   could return), and a streaming heal that drops pre-cap oversized lines without
   materialising them when retention finds zero complete lines in the window.
+- `boundedMultipartUpload(upload, field, deps)` is the ONE way to mount a
+  multipart route — it composes the admission gates, multer, and
+  `refuseMultipartError` (typed 413/400 `{code, error, message}`, never
+  `sendErrorResponse`, whose envelope carries no `code` and is genericised in
+  production). Adoption is a property of the call, not of what an author
+  remembered: a bare `upload.array(` under `routes/` is the offense.
+- A client that would exceed a documented request cap BATCHES to it rather than
+  discovering the wall: `@ant/shared/upload-limits` is the one home for the caps
+  a client must act on, so `UPLOAD_MAX_FILES_PER_REQUEST` is simultaneously the
+  FE batch size and the BE `files` cap and neither side does margin arithmetic.
+  The driver (`runUploadBatches`) is strictly sequential — a fan-out would 429
+  itself against the cluster-wide per-account slot, and sequencing is what makes
+  "a destructive field rides batch 1 only" a guarantee rather than a race for
+  the two replace lanes that `fs.rmSync` before writing.
 
 ```bash
 # The write seam is a property of the file, not of one call name.
@@ -648,6 +670,8 @@ rg -n "fs\.(writeFile|writeFileSync)\(\s*sessionPath" packages/ant-cli/src  # Ex
 rg -c "chatRateLimiter" packages/ant-cli/src/periphery/adapters/http/routes/chat.routes.ts  # Expected: >= 5
 # The actionMetadata brand has ONE mint; a cast is the only spelling that bypasses the compiler.
 rg -n "as (unknown as )?BoundedActionMetadata" packages/ant-cli/src --type ts  # Expected: 1 (the mint)
+# No route mounts multer directly — every multipart lane composes the wrapper.
+rg -n "upload\.(array|single|fields)\(" packages/ant-cli/src/periphery/adapters/http/routes  # Expected: 0
 ```
 
 Guards: `tests/policy/contained-io-adoption.test.ts`,

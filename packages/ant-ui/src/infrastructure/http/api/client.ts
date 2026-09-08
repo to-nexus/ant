@@ -264,6 +264,10 @@ export class ApiError extends Error {
   rejected?: Array<{ path: string; reason: string }>;
   /** Who already resolved a pipeline gate (409 on the approvals resolve race). */
   decidedBy?: string;
+  /** Files-per-request cap (413 UPLOAD_TOO_MANY_FILES). */
+  limit?: number;
+  /** Per-file MB cap (413 UPLOAD_FILE_TOO_LARGE). */
+  limitMb?: number;
 
   constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message);
@@ -282,6 +286,8 @@ export class ApiError extends Error {
     this.filename = data?.filename as string | undefined;
     this.rejected = data?.rejected as Array<{ path: string; reason: string }> | undefined;
     this.decidedBy = data?.decidedBy as string | undefined;
+    this.limit = data?.limit as number | undefined;
+    this.limitMb = data?.limitMb as number | undefined;
   }
 }
 

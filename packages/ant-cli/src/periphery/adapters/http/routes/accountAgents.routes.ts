@@ -17,7 +17,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import multer from 'multer';
-import { boundedMultipart } from '../middleware/boundedMultipart';
+import { boundedMultipartUpload } from '../middleware/boundedMultipart';
 import {
   CUSTOM_ID_HINT,
   GENERAL_INTENT,
@@ -549,7 +549,7 @@ export function createAccountAgentRoutes(deps: AccountAgentsRoutesDeps): Router 
 
   // Whole-agent import via folder upload (webkitdirectory). Zip is a
   // follow-up (no unzip dependency in the runtime image).
-  router.post('/import', ...boundedMultipart(), upload.array('files'), (req: Request, res: Response) => {
+  router.post('/import', ...boundedMultipartUpload(upload), (req: Request, res: Response) => {
     try {
       const scopeRoots = scopeRootsFor(req);
       const files = (req.files as Express.Multer.File[]) || [];

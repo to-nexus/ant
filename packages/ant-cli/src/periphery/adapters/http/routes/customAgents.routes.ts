@@ -16,7 +16,7 @@ import { writeBufferVerifiedContained } from '../../../../core/utils/binaryInteg
 import { isBinaryPath, sniffBufferKind, SNIFF_BYTES } from '../../../../core/utils/binaryExtensions';
 import { detectImageMimeFromBuffer } from '../../../../core/utils/imageMime';
 import { toNfc } from '../../../../core/utils/unicodePath';
-import { boundedMultipart } from '../middleware/boundedMultipart';
+import { boundedMultipartUpload } from '../middleware/boundedMultipart';
 import { treeRateLimiter } from '../middleware/rateLimiter';
 import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
@@ -423,7 +423,7 @@ export function createCustomAgentRoutes(deps: {
     }
   });
 
-  artifacts.post('/upload', ...boundedMultipart(), upload.array('files'), async (req: Request, res: Response) => {
+  artifacts.post('/upload', ...boundedMultipartUpload(upload), async (req: Request, res: Response) => {
     try {
       const dirPath = (req.body.dirPath || '').replace(/\\/g, '/');
       const files = (req.files as Express.Multer.File[]) || [];

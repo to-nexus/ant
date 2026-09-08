@@ -22,7 +22,7 @@ import type { CustomAgentDefinitionFileNode, FileNode } from '@ant/shared';
 import { isValidCustomId } from '@ant/shared';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
-import { fileListToEntries } from '@/shared/utils/upload-utils';
+import { fileListToEntries, partialUploadMessage } from '@/shared/utils/upload-utils';
 import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { entriesUnder, findDefinitionNode, hasEntry, pickedFolderName } from './definitionUpload';
@@ -337,8 +337,15 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
 
   const uploadUnitFolder = (agentId: string, dest: string, entries: UploadFileEntry[]) =>
     wrap(async () => {
-      const result = await uploadDefinitionFiles(agentId, entries, { replaceDir: dest });
-      reportSkipped(result.skipped);
+      try {
+        const result = await uploadDefinitionFiles(agentId, entries, { replaceDir: dest });
+        reportSkipped(result.skipped);
+      } catch (e) {
+        // Batch 1 already replaced the directory, so what is on disk now is a
+        // partial set. Say so — and still refresh, since those files are real.
+        await afterDefinitionWrite(agentId);
+        throw partialUploadMessage(e, t, { dir: dest, destructive: true });
+      }
       await afterDefinitionWrite(agentId);
     });
 
@@ -406,7 +413,14 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
 
   const importFolder = (entries: UploadFileEntry[], overwrite?: boolean) =>
     wrap(async () => {
-      const result = await importAgentFolder(entries, overwrite ? { overwrite: true } : undefined);
+      let result;
+      try {
+        result = await importAgentFolder(entries, overwrite ? { overwrite: true } : undefined);
+      } catch (e) {
+        // The agent exists (batch 1 created it) but its files are incomplete.
+        await afterMutation();
+        throw partialUploadMessage(e, t, { destructive: !!overwrite });
+      }
       await afterMutation();
       reportSkipped(result.skipped);
       if (result.agentId) {

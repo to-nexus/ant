@@ -23,6 +23,7 @@
  *   - git.ts                : GitSnapshot, GitUserOperation, GitOperationState, GitPatState, FileChange, GitCloneResult
  *   - feature-name.ts       : validateFeatureName, isValidFeatureName, featureNameToSlug/featureSlugToName, RESERVED_FEATURE_NAMES, FeatureNameViolation
  *   - file-resource.ts      : FileResource, FileResourceMeta, FileNode, TemplateReason
+ *   - upload-limits.ts      : UPLOAD_MAX_FILES_PER_REQUEST, UPLOAD_FILE_MAX_BYTES, UPLOAD_REQUEST_MAX_BYTES, UPLOAD_BATCH_MAX_BYTES
  */
 
 export * from './job';
@@ -56,6 +57,7 @@ export * from './codebase-presence';
 export * from './session-log';
 export * from './context-lens';
 export * from './file-resource';
+export * from './upload-limits';
 export * from './binary-extensions';
 export * from './folders-compressed';
 export * from './chat-status';

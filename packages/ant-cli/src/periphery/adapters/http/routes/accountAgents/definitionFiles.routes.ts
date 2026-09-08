@@ -8,7 +8,7 @@ import type { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import type multer from 'multer';
-import { boundedMultipart } from '../../middleware/boundedMultipart';
+import { boundedMultipartUpload } from '../../middleware/boundedMultipart';
 import {
   CUSTOM_ID_HINT,
   GENERAL_INTENT,
@@ -290,7 +290,7 @@ export function registerDefinitionFileRoutes(
     }
   });
 
-  router.post('/:agentId/files/upload', ...boundedMultipart(), upload.array('files'), async (req: Request, res: Response) => {
+  router.post('/:agentId/files/upload', ...boundedMultipartUpload(upload), async (req: Request, res: Response) => {
     try {
       const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
       if (!found) return;

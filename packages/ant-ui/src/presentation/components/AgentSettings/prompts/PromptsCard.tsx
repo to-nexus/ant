@@ -29,6 +29,7 @@ import {
   renameDefinitionFile,
   uploadDefinitionFiles,
 } from '@/infrastructure/http/api/accountAgents';
+import { PartialUploadError, partialUploadMessage } from '@/shared/utils/upload-utils';
 import { type PromptsScope } from './promptRows';
 import { ProseModeToggle, useProseMode } from './proseSurface';
 import { PromptFileList } from './PromptFileList';
@@ -102,7 +103,12 @@ export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) 
       Array.from(files).map((f) => ({ file: f, relativePath: `${baseDir}${f.name}` })),
     )
       .then(() => loadDefinitionTree(agentId))
-      .catch((err) => setSaveError(err instanceof Error ? err.message : String(err)));
+      .catch(async (err) => {
+        // A partial batch failure left real files behind — reload before reporting.
+        if (err instanceof PartialUploadError) await loadDefinitionTree(agentId);
+        const e = partialUploadMessage(err, t);
+        setSaveError(e instanceof Error ? e.message : String(e));
+      });
   };
 
   const handleSave = async () => {

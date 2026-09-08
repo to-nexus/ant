@@ -3,6 +3,7 @@ import { UNIVERSAL_FEATURE } from '@ant/shared';
 import type { CustomAgentSummary, CustomJobSummary, CustomAgentScope } from '@ant/shared';
 import { getDownloadUrl } from './files';
 import type { UploadFileEntry } from './files';
+import { planUploadBatches, runUploadBatches } from '@/shared/utils/upload-utils';
 
 export type { CustomAgentSummary, CustomJobSummary, CustomAgentScope };
 
@@ -119,35 +120,67 @@ export interface RejectedUploadFile {
   reason: string;
 }
 
+/**
+ * Upload into the merged workspace tree, batched.
+ *
+ * Sent as several requests when the folder is larger than one request may
+ * carry — see `planUploadBatches`. A whole-batch 415 (`UNREADABLE_FILES`, which
+ * the route answers when EVERY file in one request is unconsumable) is folded
+ * into the aggregate `rejected[]` and the run continues: batching must not let
+ * one all-binary batch abort an otherwise good folder. It is only re-thrown
+ * when no batch uploaded anything.
+ */
 export async function uploadUniversalArtifacts(
   projectId: string,
   dirPath: string,
   entries: UploadFileEntry[],
 ): Promise<{ uploadedFiles: string[]; count: number; rejected: RejectedUploadFile[] }> {
-  const formData = new FormData();
-  formData.append('dirPath', dirPath);
-  for (const entry of entries) {
-    formData.append('files', entry.file);
-    formData.append('relativePaths', entry.relativePath);
-  }
-  const response = await authFetch(`${projectBase(projectId)}/universal/artifacts/upload`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new ApiError(
-      (err as any).error || (err as any).message || `Failed to upload files: ${response.statusText}`,
-      response.status,
-      err,
-    );
-  }
-  const data = await response.json().catch(() => ({}));
-  return {
-    uploadedFiles: data?.uploadedFiles || [],
-    count: data?.count || 0,
-    rejected: Array.isArray(data?.rejected) ? data.rejected : [],
+  const plan = planUploadBatches(entries);
+  const rejected: RejectedUploadFile[] = [];
+  const uploadedFiles: string[] = [];
+  let lastUnreadable: ApiError | null = null;
+
+  const sendBatch = async (batch: UploadFileEntry[]) => {
+    const formData = new FormData();
+    formData.append('dirPath', dirPath);
+    for (const entry of batch) {
+      formData.append('files', entry.file);
+      formData.append('relativePaths', entry.relativePath);
+    }
+    const response = await authFetch(`${projectBase(projectId)}/universal/artifacts/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new ApiError(
+        (err as any).error || (err as any).message || `Failed to upload files: ${response.statusText}`,
+        response.status,
+        err,
+      );
+    }
+    return response.json().catch(() => ({}));
   };
+
+  await runUploadBatches(plan, async (batch) => {
+    let data: any;
+    try {
+      data = await sendBatch(batch);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'UNREADABLE_FILES') {
+        if (err.rejected) rejected.push(...err.rejected);
+        lastUnreadable = err;
+        return;
+      }
+      throw err;
+    }
+    if (Array.isArray(data?.uploadedFiles)) uploadedFiles.push(...data.uploadedFiles);
+    if (Array.isArray(data?.rejected)) rejected.push(...data.rejected);
+  });
+
+  if (uploadedFiles.length === 0 && lastUnreadable) throw lastUnreadable;
+
+  return { uploadedFiles, count: uploadedFiles.length, rejected };
 }
 
 /**

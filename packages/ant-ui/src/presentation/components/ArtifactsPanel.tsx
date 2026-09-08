@@ -24,9 +24,11 @@ import { UploadConflictModal } from '@/presentation/components/common/UploadConf
 import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
 import {
   UI_PANEL_TOP_LEVEL_DIRS,
+  UPLOAD_FILE_MAX_BYTES,
   pruneFileTreeForWorkspaceDomain,
   type ArtifactPermissions,
 } from '@ant/shared';
+import { PartialUploadError, uploadRefusalMessage } from '@/shared/utils/upload-utils';
 import type { FileNode } from '@/infrastructure/http/api';
 import { ArtifactsSection } from './ArtifactsPanel/ArtifactsSection';
 import { TransferToolbar } from './ArtifactsPanel/TransferToolbar';
@@ -134,13 +136,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
    * expected answers and need to read as guidance rather than as a failure.
    */
   const formatLimitError = (error: ApiError): string | null => {
-    if (error.code === 'UPLOAD_REQUEST_TOO_LARGE')
-      return t('error.uploadTooLarge', { limitMb: 200 });
-    if (error.code === 'UPLOAD_CONCURRENCY_LIMIT')
-      return t('error.uploadTooManyInFlight');
     if (error.code === 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED')
       return t('error.downloadTooLarge', { entries: 20000, limitGb: 2 });
-    return null;
+    // Upload refusals have ONE owner, shared with the universal and definition
+    // panels, so the limits cannot drift from the server's SSOT per screen.
+    const refusal = uploadRefusalMessage(error);
+    return refusal ? t(refusal.key, refusal.params) : null;
   };
 
   const format422Error = (error: ApiError, dirPath: string): string => {
@@ -303,17 +304,35 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       setUploadState({ loaded: 0, total: 0, fileCount: count, targetDir: dirPath });
 
       try {
-        await uploadFiles(selectedProject, selectedFeature, dirPath, files, {
+        const { oversized } = await uploadFiles(selectedProject, selectedFeature, dirPath, files, {
           onProgress: (loaded, total) =>
             setUploadState((prev) => (prev ? { ...prev, loaded, total } : prev)),
           signal: controller.signal,
         });
         await refreshFileTree();
+        // Past the per-file cap, so never sent — named rather than dropped.
+        if (oversized.length > 0) {
+          showError(
+            t('error.uploadFileTooLarge', { limitMb: UPLOAD_FILE_MAX_BYTES / (1024 * 1024) }),
+            { title: t('common:error.title') },
+          );
+        }
         setUploadState((prev) => (prev ? { ...prev, loaded: prev.total, completed: true } : prev));
         lingerTimerRef.current = setTimeout(dismissUpload, 3000);
       } catch (error) {
         if ((error as DOMException)?.name === 'AbortError') {
           console.log('[Upload] Cancelled by user');
+        } else if (error instanceof PartialUploadError) {
+          // Earlier batches DID land, so the tree must show them.
+          await refreshFileTree();
+          showError(
+            t('error.uploadPartial', {
+              done: error.uploadedCount,
+              total: error.totalCount,
+              reason: error.cause instanceof Error ? error.cause.message : String(error.cause),
+            }),
+            { title: t('common:error.title') },
+          );
         } else if (error instanceof ApiError && error.status === 422) {
           showError(format422Error(error, dirPath), { title: t('common:error.title') });
         } else if (error instanceof ApiError && formatLimitError(error)) {

@@ -21,6 +21,7 @@ import {
   deleteUniversalArtifact,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { PartialUploadError, uploadRefusalMessage } from '@/shared/utils/upload-utils';
 import { ArtifactsSection } from './ArtifactsPanel/ArtifactsSection';
 import { TransferToolbar } from './ArtifactsPanel/TransferToolbar';
 
@@ -137,11 +138,24 @@ export function UniversalArtifactsPanel({ explorerWidth }: { explorerWidth: numb
         console.error('[UniversalArtifacts] Upload failed:', err);
         // A 415 whole-upload refusal carries the same per-file list.
         const rejected = (err as { rejected?: Array<{ path: string; reason: string }> })?.rejected;
+        const refusal = uploadRefusalMessage(err as { status?: number; code?: string });
         if (Array.isArray(rejected) && rejected.length > 0) {
           showError(
             `${t('artifacts:uploadRejected', { count: rejected.length })}\n\n` +
               rejected.map((r) => `• ${r.path} — ${r.reason}`).join('\n'),
           );
+        } else if (err instanceof PartialUploadError) {
+          // Earlier batches DID land, so the tree must show them.
+          await loadTree();
+          showError(
+            t('artifacts:error.uploadPartial', {
+              done: err.uploadedCount,
+              total: err.totalCount,
+              reason: err.cause instanceof Error ? err.cause.message : String(err.cause),
+            }),
+          );
+        } else if (refusal) {
+          showError(t(`artifacts:${refusal.key}`, refusal.params));
         } else {
           surfaceError(err);
         }

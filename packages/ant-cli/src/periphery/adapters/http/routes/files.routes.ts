@@ -15,7 +15,7 @@ import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/re
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
 import { writeBufferVerifiedContained, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
 import { toNfc } from '../../../../core/utils/unicodePath';
-import { boundedMultipart } from '../middleware/boundedMultipart';
+import { boundedMultipartUpload } from '../middleware/boundedMultipart';
 import {
   downloadRateLimiter,
   forceRefreshRateLimiter,
@@ -646,7 +646,7 @@ export function createFilesRoutes(deps: {
   });
 
   // Upload files to a feature directory
-  router.post('/projects/:id/features/:feature/upload', ...boundedMultipart({ stateStore: deps.stateStore }), upload.array('files'), async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/upload', ...boundedMultipartUpload(upload, 'files', { stateStore: deps.stateStore }), async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;

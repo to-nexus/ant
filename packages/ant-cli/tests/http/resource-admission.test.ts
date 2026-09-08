@@ -18,7 +18,7 @@ import * as os from 'os';
 import * as path from 'path';
 import http from 'node:http';
 
-import { boundedMultipart, __testing as multipartTesting } from '../../src/periphery/adapters/http/middleware/boundedMultipart';
+import { boundedMultipart, boundedMultipartUpload, __testing as multipartTesting } from '../../src/periphery/adapters/http/middleware/boundedMultipart';
 import { measureArchiveInput } from '../../src/periphery/adapters/http/routes/helpers/featureFiles';
 import {
   buildUniversalMergedTreeResult,
@@ -150,6 +150,111 @@ describe('boundedMultipart — whole-request byte budget (M-007)', () => {
   it('frees the slot once a request completes', async () => {
     expect((await fetch(`${baseUrl}/upload`, { method: 'POST', body: form([16]) })).status).toBe(200);
     expect((await fetch(`${baseUrl}/upload`, { method: 'POST', body: form([16]) })).status).toBe(200);
+  });
+});
+
+/**
+ * The FE wire shape, and the typed refusals multer's own limits must produce.
+ *
+ * Every lane sends PAIRED parts per file (`files` + `relativePaths`), so N files
+ * spend N+1 fields and 2N+1 parts. The `form()` helper above omits
+ * `relativePaths` — which is exactly why a 115-file folder drop could exhaust
+ * the field cap at N=49 with the whole suite green. And because no MulterError
+ * handler existed, that breach surfaced as Express's default HTML 500 rather
+ * than a refusal any client could act on.
+ */
+describe('boundedMultipartUpload — paired parts and typed multer refusals', () => {
+  let server: http.Server;
+  let baseUrl: string;
+
+  const mount = (limits: Partial<typeof UPLOAD_LIMITS> = {}) => {
+    multipartTesting.resetStateStoreCache();
+    multipartTesting.resetPodInflight();
+    const upload = multer({
+      storage: multer.memoryStorage(),
+      limits: { ...UPLOAD_LIMITS, ...limits },
+    });
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: 'u1' };
+      (req as any).organization = { id: 'o1' };
+      next();
+    });
+    app.post('/upload', ...boundedMultipartUpload(upload), (req, res) => {
+      res.json({ count: (req.files as unknown[])?.length ?? 0 });
+    });
+    return app;
+  };
+
+  const listen = async (app: express.Express) => {
+    await new Promise<void>((resolve) => { server = app.listen(0, () => resolve()); });
+    const addr = server.address();
+    baseUrl = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+  };
+
+  afterEach(async () => {
+    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  /** One `dirPath` field, then a `files` + `relativePaths` pair per file. */
+  const pairedForm = (n: number, field = 'files', size = 8) => {
+    const f = new FormData();
+    f.append('dirPath', 'docs');
+    for (let i = 0; i < n; i++) {
+      f.append(field, new Blob([new Uint8Array(size)]), `f${i}.md`);
+      f.append('relativePaths', `sub/f${i}.md`);
+    }
+    return f;
+  };
+
+  it('accepts the advertised file count in one paired request', async () => {
+    await listen(mount());
+    const res = await fetch(`${baseUrl}/upload`, {
+      method: 'POST',
+      body: pairedForm(UPLOAD_LIMITS.files),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).count).toBe(UPLOAD_LIMITS.files);
+  });
+
+  it('a normal-sized paired request is untouched', async () => {
+    await listen(mount());
+    const res = await fetch(`${baseUrl}/upload`, { method: 'POST', body: pairedForm(2) });
+    expect(res.status).toBe(200);
+    expect((await res.json()).count).toBe(2);
+  });
+
+  it('refuses one file past the cap as typed JSON, never an HTML 500', async () => {
+    await listen(mount());
+    const res = await fetch(`${baseUrl}/upload`, {
+      method: 'POST',
+      body: pairedForm(UPLOAD_LIMITS.files + 1),
+    });
+    expect(res.status).toBe(413);
+    expect(res.headers.get('content-type')).toMatch(/^application\/json/);
+    const body = await res.json();
+    expect(body.code).toBe('UPLOAD_TOO_MANY_FILES');
+    expect(body.limit).toBe(UPLOAD_LIMITS.files);
+  });
+
+  it('refuses an oversized single file with a per-file code', async () => {
+    await listen(mount({ fileSize: 64 }));
+    const res = await fetch(`${baseUrl}/upload`, {
+      method: 'POST',
+      body: pairedForm(1, 'files', 512),
+    });
+    expect(res.status).toBe(413);
+    expect((await res.json()).code).toBe('UPLOAD_FILE_TOO_LARGE');
+  });
+
+  it('refuses a file on an unexpected field', async () => {
+    await listen(mount());
+    const res = await fetch(`${baseUrl}/upload`, {
+      method: 'POST',
+      body: pairedForm(1, 'attachments'),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('UPLOAD_UNEXPECTED_FIELD');
   });
 });
 

@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import * as path from 'node:path';
 import { UPLOAD_LIMITS } from '../../src/core/config/uploadLimits.js';
+import { UPLOAD_FILE_MAX_BYTES, UPLOAD_MAX_FILES_PER_REQUEST } from '@ant/shared';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pre-auth body budget (M-010)
@@ -258,6 +259,23 @@ describe('multipart uploads bound the request, not just each file (M-007)', () =
     }
   });
 
+  /**
+   * Every lane pairs each file part with one `relativePaths` field, so a
+   * `fields`/`parts` cap chosen independently of `files` becomes the REAL file
+   * ceiling and the advertised one is unreachable: `fields: 50` refused the
+   * 50th file and a 115-file folder drop died there. Assert the RELATION, not
+   * the numbers — a literal compared against its own literal tests nothing.
+   */
+  it('fields and parts leave room for the advertised file count', () => {
+    expect(UPLOAD_LIMITS.fields).toBeGreaterThanOrEqual(UPLOAD_LIMITS.files + 1);
+    expect(UPLOAD_LIMITS.parts).toBeGreaterThanOrEqual(UPLOAD_LIMITS.files * 2 + 1);
+  });
+
+  it('the BE cap and the FE batch size are one constant', () => {
+    expect(UPLOAD_LIMITS.files).toBe(UPLOAD_MAX_FILES_PER_REQUEST);
+    expect(UPLOAD_LIMITS.fileSize).toBe(UPLOAD_FILE_MAX_BYTES);
+  });
+
   const ROUTERS = [
     'routes/files.routes.ts',
     'routes/accountAgents.routes.ts',
@@ -288,6 +306,20 @@ describe('multipart uploads bound the request, not just each file (M-007)', () =
       for (const config of source.match(/multer\(\{[\s\S]*?\}\)/g) ?? []) {
         expect(config, file.rel).toContain('UPLOAD_LIMITS');
       }
+    }
+  });
+
+  /**
+   * multer aborts a limit breach with `next(new MulterError(...))`. With no
+   * handler that became Express's default HTML 500 — a refusal no client could
+   * parse. `boundedMultipartUpload` composes the gates, multer, and the typed
+   * refusal, so mounting multer directly is the offense. Enumerate the SET, not
+   * the routes someone remembered.
+   */
+  it('no route mounts multer directly — all go through boundedMultipartUpload', () => {
+    for (const file of walkRouteFiles()) {
+      const source = readFileSync(file.full, 'utf8');
+      expect(source, file.rel).not.toMatch(/upload\.(array|single|fields)\(/);
     }
   });
 });

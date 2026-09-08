@@ -250,6 +250,8 @@
     "replaceTitle": "이미 존재합니다",
     "replaceMessage": "같은 디렉토리가 이미 있습니다. 덮어쓰면 정의 파일이 교체되며, 업로드에 없는 파일은 삭제됩니다.",
     "replaceAgentTitle": "에이전트가 이미 존재합니다",
-    "replaceAgentMessage": "같은 id 의 에이전트가 있습니다. 덮어쓰면 정의 파일이 교체됩니다. 과거 세션 데이터는 유지됩니다."
+    "replaceAgentMessage": "같은 id 의 에이전트가 있습니다. 덮어쓰면 정의 파일이 교체됩니다. 과거 세션 데이터는 유지됩니다.",
+    "uploadPartialReplace": "{{total}}개 중 {{done}}개가 업로드되었습니다. 기존 폴더가 이미 교체되어 지금은 불완전한 상태입니다 — 업로드를 다시 시도해주세요.",
+    "uploadPartial": "{{total}}개 중 {{done}}개 업로드 후 중단되었습니다: {{reason}}"
   }
 }

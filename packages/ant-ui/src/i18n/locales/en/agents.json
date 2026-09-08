@@ -250,6 +250,8 @@
     "replaceTitle": "Already exists",
     "replaceMessage": "This directory already exists. Overwriting REPLACES its definition files — anything not in the upload is removed.",
     "replaceAgentTitle": "Agent already exists",
-    "replaceAgentMessage": "An agent with this id already exists. Overwriting REPLACES its definition files; past session data is left untouched."
+    "replaceAgentMessage": "An agent with this id already exists. Overwriting REPLACES its definition files; past session data is left untouched.",
+    "uploadPartialReplace": "{{done}} of {{total}} files were uploaded. The existing folder was already replaced, so it is now incomplete — retry the upload.",
+    "uploadPartial": "{{done}} of {{total}} files were uploaded, then the upload stopped: {{reason}}"
   }
 }

@@ -17,15 +17,17 @@
  *      and on the actual stream when it is not (a chunked body has no declared
  *      length, so trusting the header alone bounds only the honest client).
  *
- * Mount as `boundedMultipart(deps), upload.array('files')` — the order is the
- * point.
+ * Mount as `boundedMultipartUpload(upload, 'files', deps)` — it composes the
+ * gates, multer, and multer's own refusals in that order, which is the point.
  */
 
 import { Transform } from 'stream';
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import multer from 'multer';
 
 import {
+  UPLOAD_LIMITS,
   UPLOAD_MAX_INFLIGHT_PER_USER,
   UPLOAD_REQUEST_MAX_BYTES,
   UPLOAD_POD_MAX_INFLIGHT_BYTES,
@@ -98,6 +100,117 @@ function tooLarge(res: Response, maxBytes: number): void {
     error: 'Upload too large',
     message: `The files in one request may total at most ${Math.floor(maxBytes / (1024 * 1024))} MB. Upload them in smaller batches.`,
   });
+}
+
+/**
+ * multer's own limit breaches, answered as typed 4xx JSON.
+ *
+ * multer aborts with `next(new MulterError(code))`. There was no error handler
+ * anywhere in this process, so every breach became Express's default HTML 500 —
+ * a refusal no client could parse or act on, and the reason a 115-file folder
+ * drop surfaced to the user as a bare "upload failed" (AGENTS.md: an enumeration
+ * budget running out must degrade or refuse in a TYPED way, never throw).
+ *
+ * Shape mirrors `tooLarge()` — `{ code, error, message }`. Deliberately NOT
+ * `sendErrorResponse`: that emits no `code` and replaces the message with a
+ * generic string in production, which is right for an unexpected 500 and wrong
+ * for a budget refusal the client must render and act on.
+ *
+ * Returns true when it answered, so the caller does not also call `next(err)`.
+ */
+export function refuseMultipartError(res: Response, err: unknown): boolean {
+  if (!(err instanceof multer.MulterError)) return false;
+
+  const warn = (code: string) =>
+    logger.warn(`[boundedMultipart] refusing upload: ${err.code} → ${code}`, {
+      component: 'boundedMultipart',
+    });
+
+  switch (err.code) {
+    // All three mean the same actionable thing now that `fields`/`parts` are
+    // derived from `files`: this request carries more files than one request may.
+    // One client-facing code, so the FE has one branch.
+    case 'LIMIT_FIELD_COUNT':
+    case 'LIMIT_PART_COUNT':
+    case 'LIMIT_FILE_COUNT':
+      warn('UPLOAD_TOO_MANY_FILES');
+      res.status(413).json({
+        code: 'UPLOAD_TOO_MANY_FILES',
+        error: 'Too many files in one request',
+        message: `One request may carry at most ${UPLOAD_LIMITS.files} files. Upload them in smaller batches.`,
+        limit: UPLOAD_LIMITS.files,
+      });
+      return true;
+
+    case 'LIMIT_FILE_SIZE': {
+      const limitMb = Math.floor(UPLOAD_LIMITS.fileSize / (1024 * 1024));
+      warn('UPLOAD_FILE_TOO_LARGE');
+      res.status(413).json({
+        code: 'UPLOAD_FILE_TOO_LARGE',
+        error: 'File too large',
+        message: `Each file may be at most ${limitMb} MB.`,
+        limitMb,
+        ...(err.field ? { field: err.field } : {}),
+      });
+      return true;
+    }
+
+    case 'LIMIT_FIELD_VALUE':
+      warn('UPLOAD_FIELD_TOO_LARGE');
+      res.status(413).json({
+        code: 'UPLOAD_FIELD_TOO_LARGE',
+        error: 'Upload field too large',
+        message: 'One of the upload form values is too large.',
+      });
+      return true;
+
+    case 'LIMIT_UNEXPECTED_FILE':
+      warn('UPLOAD_UNEXPECTED_FIELD');
+      res.status(400).json({
+        code: 'UPLOAD_UNEXPECTED_FIELD',
+        error: 'Unexpected upload field',
+        message: `This route accepts files on a different field${err.field ? ` (got "${err.field}")` : ''}.`,
+      });
+      return true;
+
+    // LIMIT_FIELD_KEY, MISSING_FIELD_NAME, INVALID_FIELD_NAME,
+    // LIMIT_FIELD_NESTING, LIMIT_FIELD_ARRAY_INDEX, and anything multer adds
+    // later: a malformed body, not a budget the client can shrink into.
+    default:
+      warn('UPLOAD_MALFORMED');
+      res.status(400).json({
+        code: 'UPLOAD_MALFORMED',
+        error: 'Malformed upload',
+        message: 'The upload could not be read by the server. Try again.',
+      });
+      return true;
+  }
+}
+
+/**
+ * The one way to mount a multipart route: admission gates, then multer, then
+ * multer's refusals typed.
+ *
+ * A per-route error middleware would work too, but adoption would be a thing
+ * each author has to remember — and AGENTS.md is explicit that a guard must
+ * enumerate the SET, not the routes someone remembered. Composing the wrapper
+ * makes adoption a property of the call, and the absence of a bare
+ * `upload.array(` under `routes/` is a greppable, test-enforced set.
+ */
+export function boundedMultipartUpload(
+  upload: multer.Multer,
+  field = 'files',
+  deps: BoundedMultipartDeps = {},
+): RequestHandler[] {
+  return [
+    ...boundedMultipart(deps),
+    (req, res, next) =>
+      upload.array(field)(req, res, (err?: unknown) => {
+        if (!err) return next();
+        if (refuseMultipartError(res, err)) return;
+        next(err);
+      }),
+  ];
 }
 
 export function boundedMultipart(deps: BoundedMultipartDeps = {}): RequestHandler[] {

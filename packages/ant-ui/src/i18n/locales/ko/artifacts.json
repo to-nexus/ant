@@ -55,7 +55,8 @@
     "cancel": "취소",
     "cancelled": "업로드가 취소되었습니다",
     "complete": "{{count}}개 파일 업로드 완료",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "batch": "배치 {{index}} / {{count}}"
   },
   "error": {
     "fileCreateFailed": "파일 생성에 실패했습니다.",
@@ -83,7 +84,12 @@
     "uploadTooLarge": "한 번에 올릴 수 있는 용량을 넘었습니다 (합계 {{limitMb}} MB 제한). 나눠서 업로드해주세요.",
     "uploadTooManyInFlight": "이미 업로드가 진행 중입니다. 완료된 뒤 다시 시도해주세요.",
     "downloadTooLarge": "폴더가 너무 커서 ZIP으로 내려받을 수 없습니다 (파일 {{entries}}개 또는 {{limitGb}} GB 제한). 하위 폴더를 선택해 내려받아주세요.",
-    "treeTruncated": "이 폴더의 일부만 표시했습니다 — 파일이 너무 많습니다."
+    "treeTruncated": "이 폴더의 일부만 표시했습니다 — 파일이 너무 많습니다.",
+    "uploadTooManyFiles": "한 요청에 파일이 너무 많습니다 ({{limit}}개 제한). 다시 시도하면 나눠서 업로드됩니다.",
+    "uploadFileTooLarge": "파일 하나가 개별 제한 {{limitMb}} MB를 넘어 업로드되지 않았습니다.",
+    "uploadServerBusy": "서버가 지금 많은 업로드를 처리하고 있습니다. 잠시 후 다시 시도해주세요.",
+    "uploadMalformed": "서버가 업로드를 읽을 수 없었습니다. 다시 시도해주세요.",
+    "uploadPartial": "{{total}}개 중 {{done}}개 업로드 후 중단되었습니다: {{reason}}"
   },
   "editor": {
     "placeholder": "파일 내용...",
