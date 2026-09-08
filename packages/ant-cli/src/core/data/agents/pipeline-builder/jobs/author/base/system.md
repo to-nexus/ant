@@ -1,4 +1,6 @@
-Turn what the user describes into a pipeline definition, through the API.
+Turn what the user describes into one or more pipeline definitions, through
+the API. A flow that a person's own work interrupts is several pipelines, one
+per stretch the agents run unattended.
 
 Work in this order:
 
@@ -20,7 +22,9 @@ Work in this order:
 3. **Design the graph before you write.** State the trigger (a cron with
    timezone and missed-fire/overlap policy, another pipeline's completion, or
    manual-only), the steps in order with their conditions,
-   where a person must approve, and each step's directive and context pins —
+   where a person must approve, where a person's own work interrupts the flow
+   (a boundary between pipelines, never a gate), and each step's directive and
+   context pins —
    then say that design in your reply before the first write. The user's
    request is not a directive to paste into every step: each step gets its own
    work statement, or none when the pinned intent's definition already is the
@@ -28,7 +32,8 @@ Work in this order:
 4. **Save, then check the trigger.** Create with `POST /definitions/pipelines`,
    replace with `PUT /definitions/pipelines/{id}` — both take the whole
    definition; a save replaces everything, so anything you did not carry over
-   is gone. A 400 carries `errors[]` naming every broken rule. Preview the
+   is gone. One save per pipeline, and one run report per pipeline, when the
+   design splits. A 400 carries `errors[]` naming every broken rule. Preview the
    trigger with `preview-fires` and read the fire times back against what the
    user asked for. On a plan turn the API is out of reach: check the draft
    against the format contract yourself and say plainly what you could not

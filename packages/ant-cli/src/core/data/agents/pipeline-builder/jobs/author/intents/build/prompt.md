@@ -108,11 +108,17 @@
   per call, so never add an approval step to guard a write it gates.
 - A gate holds a run for a person's DECISION, never for their labor. Where a
   person performs work between steps — relaying a deliverable into a system no
-  agent reaches, fetching what only they can — a seam has exactly two shapes:
-  end the pipeline at the handoff deliverable and let the next Run carry the
-  handoff in, or let the step that CONSUMES it ask through its intent's
-  `clarify`. The split is reversible; chain or merge the two pipelines once the
-  seam is wired.
+  agent reaches, waiting on a review that comes back in a week, fetching what
+  only they can — that work is a boundary between PIPELINES, not a gate: author
+  the stretch before it and the stretch after it as two pipelines in this same
+  turn. The upstream one ends at the handoff deliverable; the downstream one is
+  manual-only while the seam is human, its entry step taking the case through
+  its intent's `clarify`, and it chains on `runCompleted` only once the seam is
+  automated. A gate `timeout` cannot stand in for that labor: sized to the
+  person's lead time it holds a run open for weeks on a decision nobody can yet
+  make, and sized shorter it rejects — and under `abort` kills the run — before
+  the work the next step needs exists. The split is reversible; chain or merge
+  the two once the seam is wired.
 - A gate cannot be the third shape, and that is a fact rather than a
   preference: an approval carries **no payload**, so it delivers none of what
   the person produced. A gate `prompt` inviting the approver to enter or paste
@@ -200,6 +206,10 @@
   cannot arrive as a clarify answer: that channel carries text only. The
   directive tells the step to ask for the artifacts path the person uploaded
   it to, and Run entry names the upload as the person's work.
+- A step's job may pause for clarify only a few times within one run of that
+  step (three); then the tool is withdrawn and the step finishes on its own
+  assumptions. A directive that names several inputs a person holds tells the
+  step to ask for them together, in one question, never one at a time.
 
 **Save, verify, decode failures.**
 
@@ -220,7 +230,7 @@
 
 **Report.**
 
-- Show the id and name, the trigger with its next fires, every step with its
+- For each pipeline you saved: show the id and name, the trigger with its next fires, every step with its
   condition and directive, every gate with its timeout, the failure policy —
   naming substitutes and seams; the run report carries the detail.
 - End with the hand-over line and what a person must decide: the gate policies
@@ -231,8 +241,9 @@
 
 **Write the run report.**
 
-`pipeline-report/{pipelineId}.md` — one file per pipeline, rewritten whole on
-every authoring turn, six sections, omitting none. Write it from the
+`pipeline-report/{pipelineId}.md` — one file per pipeline (a turn that saved
+two pipelines writes two), rewritten whole on every authoring turn, six
+sections, omitting none. Write it from the
 definition you read BACK after saving, never from the design you intended: the
 next round and the Agent Builder read this file as fact, so a section
 describing a pin, a branch or a gate the saved definition does not have is
@@ -247,7 +258,9 @@ worse than no section at all.
 
 ## Human seams
 - after {stepId}: {who} does {what} outside the run. It comes back through
-  {clarify at <stepId> | a manual Run of this pipeline | a downstream pin}.
+  {clarify at <stepId> | a manual Run of pipeline {downstreamPipelineId} | a
+  downstream pin}. Steps of THIS pipeline that run after it: {none | <stepIds>
+  — a person's work sits inside the run; split the pipeline here}.
 
 ## Outcome coverage
 - {outcome}: skips {stepIds | none} — {why every skipped step's duty ends
@@ -265,6 +278,8 @@ worse than no section at all.
 
 ## Left to a person
 - {the policy you chose and its default}: {what to change it to, and when}.
+- Run pipeline {downstreamPipelineId} once {handoff} is in hand — the seam it
+  waits on.
 ```
 
 **Intent changes** is the only channel by which a limitation of the AGENT

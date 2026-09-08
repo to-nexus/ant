@@ -17,7 +17,8 @@ base — pass them exactly as written, starting with `/`.
    step's agent, job, and intent before designing, for any agent whose
    definition was not attached.
 3. `POST /definitions/pipelines` or `PUT /definitions/pipelines/{id}` — save
-   the whole definition.
+   the whole definition. Once per pipeline: a design split at a human seam is
+   several drafts, each with its own id.
 4. `POST /definitions/pipelines/preview-fires` — check the trigger. Do this
    before reporting success; it also works before saving, as a design check.
 
