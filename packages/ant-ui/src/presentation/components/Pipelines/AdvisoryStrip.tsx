@@ -1,14 +1,18 @@
 /**
- * AdvisoryStrip — the save-time advisories a definition carries, live (the
- * shared collectors over the draft) and as the server answered them on the
- * last save. Amber, never blocking: these are findings a person weighs.
- * Clicking an item selects the step it names.
+ * The save-time advisories a definition carries, live (the shared collectors
+ * over the draft) and as the server answered them on the last save. Amber,
+ * never blocking: these are findings a person weighs.
+ *
+ * They live behind a HEADER badge, not in a strip above the canvas — a strip
+ * that appears, and then grows when expanded, resizes the canvas twice. The
+ * popover scrolls instead, so the list needs no collapse and nothing is one
+ * click further away than it was.
  */
 
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TriangleAlert } from 'lucide-react';
 import { Badge } from '../aurora';
+import { Tooltip } from '../common/Tooltip';
 
 export interface AdvisoryStripItem {
   id: string;
@@ -17,70 +21,59 @@ export interface AdvisoryStripItem {
   source: 'live' | 'saved';
 }
 
-// Two rows keep the canvas visible under a long advisory list; the rest is one click away.
-const COLLAPSED_ROWS = 2;
-
-export function AdvisoryStrip({ items, onSelectStep }: { items: AdvisoryStripItem[]; onSelectStep?: (stepId: string) => void }) {
+export function AdvisoryList({ items, onSelectStep }: { items: AdvisoryStripItem[]; onSelectStep?: (stepId: string) => void }) {
   const { t } = useTranslation('pipelines');
-  const [expanded, setExpanded] = useState(false);
-  if (items.length === 0) return null;
-  const shown = expanded ? items : items.slice(0, COLLAPSED_ROWS);
-  const hidden = items.length - shown.length;
   return (
-    <div
-      role="status"
-      style={{
-        display: 'flex',
-        gap: 10,
-        padding: '8px 14px 8px 12px',
-        background: 'var(--intent-amber-bg)',
-        borderLeft: '2px solid var(--amber-500)',
-        borderBottom: '1px solid var(--border-1)',
-      }}
-    >
-      <TriangleAlert size={14} style={{ color: 'var(--amber-500)', flexShrink: 0, marginTop: 2 }} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)' }}>{t('advisory.title', '{{n}} advisories', { n: items.length })}</span>
-        {shown.map((item) => {
-          const clickable = !!item.stepId && !!onSelectStep;
-          return (
-            <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-              {item.source === 'saved' && (
-                <Badge size="sm" tone="warning" title={t('advisory.savedHint', 'Returned by the server on the last save')}>
-                  {t('advisory.saved', 'Saved')}
-                </Badge>
-              )}
-              <button
-                type="button"
-                disabled={!clickable}
-                onClick={() => item.stepId && onSelectStep?.(item.stepId)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  textAlign: 'left',
-                  fontSize: 12.5,
-                  lineHeight: 1.5,
-                  color: 'var(--text-2)',
-                  cursor: clickable ? 'pointer' : 'default',
-                  overflowWrap: 'anywhere',
-                }}
-              >
-                {item.message}
-              </button>
-            </div>
-          );
-        })}
-        {(hidden > 0 || expanded) && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, fontSize: 11.5, color: 'var(--violet-500)', cursor: 'pointer' }}
-          >
-            {expanded ? t('advisory.less', 'Show fewer') : t('advisory.more', '{{n}} more', { n: hidden })}
-          </button>
-        )}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 320, maxHeight: 320, overflowY: 'auto', textAlign: 'left' }}>
+      {items.map((item) => {
+        const clickable = !!item.stepId && !!onSelectStep;
+        return (
+          <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+            {item.source === 'saved' && (
+              <Badge size="sm" tone="warning" title={t('advisory.savedHint', 'Returned by the server on the last save')}>
+                {t('advisory.saved', 'Saved')}
+              </Badge>
+            )}
+            <button
+              type="button"
+              disabled={!clickable}
+              onClick={() => item.stepId && onSelectStep?.(item.stepId)}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                textAlign: 'left',
+                fontSize: 12,
+                lineHeight: 1.55,
+                color: 'var(--text-2)',
+                cursor: clickable ? 'pointer' : 'default',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {item.message}
+            </button>
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+/** Header badge — `⚠ n`, opening the list. Renders nothing when there are none. */
+export function AdvisoryBadge({ items, onSelectStep }: { items: AdvisoryStripItem[]; onSelectStep?: (stepId: string) => void }) {
+  const { t } = useTranslation('pipelines');
+  if (items.length === 0) return null;
+  return (
+    <Tooltip
+      content={<AdvisoryList items={items} onSelectStep={onSelectStep} />}
+      placement="bottom"
+      surface="var(--intent-amber-bg)"
+      borderColor="var(--amber-500)"
+    >
+      <Badge tone="warning" size="sm" style={{ flexShrink: 0, cursor: 'pointer' }} title={t('advisory.title', '{{n}} advisories', { n: items.length })}>
+        <TriangleAlert size={10} style={{ marginRight: 3 }} />
+        {items.length}
+      </Badge>
+    </Tooltip>
   );
 }

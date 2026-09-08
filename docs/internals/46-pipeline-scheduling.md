@@ -108,6 +108,26 @@ gives a business-key-partitioned manifest run-scoped pin isolation;
 `{{steps.*}}` stays directive-only (a pin expands once at dispatch and cannot
 carry another step's output — the validator refuses it).
 
+Because that whitelist is CLOSED (`PIPELINE_TEMPLATE_VARS` +
+`PIPELINE_STEP_OUTPUT_FIELDS` = 7 forms; anything else is a save error), the
+inspector can present it in words rather than as raw tokens.
+`Pipelines/templateTokens.ts` is the FE's one owner: `STATIC_TOKENS` /
+`STEP_OUTPUT_TOKENS` are keyed as `Record` over those shared unions, so adding
+a token upstream without labelling it is a TYPE error rather than a drift a
+name grep might miss — two hand-copied lists used to answer "which variables
+may I use here" and the pin's had lost the `run.prevSuccess.*` pair that
+`pinTemplateErrors` accepts. `availableStaticTokens(def)` is now the single
+gate for BOTH surfaces (`run.id` always; `trigger.*` with any trigger;
+`run.prevSuccess.*` on a schedule — a manual-only pipeline has no previous
+fire). Chip faces carry the human label with the raw token in the tooltip, and
+clicking still inserts the raw token; `segmentTemplate` (lossless by
+construction — re-concatenating its segments reproduces the input) drives the
+read-only `TemplatePreview` under the directive box, which renders each
+occurrence as the words it means, names a `{{steps.<id>.*}}` source by
+`resolveStepIdentity`, and shows an unknown token or a dangling step ref as a
+red pill rather than dropping it. The textarea remains the single buffer
+holding the real bytes.
+
 **Step-output substitution** (`{{steps.<id>.answer}}` /
 `{{steps.<id>.artifacts}}`): on step completion the coordinator captures
 `StepRecord.output` — the final assistant text of the seal's `session:main`
@@ -816,14 +836,38 @@ persisted). A NEW draft is a phantom active row in the My group with an
 
 The workspace has NO edit mode. `editable = draftIsNew || (!readonly &&
 !enabled)` derives straight from the BE availability gate (PUT / promote are
-refused while enabled); a locked canvas explains itself with a banner
-(`canvas.lockedEnabled` / `editor.readOnlyShared`) and node clicks are inert.
-Layout, top to bottom: `PipelineHeader` — orientation only (breadcrumb
-`Pipelines › name` via the shared `Crumb`, scope Badge, `StatusPill`
-unsaved / readonly / enabled / disabled, Wiring ⇄ Execution toggle; no
-buttons) → ONE `ChangedBar` (shared with config/agents; `common:changedBar.*`)
-rendered on BOTH views → the save/availability error strip → the view body.
-The bar covers THREE drafts in `pipelineSlice`: `pipelineDraft` (definition,
+refused while enabled); a locked canvas explains itself through the shared
+`CanvasNotice` overlay (`canvas.lockedEnabled` / `editor.readOnlyShared`) and
+node clicks are inert.
+
+**The column is exactly two rows — `PipelineHeader` then the view body — and
+NOTHING conditional may be added between them.** Anything that appears on an
+edit and disappears on a save resizes the canvas and re-fits the graph, which
+is what the save bar, the error strip, the advisory strip and the locked banner
+each did (~76px for the bar alone, and again when advisories expanded). So the
+header carries all four and its own height is fixed: the row is `flexWrap:
+'nowrap'` with every control `flexShrink: 0`, the current-pipeline `Crumb` is
+the only element that yields (`truncate` — it ellipsises rather than wrapping
+the row), an overflowing row SCROLLS rather than clips (`overflowX: 'auto'`,
+scrollbar hidden — measured live, a 556px canvas pane needed 771px and was
+swallowing the view toggle whole, and `PipelineChangeSlot` sits LEFT of the
+trash and the toggle so the primary action is the last thing to leave view),
+`PipelineChangeSlot` renders nothing when clean (reserving its width cost
+141px of exactly the budget that was overflowing; two controls shifting
+sideways on the first edit is cheaper than clipping them, and the invariant
+that matters is the canvas box, not the header's internal x-offsets), and
+advisories / save errors are `Badge` + click-`Tooltip`
+popovers (`AdvisoryBadge` / `AdvisoryList`; the popover scrolls, so the old
+`COLLAPSED_ROWS` collapse is gone). The two canvas messages that remain —
+locked and empty — are mutually exclusive by construction and share ONE
+absolute overlay (`CanvasNotice`), never a flow block.
+
+`PipelineWorkspace` still COMPUTES the save gate (it holds the three drafts and
+cron validity) and passes it down; only the presentation lives in the header.
+The shared `ConfigEditor/aurora/ChangedBar` is deliberately NOT used here —
+agent settings mounts it inside a real scroll container where its `position:
+sticky` works, and in this non-scrolling column it degraded to `relative`.
+The header covers THREE drafts in `pipelineSlice`: `pipelineDraft` (definition,
 vs `pipelineSavedDef`), `pipelineEditorsDraft` (org editors) and
 `pipelineApproversDraft` (per-activation gate rosters, keyed by projectId).
 `selectPipelineDirty` reports them as one `{ definition, editors, approvers[],
@@ -834,7 +878,8 @@ retry — and `discardPipelineAll` restores all three; `usePipelineDiscardGuard`
 is the one owner of the "discard unsaved changes?" confirm (rail row select,
 `+`, header root crumb, space switch). Save is gated by the shared validator +
 the `preview-fires` verdict only while the DEFINITION leg is dirty
-(`ChangedBar.saveDisabled` + `blockedReason`). **Wiring** (배선도 — the
+(`PipelineChangeSlot.canSave` + `blockedReason`, the reason as the button's
+tooltip). **Wiring** (배선도 — the
 reactflow canvas — trigger/step/gate nodes, insert-after "+" menus). Geometry
 is the pure `canvas/layout.ts`: dagre LR ranks, serpentine-wrapped into rows
 when the strip is wider than the measured pane (row 0 →, row 1 ←; odd rows
@@ -846,7 +891,23 @@ grammar keeps its channels apart — silhouette + accent = kind (trigger pill /
 teal, job step rounded / violet, approval gate chamfered octagon / amber; the
 `NODE_KIND_STYLE` table feeds the nodes, the legend and the inspector header),
 border = live-run status, ring = selection, dot = advisory; edge stroke /
-dash / label per condition is `edgeStyleFor`. The canvas re-fits only when
+dash / label per condition is `edgeStyleFor`.
+
+**The card's primary line is the PINNED INTENT, not the agent.** A pipeline is
+usually several intents of one agent × job, so agent-then-job as the two
+identity lines rendered every such step identically and put the only
+discriminator in a 9.5px pill. `resolveStepIdentity` (`stepIdentity.ts`) is the
+one owner of that answer — the canvas card, the inspector's step-output chip
+groups and the directive preview all name a step the same way: `primary` = the
+pinned intent (14px/700, wraps — an ellipsised name names nothing), falling
+back to the JOB display name when no intent is pinned or it is the reserved
+`general`, and to a placeholder when `customJobRef` is empty; `caption` =
+`agent · job` (10.5px, single-line, truncating, with the raw
+`{agentId}/{jobId}` in its title). The no-truncate rule protects the naming
+line only — the caption is identical across sibling steps by definition, so it
+is the half that may be cut. `estimateNodeHeight` (`canvas/nodeMetrics.ts`,
+pure and reactflow-free so it is testable) is calibrated to that type scale and
+must change with it in the same commit. The canvas re-fits only when
 the structure key (node count, rows, bucket, bounding box) changes, never on
 selection. Zoom controls are the shared `common/FlowCanvasControls` (also the
 agent workflow canvas). The inspector slot holds `StepInspector` while a node

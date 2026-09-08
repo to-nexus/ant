@@ -121,7 +121,8 @@
     "badCron": "Fix the schedule to save.",
     "needSteps": "Add at least one step.",
     "emptyCanvas": "Press + on the trigger node to add the first step.",
-    "defaultName": "New pipeline"
+    "defaultName": "New pipeline",
+    "saveFailed": "Save failed"
   },
   "canvas": {
     "approval": "Approval",
@@ -138,7 +139,8 @@
     "openExecution": "Open execution →",
     "insertBefore": "Insert before {{stepId}}",
     "appendNext": "Add next step",
-    "addBranch": "Add branch"
+    "addBranch": "Add branch",
+    "intentAuto": "intent chosen at run time"
   },
   "inspector": {
     "trigger": "Trigger & policies",
@@ -259,7 +261,20 @@
     "needsImplicit": "Inherited: previous step",
     "onVerdictPick": "On a verdict…",
     "onVerdictOutcomes": "Runs when the upstream verdict is one of the selected outcomes; a non-match skips this step and everything downstream of it.",
-    "onVerdictStale": "Not declared by the upstream intent any more"
+    "onVerdictStale": "Not declared by the upstream intent any more",
+    "tokenFace": {
+      "fireDate": "Fire time",
+      "fireEpoch": "Fire time (ms)",
+      "runId": "Run id",
+      "prevSuccessFireDate": "Last success",
+      "prevSuccessFireEpoch": "Last success (ms)",
+      "answer": "Final answer",
+      "artifacts": "Files written"
+    },
+    "templatePreview": "Preview",
+    "templatePreviewHint": "Each variable becomes its real value when the run is dispatched. Below shows them under human-readable names — the text that is saved is what the box above contains.",
+    "tokenUnknown": "Unknown variable — this will not save",
+    "tokenUnknownStep": "Points at a step that does not exist"
   },
   "gate": {
     "prompt": "Approval prompt",

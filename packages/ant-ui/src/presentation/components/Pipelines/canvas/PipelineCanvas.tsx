@@ -22,12 +22,14 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTranslation } from 'react-i18next';
-import { isApprovalStep, parseCustomJobRef, type PipelineDef, type PipelineStepStatus, type StepEdgeCondition } from '@ant/shared';
+import { isApprovalStep, type PipelineDef, type PipelineStepStatus, type StepEdgeCondition } from '@ant/shared';
 import type { PipelineRunPublic } from '@/domain/store/slices/pipelineSlice';
 import { FlowCanvasControls, DEFAULT_FIT_VIEW_OPTIONS } from '@/presentation/components/common/FlowCanvasControls';
 import { TriggerNode, StepNode, GateNode, type PipelineNodeData } from './nodes';
 import { CanvasLegend } from './CanvasLegend';
 import { edgeStyleFor, layoutPipeline, ranksPerRowFor, type EdgeKind } from './layout';
+import { estimateNodeHeight } from './nodeMetrics';
+import { resolveStepIdentity, type IdentityAgentSummary } from '../stepIdentity';
 import { TRIGGER_NODE_ID, effectiveNeedsOf, triggerModeOf } from '../draft';
 
 const nodeTypes: NodeTypes = {
@@ -37,23 +39,7 @@ const nodeTypes: NodeTypes = {
 };
 
 /** Agent catalog rows the canvas resolves display names from (accountAgents shape). */
-export interface CanvasAgentSummary {
-  id: string;
-  name: string;
-  jobs: Array<{ id: string; name: string }>;
-}
-
-/**
- * Dagre needs a height BEFORE the DOM renders — estimate from the text the
- * card will wrap (width 230 − padding/icon ≈ 24 chars per title line at 12px,
- * 28 per subtitle line at 11px). The DOM box itself is height-auto, so the
- * estimate only spaces ranks; a line over/under never clips.
- */
-function estimateNodeHeight(data: Pick<PipelineNodeData, 'title' | 'subtitle' | 'chip' | 'status'>): number {
-  const titleLines = Math.max(1, Math.ceil(data.title.length / 24));
-  const subtitleLines = data.subtitle ? Math.max(1, Math.ceil(data.subtitle.length / 28)) : 0;
-  return 24 + titleLines * 17 + subtitleLines * 15 + (data.chip ? 20 : 0) + (data.status ? 18 : 0) + 16;
-}
+export type CanvasAgentSummary = IdentityAgentSummary;
 
 export interface PipelineCanvasProps {
   def: PipelineDef;
@@ -129,8 +115,8 @@ function PipelineCanvasInner({ def, cronSummary, customAgents, run, approversByG
         position: { x: 0, y: 0 },
         data: {
           nodeId: TRIGGER_NODE_ID,
-          title: t(`canvas.triggerMode.${triggerMode}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain' }[triggerMode]),
-          subtitle: cronSummary,
+          primary: t(`canvas.triggerMode.${triggerMode}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain' }[triggerMode]),
+          caption: cronSummary,
           selected: false,
           flowDir: 'ltr',
           triggerMode,
@@ -141,33 +127,17 @@ function PipelineCanvasInner({ def, cronSummary, customAgents, run, approversByG
     def.steps.forEach((step) => {
       const gate = isApprovalStep(step);
       const invalid = gate ? step.prompt.trim().length === 0 : step.customJobRef.trim().length === 0;
-      // Agent name / job name each on their own line — display names resolved
-      // from the account catalog, raw ids as the graceful fallback.
-      let title: string;
-      let subtitle: string | undefined;
-      if (gate) {
-        title = t('canvas.approval', 'Approval');
-        subtitle = step.timeout ? `${step.timeout.after} → ${step.timeout.onTimeout}` : t('canvas.noTimeout', 'no timeout');
-      } else {
-        const ref = parseCustomJobRef(step.customJobRef);
-        if (!ref) {
-          title = t('canvas.unconfigured', 'Choose a job…');
-          subtitle = undefined;
-        } else {
-          const agent = customAgents?.find((a) => a.id === ref.agentId);
-          title = agent?.name ?? ref.agentId;
-          subtitle = agent?.jobs.find((j) => j.id === ref.jobId)?.name ?? ref.jobId;
-        }
-      }
+      // The pinned intent is what distinguishes sibling steps of one agent × job.
+      const identity = resolveStepIdentity(step, customAgents, t);
       rfNodes.push({
         id: step.id,
         type: gate ? 'pipelineGate' : 'pipelineStep',
         position: { x: 0, y: 0 },
         data: {
           nodeId: step.id,
-          title,
-          subtitle,
-          chip: !gate && step.intent ? step.intent : undefined,
+          primary: identity.primary,
+          caption: identity.caption,
+          captionTitle: identity.captionTitle,
           status: statusOf.get(step.id),
           selected: false,
           flowDir: 'ltr',

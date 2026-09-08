@@ -52,8 +52,17 @@ steps:
     on: success
 ```
 
-Three template variables are available in `directive`: `{{trigger.fireDate}}`,
-`{{trigger.fireEpoch}}`, `{{run.id}}`.
+A closed set of template variables is available in `directive`:
+`{{trigger.fireDate}}`, `{{trigger.fireEpoch}}`, `{{run.id}}`, and — on a
+scheduled pipeline — `{{run.prevSuccess.fireDate}}` /
+`{{run.prevSuccess.fireEpoch}}`, the previous completed run's fire time (empty
+on the first run). An upstream step's result is `{{steps.<id>.answer}}` or
+`{{steps.<id>.artifacts}}`. Context pins take the static variables too, so
+`reports/{{trigger.fireDate}}/**` pins exactly this run's partition; a step
+result cannot be pinned. Anything outside that list fails to save. The
+inspector offers each one as a chip labelled in plain language — only those the
+pipeline's trigger actually provides — and shows the directive back with each
+variable named, so you never have to read the raw tokens.
 
 You don't have to write this by hand: the Pipelines tab's canvas edits the same
 shape, and the **`pipeline-builder`** builtin agent composes one from a

@@ -124,7 +124,7 @@ export function JobStepPanel({
       <EdgeConditionField def={def} step={step} onChange={onChange} />
 
       <SectionHeading>{t('inspector.section.work', 'Work')}</SectionHeading>
-      <DirectiveField def={def} step={step} onChange={onChange} advisories={advisories} />
+      <DirectiveField def={def} step={step} onChange={onChange} customAgents={customAgents} advisories={advisories} />
 
       <SectionHeading>{t('inspector.section.inputs', 'Inputs')}</SectionHeading>
       <ContextPinsField def={def} step={step} onChange={onChange} customAgents={customAgents} advisories={advisories} />

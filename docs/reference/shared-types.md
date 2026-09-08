@@ -53,7 +53,7 @@ key types and their meaning.
 | `RunRecord` / `StepRecord` / `GateRecord` / `ClarifyRecord` | `pipeline.ts` | Run history shapes, including the `awaiting_clarify` step state. |
 | `PipelineRunEvent` | `pipeline.ts` | The SSE payload the Pipelines tab renders live. |
 | `validatePipelineDef` | `pipeline.ts` | Every definition rule as plain messages (empty = valid), the `validateMcpServers` precedent. Reserved knobs fail loudly instead of no-opping. |
-| `PIPELINE_TEMPLATE_VARS` / `DEFAULT_PIPELINE_CAPS` | `pipeline.ts` | The three directive variables (`trigger.fireDate`, `trigger.fireEpoch`, `run.id`) and the default caps. |
+| `PIPELINE_TEMPLATE_VARS` / `PIPELINE_STEP_OUTPUT_FIELDS` / `DEFAULT_PIPELINE_CAPS` | `pipeline.ts` | The CLOSED template surface — 5 static directive/pin variables (`trigger.fireDate`, `trigger.fireEpoch`, `run.id`, `run.prevSuccess.fireDate|fireEpoch`) plus the 2 step-output fields (`answer`, `artifacts`) — and the default caps. The FE keys its human-label tables as `Record` over these unions (`Pipelines/templateTokens.ts`), so growing the list without labelling it fails typecheck. |
 
 ## Action / RAC
 

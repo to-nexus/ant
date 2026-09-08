@@ -39,12 +39,16 @@ export function chamferPolygon(d: number): string {
 }
 
 export interface PipelineNodeData {
-  /** Primary identity line (agent display name / Schedule / Approval) — wraps, never truncates. */
-  title: string;
-  /** Secondary identity line (job display name / cron / timeout) — wraps, never truncates. */
-  subtitle?: string;
-  /** Intent chip (job steps). */
-  chip?: string;
+  /**
+   * The line that NAMES this node — the pinned intent on a job step (the job
+   * name when none is pinned), Schedule / Approval otherwise. Wraps, never
+   * truncates: an ellipsised name names nothing.
+   */
+  primary: string;
+  /** `agent · job` / cron / timeout — secondary, single-line, truncates. */
+  caption?: string;
+  /** Full caption plus the raw customJobRef, for the caption's title attribute. */
+  captionTitle?: string;
   /** Live-run status overlay. */
   status?: PipelineStepStatus;
   selected: boolean;
@@ -309,7 +313,7 @@ function StatusChip({ status }: { status?: PipelineStepStatus }) {
   );
 }
 
-function NodeHeader({ kind, icon, title, subtitle, chip, invalid }: { kind: NodeKind; icon: ReactNode; title: string; subtitle?: string; chip?: string; invalid?: boolean }) {
+function NodeHeader({ kind, icon, primary, caption, captionTitle, invalid }: { kind: NodeKind; icon: ReactNode; primary: string; caption?: string; captionTitle?: string; invalid?: boolean }) {
   const accent = NODE_KIND_STYLE[kind].accent;
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', minWidth: 0 }}>
@@ -328,32 +332,31 @@ function NodeHeader({ kind, icon, title, subtitle, chip, invalid }: { kind: Node
       >
         {icon}
       </div>
-      {/* Identity lines wrap instead of truncating — the card's job is to name
-          the step, and an ellipsised name names nothing. */}
+      {/* Only the naming line is protected from truncation. A pipeline is
+          usually several intents of one agent × job, so the intent is the
+          discriminator and takes the size; `agent · job` is identical across
+          those cards and recedes to a truncating caption (full value + the raw
+          ref in its tooltip). */}
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, lineHeight: '17px', color: 'var(--text-1)', overflowWrap: 'anywhere' }}>
-          {title}
+        <div style={{ fontSize: 14, fontWeight: 700, lineHeight: '19px', color: 'var(--text-1)', overflowWrap: 'anywhere' }}>
+          {primary}
         </div>
-        {subtitle && (
-          <div style={{ fontSize: 11, fontWeight: 500, lineHeight: '15px', marginTop: 1, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
-            {subtitle}
-          </div>
-        )}
-        {chip && (
-          <span
+        {caption && (
+          <div
+            title={captionTitle ?? caption}
             style={{
-              display: 'inline-block',
-              marginTop: 3,
-              fontSize: 9.5,
-              fontWeight: 600,
-              padding: '1px 6px',
-              borderRadius: 999,
-              background: 'color-mix(in srgb, var(--violet-500) 14%, transparent)',
-              color: 'var(--violet-500)',
+              fontSize: 10.5,
+              fontWeight: 500,
+              lineHeight: '15px',
+              marginTop: 1,
+              color: 'var(--text-3)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            {chip}
-          </span>
+            {caption}
+          </div>
         )}
       </div>
     </div>
@@ -364,7 +367,7 @@ export const TriggerNode = memo(function TriggerNode({ data }: NodeProps<Pipelin
   const Icon = data.triggerMode ? TRIGGER_MODE_ICON[data.triggerMode] : Clock;
   return (
     <CardShell kind="trigger" data={data}>
-      <NodeHeader kind="trigger" icon={<Icon size={14} />} title={data.title} subtitle={data.subtitle} />
+      <NodeHeader kind="trigger" icon={<Icon size={14} />} primary={data.primary} caption={data.caption} />
       <NodeHandles flowDir={data.flowDir} withTarget={false} />
       <AddButton data={data} />
     </CardShell>
@@ -377,9 +380,9 @@ export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeD
       <NodeHeader
         kind="step"
         icon={data.invalid ? <Ban size={14} /> : <Bot size={14} />}
-        title={data.title}
-        subtitle={data.subtitle}
-        chip={data.chip}
+        primary={data.primary}
+        caption={data.caption}
+        captionTitle={data.captionTitle}
         invalid={data.invalid}
       />
       <StatusChip status={data.status} />
@@ -397,7 +400,7 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
   const approved = decided && isApprovedDecision(decided.decision);
   return (
     <CardShell kind="gate" data={data} tint={`color-mix(in srgb, var(--amber-500) ${awaiting ? 12 : 6}%, var(--bg-surface))`}>
-      <NodeHeader kind="gate" icon={<ShieldCheck size={14} />} title={data.title} subtitle={data.subtitle} invalid={data.invalid} />
+      <NodeHeader kind="gate" icon={<ShieldCheck size={14} />} primary={data.primary} caption={data.caption} invalid={data.invalid} />
       {/* "이 게이트는 누가 여는가" — the roster, right on the node (activation ctx). */}
       {data.approvers && data.approvers.length > 0 && (
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3, overflowWrap: 'anywhere' }}>

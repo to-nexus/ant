@@ -1,9 +1,14 @@
 /**
- * PipelineWorkspace — the right-hand surface of the pipelines tab: header
- * (orientation only) → ONE ChangedBar covering the three drafts (definition,
- * org editors, per-activation approvers) → error strip → the view body.
- * Wiring = canvas + inspector slot (a selected node opens StepInspector, else
- * PipelineSettingsPanel); Execution = per-project activations.
+ * PipelineWorkspace — the right-hand surface of the pipelines tab: header →
+ * the view body, and nothing between them. Wiring = canvas + inspector slot (a
+ * selected node opens StepInspector, else PipelineSettingsPanel); Execution =
+ * per-project activations.
+ *
+ * The header owns saving, advisories and errors; the canvas owns its own notice
+ * overlay. Nothing conditional sits in this column, so the canvas box is
+ * invariant — an edit, an advisory or a save failure never resizes it or
+ * re-fits the graph. This file still COMPUTES the gate (it holds the three
+ * drafts and cron validity); only the presentation moved.
  *
  * There is no edit mode. `editable` is derived from the BE availability gate
  * — a new draft, or a writable pipeline that is disabled — and a locked
@@ -14,18 +19,17 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lock } from 'lucide-react';
 import { collectPipelineAdvisoryItems, validatePipelineDef, type CustomAgentSummary, type PipelineDef, type PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectPipelineDirty } from '@/domain/store/slices/pipelineSlice';
-import { ChangedBar } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeTrigger } from './cronDescribe';
 import { StepInspector } from './StepInspector';
 import { PipelineSettingsPanel } from './PipelineSettingsPanel';
 import { PipelineHeader } from './PipelineHeader';
 import { PipelineExecutionView } from './PipelineExecutionView';
-import { AdvisoryStrip, type AdvisoryStripItem } from './AdvisoryStrip';
+import { type AdvisoryStripItem } from './AdvisoryStrip';
+import { CanvasNotice, type CanvasNoticeKind } from './CanvasNotice';
 import { TRIGGER_NODE_ID, addBranchAfter, insertStepAfter, makeGateStep, makeJobStep } from './draft';
 
 const noop = () => {};
@@ -114,6 +118,12 @@ export function PipelineWorkspace() {
   };
 
   const cronSummary = describeTrigger(draft, t, i18n.language);
+  const canvasNotice: CanvasNoticeKind | null =
+    !editable && isSaved
+      ? { kind: 'locked', readonlyOwner: readonly ? entry?.org?.owner ?? 'the organization' : undefined, onOpenExecution: () => setPipelinePanelView('execution') }
+      : editable && draft.steps.length === 0
+        ? { kind: 'empty' }
+        : null;
   const overlayRunId = entry?.activations.find((a) => a.mine && a.projectId === selectedProject)?.currentRunId;
   const overlayRun = overlayRunId ? runDetails[overlayRunId] ?? null : null;
 
@@ -129,6 +139,8 @@ export function PipelineWorkspace() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* One header for the three drafts — on both views, so a roster edit in
+          Execution and a wiring edit in Design save (or discard) together. */}
       <PipelineHeader
         draft={draft}
         entry={entry}
@@ -138,32 +150,16 @@ export function PipelineWorkspace() {
         definitionDirty={!!dirty?.definition}
         view={view}
         onViewChange={setPipelinePanelView}
+        dirtyCount={dirty?.count ?? 0}
+        isSaving={saving}
+        canSave={canSave}
+        saveBlockedReason={saveBlockedReason}
+        onSave={() => void savePipelineAll()}
+        onDiscard={discardPipelineAll}
+        saveError={saveError}
+        advisories={view === 'execution' ? [] : advisoryItems}
+        onSelectStep={editable ? selectPipelineNode : undefined}
       />
-
-      {/* ONE bar for the three drafts — on both views, so a roster edit in
-          Execution and a wiring edit in Wiring save (or discard) together. */}
-      {dirty && (
-        <div style={{ padding: '10px 14px 0' }}>
-          <ChangedBar
-            hasChanges
-            count={dirty.count}
-            isSaving={saving}
-            saveDisabled={!canSave}
-            blockedReason={saveBlockedReason}
-            onSave={() => void savePipelineAll()}
-            onDiscard={discardPipelineAll}
-          />
-        </div>
-      )}
-
-      {/* Error strip — save/availability refusals (e.g. disable's 409 holder list). */}
-      {saveError && (
-        <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border-1)', background: 'var(--bg-surface)', fontSize: 12, color: 'var(--red-500)' }}>
-          {saveError}
-        </div>
-      )}
-
-      {view !== 'execution' && <AdvisoryStrip items={advisoryItems} onSelectStep={editable ? selectPipelineNode : undefined} />}
 
       {view === 'execution' ? (
         <div style={{ flex: 1, minHeight: 0 }}>
@@ -174,55 +170,20 @@ export function PipelineWorkspace() {
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-            {!editable && isSaved && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 14px',
-                  fontSize: 12,
-                  color: 'var(--text-3)',
-                  background: 'var(--bg-surface-2)',
-                  borderBottom: '1px solid var(--border-1)',
-                }}
-              >
-                <Lock size={12} />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  {readonly
-                    ? t('editor.readOnlyShared', 'Shared by {{owner}} — read-only for you.', { owner: entry?.org?.owner ?? 'the organization' })
-                    : t('canvas.lockedEnabled', 'Design is locked while the pipeline is published — switch it back to draft in the header to edit.')}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPipelinePanelView('execution')}
-                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--violet-500)', cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
-                >
-                  {t('canvas.openExecution', 'Open execution →')}
-                </button>
-              </div>
-            )}
-            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              <PipelineCanvas
-                def={draft}
-                customAgents={accountAgents}
-                cronSummary={cronSummary}
-                run={overlayRun}
-                advisoryStepIds={advisoryStepIds}
-                selectedNodeId={editable ? selectedNodeId : null}
-                onSelectNode={editable ? selectPipelineNode : noop}
-                onAddAfter={editable ? handleAddAfter : undefined}
-                showLegend
-              />
-              {editable && draft.steps.length === 0 && (
-                <div style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-                  <span style={{ fontSize: 12.5, color: 'var(--text-3)', background: 'var(--bg-surface)', padding: '8px 14px', borderRadius: 'var(--r-md)', border: '1px dashed var(--border-1)', whiteSpace: 'nowrap' }}>
-                    {t('editor.emptyCanvas', 'Press + on the trigger node to add the first step.')}
-                  </span>
-                </div>
-              )}
-            </div>
+          {/* The canvas box: `relative` is the notice overlay's containing block. */}
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+            <PipelineCanvas
+              def={draft}
+              customAgents={accountAgents}
+              cronSummary={cronSummary}
+              run={overlayRun}
+              advisoryStepIds={advisoryStepIds}
+              selectedNodeId={editable ? selectedNodeId : null}
+              onSelectNode={editable ? selectPipelineNode : noop}
+              onAddAfter={editable ? handleAddAfter : undefined}
+              showLegend
+            />
+            <CanvasNotice notice={canvasNotice} />
           </div>
           {/* Inspector slot: a node while editable, otherwise the pipeline's own settings. */}
           {editable && nodeExists && selectedNodeId ? (

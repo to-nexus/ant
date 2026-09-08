@@ -6,12 +6,19 @@ export function Crumb({
   label,
   current,
   mono,
+  truncate,
   onClick,
 }: {
   icon: ElementType;
   label: string;
   current: boolean;
   mono?: boolean;
+  /**
+   * Absorb the squeeze in a no-wrap header: the label ellipsises (full value in
+   * the tooltip) instead of wrapping the row, which would grow the header and
+   * shift everything below it.
+   */
+  truncate?: boolean;
   onClick?: () => void;
 }) {
   const content = (
@@ -22,10 +29,17 @@ export function Crumb({
         fontFamily: mono ? 'var(--font-mono)' : undefined,
         fontWeight: current ? 600 : 400,
         color: current ? 'var(--text-1)' : 'var(--text-2)',
+        ...(truncate && { minWidth: 0, maxWidth: '100%' }),
       }}
     >
-      <Icon size={14} style={{ color: current ? 'var(--text-2)' : 'var(--text-3)' }} />
-      {label}
+      <Icon size={14} style={{ color: current ? 'var(--text-2)' : 'var(--text-3)', flexShrink: 0 }} />
+      {truncate ? (
+        <span title={label} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {label}
+        </span>
+      ) : (
+        label
+      )}
     </span>
   );
   if (current || !onClick) return content;

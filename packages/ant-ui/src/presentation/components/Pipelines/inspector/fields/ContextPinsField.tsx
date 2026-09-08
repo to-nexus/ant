@@ -9,6 +9,9 @@ import { HintBadge } from '../../../common/HintBadge';
 import { FileTreePicker } from '../../../common/FileTreePicker';
 import { updateStep } from '../../draft';
 import { upstreamOutputSuggestions } from '../../upstreamOutputs';
+import { resolveStepIdentity } from '../../stepIdentity';
+import { availableStaticTokens } from '../../templateTokens';
+import { Tooltip } from '../../../common/Tooltip';
 import { TokenChip } from '../chips';
 import { AdvisoryHints } from '../AdvisoryHints';
 
@@ -50,12 +53,19 @@ export function ContextPinsField({
   const canBrowse = !!selectedProject && projectType === 'universal' && pickerTree.length > 0;
 
   const suggestions = useMemo(() => upstreamOutputSuggestions(def, step.id, customAgents), [def, step.id, customAgents]);
+  const stepName = (id: string) => {
+    const source = def.steps.find((s) => s.id === id);
+    return source ? resolveStepIdentity(source, customAgents, t).primary : id;
+  };
   const suggestionGroups = useMemo(() => {
     const groups = new Map<string, typeof suggestions>();
     for (const sug of suggestions) groups.set(sug.sourceStepId, [...(groups.get(sug.sourceStepId) ?? []), sug]);
     return [...groups.entries()];
   }, [suggestions]);
-  const pinVars = def.on ? ['trigger.fireDate', 'trigger.fireEpoch', 'run.id'] : ['run.id'];
+  // `pinTemplateErrors` accepts the WHOLE static whitelist in a pin, so the
+  // offer is the same gate the directive uses — a second local list is how the
+  // `run.prevSuccess.*` pair went missing here while the validator took it.
+  const pinVars = availableStaticTokens(def);
 
   return (
     <div>
@@ -95,7 +105,9 @@ export function ContextPinsField({
           </div>
           {suggestionGroups.map(([sourceStepId, group]) => (
             <div key={sourceStepId} style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)' }}>{sourceStepId} · {group[0].intentId}</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)' }} title={sourceStepId}>
+                {stepName(sourceStepId)}
+              </span>
               {group.map((sug) => {
                 const pinned = pins.includes(sug.glob);
                 return (
@@ -127,8 +139,13 @@ export function ContextPinsField({
           label={t('step.pinVars', 'Partition variables')}
           tooltip={t('step.pinVarsHint', 'A pin may carry a static variable — reports/{{trigger.fireDate}}/** pins exactly this run\'s partition. Step outputs cannot be pinned; pin the upstream glob instead.')}
         />
-        {pinVars.map((v) => (
-          <TokenChip key={v} onClick={() => appendToken(`{{${v}}}`)}>{`{{${v}}}`}</TokenChip>
+        {pinVars.map((spec) => (
+          <Tooltip key={spec.name} content={`{{${spec.name}}} · ${t(spec.hintKey, spec.hintFallback)}`} placement="top" trigger="hover">
+            <TokenChip onClick={() => appendToken(`{{${spec.name}}}`)}>
+              <spec.icon size={11} />
+              {t(spec.faceKey, spec.faceFallback)}
+            </TokenChip>
+          </Tooltip>
         ))}
       </div>
       <AdvisoryHints advisories={advisories} field="context" />
