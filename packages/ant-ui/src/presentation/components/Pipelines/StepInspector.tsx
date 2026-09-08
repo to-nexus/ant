@@ -11,7 +11,8 @@ import { isApprovalStep, type CustomAgentSummary, type PipelineAdvisory, type Pi
 import { useStore } from '@/domain/store';
 import { Button } from '../aurora';
 import { InspectorShell } from './InspectorShell';
-import { TRIGGER_NODE_ID, removeStep } from './draft';
+import { NODE_KIND_STYLE, TRIGGER_MODE_ICON, type NodeKind } from './canvas/nodes';
+import { TRIGGER_NODE_ID, removeStep, triggerModeOf } from './draft';
 import { TriggerPanel } from './inspector/TriggerPanel';
 import { JobStepPanel } from './inspector/JobStepPanel';
 import { GatePanel } from './inspector/GatePanel';
@@ -38,14 +39,12 @@ export function StepInspector({ def, nodeId, onChange, onClose, onCronValidity, 
   const isTrigger = nodeId === TRIGGER_NODE_ID;
   const stepIndex = def.steps.findIndex((s) => s.id === nodeId);
 
-  const title = isTrigger
-    ? t('inspector.trigger', 'Trigger & policies')
-    : step && isApprovalStep(step)
-      ? t('inspector.gate', 'Approval gate')
-      : t('inspector.step', 'Job step');
+  const kind: NodeKind = isTrigger ? 'trigger' : step && isApprovalStep(step) ? 'gate' : 'step';
+  const title = { trigger: t('inspector.trigger', 'Trigger & policies'), gate: t('inspector.gate', 'Approval gate'), step: t('inspector.step', 'Job step') }[kind];
+  const look = NODE_KIND_STYLE[kind];
 
   return (
-    <InspectorShell title={title} onClose={onClose}>
+    <InspectorShell title={title} icon={isTrigger ? TRIGGER_MODE_ICON[triggerModeOf(def)] : look.icon} accent={look.accent} onClose={onClose}>
       {isTrigger ? (
         <TriggerPanel def={def} onChange={onChange} onCronValidity={onCronValidity} />
       ) : step && isApprovalStep(step) ? (

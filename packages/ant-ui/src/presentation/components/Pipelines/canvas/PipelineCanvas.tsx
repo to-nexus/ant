@@ -1,19 +1,33 @@
 /**
- * PipelineCanvas — the n8n-style DAG surface. Node click = inspector focus,
- * "+" on a node = insert-after (linear defs splice positionally; DAG defs
- * splice-through via draft.ts), live-run statuses overlay the nodes so the
- * canvas doubles as the run monitor. Dagre LR layout
- * (components/workflow precedent — no new graph deps).
+ * PipelineCanvas — the DAG surface. Node click = inspector focus, "+" on a
+ * node = insert-after (linear defs splice positionally; DAG defs splice-through
+ * via draft.ts), live-run statuses overlay the nodes so the canvas doubles as
+ * the run monitor. Geometry comes from `layout.ts` (dagre LR, serpentine-
+ * wrapped to the measured pane width); this file only paints it.
  */
 
-import { useMemo } from 'react';
-import ReactFlow, { Background, BackgroundVariant, Controls, MarkerType, type Edge, type Node, type NodeTypes } from 'reactflow';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactFlow, {
+  Background,
+  BackgroundVariant,
+  MarkerType,
+  Position,
+  ReactFlowProvider,
+  useNodesInitialized,
+  useReactFlow,
+  useStore as useFlowStore,
+  type Edge,
+  type Node,
+  type NodeTypes,
+} from 'reactflow';
 import 'reactflow/dist/style.css';
-import dagre from 'dagre';
 import { useTranslation } from 'react-i18next';
-import { isApprovalStep, parseCustomJobRef, type PipelineDef, type PipelineStepStatus } from '@ant/shared';
+import { isApprovalStep, parseCustomJobRef, type PipelineDef, type PipelineStepStatus, type StepEdgeCondition } from '@ant/shared';
 import type { PipelineRunPublic } from '@/domain/store/slices/pipelineSlice';
-import { TriggerNode, StepNode, GateNode, NODE_WIDTH, type PipelineNodeData } from './nodes';
+import { FlowCanvasControls, DEFAULT_FIT_VIEW_OPTIONS } from '@/presentation/components/common/FlowCanvasControls';
+import { TriggerNode, StepNode, GateNode, type PipelineNodeData } from './nodes';
+import { CanvasLegend } from './CanvasLegend';
+import { edgeStyleFor, layoutPipeline, ranksPerRowFor, type EdgeKind } from './layout';
 import { TRIGGER_NODE_ID, effectiveNeedsOf, triggerModeOf } from '../draft';
 
 const nodeTypes: NodeTypes = {
@@ -35,7 +49,7 @@ export interface CanvasAgentSummary {
  * 28 per subtitle line at 11px). The DOM box itself is height-auto, so the
  * estimate only spaces ranks; a line over/under never clips.
  */
-function estimateNodeHeight(data: PipelineNodeData): number {
+function estimateNodeHeight(data: Pick<PipelineNodeData, 'title' | 'subtitle' | 'chip' | 'status'>): number {
   const titleLines = Math.max(1, Math.ceil(data.title.length / 24));
   const subtitleLines = data.subtitle ? Math.max(1, Math.ceil(data.subtitle.length / 28)) : 0;
   return 24 + titleLines * 17 + subtitleLines * 15 + (data.chip ? 20 : 0) + (data.status ? 18 : 0) + 16;
@@ -54,15 +68,59 @@ export interface PipelineCanvasProps {
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   onAddAfter?: (afterNodeId: string, kind: 'job' | 'gate') => void;
+  /** Design view only — the embedded run monitor is too small for it. */
+  showLegend?: boolean;
 }
 
-export function PipelineCanvas({ def, cronSummary, customAgents, run, approversByGate, advisoryStepIds, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
-  const { t } = useTranslation('pipelines');
+interface EdgeData {
+  kind: EdgeKind;
+  condition: StepEdgeCondition;
+}
 
-  const { nodes, edges } = useMemo(() => {
+/** One provider per canvas instance — the design view and the execution view each own a store. */
+export function PipelineCanvas(props: PipelineCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <PipelineCanvasInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+/**
+ * Re-fit only when the STRUCTURE changes (node count, wrap, bounding box) —
+ * never on selection. Returns whether the pane has had its first settled fit,
+ * so the caller can hide the unmeasured first-paint layout.
+ */
+function useFitOnStructureChange(key: string, settled: boolean): boolean {
+  const { fitView } = useReactFlow();
+  const ready = useNodesInitialized();
+  const [visible, setVisible] = useState(false);
+  const visibleRef = useRef(false);
+  useEffect(() => {
+    if (!ready) return;
+    fitView({ ...DEFAULT_FIT_VIEW_OPTIONS, duration: visibleRef.current ? 300 : 0 });
+    if (settled && !visibleRef.current) {
+      visibleRef.current = true;
+      setVisible(true);
+    }
+  }, [key, ready, settled, fitView]);
+  return visible;
+}
+
+function PipelineCanvasInner({ def, cronSummary, customAgents, run, approversByGate, advisoryStepIds, selectedNodeId, onSelectNode, onAddAfter, showLegend }: PipelineCanvasProps) {
+  const { t } = useTranslation('pipelines');
+  // reactflow's own ResizeObserver keeps this current — quantized to a rank
+  // bucket so a drag on the inspector handle only re-lays out across a 300px step.
+  const ranksPerRow = ranksPerRowFor(useFlowStore((s) => s.width));
+
+  // Geometry memo: identity text, run statuses, edges, positions. Decoration
+  // (selection, advisories, rosters, the "+" handler) is layered below so a
+  // click never re-runs dagre.
+  const geometry = useMemo(() => {
     const statusOf = new Map<string, PipelineStepStatus>();
     for (const s of run?.steps ?? []) statusOf.set(s.stepId, s.status);
     const gateOf = new Map(run?.steps.filter((s) => s.gate?.decision).map((s) => [s.stepId, s.gate!]) ?? []);
+    const triggerMode = triggerModeOf(def);
 
     const rfNodes: Node<PipelineNodeData>[] = [
       {
@@ -71,19 +129,18 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, approversB
         position: { x: 0, y: 0 },
         data: {
           nodeId: TRIGGER_NODE_ID,
-          title: t(`canvas.triggerMode.${triggerModeOf(def)}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain' }[triggerModeOf(def)]),
+          title: t(`canvas.triggerMode.${triggerMode}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain' }[triggerMode]),
           subtitle: cronSummary,
-          selected: selectedNodeId === TRIGGER_NODE_ID,
-          onAdd: onAddAfter,
+          selected: false,
+          flowDir: 'ltr',
+          triggerMode,
         },
       },
     ];
 
     def.steps.forEach((step) => {
       const gate = isApprovalStep(step);
-      const invalid = gate
-        ? step.prompt.trim().length === 0
-        : step.customJobRef.trim().length === 0;
+      const invalid = gate ? step.prompt.trim().length === 0 : step.customJobRef.trim().length === 0;
       // Agent name / job name each on their own line — display names resolved
       // from the account catalog, raw ids as the graceful fallback.
       let title: string;
@@ -112,11 +169,9 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, approversB
           subtitle,
           chip: !gate && step.intent ? step.intent : undefined,
           status: statusOf.get(step.id),
-          selected: selectedNodeId === step.id,
+          selected: false,
+          flowDir: 'ltr',
           invalid,
-          advisory: advisoryStepIds?.has(step.id) || undefined,
-          onAdd: onAddAfter,
-          ...(gate && approversByGate?.[step.id]?.length ? { approvers: approversByGate[step.id] } : {}),
           ...(gate && gateOf.get(step.id)
             ? { gateDecision: { decision: gateOf.get(step.id)!.decision!, decidedBy: gateOf.get(step.id)!.decidedBy } }
             : {}),
@@ -124,52 +179,89 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, approversB
       });
     });
 
-    const rfEdges: Edge[] = [];
+    // Edge seeds first — the layout decides each edge's shape (bezier within a
+    // row, smoothstep for a row turn) and which handles it addresses.
+    const seeds: Array<{ id: string; source: string; target: string; condition: StepEdgeCondition; animated: boolean }> = [];
     def.steps.forEach((step, index) => {
       const needs = effectiveNeedsOf(def, index);
       const sources = needs.length > 0 ? needs : [TRIGGER_NODE_ID];
+      const status = statusOf.get(step.id);
       for (const source of sources) {
-        const condition = step.on ?? 'success';
-        rfEdges.push({
-          id: `${source}->${step.id}`,
-          source,
-          target: step.id,
-          label: condition !== 'success' ? condition : undefined,
-          labelStyle: { fontSize: 10, fill: 'var(--text-3)' },
-          labelBgStyle: { fill: 'var(--bg-surface-2)', fillOpacity: 0.9 },
-          style: {
-            stroke: condition === 'failure' ? 'var(--red-500)' : 'var(--text-3)',
-            strokeWidth: 1.5,
-            opacity: 0.7,
-          },
-          markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-          animated: statusOf.get(step.id) === 'running' || statusOf.get(step.id) === 'dispatched',
-        });
+        seeds.push({ id: `${source}->${step.id}`, source, target: step.id, condition: step.on ?? 'success', animated: status === 'running' || status === 'dispatched' });
       }
     });
 
-    // Dagre LR layout (workflow/useGraphLayout precedent).
-    const g = new dagre.graphlib.Graph();
-    g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: 'LR', nodesep: 44, ranksep: 70 });
-    for (const n of rfNodes) g.setNode(n.id, { width: NODE_WIDTH, height: estimateNodeHeight(n.data) });
-    for (const e of rfEdges) g.setEdge(e.source, e.target);
-    dagre.layout(g);
+    const layout = layoutPipeline(
+      rfNodes.map((n) => ({ id: n.id, height: estimateNodeHeight(n.data) })),
+      seeds,
+      ranksPerRow,
+    );
     for (const n of rfNodes) {
-      const pos = g.node(n.id);
-      n.position = { x: pos.x - NODE_WIDTH / 2, y: pos.y - g.node(n.id).height / 2 };
+      const placed = layout.nodes.get(n.id)!;
+      n.position = { x: placed.x, y: placed.y };
+      n.data.flowDir = placed.flowDir;
+      // Flipping a row flips the handle sides; these props are what makes
+      // reactflow re-measure handle bounds (a Handle position prop alone does not).
+      n.sourcePosition = placed.flowDir === 'ltr' ? Position.Right : Position.Left;
+      n.targetPosition = placed.flowDir === 'ltr' ? Position.Left : Position.Right;
     }
 
-    return { nodes: rfNodes, edges: rfEdges };
-  }, [def, run, approversByGate, advisoryStepIds, selectedNodeId, cronSummary, customAgents, onAddAfter, t]);
+    const rfEdges: Edge<EdgeData>[] = seeds.map((seed) => {
+      const placed = layout.edges.get(seed.id)!;
+      const spec = edgeStyleFor(seed.condition);
+      const shape =
+        placed.kind === 'turn'
+          ? { type: 'smoothstep' as const, pathOptions: { borderRadius: 16, offset: 20 } }
+          : { type: 'default' as const, pathOptions: { curvature: 0.3 } };
+      return {
+        id: seed.id,
+        source: seed.source,
+        target: seed.target,
+        sourceHandle: placed.sourceHandle,
+        targetHandle: placed.targetHandle,
+        data: { kind: placed.kind, condition: seed.condition },
+        label: spec.label,
+        labelStyle: { fontSize: 10, fill: spec.stroke, fontWeight: 600 },
+        labelBgStyle: { fill: 'var(--bg-surface-2)', fillOpacity: 0.92 },
+        labelBgPadding: [5, 2] as [number, number],
+        labelBgBorderRadius: 999,
+        style: { stroke: spec.stroke, strokeWidth: 1.5, opacity: 0.75, strokeDasharray: spec.dasharray },
+        // `color` is what the ArrowClosed marker actually paints — without it the head is `none`.
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: spec.stroke },
+        animated: seed.animated,
+        ...shape,
+      };
+    });
+
+    const structureKey = `${rfNodes.length}|${layout.rows}|${layout.ranksPerRow}|${Math.round(layout.width)}x${Math.round(layout.height)}`;
+    return { nodes: rfNodes, edges: rfEdges, structureKey };
+  }, [def, run, cronSummary, customAgents, ranksPerRow, t]);
+
+  const { nodes, edges } = useMemo(() => {
+    const decorated = geometry.nodes.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        selected: selectedNodeId === n.id,
+        onAdd: onAddAfter,
+        advisory: advisoryStepIds?.has(n.id) || undefined,
+        ...(n.type === 'pipelineGate' && approversByGate?.[n.id]?.length ? { approvers: approversByGate[n.id] } : {}),
+      },
+    }));
+    const highlighted = geometry.edges.map((e) => {
+      if (!selectedNodeId || (e.source !== selectedNodeId && e.target !== selectedNodeId)) return e;
+      return { ...e, style: { ...e.style, stroke: 'var(--violet-500)', strokeWidth: 2, opacity: 1 }, markerEnd: { ...(e.markerEnd as object), color: 'var(--violet-500)' } as Edge['markerEnd'], zIndex: 1 };
+    });
+    return { nodes: decorated, edges: highlighted };
+  }, [geometry, selectedNodeId, onAddAfter, advisoryStepIds, approversByGate]);
+
+  const visible = useFitOnStructureChange(geometry.structureKey, ranksPerRow !== null);
 
   return (
     <ReactFlow
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.25, maxZoom: 1.1 }}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable
@@ -178,9 +270,12 @@ export function PipelineCanvas({ def, cronSummary, customAgents, run, approversB
       onPaneClick={() => onSelectNode(null)}
       minZoom={0.3}
       maxZoom={1.6}
+      style={{ opacity: visible ? 1 : 0, transition: 'opacity 120ms ease' }}
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-1)" />
-      <Controls showInteractive={false} />
+      <FlowCanvasControls />
+      {showLegend && <CanvasLegend />}
     </ReactFlow>
   );
 }
+

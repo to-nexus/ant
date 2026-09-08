@@ -34,3 +34,13 @@ export function decideLifecycle(input: LifecycleInput): LifecycleDecision {
   if (stage === 'published' && input.activationCount > 0) return { stage, block: 'activations', badgeOnly: false };
   return { stage, badgeOnly: false };
 }
+
+export type DeleteBlock = 'unsaved' | 'readonly' | 'enabled';
+
+/** Header trash icon — the BE refuses DELETE unless the pipeline is saved, yours, and disabled. */
+export function decideDelete(input: Pick<LifecycleInput, 'draftIsNew' | 'readonly' | 'enabled'>): { allowed: boolean; block?: DeleteBlock } {
+  if (input.draftIsNew) return { allowed: false, block: 'unsaved' };
+  if (input.readonly) return { allowed: false, block: 'readonly' };
+  if (input.enabled) return { allowed: false, block: 'enabled' };
+  return { allowed: true };
+}

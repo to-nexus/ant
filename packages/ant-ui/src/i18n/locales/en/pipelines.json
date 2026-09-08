@@ -323,8 +323,8 @@
     "title": "Delete this pipeline",
     "desc": "Removes the definition. Run history stays with each activation.",
     "button": "Delete pipeline",
-    "confirm": "Click again to confirm",
-    "deleting": "Deleting…"
+    "deleting": "Deleting…",
+    "orgNote": "This definition is shared with the organization — it disappears for every editor."
   },
   "card": {
     "title": "Pipeline approval",
@@ -383,5 +383,15 @@
     "saved": "Saved",
     "savedHint": "Returned by the server on the last save",
     "nodeDot": "Has advisories — open the step"
+  },
+  "legend": {
+    "title": "Legend",
+    "trigger": "Trigger",
+    "step": "Job step",
+    "gate": "Approval gate",
+    "edgeSuccess": "on success",
+    "edgeFailure": "on failure",
+    "edgeAlways": "always",
+    "edgeVerdict": "on verdict"
   }
 }

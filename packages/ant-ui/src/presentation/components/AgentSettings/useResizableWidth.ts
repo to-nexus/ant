@@ -12,11 +12,21 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 400;
 export const AGENT_TREE_DEFAULT_WIDTH = 224;
 
+export type ResizeGrow = 'right' | 'left';
+
 export interface ResizableWidthOptions {
   storageKey?: string;
   min?: number;
   max?: number;
   defaultWidth?: number;
+  /** Which way the panel grows when the handle moves right — `left` for a right-docked panel. */
+  grow?: ResizeGrow;
+}
+
+/** Pure delta → clamped width; `grow: 'left'` inverts the pointer delta (a right-docked drawer). */
+export function nextResizedWidth(startWidth: number, startX: number, clientX: number, grow: ResizeGrow, min: number, max: number): number {
+  const delta = grow === 'left' ? startX - clientX : clientX - startX;
+  return Math.min(max, Math.max(min, startWidth + delta));
 }
 
 /**
@@ -28,6 +38,7 @@ export function useResizableWidth({
   min = MIN_WIDTH,
   max = MAX_WIDTH,
   defaultWidth = AGENT_TREE_DEFAULT_WIDTH,
+  grow = 'right',
 }: ResizableWidthOptions = {}) {
   const [width, setWidth] = useState<number>(() => {
     const saved = Number(loadFromStorage(storageKey));
@@ -67,8 +78,7 @@ export function useResizableWidth({
       if (rafRef.current != null) return;
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
-        const next = Math.min(max, Math.max(min, startWidthRef.current + (e.clientX - startXRef.current)));
-        setWidth(next);
+        setWidth(nextResizedWidth(startWidthRef.current, startXRef.current, e.clientX, grow, min, max));
       });
     };
     const end = () => {
@@ -85,7 +95,7 @@ export function useResizableWidth({
       document.removeEventListener('mouseup', end);
       window.removeEventListener('blur', end);
     };
-  }, [isResizing, storageKey, min, max]);
+  }, [isResizing, storageKey, min, max, grow]);
 
   return { width, isResizing, startResize };
 }

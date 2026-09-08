@@ -5,7 +5,7 @@
  * any activation exists.
  */
 import { describe, it, expect } from 'vitest';
-import { decideLifecycle, type LifecycleInput } from '../../src/presentation/components/Pipelines/lifecycle';
+import { decideDelete, decideLifecycle, type LifecycleInput } from '../../src/presentation/components/Pipelines/lifecycle';
 
 const base: LifecycleInput = { draftIsNew: false, readonly: false, enabled: false, definitionDirty: false, activationCount: 0 };
 
@@ -22,5 +22,16 @@ describe('decideLifecycle', () => {
   ];
   it.each(rows)('%s', (_label, over, expected) => {
     expect(decideLifecycle({ ...base, ...over })).toEqual(expected);
+  });
+});
+
+describe('decideDelete', () => {
+  it.each<[string, Parameters<typeof decideDelete>[0], ReturnType<typeof decideDelete>]>([
+    ['new draft → nothing to delete yet', { draftIsNew: true, readonly: false, enabled: false }, { allowed: false, block: 'unsaved' }],
+    ['shared read-only → not yours to delete', { draftIsNew: false, readonly: true, enabled: false }, { allowed: false, block: 'readonly' }],
+    ['published → back to draft first', { draftIsNew: false, readonly: false, enabled: true }, { allowed: false, block: 'enabled' }],
+    ['saved, yours, disabled → deletable', { draftIsNew: false, readonly: false, enabled: false }, { allowed: true }],
+  ])('%s', (_label, input, expected) => {
+    expect(decideDelete(input)).toEqual(expected);
   });
 });

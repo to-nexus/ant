@@ -2,10 +2,9 @@
  * PipelineSettingsPanel — the inspector slot's content when no node is
  * selected: everything about the pipeline that is not wiring. Identity (name),
  * Organization access (editors — writable even while published, per the BE),
- * Promote and Delete (both refused while published — the cards say so in
- * place instead of hiding). The publication lifecycle itself lives in the
- * header segment. A NEW draft shows Identity only: the other cards need a
- * saved id.
+ * Promote (refused while published — the card says so in place instead of
+ * hiding). The publication lifecycle and Delete live in the header. A NEW
+ * draft shows Identity only: the other cards need a saved id.
  */
 
 import { useEffect, useState } from 'react';
@@ -13,9 +12,10 @@ import { useTranslation } from 'react-i18next';
 import type { PipelineDef, PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
-import { AuroraInput, DangerZone, FieldLabel, SectionCard } from '../ConfigEditor/aurora';
+import { AuroraInput, FieldLabel, SectionCard } from '../ConfigEditor/aurora';
 import { OrgAccessCard } from '../shared/org/OrgAccessCard';
 import { PromoteZone } from '../shared/org/PromoteZone';
+import { Waypoints } from 'lucide-react';
 import { InspectorShell } from './InspectorShell';
 
 export interface PipelineSettingsPanelProps {
@@ -23,48 +23,27 @@ export interface PipelineSettingsPanelProps {
   entry: PipelineListEntry | undefined;
   draftIsNew: boolean;
   editable: boolean;
-  readonly: boolean;
   enabled: boolean;
   onPatch: (next: PipelineDef) => void;
 }
 
-export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, readonly, enabled, onPatch }: PipelineSettingsPanelProps) {
+export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, enabled, onPatch }: PipelineSettingsPanelProps) {
   const { t } = useTranslation('pipelines');
   const selectedId = useStore((s) => s.selectedPipelineId);
   const editorsDraft = useStore((s) => s.pipelineEditorsDraft);
   const setPipelineEditorsDraft = useStore((s) => s.setPipelineEditorsDraft);
   const promotePipelineById = useStore((s) => s.promotePipelineById);
-  const deletePipelineById = useStore((s) => s.deletePipelineById);
   const isTeamActive = useStore(selectIsTeamActive);
 
   const [isPromoting, setIsPromoting] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
-  const [dangerArmed, setDangerArmed] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  // The arm never survives a selection change — a second click must mean THIS pipeline.
   useEffect(() => {
-    setDangerArmed(false);
     setPromoteError(null);
   }, [selectedId]);
 
-  const handleDelete = async () => {
-    if (!selectedId) return;
-    if (!dangerArmed) {
-      setDangerArmed(true);
-      return;
-    }
-    setIsDeleting(true);
-    try {
-      await deletePipelineById(selectedId);
-    } finally {
-      setIsDeleting(false);
-      setDangerArmed(false);
-    }
-  };
-
   return (
-    <InspectorShell title={t('settings.title', 'Pipeline settings')}>
+    <InspectorShell title={t('settings.title', 'Pipeline settings')} icon={Waypoints}>
       <SectionCard
         id="pipe-identity"
         icon="Waypoints"
@@ -122,19 +101,6 @@ export function PipelineSettingsPanel({ draft, entry, draftIsNew, editable, read
             </div>
           )}
 
-          {!readonly && (
-            <DangerZone
-              title={t('danger.title', 'Delete this pipeline')}
-              description={`${t('danger.desc', 'Removes the definition. Run history stays with each activation.')}${
-                enabled ? ` ${t('availability.disableFirstDelete', 'Switch the pipeline back to draft before deleting it.')}` : ''
-              }`}
-              buttonText={dangerArmed ? t('danger.confirm', 'Click again to confirm') : t('danger.button', 'Delete pipeline')}
-              loadingText={t('danger.deleting', 'Deleting…')}
-              isLoading={isDeleting}
-              disabled={enabled}
-              onAction={() => void handleDelete()}
-            />
-          )}
         </>
       )}
     </InspectorShell>

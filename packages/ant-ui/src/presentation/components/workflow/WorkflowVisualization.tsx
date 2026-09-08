@@ -11,11 +11,9 @@ import { useTranslation } from 'react-i18next';
 import './workflow-controls.css';
 import ReactFlow, {
   Background,
-  Controls,
   BackgroundVariant,
   NodeTypes,
   Node as RFNode,
-  ControlButton
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useStore } from '@/domain/store';
@@ -25,6 +23,8 @@ import { WorkflowNode, ActorNode } from './nodes';
 import { NodeType } from '@/domain/models/workflow';
 import { Play } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
+import { FlowCanvasControls } from '@/presentation/components/common/FlowCanvasControls';
+import { IconButton } from '@/presentation/components/aurora';
 
 import { fetchProjectConfig } from '@/infrastructure/http/api';
 
@@ -52,40 +52,6 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
   const theme = useStore(state => state.theme);
 
 
-  // ✅ Track terminal bar height for workflow controls positioning
-  React.useEffect(() => {
-    const updateControlsPosition = () => {
-      // Find the terminal bar element
-      const terminalBar = document.querySelector('[data-terminal-bar]') as HTMLElement;
-      if (terminalBar) {
-        const terminalHeight = terminalBar.offsetHeight;
-        // Update CSS variable for controls positioning
-        document.documentElement.style.setProperty('--terminal-offset', `${terminalHeight + 10}px`);
-      } else {
-        // Default offset when terminal is collapsed
-        document.documentElement.style.setProperty('--terminal-offset', '10px');
-      }
-    };
-    
-    // Initial update
-    updateControlsPosition();
-    
-    // Watch for terminal resize with ResizeObserver
-    const terminalBar = document.querySelector('[data-terminal-bar]') as HTMLElement;
-    if (terminalBar) {
-      const resizeObserver = new ResizeObserver(updateControlsPosition);
-      resizeObserver.observe(terminalBar);
-      
-      return () => {
-        resizeObserver.disconnect();
-      };
-    }
-    
-    // Fallback: periodic check
-    const interval = setInterval(updateControlsPosition, 500);
-    return () => clearInterval(interval);
-  }, []);
-  
   // ✅ Fetch config to get LLM info (for non-running jobs)
   const [config, setConfig] = React.useState<any>(null);
   React.useEffect(() => {
@@ -346,7 +312,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
           onNodeClick={onNodeClick}
           onInit={onInit}
           fitView
-          attributionPosition="bottom-left"
+          proOptions={{ hideAttribution: true }}
           minZoom={0.1}
           maxZoom={2}
           defaultEdgeOptions={{
@@ -360,19 +326,16 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
           size={1}
           color={backgroundDotColor}
         />
-        <Controls 
-          showInteractive={false}
-          className="workflow-controls"
-        >
-          {/* ✅ 현재 노드 추적 버튼 */}
-          <ControlButton
-            onClick={handleTrackCurrentNode}
+        <FlowCanvasControls fitViewOptions={{ padding: 0.1, duration: 400 }}>
+          <IconButton
+            size="sm"
+            icon={<Play size={14} />}
+            aria-label={t('workflow.trackNode')}
             title={t('workflow.trackNode')}
-            className="workflow-control-button"
-          >
-            <Play className="w-3.5 h-3.5" />
-          </ControlButton>
-        </Controls>
+            style={{ borderRadius: 'var(--r-pill)' }}
+            onClick={handleTrackCurrentNode}
+          />
+        </FlowCanvasControls>
       </ReactFlow>
     </div>
   );

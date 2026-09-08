@@ -212,6 +212,7 @@ export function PipelineWorkspace() {
                 selectedNodeId={editable ? selectedNodeId : null}
                 onSelectNode={editable ? selectPipelineNode : noop}
                 onAddAfter={editable ? handleAddAfter : undefined}
+                showLegend
               />
               {editable && draft.steps.length === 0 && (
                 <div style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
@@ -239,7 +240,6 @@ export function PipelineWorkspace() {
               entry={entry}
               draftIsNew={draftIsNew}
               editable={editable}
-              readonly={readonly}
               enabled={enabled}
               onPatch={patch}
             />

@@ -323,8 +323,8 @@
     "title": "이 파이프라인 삭제",
     "desc": "정의가 제거됩니다. 실행 이력은 각 활성화에 남습니다.",
     "button": "파이프라인 삭제",
-    "confirm": "한 번 더 클릭하면 확정",
-    "deleting": "삭제 중…"
+    "deleting": "삭제 중…",
+    "orgNote": "조직에 공유된 정의입니다 — 모든 편집자에게서 제거됩니다."
   },
   "card": {
     "title": "파이프라인 승인",
@@ -383,5 +383,15 @@
     "saved": "저장 응답",
     "savedHint": "마지막 저장 때 서버가 돌려준 검토 사항",
     "nodeDot": "검토 사항이 있습니다 — 스텝을 열어 확인하세요"
+  },
+  "legend": {
+    "title": "범례",
+    "trigger": "트리거",
+    "step": "잡 스텝",
+    "gate": "승인 게이트",
+    "edgeSuccess": "성공 시",
+    "edgeFailure": "실패 시",
+    "edgeAlways": "항상",
+    "edgeVerdict": "판정 분기"
   }
 }

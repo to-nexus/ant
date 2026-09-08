@@ -150,5 +150,12 @@
   },
   "rail": {
     "switchTo": "{{next}}(으)로 전환"
+  },
+  "flowControls": {
+    "toolbar": "캔버스 확대/축소",
+    "zoomIn": "확대",
+    "zoomOut": "축소",
+    "fitView": "화면에 맞추기",
+    "actualSize": "실제 크기"
   }
 }

@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { Boxes, Code2 } from 'lucide-react';
 import { toggleSetMember } from '../../src/presentation/components/shared/rail/collapse';
 import { railSwitchLabel } from '../../src/presentation/components/shared/rail/RailIconSwitch';
+import { nextResizedWidth } from '../../src/presentation/components/AgentSettings/useResizableWidth';
 
 describe('toggleSetMember', () => {
   it('adds a missing key and removes a present one, never mutating the input', () => {
@@ -40,5 +41,17 @@ describe('railSwitchLabel', () => {
       { id: 'files' as const, icon: Code2 },
     ] as const;
     expect(railSwitchLabel('human', bare)).toBe('files');
+  });
+});
+
+describe('nextResizedWidth', () => {
+  it.each<[string, Parameters<typeof nextResizedWidth>, number]>([
+    ['right-growing panel follows the pointer', [300, 100, 140, 'right', 200, 600], 340],
+    ['left-docked drawer grows as the pointer moves left', [300, 100, 60, 'left', 200, 600], 340],
+    ['left-docked drawer shrinks as the pointer moves right', [300, 100, 150, 'left', 200, 600], 250],
+    ['clamped at min', [300, 100, 900, 'left', 200, 600], 200],
+    ['clamped at max', [300, 100, 900, 'right', 200, 600], 600],
+  ])('%s', (_label, args, expected) => {
+    expect(nextResizedWidth(...args)).toBe(expected);
   });
 });

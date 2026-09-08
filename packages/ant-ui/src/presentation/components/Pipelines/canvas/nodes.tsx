@@ -1,20 +1,42 @@
 /**
- * Pipeline canvas nodes — n8n-style cards on the reactflow surface. Three
- * kinds: the cron trigger, a universal-job step, an approval gate. Aurora CSS
- * variables only (theme auto-flip); live-run status paints a ring + status
- * chip so the canvas doubles as the run monitor.
+ * Pipeline canvas nodes — three kinds on the reactflow surface, each with its
+ * own silhouette (BPMN shape semantics folded into text-bearing cards):
+ * trigger = event → pill · job step = task → rounded rectangle · approval
+ * gate = gateway → chamfered octagon. Channels never overlap: silhouette +
+ * accent = kind, border = live-run status, ring = selection, dot = advisory.
+ * Aurora CSS variables only (theme auto-flip).
  */
 
-import { memo, useState } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { Clock, Bot, ShieldCheck, Plus, Zap, Ban } from 'lucide-react';
+import { Clock, Bot, ShieldCheck, Plus, Zap, Ban, Link2, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { GateDecision, PipelineStepStatus } from '@ant/shared';
-import { TRIGGER_NODE_ID } from '../draft';
+import { TRIGGER_NODE_ID, type TriggerMode } from '../draft';
 import { LIVE_STEP_STATUSES, STEP_STATUS_COLOR, gateDecisionLabel, isApprovedDecision, stepStatusLabel } from '../runStepPresentation';
+import { HANDLE, NODE_WIDTH, type FlowDir } from './layout';
 
-/** Card width — PipelineCanvas feeds it to dagre alongside the height estimate. */
-export const NODE_WIDTH = 230;
+export { NODE_WIDTH } from './layout';
+
+export type NodeKind = 'trigger' | 'step' | 'gate';
+export type NodeSilhouette = 'pill' | 'rounded' | 'chamfer';
+
+/** The ONE kind → look table; the legend and the inspector header read it too. */
+export const NODE_KIND_STYLE: Record<NodeKind, { accent: string; silhouette: NodeSilhouette; icon: LucideIcon }> = {
+  trigger: { accent: 'var(--teal-500)', silhouette: 'pill', icon: Clock },
+  step: { accent: 'var(--violet-500)', silhouette: 'rounded', icon: Bot },
+  gate: { accent: 'var(--amber-500)', silhouette: 'chamfer', icon: ShieldCheck },
+};
+
+export const TRIGGER_MODE_ICON: Record<TriggerMode, LucideIcon> = { schedule: Clock, manual: Zap, runCompleted: Link2 };
+
+/** Corner cut of the gate octagon, px. */
+export const CHAMFER = 12;
+/** Octagon clip for a box offset `d` px outward from the card (negative = inset) — keeps the diagonal edges parallel. */
+export function chamferPolygon(d: number): string {
+  const c = (CHAMFER + d * (2 - Math.SQRT2)).toFixed(2);
+  return `polygon(${c}px 0, calc(100% - ${c}px) 0, 100% ${c}px, 100% calc(100% - ${c}px), calc(100% - ${c}px) 100%, ${c}px 100%, 0 calc(100% - ${c}px), 0 ${c}px)`;
+}
 
 export interface PipelineNodeData {
   /** Primary identity line (agent display name / Schedule / Approval) — wraps, never truncates. */
@@ -26,6 +48,10 @@ export interface PipelineNodeData {
   /** Live-run status overlay. */
   status?: PipelineStepStatus;
   selected: boolean;
+  /** Which way this node's row flows — handles and the "+" sit on the forward side. */
+  flowDir: FlowDir;
+  /** Trigger nodes: picks the icon. */
+  triggerMode?: TriggerMode;
   /** Insert-after affordance ("+" between nodes, n8n style). Absent = hidden. */
   onAdd?: (afterNodeId: string, kind: 'job' | 'gate') => void;
   nodeId: string;
@@ -38,13 +64,32 @@ export interface PipelineNodeData {
   gateDecision?: { decision: GateDecision; decidedBy?: string };
 }
 
+const HIDDEN_HANDLE: React.CSSProperties = { opacity: 0, pointerEvents: 'none' };
+
+/**
+ * The four handle ids `layout.ts` addresses. Both of a type exist on every
+ * node, so an edge without explicit handle ids would be dropped by reactflow.
+ */
+function NodeHandles({ flowDir, withTarget }: { flowDir: FlowDir; withTarget: boolean }) {
+  const inPos = flowDir === 'ltr' ? Position.Left : Position.Right;
+  const outPos = flowDir === 'ltr' ? Position.Right : Position.Left;
+  return (
+    <>
+      {withTarget && <Handle id={HANDLE.in} type="target" position={inPos} style={HIDDEN_HANDLE} />}
+      {withTarget && <Handle id={HANDLE.inTop} type="target" position={Position.Top} style={HIDDEN_HANDLE} />}
+      <Handle id={HANDLE.out} type="source" position={outPos} style={HIDDEN_HANDLE} />
+      <Handle id={HANDLE.outBottom} type="source" position={Position.Bottom} style={HIDDEN_HANDLE} />
+    </>
+  );
+}
 
 function AddButton({ data }: { data: PipelineNodeData }) {
   const { t } = useTranslation('pipelines');
   const [open, setOpen] = useState(false);
   if (!data.onAdd) return null;
+  const forward = data.flowDir === 'ltr' ? 'right' : 'left';
   return (
-    <div style={{ position: 'absolute', right: -14, top: '50%', transform: 'translateY(-50%)', zIndex: 5 }}>
+    <div style={{ position: 'absolute', [forward]: -14, top: '50%', transform: 'translateY(-50%)', zIndex: 5 }}>
       <button
         aria-label={t('canvas.addStep', 'Add step')}
         onClick={(e) => {
@@ -70,7 +115,7 @@ function AddButton({ data }: { data: PipelineNodeData }) {
         <div
           style={{
             position: 'absolute',
-            left: 26,
+            [forward === 'right' ? 'left' : 'right']: 26,
             top: -8,
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-1)',
@@ -91,7 +136,7 @@ function AddButton({ data }: { data: PipelineNodeData }) {
             }}
             style={menuItemStyle}
           >
-            <Zap size={12} /> {t('canvas.addJobStep', 'Job step')}
+            <Bot size={12} /> {t('canvas.addJobStep', 'Job step')}
           </button>
           {/* Gate-anchor rule: an approval gate cannot be the entry step —
               its chat card anchors to the producing job's turn. */}
@@ -126,28 +171,57 @@ const menuItemStyle: React.CSSProperties = {
   textAlign: 'left',
 };
 
-function shell(data: PipelineNodeData, accentVar: string): React.CSSProperties {
+const SELECTION_RING = 'color-mix(in srgb, var(--violet-500) 22%, transparent)';
+
+/**
+ * Card chrome per kind. Pill / rounded are one bordered box (the accent is an
+ * inset stripe that follows the radius); the chamfered gate is three clipped
+ * layers — ring, border, surface — because clip-path swallows box-shadow.
+ */
+function CardShell({ kind, data, tint, children }: { kind: NodeKind; data: PipelineNodeData; tint?: string; children: ReactNode }) {
+  const look = NODE_KIND_STYLE[kind];
   const statusColor = data.status ? STEP_STATUS_COLOR[data.status] : undefined;
-  return {
-    position: 'relative',
-    width: NODE_WIDTH,
-    borderRadius: 'var(--r-md)',
-    background: 'var(--bg-surface)',
-    border: `1.5px solid ${data.selected ? accentVar : statusColor ?? 'var(--border-1)'}`,
-    boxShadow: data.selected ? '0 0 0 3px color-mix(in srgb, var(--violet-500) 22%, transparent)' : 'var(--shadow-xs)',
-    padding: '10px 12px',
-    cursor: 'pointer',
-  };
+  const borderColor = data.selected ? look.accent : statusColor ?? 'var(--border-1)';
+  const surface = tint ?? 'var(--bg-surface)';
+  const stripe = `inset 3px 0 0 ${look.accent}`;
+
+  if (look.silhouette !== 'chamfer') {
+    return (
+      <div
+        style={{
+          position: 'relative',
+          width: NODE_WIDTH,
+          borderRadius: look.silhouette === 'pill' ? 'var(--r-pill)' : 'var(--r-md)',
+          background: surface,
+          border: `1.5px solid ${borderColor}`,
+          boxShadow: data.selected ? `${stripe}, 0 0 0 3px ${SELECTION_RING}` : `${stripe}, var(--shadow-xs)`,
+          padding: look.silhouette === 'pill' ? '10px 16px 10px 19px' : '10px 12px 10px 15px',
+          cursor: 'pointer',
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: 'relative', width: NODE_WIDTH, cursor: 'pointer', filter: data.selected ? undefined : 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.08))' }}>
+      {data.selected && <div aria-hidden style={{ position: 'absolute', inset: -3, background: SELECTION_RING, clipPath: chamferPolygon(3) }} />}
+      <div aria-hidden style={{ position: 'absolute', inset: 0, background: borderColor, clipPath: chamferPolygon(0) }} />
+      <div aria-hidden style={{ position: 'absolute', inset: 1.5, background: surface, clipPath: chamferPolygon(-1.5), boxShadow: stripe }} />
+      <div style={{ position: 'relative', padding: '10px 14px 10px 17px' }}>{children}</div>
+    </div>
+  );
 }
 
 /** Top-right amber dot — an advisory names this step (details in the inspector). */
-function AdvisoryDot({ data }: { data: PipelineNodeData }) {
+function AdvisoryDot({ data, kind }: { data: PipelineNodeData; kind: NodeKind }) {
   const { t } = useTranslation('pipelines');
   if (!data.advisory) return null;
+  const onCorner = NODE_KIND_STYLE[kind].silhouette === 'rounded';
   return (
     <span
       title={t('advisory.nodeDot', 'Has advisories — open the step')}
-      style={{ position: 'absolute', top: -4, right: -4, width: 9, height: 9, borderRadius: 5, background: 'var(--amber-500)', border: '2px solid var(--bg-surface)' }}
+      style={{ position: 'absolute', top: onCorner ? -4 : -2, right: onCorner ? -4 : 8, width: 9, height: 9, borderRadius: 5, background: 'var(--amber-500)', border: '2px solid var(--bg-surface)', zIndex: 1 }}
     />
   );
 }
@@ -183,20 +257,21 @@ function StatusChip({ status }: { status?: PipelineStepStatus }) {
   );
 }
 
-function NodeHeader({ icon, title, subtitle, chip, invalid }: { icon: React.ReactNode; title: string; subtitle?: string; chip?: string; invalid?: boolean }) {
+function NodeHeader({ kind, icon, title, subtitle, chip, invalid }: { kind: NodeKind; icon: ReactNode; title: string; subtitle?: string; chip?: string; invalid?: boolean }) {
+  const accent = NODE_KIND_STYLE[kind].accent;
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', minWidth: 0 }}>
       <div
         style={{
           width: 26,
           height: 26,
-          borderRadius: 8,
+          borderRadius: kind === 'trigger' ? 13 : 8,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'var(--bg-surface-2)',
-          color: invalid ? 'var(--red-500)' : 'var(--text-2)',
+          background: invalid ? 'color-mix(in srgb, var(--red-500) 14%, transparent)' : `color-mix(in srgb, ${accent} 16%, transparent)`,
+          color: invalid ? 'var(--red-500)' : accent,
         }}
       >
         {icon}
@@ -234,19 +309,21 @@ function NodeHeader({ icon, title, subtitle, chip, invalid }: { icon: React.Reac
 }
 
 export const TriggerNode = memo(function TriggerNode({ data }: NodeProps<PipelineNodeData>) {
+  const Icon = data.triggerMode ? TRIGGER_MODE_ICON[data.triggerMode] : Clock;
   return (
-    <div style={shell(data, 'var(--violet-500)')}>
-      <NodeHeader icon={<Clock size={14} />} title={data.title} subtitle={data.subtitle} />
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+    <CardShell kind="trigger" data={data}>
+      <NodeHeader kind="trigger" icon={<Icon size={14} />} title={data.title} subtitle={data.subtitle} />
+      <NodeHandles flowDir={data.flowDir} withTarget={false} />
       <AddButton data={data} />
-    </div>
+    </CardShell>
   );
 });
 
 export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeData>) {
   return (
-    <div style={shell(data, 'var(--violet-500)')}>
+    <CardShell kind="step" data={data}>
       <NodeHeader
+        kind="step"
         icon={data.invalid ? <Ban size={14} /> : <Bot size={14} />}
         title={data.title}
         subtitle={data.subtitle}
@@ -254,11 +331,10 @@ export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeD
         invalid={data.invalid}
       />
       <StatusChip status={data.status} />
-      <AdvisoryDot data={data} />
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+      <AdvisoryDot data={data} kind="step" />
+      <NodeHandles flowDir={data.flowDir} withTarget />
       <AddButton data={data} />
-    </div>
+    </CardShell>
   );
 });
 
@@ -268,14 +344,8 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
   const decided = data.gateDecision;
   const approved = decided && isApprovedDecision(decided.decision);
   return (
-    <div
-      style={{
-        ...shell(data, 'var(--amber-500)'),
-        borderStyle: 'dashed',
-        background: awaiting ? 'color-mix(in srgb, var(--amber-500) 8%, var(--bg-surface))' : 'var(--bg-surface)',
-      }}
-    >
-      <NodeHeader icon={<ShieldCheck size={14} />} title={data.title} subtitle={data.subtitle} invalid={data.invalid} />
+    <CardShell kind="gate" data={data} tint={`color-mix(in srgb, var(--amber-500) ${awaiting ? 12 : 6}%, var(--bg-surface))`}>
+      <NodeHeader kind="gate" icon={<ShieldCheck size={14} />} title={data.title} subtitle={data.subtitle} invalid={data.invalid} />
       {/* "이 게이트는 누가 여는가" — the roster, right on the node (activation ctx). */}
       {data.approvers && data.approvers.length > 0 && (
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3, overflowWrap: 'anywhere' }}>
@@ -288,10 +358,9 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
           {gateDecisionLabel(t, decided.decision, decided.decidedBy)}
         </div>
       )}
-      <AdvisoryDot data={data} />
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+      <AdvisoryDot data={data} kind="gate" />
+      <NodeHandles flowDir={data.flowDir} withTarget />
       <AddButton data={data} />
-    </div>
+    </CardShell>
   );
 });

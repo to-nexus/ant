@@ -835,15 +835,28 @@ is the one owner of the "discard unsaved changes?" confirm (rail row select,
 `+`, header root crumb, space switch). Save is gated by the shared validator +
 the `preview-fires` verdict only while the DEFINITION leg is dirty
 (`ChangedBar.saveDisabled` + `blockedReason`). **Wiring** (배선도 — the
-n8n-style canvas — reactflow + dagre — trigger/step/gate nodes, insert-after
-"+" menus) fills the inspector slot with `StepInspector` while a node is
-selected and editable, otherwise with `PipelineSettingsPanel` (both on the
-shared `InspectorShell`): Identity (name), Availability (the enable/disable
-`Toggle`; disabled while dirty or readonly), the controlled `OrgAccessCard`
-(editors — writable even while enabled, per the BE), `PromoteZone` and
-`DangerZone` (both rendered while enabled but inert, naming "disable first";
-delete is a two-click arm that resets on selection change). A new draft shows
-Identity only. **Execution** (activation rows — own rows actionable with
+reactflow canvas — trigger/step/gate nodes, insert-after "+" menus). Geometry
+is the pure `canvas/layout.ts`: dagre LR ranks, serpentine-wrapped into rows
+when the strip is wider than the measured pane (row 0 →, row 1 ←; odd rows
+right-aligned so every turn is a vertical drop in the same column; dagre's y
+offsets survive inside a row so fan-outs stay centred). Every node renders
+four invisible handles (`in` / `out` / `in-top` / `out-bottom`) and every edge
+addresses two of them; row turns are smoothstep, in-row edges bezier. Card
+grammar keeps its channels apart — silhouette + accent = kind (trigger pill /
+teal, job step rounded / violet, approval gate chamfered octagon / amber; the
+`NODE_KIND_STYLE` table feeds the nodes, the legend and the inspector header),
+border = live-run status, ring = selection, dot = advisory; edge stroke /
+dash / label per condition is `edgeStyleFor`. The canvas re-fits only when
+the structure key (node count, rows, bucket, bounding box) changes, never on
+selection. Zoom controls are the shared `common/FlowCanvasControls` (also the
+agent workflow canvas). The inspector slot holds `StepInspector` while a node
+is selected and editable, otherwise `PipelineSettingsPanel` (both on the
+drag-resizable `InspectorShell`): Identity (name), the controlled
+`OrgAccessCard` (editors — writable even while enabled, per the BE) and
+`PromoteZone` (rendered while enabled but inert, naming "disable first").
+Delete is the header trash icon — `decideDelete` (unsaved → readonly →
+enabled) disables it with the reason as tooltip, and a confirm modal names
+what goes before `deletePipelineById`. A new draft shows Identity only. **Execution** (activation rows — own rows actionable with
 run-now / deactivate / expandable per-activation run history via
 `ActivationRunHistory`; members' rows read-only with the activator shown;
 `broken` flagged — plus the "activate in this project" footer gated on enabled

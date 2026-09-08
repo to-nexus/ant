@@ -1,69 +1,7 @@
-/* Workflow Controls Customization */
-
-/* ReactFlow Attribution 제거 */
-.react-flow__attribution {
-  display: none !important;
-}
-
-/* 컨테이너 배경 제거 */
-.workflow-controls {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  /* 동적 위치 조정을 위한 변수 (JS에서 설정) */
-  bottom: var(--terminal-offset, 10px) !important;
-}
-
-/* 각 버튼을 독립적인 둥근 버튼으로 (크기 축소) */
-.workflow-controls button {
-  width: 32px !important;  /* 40px → 32px */
-  height: 32px !important;  /* 40px → 32px */
-  border-radius: 50% !important;
-  margin: 0 0 6px 0 !important;  /* 8px → 6px */
-  box-shadow: var(--shadow-sm, 0 2px 6px oklch(0% 0 0 / 0.1)) !important;
-  transition: all 0.2s ease !important;
-}
-
-/* 커스텀 버튼 추가 스타일 */
-.workflow-control-button {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
-/* Aurora-tokenized button surface — auto theme-flips via aurora-tokens.css */
-.workflow-controls button {
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-1) !important;
-  color: var(--text-1) !important;
-}
-
-.workflow-controls button:hover {
-  background: var(--bg-surface-2) !important;
-  border-color: var(--border-1) !important;
-  transform: scale(1.05) !important;
-}
-
-/* 버튼 아이콘 색상 */
-.workflow-controls button svg {
-  fill: currentColor !important;
-}
-
-/* Disabled 버튼 */
-.workflow-controls button:disabled {
-  opacity: 0.4 !important;
-  cursor: not-allowed !important;
-}
-
-.workflow-controls button:disabled:hover {
-  transform: none !important;
-}
-
 /* Active workflow edge — flowing dash. Keyframe `flow-dash` lives in
-   aurora-tokens.css (line ~411) and is shared with the handoff
-   WorkflowPlaceholder. The dasharray pattern (8 6) is attached at the
-   edge style level in useGraphLayout (spec §5 T3). */
+   aurora-tokens.css and is shared with the handoff WorkflowPlaceholder. The
+   dasharray pattern (8 6) is attached at the edge style level in
+   useGraphLayout (spec §5 T3). Zoom controls are FlowCanvasControls. */
 .react-flow__edge.workflow-edge--active .react-flow__edge-path {
   animation: flow-dash 1s linear infinite;
 }
-

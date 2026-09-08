@@ -17,7 +17,8 @@ export interface AdvisoryStripItem {
   source: 'live' | 'saved';
 }
 
-const COLLAPSED_ROWS = 4;
+// Two rows keep the canvas visible under a long advisory list; the rest is one click away.
+const COLLAPSED_ROWS = 2;
 
 export function AdvisoryStrip({ items, onSelectStep }: { items: AdvisoryStripItem[]; onSelectStep?: (stepId: string) => void }) {
   const { t } = useTranslation('pipelines');
