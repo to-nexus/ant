@@ -9,8 +9,12 @@
  * a def with explicit `needs` first MATERIALIZES every implicit edge
  * (`materializeNeeds` — semantically identity), because a positional splice
  * into a mixed implicit/explicit def silently rewires the implicit edges.
- * Branching is authored in the inspector (`setStepNeeds`); free drag-to-
- * connect stays a Phase 3 surface.
+ *
+ * Rewiring invariant: an OUTCOME-BOUND edge (`on: failure` / `always` /
+ * `verdict:*`) judges its anchor's own outcome, so no insert may move it onto
+ * another step — see `isSuccessEdge`. Branch creation is `addBranchAfter`
+ * (canvas) and `setStepNeeds` (inspector); free drag-to-connect stays a
+ * Phase 3 surface.
  */
 
 import {
@@ -65,14 +69,28 @@ export function materializeNeeds(def: PipelineDef): PipelineDef {
 }
 
 /**
+ * A non-`success` edge judges its anchor's OUTCOME, so an insert must never
+ * move it onto a step that cannot produce that outcome. Rewiring a gate's
+ * `on: failure` arm silently kills it (a `cancelled` need is not `failed`), and
+ * rewiring a `verdict:*` arm fails the catalog gate at enable, not at save.
+ */
+function isSuccessEdge(step: PipelineStepDef): boolean {
+  return step.on === undefined || step.on === 'success';
+}
+
+/**
  * Insert after the step id (or after the trigger). Linear defs keep the
  * implicit positional splice (zero YAML churn); DAG defs materialize and
  * splice-through: the new step takes the anchor as its need and the anchor's
- * dependents (all roots, for a trigger anchor) rewire onto the new step.
+ * SUCCESS dependents (success roots, for a trigger anchor) rewire onto it.
+ * Outcome-bound dependents stay on the anchor. A linear def whose displaced
+ * successor is outcome-bound takes the DAG path too — the splice would move
+ * exactly that one implicit edge.
  */
 export function insertStepAfter(def: PipelineDef, afterNodeId: string, step: PipelineStepDef): PipelineDef {
   const index = afterNodeId === TRIGGER_NODE_ID ? -1 : def.steps.findIndex((s) => s.id === afterNodeId);
-  if (stepsAreLinear(def)) {
+  const displaced = def.steps[index + 1];
+  if (stepsAreLinear(def) && (displaced === undefined || isSuccessEdge(displaced))) {
     const steps = [...def.steps];
     steps.splice(index + 1, 0, step);
     return { ...def, steps };
@@ -80,6 +98,7 @@ export function insertStepAfter(def: PipelineDef, afterNodeId: string, step: Pip
   const materialized = materializeNeeds(def);
   const rewired = materialized.steps.map((s) => {
     const needs = s.needs ?? [];
+    if (!isSuccessEdge(s)) return s;
     if (afterNodeId === TRIGGER_NODE_ID) {
       return needs.length === 0 ? ({ ...s, needs: [step.id] } as PipelineStepDef) : s;
     }
@@ -90,6 +109,28 @@ export function insertStepAfter(def: PipelineDef, afterNodeId: string, step: Pip
   const inserted = { ...step, needs: afterNodeId === TRIGGER_NODE_ID ? [] : [afterNodeId] } as PipelineStepDef;
   const steps = [...rewired];
   steps.splice(index + 1, 0, inserted);
+  return { ...def, steps };
+}
+
+/**
+ * Add a SECOND successor to the anchor — the canvas's branch gesture. Nothing
+ * existing is rewired, so the anchor fans out. The new step's `on` stays
+ * `success`; the inspector authors the `failure` / `verdict:*` condition that
+ * makes it an arm. Placed after the anchor's last existing dependent so arms
+ * stay adjacent in file order — the dispatch tiebreak among ready siblings.
+ */
+export function addBranchAfter(def: PipelineDef, anchorId: string, step: PipelineStepDef): PipelineDef {
+  const materialized = materializeNeeds(def);
+  const fromTrigger = anchorId === TRIGGER_NODE_ID;
+  let at = (fromTrigger ? -1 : materialized.steps.findIndex((s) => s.id === anchorId)) + 1;
+  materialized.steps.forEach((s, i) => {
+    const needs = s.needs ?? [];
+    const dependsOnAnchor = fromTrigger ? needs.length === 0 : needs.includes(anchorId);
+    if (dependsOnAnchor && i >= at) at = i + 1;
+  });
+  const branch = { ...step, needs: fromTrigger ? [] : [anchorId] } as PipelineStepDef;
+  const steps = [...materialized.steps];
+  steps.splice(at, 0, branch);
   return { ...def, steps };
 }
 

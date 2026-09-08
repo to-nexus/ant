@@ -871,10 +871,31 @@ Chat surfaces: `useChatPolicy` locks the input with `pipeline-active` /
 in the chat input, the stop button on a pipeline step confirms and routes to
 `cancelPipelineRun` (never raw stopJob), and pipeline-originated turns / the
 work board carry `PipelineOriginChip`. The `pipeline_approval` chat card is a
-standard ChoiceCard variant. UI-authored definitions stay implicit-linear
-(`needs` omitted); an explicit-`needs` DAG still renders, but node insertion
-degrades to append (v2 opens free-DAG editing on the same wire contract — no
-migration).
+standard ChoiceCard variant. A UI-authored chain stays implicit-linear
+(`needs` omitted, zero YAML churn); the two structural gestures on the canvas
+are the node "+"'s sections, and both go through `draft.ts`. **Insert**
+(`insertStepAfter`) splices positionally on a linear def and splices THROUGH on
+an explicit-`needs` one — the new step takes the anchor as its need and the
+anchor's dependents rewire onto it. **Branch** (`addBranchAfter`) is offered
+only on a node that already has a successor and rewires nothing, so the anchor
+fans out; the arm's condition is then authored in the inspector
+(`EdgeConditionField` harvests the direct needs' declared `outcomes`), which is
+what lets the canvas express a gate's reject path and a verdict switch at all.
+Because the "+" sits on the node's forward side, its menu names the gesture
+(`Insert before {stepId}` / `Add next step` / `Add branch`) — an unlabelled one
+reads as "append" and silently lengthens the chain instead.
+
+**An insert never rewires an OUTCOME-BOUND edge** (`on: failure` / `always` /
+`verdict:*`; `isSuccessEdge` is the one test). Such an edge judges its ANCHOR's
+outcome and the fresh step produces none, so both rewire shapes fail late and
+quietly: a gate's `on: failure` arm moved onto the new step never matches (an
+abort leaves that step `cancelled`, and `cancelled` is not `failed`, so the
+reject path skips with no validator complaint), and a `verdict:` arm moved off
+its decider passes `PUT` and then fails `validatePipelineCatalogBinding` at
+enable. A linear def whose displaced successor is outcome-bound therefore takes
+the materialize path too — the splice would move exactly that one implicit edge.
+Free drag-to-connect and canvas edge deletion remain Phase 3, on this same wire
+contract, with no migration.
 
 The canvas is not the only author. A universal job that declares an `apis`
 self entry composes definitions through the same

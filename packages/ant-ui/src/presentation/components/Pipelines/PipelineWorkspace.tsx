@@ -26,7 +26,7 @@ import { PipelineSettingsPanel } from './PipelineSettingsPanel';
 import { PipelineHeader } from './PipelineHeader';
 import { PipelineExecutionView } from './PipelineExecutionView';
 import { AdvisoryStrip, type AdvisoryStripItem } from './AdvisoryStrip';
-import { TRIGGER_NODE_ID, insertStepAfter, makeGateStep, makeJobStep } from './draft';
+import { TRIGGER_NODE_ID, addBranchAfter, insertStepAfter, makeGateStep, makeJobStep } from './draft';
 
 const noop = () => {};
 
@@ -117,10 +117,11 @@ export function PipelineWorkspace() {
   const overlayRunId = entry?.activations.find((a) => a.mine && a.projectId === selectedProject)?.currentRunId;
   const overlayRun = overlayRunId ? runDetails[overlayRunId] ?? null : null;
 
-  const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate') => {
+  const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate', mode: 'insert' | 'branch') => {
     if (!editable) return;
     const step = kind === 'gate' ? makeGateStep(draft) : makeJobStep(draft);
-    patch(insertStepAfter(draft, afterNodeId, step));
+    const next = mode === 'branch' ? addBranchAfter(draft, afterNodeId, step) : insertStepAfter(draft, afterNodeId, step);
+    patch(next);
     selectPipelineNode(step.id);
   };
 

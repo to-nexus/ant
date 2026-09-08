@@ -136,7 +136,9 @@
       "runCompleted": "체인"
     },
     "openExecution": "실행 보기 →",
-    "addStep": "스텝 추가"
+    "insertBefore": "{{stepId}} 앞에 삽입",
+    "appendNext": "다음 스텝 추가",
+    "addBranch": "분기 추가"
   },
   "inspector": {
     "trigger": "트리거·정책",

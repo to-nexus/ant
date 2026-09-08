@@ -67,7 +67,7 @@ export interface PipelineCanvasProps {
   advisoryStepIds?: ReadonlySet<string>;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
-  onAddAfter?: (afterNodeId: string, kind: 'job' | 'gate') => void;
+  onAddAfter?: (afterNodeId: string, kind: 'job' | 'gate', mode: 'insert' | 'branch') => void;
   /** Design view only — the embedded run monitor is too small for it. */
   showLegend?: boolean;
 }
@@ -190,6 +190,15 @@ function PipelineCanvasInner({ def, cronSummary, customAgents, run, approversByG
         seeds.push({ id: `${source}->${step.id}`, source, target: step.id, condition: step.on ?? 'success', animated: status === 'running' || status === 'dispatched' });
       }
     });
+
+    // The "+" names what an insert lands BEFORE, and offers a branch only where
+    // a successor exists — derived from the same effective edges as the seeds,
+    // so the affordance can never disagree with the drawn graph.
+    const nodeById = new Map(rfNodes.map((n) => [n.id, n]));
+    for (const seed of seeds) {
+      const anchor = nodeById.get(seed.source);
+      if (anchor && anchor.data.successorId === undefined) anchor.data.successorId = seed.target;
+    }
 
     const layout = layoutPipeline(
       rfNodes.map((n) => ({ id: n.id, height: estimateNodeHeight(n.data) })),

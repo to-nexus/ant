@@ -136,7 +136,9 @@
       "runCompleted": "Chain"
     },
     "openExecution": "Open execution →",
-    "addStep": "Add step"
+    "insertBefore": "Insert before {{stepId}}",
+    "appendNext": "Add next step",
+    "addBranch": "Add branch"
   },
   "inspector": {
     "trigger": "Trigger & policies",

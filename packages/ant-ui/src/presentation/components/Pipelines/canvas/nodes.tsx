@@ -52,8 +52,10 @@ export interface PipelineNodeData {
   flowDir: FlowDir;
   /** Trigger nodes: picks the icon. */
   triggerMode?: TriggerMode;
-  /** Insert-after affordance ("+" between nodes, n8n style). Absent = hidden. */
-  onAdd?: (afterNodeId: string, kind: 'job' | 'gate') => void;
+  /** The "+" affordance: insert between / branch off. Absent = hidden. */
+  onAdd?: (afterNodeId: string, kind: 'job' | 'gate', mode: 'insert' | 'branch') => void;
+  /** First step that already depends on this node — names what an insert lands BEFORE, and gates the branch section. */
+  successorId?: string;
   nodeId: string;
   invalid?: boolean;
   /** A save-time advisory names this step — amber dot; the inspector shows the text. */
@@ -83,15 +85,71 @@ function NodeHandles({ flowDir, withTarget }: { flowDir: FlowDir; withTarget: bo
   );
 }
 
+/**
+ * One menu section = one structural gesture. The label is what makes the "+"
+ * honest: on a node that already has a successor the default gesture INSERTS
+ * BETWEEN, which reads as "append a next node" from the button's position.
+ */
+function AddMenuSection({
+  label,
+  nodeId,
+  mode,
+  allowGate,
+  onAdd,
+  close,
+}: {
+  label: string;
+  nodeId: string;
+  mode: 'insert' | 'branch';
+  allowGate: boolean;
+  onAdd: NonNullable<PipelineNodeData['onAdd']>;
+  close: () => void;
+}) {
+  const { t } = useTranslation('pipelines');
+  return (
+    <>
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', padding: '3px 8px 2px' }}>{label}</div>
+      <button
+        onClick={() => {
+          close();
+          onAdd(nodeId, 'job', mode);
+        }}
+        style={menuItemStyle}
+      >
+        <Bot size={12} /> {t('canvas.addJobStep', 'Job step')}
+      </button>
+      {allowGate && (
+        <button
+          onClick={() => {
+            close();
+            onAdd(nodeId, 'gate', mode);
+          }}
+          style={menuItemStyle}
+        >
+          <ShieldCheck size={12} /> {t('canvas.addGate', 'Approval gate')}
+        </button>
+      )}
+    </>
+  );
+}
+
 function AddButton({ data }: { data: PipelineNodeData }) {
   const { t } = useTranslation('pipelines');
   const [open, setOpen] = useState(false);
-  if (!data.onAdd) return null;
+  const onAdd = data.onAdd;
+  if (!onAdd) return null;
   const forward = data.flowDir === 'ltr' ? 'right' : 'left';
+  // Gate-anchor rule: an approval gate cannot be the entry step — its chat
+  // card anchors to the producing job's turn.
+  const allowGate = data.nodeId !== TRIGGER_NODE_ID;
+  const insertLabel = data.successorId
+    ? t('canvas.insertBefore', 'Insert before {{stepId}}', { stepId: data.successorId })
+    : t('canvas.appendNext', 'Add next step');
+  const close = () => setOpen(false);
   return (
     <div style={{ position: 'absolute', [forward]: -14, top: '50%', transform: 'translateY(-50%)', zIndex: 5 }}>
       <button
-        aria-label={t('canvas.addStep', 'Add step')}
+        aria-label={insertLabel}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
@@ -125,31 +183,25 @@ function AddButton({ data }: { data: PipelineNodeData }) {
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
-            width: 150,
+            width: 186,
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => {
-              setOpen(false);
-              data.onAdd?.(data.nodeId, 'job');
-            }}
-            style={menuItemStyle}
-          >
-            <Bot size={12} /> {t('canvas.addJobStep', 'Job step')}
-          </button>
-          {/* Gate-anchor rule: an approval gate cannot be the entry step —
-              its chat card anchors to the producing job's turn. */}
-          {data.nodeId !== TRIGGER_NODE_ID && (
-            <button
-              onClick={() => {
-                setOpen(false);
-                data.onAdd?.(data.nodeId, 'gate');
-              }}
-              style={menuItemStyle}
-            >
-              <ShieldCheck size={12} /> {t('canvas.addGate', 'Approval gate')}
-            </button>
+          <AddMenuSection label={insertLabel} nodeId={data.nodeId} mode="insert" allowGate={allowGate} onAdd={onAdd} close={close} />
+          {/* Branching only means something where a successor already exists;
+              the new arm keeps `on: success` until the inspector conditions it. */}
+          {data.successorId && (
+            <>
+              <div style={{ height: 1, background: 'var(--border-1)', margin: '3px 0' }} />
+              <AddMenuSection
+                label={t('canvas.addBranch', 'Add branch')}
+                nodeId={data.nodeId}
+                mode="branch"
+                allowGate={allowGate}
+                onAdd={onAdd}
+                close={close}
+              />
+            </>
           )}
         </div>
       )}
