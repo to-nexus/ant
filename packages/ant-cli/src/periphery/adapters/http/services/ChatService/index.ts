@@ -493,6 +493,23 @@ export class ChatService {
       message: string;
       jobType?: LogJobType;
       designErrorType?: string;
+      /**
+       * The BE's resume verdict, carried on the DURABLE card. Without it the
+       * FE had only `reason` to guess from, and guessed wrong: it rendered a
+       * Resume button for job types the route refuses. Read from
+       * `InterruptionDetails` — never re-derived on the FE.
+       */
+      canResume?: boolean;
+      resumeGranularity?: import('@ant/shared').ResumeGranularity;
+      /**
+       * DISPLAY / IDENTITY ONLY — lets the card name the agent job it belongs
+       * to and the FE re-converge its composer (the same use
+       * `ClarifyingVariant` makes of it). It is NEVER sent back as the resume
+       * ref: the BE owns that (`resolveUniversalResumeTarget`), because a
+       * client-held ref names the composer's current selection rather than the
+       * paused pair.
+       */
+      customJobRef?: string;
       userContext?: UserContext;
     },
   ): Promise<{ cardId: string; emitted: boolean }> {
@@ -575,6 +592,9 @@ export class ChatService {
           // CancelledVariant titles the card by the interrupted job's type.
           originalType: args.jobType ?? DEFAULT_JOB_TYPE,
           ...(args.designErrorType ? { designErrorType: args.designErrorType } : {}),
+          ...(args.canResume !== undefined ? { canResume: args.canResume } : {}),
+          ...(args.resumeGranularity ? { resumeGranularity: args.resumeGranularity } : {}),
+          ...(args.customJobRef ? { customJobRef: args.customJobRef } : {}),
         },
       };
       await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
@@ -1160,6 +1180,57 @@ export class ChatService {
       );
     }
     return null;
+  }
+
+  /**
+   * Recover the INSTRUCTION an interrupted job was running, for resume.
+   *
+   * `recordUserTurn` writes the durable `user_turn` line BEFORE the graph
+   * runs, so the directive survives a kill that sealed no session — which is
+   * what makes a universal job resumable at turn granularity at all.
+   *
+   * Anchors are EXACT only, deliberately unlike
+   * `resolveCancelledCardTurnId`'s tiers 3-4 ("the feature's most recent
+   * user_turn"): anchoring a card to the wrong turn is cosmetic, but
+   * re-dispatching the wrong instruction is not. A miss returns `null` and the
+   * caller refuses, rather than running something the user never asked for.
+   *
+   * Never throws — a read failure reads as "not recoverable".
+   */
+  async findInterruptedTurn(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    userContext?: UserContext,
+  ): Promise<{ turnId: string; text: string } | null> {
+    const ctx = userContext ?? this.defaultUserContext;
+    try {
+      const turnId =
+        (await this.findTurnIdForJobWithFallback(projectId, featureName, jobId, ctx)) ??
+        (await this.stateStore?.getJobStatus(jobId).catch(() => null))?.turnId ??
+        null;
+      if (!turnId) return null;
+
+      const adapter = this.makeAdapter(projectId, featureName, ctx);
+      if (!adapter) return null;
+      const lines = await adapter.loadChatByTurnIds([turnId]);
+      // Newest-first: a re-dispatched turn appends under the same anchor, so
+      // the LAST user_turn on it is the instruction actually in flight.
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (line.type === 'user_turn' && typeof line.text === 'string' && line.text.trim()) {
+          return { turnId, text: line.text };
+        }
+      }
+      return null;
+    } catch (err) {
+      logger.warn(
+        `findInterruptedTurn failed for ${projectId}/${featureName} job=${jobId}`,
+        { component: COMPONENT },
+        err,
+      );
+      return null;
+    }
   }
 
   /**

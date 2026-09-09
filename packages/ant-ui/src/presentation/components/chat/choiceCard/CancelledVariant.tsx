@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, XCircle } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { dismissInterruptedJob, resumeJob, ApiError } from '@/infrastructure/http/api';
+import { dismissInterruptedJob } from '@/infrastructure/http/api';
+import { useResumeJob } from '@/application/hooks/features/useResumeJob';
 import type { VariantProps, ResolvedIcon } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, JobIdChip } from './shared';
 import { Slot } from '@/presentation/extensions/slots';
 
 export function CancelledVariant({ presented, resolved }: VariantProps) {
   const { t } = useTranslation('chat');
+  const { resume } = useResumeJob();
   const isRunning = useStore(state => state.isRunning);
   const kanbanData = useStore(state => state.kanban);
   const setDismissedInterruptTimestamp = useStore(state => state.setDismissedInterruptTimestamp);
@@ -22,6 +24,8 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
   const originalType = payload.originalType as string | undefined;
   const reason = payload.reason as string | undefined;
   const designErrorType = payload.designErrorType as string | undefined;
+  const payloadCanResume = payload.canResume as boolean | undefined;
+  const resumeGranularity = payload.resumeGranularity as 'mid-graph' | 'turn' | undefined;
 
   const state = useChoiceCardState({ presented, resolved });
 
@@ -46,11 +50,15 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
     return t('cancelled.taskCancelled');
   })();
 
-  // Respect the BE's `canResume` verdict (job-type-aware: false for plan/visual
-  // on infrastructure interruptions, which can only restart, not resume). Fall
-  // back to `!!reason` only when the kanban interruption isn't loaded yet, so a
-  // durable cancelled card from a genuinely-resumable job still offers Resume.
-  const beCanResume = kanbanData?.interruption?.canResume;
+  // The BE's `canResume` verdict, in order of authority:
+  //   1. the card's own durable payload — job-scoped and reload-proof
+  //   2. the live kanban interruption
+  //   3. `!!reason` — ONLY for cards written before (1) existed
+  // (3) is a guess, and it guessed wrong for every universal job: the kanban
+  // interruption is permanently absent there, so the card offered a Resume the
+  // route refused. Legacy cards keep it so a genuinely-resumable old card does
+  // not lose its button; new cards never reach it.
+  const beCanResume = payloadCanResume ?? kanbanData?.interruption?.canResume;
   const resumeAllowed = beCanResume === undefined ? !!reason : beCanResume === true;
   const canResume = !isRunning && jobId && state.selectedProject && state.selectedFeature && resumeAllowed;
 
@@ -73,25 +81,29 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
       }
       useStore.getState().setRunning(true, jobId);
 
-      const result = await resumeJob(jobId, state.selectedProject, state.selectedFeature, true);
+      // Failures are surfaced by the resume owner — this card used to swallow
+      // everything but a 404 into the console, which is what made a refused
+      // resume look like a dead button.
+      const outcome = await resume(jobId, state.selectedProject, state.selectedFeature);
+      if (!outcome.ok) {
+        useStore.getState().setRunning(false);
+        setDismissedInterruptTimestamp(prevDismissed);
+        state.setLocalSelectedChoice(prevChoice);
+        state.setLocalResolvedLabel(prevLabel);
+        // The work is genuinely gone — degrade the pill instead of leaving a
+        // permanently-failing button.
+        if (outcome.gone) setReopenUnavailable(true);
+        return;
+      }
 
       await state.persistToBackend('resume', t('cancelled.resumed'));
 
-      if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
+      if (outcome.jobType && outcome.jobType !== useStore.getState().selectedJobType) {
         useStore.setState({ jobStartPending: true });
-        useStore.getState().setSelectedJobType(result.jobType);
+        useStore.getState().setSelectedJobType(outcome.jobType);
       }
 
-      useStore.getState().setRunning(true, result.jobId);
-    } catch (error) {
-      console.error('[ChoiceCard:Cancelled] Failed:', error);
-      useStore.getState().setRunning(false);
-      setDismissedInterruptTimestamp(prevDismissed);
-      state.setLocalSelectedChoice(prevChoice);
-      state.setLocalResolvedLabel(prevLabel);
-      if (error instanceof ApiError && error.status === 404) {
-        setReopenUnavailable(true);
-      }
+      useStore.getState().setRunning(true, outcome.jobId);
     } finally {
       state.setIsLoading(false);
     }
@@ -210,7 +222,9 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
       {canResume && (
         <TwoButtonLayout
           theme="orange"
-          positiveLabel={t('cancelled.resume')}
+          positiveLabel={
+            resumeGranularity === 'turn' ? t('cancelled.rerunTurn') : t('cancelled.resume')
+          }
           positiveIcon={<Play className="w-4 h-4" fill="currentColor" />}
           positiveLoadingLabel={t('cancelled.resuming')}
           negativeLabel={t('cancelled.dismiss')}

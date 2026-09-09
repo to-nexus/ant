@@ -72,3 +72,36 @@ describe('plan / visual broadcast sites are wired for per-model cost', () => {
     expect(read('agents/creator/graph/visual/nodes/sketch.ts')).toMatch(/modelId:\s*\(imageClient as any\)\.modelName/);
   });
 });
+
+/**
+ * Universal is the third job family with no task queue, and it hit the same
+ * class from the other side: it DOES broadcast per-model each round, but its
+ * agent node returned only the aggregate `tokenUsage`. LangGraph rebuilds a
+ * node's state from the channels on every hop and `accumulateTokenUsage`
+ * creates the per-model map lazily, so an omitted return restarted it at `{}`
+ * each round — the broadcaster cached the newest single-call map and billing
+ * settled on the LAST LLM call alone (observed: callCount 1 / 2 input tokens
+ * against a 735k-token job, which the safety net then attributed to the
+ * most-expensive model).
+ */
+describe('universal carries per-model usage across node hops', () => {
+  const agentNode = read('agents/universal/graph/nodes/agent.ts');
+
+  it('broadcasts per-model before the aggregate, like plan/visual', () => {
+    expect(agentNode).toContain('broadcastTokenUsageByModel');
+  });
+
+  it('returns the per-model twin from EVERY return that carries the aggregate', () => {
+    const aggregate = (agentNode.match(/tokenUsage: state\.tokenUsage,/g) ?? []).length;
+    const perModel = (agentNode.match(/tokenUsageByModel: state\.tokenUsageByModel,/g) ?? []).length;
+    expect(aggregate).toBeGreaterThan(0);
+    expect(perModel).toBe(aggregate);
+  });
+
+  it('seeds the per-model channel so subagent usage is not dropped at the fold', () => {
+    // `foldSubagentUsage` reports only channels already `in state` — returning
+    // an undeclared key is an InvalidUpdateError — so an absent map silently
+    // discarded every subagent's tokens.
+    expect(read('agents/universal/graph/state.ts')).toMatch(/tokenUsageByModel:\s*\{\}/);
+  });
+});

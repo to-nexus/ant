@@ -29,6 +29,7 @@ import {
   QueuePositionInfo
 } from '../../core/ports/queue';
 import { StateStorePort } from '../../core/ports/stateStore';
+import { JobLockActiveError } from './errors';
 import { logger } from '../../utils/logger';
 import { parseRedisUrl } from '../utils/redis';
 import { REDIS_CHANNELS } from '../state/redisConstants';
@@ -420,8 +421,10 @@ export class BullMQJobQueue implements JobQueuePort {
           await client.del(lockKey);
           await existingJob.remove();
         } else if (ttl > LOCK_DURATION / 2) {
-          // Lock was recently extended — a live worker is processing this job
-          throw new Error(`Job ${jobId} is still being processed by an active worker`);
+          // Lock was recently extended — a live worker is processing this job.
+          // Typed so the caller can answer a retryable 409 rather than a 500
+          // the client cannot distinguish from a crash.
+          throw new JobLockActiveError(jobId, ttl);
         } else if (ttl > 0) {
           // Stale lock expiring soon — wait for natural expiry then retry
           logger.info(`Waiting ${ttl + 500}ms for stale lock to expire: ${jobId}`, { component: 'BullMQJobQueue' });

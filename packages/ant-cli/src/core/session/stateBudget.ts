@@ -15,7 +15,7 @@
  * not fit is refused, with the previous valid file left untouched.
  */
 
-import { SESSION_MAX_BYTES, readSessionTextContained } from '../utils/sessionPaths';
+import { SESSION_MAX_BYTES, readSessionTextContained, readSessionTextForRepair } from '../utils/sessionPaths';
 import { atomicWriteFile } from '../utils/atomicWriteFile';
 import { createHash } from 'crypto';
 import { groupMessagesIntoTurns } from '../context/types';
@@ -270,6 +270,55 @@ export async function writeSessionBounded(
     );
   }
   await atomicWriteFile(sessionPath, budgeted.content);
+}
+
+export type SessionRepairOutcome =
+  | { status: 'not-needed' }
+  | { status: 'repaired'; bytesBefore: number; bytesAfter: number; shed: string[] }
+  | { status: 'unrepairable'; reason: 'too-large-to-read' | 'unparseable' | 'still-over-budget'; size?: number };
+
+/**
+ * Bring an over-budget session file back UNDER the budget, in place.
+ *
+ * A session that crossed `SESSION_MAX_BYTES` is terminal today: every reader
+ * refuses it, and every writer's read-modify-write starts with one of those
+ * refusals — so the file can neither be read nor rewritten, the feature's job
+ * history and resume die with it, and the retention sweep fail-closes on it
+ * once a minute forever. The only existing escape hatch discards the whole
+ * file.
+ *
+ * The fix is the same shape the JSONL logs already use: not a refusal, and not
+ * a deletion — RETENTION. `shedToFit` drops exactly what it is allowed to drop
+ * (historical kanban snapshots → old conversation turns → diagnostic
+ * histories → oldest `runs[]`), and the resume core (`taskQueue`,
+ * `currentTask`, `completedTasks`, `interruption`, `jobId`) is never shed. What
+ * comes back is a readable session that has lost only history a reader would
+ * have been served in trimmed form anyway.
+ *
+ * Idempotent, and a no-op for a file already inside the budget, so the caller
+ * may run it on every sweep. Never throws.
+ */
+export async function repairOversizedSession(sessionPath: string): Promise<SessionRepairOutcome> {
+  // Read through the session-read owner (bounds are its policy, not ours).
+  const read = await readSessionTextForRepair(sessionPath);
+  if (read.status === 'missing') return { status: 'not-needed' };
+  if (read.status === 'too-large') {
+    return { status: 'unrepairable', reason: 'too-large-to-read', size: read.size };
+  }
+  if (read.size <= SESSION_MAX_BYTES) return { status: 'not-needed' };
+
+  let session: unknown;
+  try {
+    session = JSON.parse(read.text);
+  } catch {
+    return { status: 'unrepairable', reason: 'unparseable', size: read.size };
+  }
+
+  const budgeted = shedToFit(session as any);
+  if (!budgeted.ok) return { status: 'unrepairable', reason: 'still-over-budget', size: read.size };
+
+  await atomicWriteFile(sessionPath, budgeted.content);
+  return { status: 'repaired', bytesBefore: read.size, bytesAfter: budgeted.bytes, shed: budgeted.shed };
 }
 
 /**

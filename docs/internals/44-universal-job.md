@@ -1564,11 +1564,48 @@ there. The panel's refetch is deliberately NOT gated on `isRunning`.
 There is NO thread plane (`universal/agents/**` was removed before release —
 no data migration; stale trees are ignored and removed by `deleteProject`).
 Multi-chat, when it lands, will be designed cross-project-kind, not as a
-universal-only bolt-on. Universal resume sends only `customJobRef`; a resumed
-pair re-enters its own conversation regardless of which job originally
-paused (non-task job — benign). Kanban/interruption disk-restore never
-existed for universal (per-(agent,job) session files are invisible to the
-static SESSION_SEARCH_MAP by design) — live Redis/SSE state still works.
+universal-only bolt-on.
+
+### Resume is TURN-level, and the server owns the target
+
+Universal has no task-queue checkpoint, so it cannot resume "from where it
+stopped". What it does have is a session that IS the provider transcript, plus
+a directive `recordUserTurn` wrote to the durable chat log BEFORE the graph ran
+— so the unit of resume is **the turn whose response was never sealed**. That
+axis is named by `isTurnResumable` / `resumeGranularityOf` (`@ant/shared`);
+`isMidGraphResumable` keeps its narrower meaning (a checkpoint exists) and is
+NOT widened. `InterruptionDetails.resumeGranularity` carries the verdict's KIND
+so no surface words a turn resume as continuing a checkpoint.
+
+The request carries **no** definition ref. `resolveUniversalResumeTarget`
+recovers it server-side — the job mapping stamped at enqueue, else the session
+file whose sealed `state.jobId` / `runs[]` names the run — because a
+client-held ref is the composer's CURRENT selection, which after a reload or an
+agent switch is a different `(agentId, jobId)` pair than the paused job. The
+route is entered by PROJECT TYPE, not by what the body remembered, and resumes
+`requestedJobId`; `state.jobId` is written by the end-of-turn seal, so after a
+crash it names the previous run.
+
+Continuity across the two kill shapes converges on one runner branch:
+`registerActiveOrchestrator` also takes a seal-only handler, so a graceful
+SIGTERM persists the pre-graph turn (the in-graph conversation is unobservable
+— `invokeGraph` uses `.invoke()`, and a side-channel from phase nodes would
+break node blindness). `isTurnAlreadyOpened` then keys on the runner's own
+`metadata.jobId` stamp: a sealed turn is CONTINUED, an unsealed one
+(SIGKILL, first turn) is re-dispatched from the recovered directive. Neither
+path duplicates the user's request.
+
+Refusals are typed (`job-lock-active`, `universal-resume-ref-unresolvable`,
+`universal-resume-no-turn`) and the durable cancelled card carries
+`canResume` / `resumeGranularity` / `customJobRef` (the last for display and
+composer re-convergence only — never sent back as the resume ref). Before that,
+the FE guessed the verdict from `reason` alone and rendered a Resume the route
+refused with a code-less 400 that no surface showed.
+
+Kanban/interruption disk-restore still does not exist for universal
+(per-(agent,job) session files are invisible to the static SESSION_SEARCH_MAP
+by design) — the card carries the verdict instead, and live Redis/SSE state
+works as before.
 
 ## Stop hooks — the deterministic turn-completion contract
 

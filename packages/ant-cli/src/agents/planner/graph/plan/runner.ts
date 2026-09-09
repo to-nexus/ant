@@ -20,7 +20,7 @@ import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph, isEnvResume } from '../../../common/graph/runnerHelpers';
 import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../../composition/gracefulShutdown';
-import { isInfrastructureInterruption, isMidGraphResumable } from '@ant/shared';
+import { isInfrastructureInterruption, resumeGranularityOf } from '@ant/shared';
 
 /**
  * Total node-loop history length across both loops (NODE_PLAN + NODE_EXECUTE).
@@ -391,10 +391,11 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               reason,
               message: `Plan interrupted: ${reason}`,
               timestamp: new Date().toISOString(),
-              // plan has no mid-graph checkpoint — an infrastructure interruption
-              // (SIGTERM / crash / sleep) can only restart, not resume "from where
-              // it stopped", so don't offer Resume. Non-infra pauses keep it.
-              canResume: isInfrastructureInterruption(reason) ? isMidGraphResumable('plan') : true,
+              // plan persists a session as CONTEXT, not as a transcript, and its
+              // runner admits no resumed turn — so an infrastructure interruption
+              // (SIGTERM / crash / sleep) can only restart. Ask the one resume
+              // owner rather than restating the verdict. Non-infra pauses keep it.
+              canResume: isInfrastructureInterruption(reason) ? resumeGranularityOf('plan') !== null : true,
             },
           };
           // Only override conversations when non-empty (preserve existing from prior run)

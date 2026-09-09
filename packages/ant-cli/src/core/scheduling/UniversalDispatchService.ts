@@ -176,8 +176,11 @@ export class UniversalDispatchService {
       jobType: jobType,
       userContext: params.userContext,
       // Universal: finalize locates the per-(agentId, customJobId) session
-      // file for the run-history append via the ref.
+      // file for the run-history append via the ref, and a resume recovers
+      // BOTH the ref and this turn's explicit meta from here — the FE's own
+      // copy names the composer's CURRENT selection, not the paused pair.
       ...(params.customJobRef && { customJobRef: params.customJobRef }),
+      ...(params.universalTurnMeta && { universalTurnMeta: params.universalTurnMeta }),
       ...(params.firedBy && { firedBy: params.firedBy }),
       ...(params.pipelineRunId && { pipelineRunId: params.pipelineRunId }),
       ...(params.pipelineStepId && { pipelineStepId: params.pipelineStepId }),

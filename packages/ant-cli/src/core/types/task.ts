@@ -87,6 +87,15 @@ export interface JobProjectMapping {
   userContext?: UserContext;
   /** Universal only — `{agentId}/{jobId}` of the definition this run executed. */
   customJobRef?: string;
+  /**
+   * Universal only — the turn's explicit `@intent:` / `@ctx:` / `@plan` meta,
+   * stamped beside `customJobRef` so a resume can replay the SAME turn instead
+   * of silently falling back to the default intent. One channel, one JSON (the
+   * universal-runtime rule), and re-validated through the accept funnel on
+   * replay. Gone once the mapping's 24h TTL lapses — a resume that late
+   * resolves by the documented deterministic order instead.
+   */
+  universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
   /** Pipeline attribution — absent on interactive starts. */
   firedBy?: 'user' | 'schedule' | 'chain';
   pipelineRunId?: string;

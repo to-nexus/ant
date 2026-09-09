@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { resumeJob, executeJob } from '@/infrastructure/http/api';
+import { executeJob } from '@/infrastructure/http/api';
+import { useResumeJob } from '@/application/hooks/features/useResumeJob';
 import type { VariantProps, ResolvedIcon } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, JobIdChip } from './shared';
 
@@ -18,6 +19,7 @@ import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, JobIdChip } from 
  */
 export function ResumeConfirmVariant({ presented, resolved }: VariantProps) {
   const { t } = useTranslation('chat');
+  const { resume } = useResumeJob();
   const isRunning = useStore(state => state.isRunning);
   const [loadingAction, setLoadingAction] = useState<'resume' | 'newJob' | null>(null);
 
@@ -40,20 +42,23 @@ export function ResumeConfirmVariant({ presented, resolved }: VariantProps) {
 
     try {
       useStore.getState().setRunning(true, resumeJobId);
-      const result = await resumeJob(resumeJobId, state.selectedProject, state.selectedFeature, true);
+      // The resume owner surfaces refusals. Before, this card showed the user
+      // NOTHING on failure — the click simply rolled back and looked inert.
+      const outcome = await resume(resumeJobId, state.selectedProject, state.selectedFeature);
+      if (!outcome.ok) {
+        useStore.getState().setRunning(false);
+        state.setLocalSelectedChoice(prevChoice);
+        state.setLocalResolvedLabel(prevLabel);
+        return;
+      }
       await state.persistToBackend('resume', t('resumeConfirm.resumed'));
 
-      if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
+      if (outcome.jobType && outcome.jobType !== useStore.getState().selectedJobType) {
         useStore.setState({ jobStartPending: true });
-        useStore.getState().setSelectedJobType(result.jobType);
+        useStore.getState().setSelectedJobType(outcome.jobType);
       }
-      useStore.getState().setRunning(true, result.jobId);
+      useStore.getState().setRunning(true, outcome.jobId);
       useStore.getState().setLastJobFailed(false);
-    } catch (error) {
-      console.error('[ChoiceCard:ResumeConfirm] Resume failed:', error);
-      useStore.getState().setRunning(false);
-      state.setLocalSelectedChoice(prevChoice);
-      state.setLocalResolvedLabel(prevLabel);
     } finally {
       state.setIsLoading(false);
       setLoadingAction(null);

@@ -9,6 +9,16 @@
  *  - /continue clears the marker (explicit consent, mirrors /resume).
  *  - /resume falls back to the superseded-state archive when a later job
  *    took over the live session slot.
+ *
+ * Second axis (universal resume): WHO answers "which definition ref, which
+ * job id" and what a refusal looks like. The client used to answer the first
+ * question — with the composer's current selection, which is not the paused
+ * pair — and three of four call sites did not answer it at all, so the route
+ * fell through to the canonical scan and refused 400. Rows here pin: the ref
+ * is recovered server-side (mapping, then the on-disk scan), the resume
+ * targets the REQUESTED job rather than the previous run's sealed id, a held
+ * lock is a typed retryable 409, and the cancelled card is folded only AFTER
+ * the dispatch actually started.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import http from 'node:http';
@@ -41,6 +51,33 @@ vi.mock('../../src/periphery/adapters/http/express/lifecycle/finalizeTerminalJob
   finalizeTerminalJob: vi.fn(async () => {}),
 }));
 
+// Only the DEFINITION loader is stubbed — `resolveUniversalResumeTarget` stays
+// real, because the ref-recovery order is exactly what these rows pin.
+vi.mock('../../src/core/scheduling/UniversalDispatchGate', async (importOriginal) => {
+  const actual = await importOriginal<any>();
+  return {
+    ...actual,
+    resolveUniversalExecuteContext: vi.fn(async (_r: any, _u: any, _p: any, ref: any) => ({
+      ok: true,
+      containerPath: universalContainerPath,
+      ref: { agentId: String(ref).split('/')[0], jobId: String(ref).split('/')[1] },
+      intentIds: new Set<string>(),
+      declaresSelfApi: false,
+      builtinTools: [],
+      scopeRoots: [],
+      pipelineScopeRoots: [],
+    })),
+    validateUniversalTurnMeta: vi.fn(async () => ({ ok: true, meta: null })),
+  };
+});
+
+vi.mock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
+  getInfrastructureFactory: () => ({
+    getJobQueue: () => ({ isJobLockFresh: async () => lockFresh }),
+    getCreditLedger: () => ({ getBalance: async () => ({ credits: 1e9 }) }),
+  }),
+}));
+
 import { createJobRoutes } from '../../src/periphery/adapters/http/routes/job.routes';
 import { assertJobAccess } from '../../src/periphery/adapters/http/routes/helpers/jobAccess';
 import { finalizeTerminalJob } from '../../src/periphery/adapters/http/express/lifecycle/finalizeTerminalJob';
@@ -48,11 +85,19 @@ import { archiveSupersededState } from '../../src/core/session/archive';
 
 let featurePath: string;
 let jobStatus: any = null;
+let jobMapping: any = null;
+let lockFresh = false;
+/** The enclosing project dir. Must be per-test: the universal plane hangs off
+ *  it, and deriving it from `dirname(featurePath)` put it in the shared
+ *  os.tmpdir(), so one test's session file leaked into the next one's scan. */
+let projectPath = '';
+let universalContainerPath = '';
 
 const fakeDeps: any = {
   workspaceResolver: {
     getFeaturePath: () => featurePath,
-    getProjectPath: () => path.dirname(featurePath),
+    getProjectPath: () => projectPath,
+    getUniversalContainerPath: () => universalContainerPath,
   },
   executeJob: vi.fn(async (params: any) => ({ jobId: params.jobId })),
   cleanupJobState: vi.fn(async () => {}),
@@ -60,9 +105,11 @@ const fakeDeps: any = {
   chatService: {
     resolveAllCancelledForJob: vi.fn(async () => 1),
     appendAssistantMessage: vi.fn(async () => {}),
+    findInterruptedTurn: vi.fn(async () => ({ turnId: 'turn-orig', text: 'the interrupted instruction' })),
   },
   stateStore: {
     getJobStatus: vi.fn(async () => jobStatus),
+    getJobMapping: vi.fn(async () => jobMapping),
     releaseLock: vi.fn(async () => {}),
     acquireLock: vi.fn(async () => true),
     publish: vi.fn(async () => {}),
@@ -103,8 +150,25 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   jobStatus = null;
-  featurePath = fs.mkdtempSync(path.join(os.tmpdir(), 'dismiss-route-'));
+  jobMapping = null;
+  lockFresh = false;
+  projectPath = fs.mkdtempSync(path.join(os.tmpdir(), 'dismiss-route-'));
+  featurePath = path.join(projectPath, 'features', 'f1');
+  fs.mkdirSync(featurePath, { recursive: true });
+  universalContainerPath = path.join(projectPath, 'universal');
 });
+
+/** Make the enclosing project a workspace (universal) project on disk. */
+function makeUniversalProject() {
+  fs.writeFileSync(path.join(projectPath, 'config.json'), JSON.stringify({ projectType: 'universal' }));
+}
+
+/** A sealed universal session for `{agentId}/{customJobId}`. */
+function writeUniversalSession(agentId: string, customJobId: string, state: Record<string, any>) {
+  const dir = path.join(universalContainerPath, 'sessions', agentId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${customJobId}.json`), JSON.stringify({ runs: [], state }, null, 2));
+}
 
 async function post(route: string, body: Record<string, unknown>) {
   return fetch(`${baseUrl}${route}`, {
@@ -234,5 +298,122 @@ describe('POST /jobs/:jobId/resume — archive fallback (icy-landing-glade)', ()
     writeCodeSession({ jobId: 'new-job', taskQueue: [], completedTasks: ['x'] });
     const res = await post('/jobs/ghost/resume', { projectId: 'p1', featureName: 'f1' });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /jobs/:jobId/resume — universal: the server owns the resume target', () => {
+  it('routes by project type and recovers the ref from the job mapping — no ref in the body', async () => {
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author' };
+    writeUniversalSession('agent-builder', 'author', { jobId: 'previous-run' });
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(200);
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({
+      jobType: 'universal',
+      customJobRef: 'agent-builder/author',
+      isResume: true,
+    }));
+  });
+
+  it('falls back to the on-disk session scan when the mapping has expired', async () => {
+    makeUniversalProject();
+    jobMapping = null; // 24h TTL lapsed
+    writeUniversalSession('agent-builder', 'author', { jobId: 'crashed-run' });
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(200);
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({
+      customJobRef: 'agent-builder/author',
+    }));
+  });
+
+  it('resumes the REQUESTED job, not the previous run sealed in state.jobId', async () => {
+    // `state.jobId` is written by the end-of-turn seal, so after a crash it
+    // names the run BEFORE the interrupted one. Resuming under it re-queued an
+    // already-sealed id and left the crashed job paused forever.
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author' };
+    writeUniversalSession('agent-builder', 'author', { jobId: 'previous-run' });
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).jobId).toBe('crashed-run');
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'crashed-run' }));
+  });
+
+  it('re-dispatches the interrupted instruction under its original turn anchor', async () => {
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author' };
+    writeUniversalSession('agent-builder', 'author', { jobId: 'crashed-run' });
+
+    await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({
+      overrideDirective: 'the interrupted instruction',
+      seedTurnId: 'turn-orig',
+    }));
+  });
+
+  it('resumes a FIRST-turn crash that sealed no session at all', async () => {
+    // The old branch required the session file to exist, so a job killed
+    // before its first seal was permanently unresumable.
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author' };
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(200);
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({
+      overrideDirective: 'the interrupted instruction',
+    }));
+  });
+
+  it('folds the cancelled card only AFTER the dispatch started', async () => {
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author' };
+    writeUniversalSession('agent-builder', 'author', { jobId: 'crashed-run' });
+
+    await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(fakeDeps.chatService.resolveAllCancelledForJob).toHaveBeenCalledWith(
+      'p1', 'universal', 'crashed-run', expect.objectContaining({ choiceSelected: 'resume' }),
+    );
+  });
+});
+
+describe('POST /jobs/:jobId/resume — refusals are typed, never silent', () => {
+  it('409 job-lock-active while a worker still holds the lock, before any side effect', async () => {
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author' };
+    lockFresh = true;
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(409);
+    expect((await res.json() as any).code).toBe('job-lock-active');
+    expect(fakeDeps.executeJob).not.toHaveBeenCalled();
+    // The "Resumed" badge is a claim about work that started.
+    expect(fakeDeps.chatService.resolveAllCancelledForJob).not.toHaveBeenCalled();
+  });
+
+  it('409 universal-resume-ref-unresolvable when neither the mapping nor disk knows the job', async () => {
+    makeUniversalProject();
+    jobMapping = null;
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(409);
+    const body = await res.json() as any;
+    expect(body.code).toBe('universal-resume-ref-unresolvable');
+    // A code the client can branch on, and a message it can show.
+    expect(typeof body.message).toBe('string');
+    expect(fakeDeps.executeJob).not.toHaveBeenCalled();
+  });
+
+  it('409 universal-resume-no-turn when there is neither a session nor a recoverable directive', async () => {
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author' };
+    fakeDeps.chatService.findInterruptedTurn.mockResolvedValueOnce(null);
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(409);
+    expect((await res.json() as any).code).toBe('universal-resume-no-turn');
+    expect(fakeDeps.executeJob).not.toHaveBeenCalled();
   });
 });

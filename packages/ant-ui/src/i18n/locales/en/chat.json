@@ -295,7 +295,8 @@
       "storing": "Storage",
       "listing_files": "File Listing",
       "searching_code": "Code Search"
-    }
+    },
+    "rerunTurn": "Re-run the request"
   },
   "banner": {
     "pipelineWorking": "working",
@@ -381,5 +382,12 @@
   },
   "toolAction": {
     "openAgentSettings": "Open agent settings"
+  },
+  "resume": {
+    "errors": {
+      "job-lock-active": "This job is still finishing up. Wait a moment and try again.",
+      "universal-resume-ref-unresolvable": "This job's record has expired, so it can no longer be resumed. Send the request again as a new job.",
+      "universal-resume-no-turn": "Nothing was left to resume — neither the saved conversation nor the interrupted request could be recovered. Send it again."
+    }
   }
 }

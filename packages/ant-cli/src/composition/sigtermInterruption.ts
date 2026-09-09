@@ -51,7 +51,7 @@ export async function resolveKillReason(
  * `user_stopped` is a terminal (finalize) path with its own semantics. Every
  * other SIGTERM kill reason is an infrastructure interruption, so its
  * `canResume` MUST come from the single owner (`buildInfrastructureInterruption`)
- * which gates on `isMidGraphResumable(jobType)` — otherwise plan/visual jobs
+ * which gates on `resumeGranularityOf(jobType)` — otherwise plan/visual jobs
  * would surface a false "resume" affordance after a server_shutdown / crash.
  */
 export function buildSigtermInterruption(

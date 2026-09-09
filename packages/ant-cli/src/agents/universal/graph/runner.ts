@@ -17,6 +17,7 @@ import { buildUniversalGraph } from './graph';
 import { createInitialUniversalState, inheritedClarifyRounds, parseSealedTurnContext, type InheritedTurnContext, type UniversalGraphState } from './state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph/conversations';
 import { buildUniversalErrorSealState } from './session/sealConversation';
+import { isTurnAlreadyOpened } from './session/historyProjection';
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
@@ -27,6 +28,7 @@ import { carriedSealChannels, universalConversationChannel } from '../../../core
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
 import { buildUniversalRegistry, setUniversalMcp } from './runtime';
+import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../composition/gracefulShutdown';
 
 export interface UniversalRunnerParams {
   /** The user's message for this run (overrideDirective / input). */
@@ -176,16 +178,25 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         console.warn(`⚠️ [Universal] Healing a dangling tool_use ${danglingOther.toolUseId} (${danglingOther.name})`);
         main.push(buildToolResultTurn(danglingOther.toolUseId, danglingOther.name, '(not executed — the pending call was superseded; a new instruction follows)') as ConversationMessage);
       }
-      // Turn-opening stamp: a stable identity for read_state scope='history'.
-      // Adapter wire mapping rebuilds {role, content} only, so the stamp never
-      // reaches the LLM (prompt-cache safe); legacy unstamped turns fall back
-      // to synthesized indices in the history projection.
-      main.push({
-        role: 'user',
-        content: params.input,
-        timestamp: new Date().toISOString(),
-        metadata: params._httpJobId ? { jobId: params._httpJobId } : undefined,
-      });
+      // Already there? A resume re-dispatches the interrupted directive, and a
+      // shutdown seal may have already persisted that same turn — stamped with
+      // THIS jobId, because a resume keeps the job's id. Appending it again
+      // would show the user their request twice and feed the model a duplicate.
+      // Keyed on the stamp this very block writes, never on comparing text.
+      if (isTurnAlreadyOpened(main, params._httpJobId)) {
+        console.log('♻️ [Universal] Turn already in the transcript — continuing it rather than re-opening');
+      } else {
+        // Turn-opening stamp: a stable identity for read_state scope='history'.
+        // Adapter wire mapping rebuilds {role, content} only, so the stamp never
+        // reaches the LLM (prompt-cache safe); legacy unstamped turns fall back
+        // to synthesized indices in the history projection.
+        main.push({
+          role: 'user',
+          content: params.input,
+          timestamp: new Date().toISOString(),
+          metadata: params._httpJobId ? { jobId: params._httpJobId } : undefined,
+        });
+      }
     }
   } else if (main.length === 0) {
     throw new Error('[Universal] Empty input on a fresh session — nothing to do');
@@ -286,6 +297,52 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   const chatAPI = getChatAPIClient();
   let finalState: UniversalGraphState;
 
+  /**
+   * The turn's own state, sealed as it stood when the graph started.
+   *
+   * `main` already carries the interrupted user turn (the runner pushed it
+   * above, stamped with this jobId), so persisting it is what makes the turn
+   * resumable: the resume route re-dispatches the recovered directive, and the
+   * runner's turn admission sees the stamp and does NOT append it twice.
+   *
+   * The IN-GRAPH conversation is deliberately not reachable here: `invokeGraph`
+   * uses `.invoke()`, so intermediate states are unobservable, and a mutable
+   * side-channel written from phase nodes would teach the universal graph
+   * about its own persistence. The pre-graph snapshot is the honest part.
+   */
+  const sealTurnState = () => buildUniversalErrorSealState({
+    main,
+    customJobRef: `${resolved.agentId}/${resolved.jobId}`,
+    restoredClarifyRounds,
+    restoredChecklist,
+    sessionChannel,
+    carriedChannels,
+  });
+
+  // Graceful-shutdown seal. The registry takes anything shaped like
+  // `{ handleInterruption(reason) }` — the task orchestrator is just its usual
+  // occupant — so universal needs no second mechanism. Without this a planned
+  // restart (SIGTERM) sealed NOTHING for a universal job: `respond` never ran,
+  // so the turn vanished and the next start reloaded the previous seal.
+  registerActiveOrchestrator({
+    handleInterruption: async (reason: string) => {
+      if (!params.deps.session) return;
+      try {
+        await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
+          state: sealTurnState(),
+        });
+        console.log(`💾 [Universal] Turn sealed on shutdown (reason: ${reason})`);
+      } catch (e) {
+        // Loud, never silent: this is the write that decides whether the turn
+        // survives, and the 1800ms shutdown race can cut it short.
+        console.error(
+          `🚨 [Universal] Shutdown seal FAILED (reason: ${reason}) — the interrupted turn may resume from the previous seal:`,
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+    },
+  });
+
   try {
     finalState = await invokeGraph(buildUniversalGraph(), initialState, recursionLimit) as UniversalGraphState;
   } catch (error: any) {
@@ -308,14 +365,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         // NOTE: this save can never contain a dangling clarify tool_use —
         // `main` is the pre-graph history; only respond's seal persists one.
         await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
-          state: buildUniversalErrorSealState({
-            main,
-            customJobRef: `${resolved.agentId}/${resolved.jobId}`,
-            restoredClarifyRounds,
-            restoredChecklist,
-            sessionChannel,
-            carriedChannels,
-          }),
+          state: sealTurnState(),
         });
       } catch (e) {
         if ((e as any)?.code === 'SESSION_WRITE_TOO_LARGE') {
@@ -327,6 +377,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
 
     throw error;
   } finally {
+    unregisterActiveOrchestrator();
     if (mcp) {
       await mcp.close();
       setUniversalMcp(null);

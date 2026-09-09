@@ -914,6 +914,11 @@ export function selectResumeFallbackCard(
       jobId,
       reason: interruption.reason,
       originalType: jobType,
+      // Copy the BE verdict rather than letting the card re-derive it — this
+      // synthesizer and the durable emitter must present the SAME answer, or
+      // the two become two answer sources for one question.
+      canResume: true,
+      ...(interruption.resumeGranularity && { resumeGranularity: interruption.resumeGranularity }),
     },
   };
 }

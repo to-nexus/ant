@@ -104,11 +104,33 @@ async function readActiveJobIdsFromSessions(
       } catch (err) {
         if (err instanceof SessionTooLargeError) {
           indeterminate = true;
-          logger.warn(
-            `[debugRetention] session over budget; skipping prune for this feature`,
-            { component: 'debugRetention' },
-            { sessionPath, size: err.size, limit: err.limit },
-          );
+          // An over-budget session is TERMINAL without this: every reader
+          // refuses it, so the feature's job history and resume are gone and
+          // this warning repeats once a minute forever. Nothing else notices,
+          // so the sweep repairs it — shedding history back under the budget,
+          // never deleting the file (see `repairOversizedSession`).
+          const { repairOversizedSession } = await import('../session/stateBudget');
+          const repair = await repairOversizedSession(sessionPath).catch((e) => {
+            logger.warn(
+              `session over budget and the repair itself failed`,
+              { component: 'debugRetention' },
+              { sessionPath, error: e instanceof Error ? e.message : String(e) },
+            );
+            return null;
+          });
+          if (repair?.status === 'repaired') {
+            logger.warn(
+              `session was over budget — shed history to fit; prune skipped this tick`,
+              { component: 'debugRetention' },
+              { sessionPath, bytesBefore: repair.bytesBefore, bytesAfter: repair.bytesAfter, shed: repair.shed },
+            );
+          } else if (repair) {
+            logger.warn(
+              `session over budget and UNREPAIRABLE; skipping prune for this feature`,
+              { component: 'debugRetention' },
+              { sessionPath, size: err.size, limit: err.limit, reason: repair.status === 'unrepairable' ? repair.reason : repair.status },
+            );
+          }
           return;
         }
         // parse error — treat as no active job
@@ -131,7 +153,7 @@ async function readActiveJobIdsFromRedis(
     }
   } catch (err) {
     logger.warn(
-      `[debugRetention] Redis active-job lookup failed (continuing with sessions only)`,
+      `Redis active-job lookup failed (continuing with sessions only)`,
       { component: 'debugRetention' },
       err,
     );
@@ -189,7 +211,7 @@ async function pruneSubdir(
         stats.removed += 1;
       } catch (err) {
         logger.warn(
-          `[debugRetention] Failed to unlink debug file: ${f.name}`,
+          `Failed to unlink debug file: ${f.name}`,
           { component: 'debugRetention' },
           err,
         );
@@ -238,7 +260,7 @@ export async function pruneDebugArtifacts(
 
   if (aggregate.removed > 0) {
     logger.info(
-      `[debugRetention] pruned ${aggregate.removed} files (kept=${aggregate.kept}, active=${aggregate.protectedActive}) under ${featurePath}`,
+      `pruned ${aggregate.removed} files (kept=${aggregate.kept}, active=${aggregate.protectedActive}) under ${featurePath}`,
       { component: 'debugRetention' },
     );
   }

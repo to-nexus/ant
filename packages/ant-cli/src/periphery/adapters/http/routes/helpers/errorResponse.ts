@@ -43,3 +43,27 @@ export function sendErrorResponse(
     correlationId,
   });
 }
+
+/**
+ * Send a DECIDED refusal — a verdict this route reached on purpose, as opposed
+ * to an unexpected throw.
+ *
+ * `sendErrorResponse` is the wrong shape for these: its envelope carries no
+ * `code` and is genericised to "An internal error occurred." in production, so
+ * a client cannot tell one refusal from another and the user is shown nothing
+ * actionable. That is how a resume that the server refused on purpose became a
+ * button that visibly did nothing. Same contract as `refuseMultipartError`:
+ * a typed `{ code, error, message }` with an explicit status.
+ *
+ * Anything unexpected still goes to `sendErrorResponse` — this is for verdicts,
+ * not for surprises.
+ */
+export function sendRefusal(
+  res: Response,
+  refusal: { status: number; code: string; error: string; message?: string; [k: string]: unknown },
+  context: string,
+): void {
+  const { status, code, error, message, ...extra } = refusal;
+  logger.info(`[${context}] refused (${status}) ${code}: ${error}`, { component: context });
+  res.status(status).json({ code, error, message: message ?? error, ...extra });
+}

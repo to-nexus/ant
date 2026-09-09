@@ -176,6 +176,17 @@ export class SessionService {
         
         return JSON.parse(content);
       } catch (error) {
+        // Over budget is a DETERMINISTIC refusal, not an EFS propagation blip:
+        // the size will not change while we sleep. Retrying it burned 7.5s of
+        // wall clock per call and then reported "no session", which reads as
+        // "this feature has no state" instead of "this file is too large".
+        if (error instanceof SessionTooLargeError) {
+          console.error(
+            `[Session] Session file is over the read budget — refusing (not a transient error): ${sessionPath}`,
+            { size: error.size, limit: error.limit },
+          );
+          return null;
+        }
         if (attempt < MAX_RETRIES) {
           const delay = BASE_DELAY_MS * Math.pow(2, attempt);
           console.warn(`[Session] Error reading session file, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES}):`, 

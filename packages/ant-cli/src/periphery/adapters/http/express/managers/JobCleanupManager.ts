@@ -643,6 +643,12 @@ export class JobCleanupManager {
               message: cardInterruption.message,
               jobType: jobType as any,
               designErrorType: (cardInterruption.metadata as any)?.designErrorType,
+              // The durable card carries the BE's resume verdict and (for
+              // universal) which agent job it belongs to. Both are already in
+              // scope here; without them the FE has to guess from `reason`.
+              canResume: cardInterruption.canResume,
+              resumeGranularity: cardInterruption.resumeGranularity,
+              customJobRef: mapping.customJobRef,
               userContext: effectiveUserContext,
             },
           );

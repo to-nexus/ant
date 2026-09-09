@@ -545,6 +545,15 @@ debugging session.
   `config_invalid`, never `process_crash`.
 - Phase-node blindness applies here too: the universal graph must not learn
   `task.type` or execution tiers — it has neither.
+- **Universal's leftover work is an unsealed TURN, not a task queue.** Resume
+  re-runs the interrupted instruction on the saved transcript, so `canResume`
+  and its KIND come from one owner — `resumeGranularityOf`
+  (`mid-graph` | `turn` | `null`) — and `isMidGraphResumable` keeps its narrow
+  "a checkpoint exists" meaning. The resume request carries NO definition ref:
+  `resolveUniversalResumeTarget` recovers it from the job's own durable records,
+  because a client-held ref names the composer's current selection rather than
+  the paused pair. Never word a `turn` resume as continuing from where it
+  stopped, and never let a decided refusal reach the client as a code-less 500.
 
 ```bash
 rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0
@@ -556,9 +565,13 @@ rg -n "'_agents'|'_pipelines'" packages/ant-cli/src packages/ant-ui/src  # Expec
 # The pin is one rule, mounted whole-surface on each cookie/bearer server — never re-judged per route.
 rg -n "createSelfApiScopeGuard\(" packages/ant-cli/src                              # Expected: 3 (definition + api mount + realtime mount)
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0
+# The resume verdict has ONE owner; nobody re-derives it from the job type.
+rg -n "isMidGraphResumable\(" packages/ant-cli/src packages/ant-shared/src          # Expected: 2 (the definition + its ONE call, inside resumeGranularityOf)
 ```
 
-Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-container,universal-tool-policy,universal-prompt-injection,universal-checklist,universal-turn-context,universal-mcp-runtime,mcp-credential-store}.test.ts`.
+Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-container,universal-tool-policy,universal-prompt-injection,universal-checklist,universal-turn-context,universal-mcp-runtime,mcp-credential-store}.test.ts`,
+`tests/lifecycle/dismiss-route-branches.test.ts` (resume routing + typed refusals),
+`tests/composition/sigterm-interruption.test.ts` (the granularity table).
 Full rationale: [`docs/internals/44-universal-job.md`](docs/internals/44-universal-job.md);
 MCP orchestration & capability-server contract:
 [`docs/internals/45-mcp-orchestration.md`](docs/internals/45-mcp-orchestration.md).

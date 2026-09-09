@@ -53,8 +53,39 @@ describe('buildSigtermInterruption', () => {
     expect(r.message).toBe('Server is shutting down. You can resume this job.');
   });
 
-  it('gates canResume via the single owner — plan is not mid-graph resumable', () => {
+  it('gates canResume via the single owner — plan/visual can only restart', () => {
     expect(buildSigtermInterruption('server_shutdown', 'plan').canResume).toBe(false);
+    expect(buildSigtermInterruption('server_shutdown', 'visual').canResume).toBe(false);
+  });
+
+  // The resume verdict and the resume KIND are one decision. universal has no
+  // task-queue checkpoint, but its session IS the provider transcript and the
+  // interrupted directive is on the durable chat log — so it resumes at TURN
+  // granularity. Answering `canResume:false` for it (the old shape, which read
+  // `isMidGraphResumable` alone) left a shipped Resume affordance with nothing
+  // behind it.
+  it('reports turn granularity for universal and mid-graph for the task jobs', () => {
+    const uni = buildSigtermInterruption('server_shutdown', 'universal');
+    expect(uni.canResume).toBe(true);
+    expect(uni.resumeGranularity).toBe('turn');
+
+    for (const jobType of ['code', 'design', 'learn']) {
+      const r = buildSigtermInterruption('server_shutdown', jobType);
+      expect(r.canResume).toBe(true);
+      expect(r.resumeGranularity).toBe('mid-graph');
+    }
+
+    for (const jobType of ['plan', 'visual']) {
+      expect(buildSigtermInterruption('server_shutdown', jobType).resumeGranularity).toBeUndefined();
+    }
+  });
+
+  it('never words a turn-level resume as continuing from where it stopped', () => {
+    const uni = buildSigtermInterruption('server_crash', 'universal');
+    expect(uni.message).not.toContain('from where');
+    expect(uni.message).toContain('re-runs the interrupted instruction');
+    // …and the mid-graph wording stays what it was.
+    expect(buildSigtermInterruption('server_crash', 'code').message).toContain('You can resume this job.');
   });
 
   it('routes user_stopped to the terminal finalize payload', () => {

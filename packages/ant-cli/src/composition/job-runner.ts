@@ -45,7 +45,7 @@ import { registerChatLogLock } from '../periphery/adapters/session/FileSessionAd
 import { buildRedisTlsOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
 import { resolveKillReason, buildSigtermInterruption } from './sigtermInterruption';
-import { buildInfrastructureInterruption, isMidGraphResumable } from '@ant/shared';
+import { buildInfrastructureInterruption, resumeGranularityOf } from '@ant/shared';
 import { isPromptTooLongError, isProviderUnreachableError } from '../core/utils/apiErrorClassify';
 import { toNfc } from '../core/utils/unicodePath';
 import { isLlmAuthError } from '../core/llm/isLlmAuthError';
@@ -341,6 +341,7 @@ async function runJob(params: JobParams): Promise<void> {
     // can unwind from any single-shot node (ask/plan/detect/decompose/execute).
     const authFailure = isLlmAuthError(error);
     const promptTooLong = isPromptTooLongError(error);
+    const resumeGranularity = resumeGranularityOf(params.jobType);
     const interruption: InterruptionDetails = authFailure.isAuth
       ? {
           reason: 'llm_auth_failed' as InterruptionReason,
@@ -374,7 +375,9 @@ async function runJob(params: JobParams): Promise<void> {
       // The call never reached the provider (DNS / refused / reset). External
       // and transient — not this job's process crashing, which is what
       // `process_crash` says and what the card then shows. Resume stays with
-      // its own owner: only a mid-graph checkpointing job can take one.
+      // its own owner (`resumeGranularityOf`): a checkpointing job resumes
+      // mid-graph, a universal one re-runs the interrupted turn, plan/visual
+      // cannot resume at all.
       : isProviderUnreachableError(error)
       ? {
           reason: 'api_error' as InterruptionReason,
@@ -382,7 +385,8 @@ async function runJob(params: JobParams): Promise<void> {
             'Could not reach the LLM provider — the request failed before it arrived ' +
             '(network or DNS). Check connectivity, then run the job again.',
           timestamp: new Date().toISOString(),
-          canResume: isMidGraphResumable(params.jobType),
+          canResume: resumeGranularity !== null,
+          ...(resumeGranularity && { resumeGranularity }),
         }
       : {
           // Infra crash — jobType-gated canResume via the single owner

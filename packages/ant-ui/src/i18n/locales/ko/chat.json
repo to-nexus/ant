@@ -295,7 +295,8 @@
       "storing": "저장",
       "listing_files": "파일 목록",
       "searching_code": "코드 검색"
-    }
+    },
+    "rerunTurn": "요청 다시 실행"
   },
   "banner": {
     "pipelineWorking": "작업 중",
@@ -381,5 +382,12 @@
   },
   "toolAction": {
     "openAgentSettings": "에이전트 설정 열기"
+  },
+  "resume": {
+    "errors": {
+      "job-lock-active": "아직 이전 작업이 정리되는 중입니다. 잠시 후 다시 시도해 주세요.",
+      "universal-resume-ref-unresolvable": "이 작업의 기록이 만료되어 재개할 수 없습니다. 요청을 새 작업으로 다시 보내주세요.",
+      "universal-resume-no-turn": "재개할 것이 남아 있지 않습니다 — 저장된 대화도, 중단된 요청도 복구되지 않았습니다. 다시 보내주세요."
+    }
   }
 }

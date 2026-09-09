@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { INTENT_DEFINITIONS, getIntentLabel, type Domain } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
+import { useResumeJob } from '@/application/hooks/features/useResumeJob';
 import { submitTriageChoice, TriageChoiceAction } from '@/infrastructure/http/api';
 import type { VariantProps } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, VerticalChoiceLayout } from './shared';
@@ -15,6 +16,7 @@ interface TriageChoiceOptions {
 
 export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
   const { runJob } = useJobExecution();
+  const { resume } = useResumeJob();
   const { i18n, t } = useTranslation();
   const [loadingAction, setLoadingAction] = useState<'positive' | 'neutral' | null>(null);
 
@@ -94,22 +96,21 @@ export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
         // /jobs/:id/resume clears any dismissed marker and folds the cancelled
         // cards to "Resumed" via SSE.
         state.setLocalResolvedLabel(t('chat:resumeConfirm.resumed'));
-        const { resumeJob } = await import('@/infrastructure/http/api');
         useStore.getState().setRunning(true, response.resumeJobId);
-        try {
-          const result = await resumeJob(
-            response.resumeJobId, state.selectedProject, state.selectedFeature, true,
-          );
-          if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
-            useStore.setState({ jobStartPending: true });
-            useStore.getState().setSelectedJobType(result.jobType);
-          }
-          useStore.getState().setRunning(true, result.jobId);
-        } catch (resumeError) {
-          console.error('[ChoiceCard:Triage] Resume failed:', resumeError);
+        // Through the resume owner: it surfaces the refusal, so a rejected
+        // resume tells the user why instead of only reaching the console.
+        const outcome = await resume(
+          response.resumeJobId, state.selectedProject, state.selectedFeature,
+        );
+        if (!outcome.ok) {
           useStore.getState().setRunning(false);
-          throw resumeError;
+          return;
         }
+        if (outcome.jobType && outcome.jobType !== useStore.getState().selectedJobType) {
+          useStore.setState({ jobStartPending: true });
+          useStore.getState().setSelectedJobType(outcome.jobType);
+        }
+        useStore.getState().setRunning(true, outcome.jobId);
       }
 
       if (response.type === 'continue' && response.action === 'proceedAnyway') {

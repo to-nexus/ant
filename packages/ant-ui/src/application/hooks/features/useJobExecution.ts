@@ -12,14 +12,12 @@
  */
 
 import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
-import { formatCustomJobRef } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectPausedNonTaskJob, selectUniversalExecuteContext } from '@/domain/store/selectors';
-import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition, dismissInterruptedJob } from '@/infrastructure/http/api';
+import { stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition, dismissInterruptedJob } from '@/infrastructure/http/api';
+import { useResumeJob } from './useResumeJob';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { ApiError } from '@/infrastructure/http/api/client';
-import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 /** True when an error is a 402 credit block from a job start/resume. */
 function isCreditBlock(error: unknown): boolean {
@@ -27,8 +25,7 @@ function isCreditBlock(error: unknown): boolean {
 }
 
 export function useJobExecution() {
-  const { showError } = useAlertModalContext();
-  const { t } = useTranslation('chat');
+  const { resume } = useResumeJob();
   const setRunning = useStore((state) => state.setRunning);
   const setStopping = useStore((state) => state.setStopping);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
@@ -114,65 +111,49 @@ export function useJobExecution() {
     }
     // ✅ Resume existing job (jobId exists + interruption that wasn't dismissed + not a redirect)
     else if (currentJobId && hasInterruption) {
-      try {
-        // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
-        // This prevents SSE initial state from auto-stopping the job
-        if (kanbanData?.interruption?.timestamp) {
-          useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-        }
-
-        // Phase 10 chat-SSOT — the cancelled card's "Resumed" badge
-        // arrives as a `choice_resolved` SSE line emitted by the BE
-        // `/jobs/:id/resume` route (chatService.resolveAllCancelledForJob).
-        // The FE projector folds it into the card automatically — no
-        // direct chat-message mutation needed here.
-
-        // ✅ Set running state immediately
-        setRunning(true, currentJobId);
-
-        // Universal runtime — resuming a custom job must ride the universal
-        // path on the BE, keyed by customJobRef.
-        const {
-          projectType,
-          selectedCustomAgentId,
-          selectedCustomJobId,
-        } = useStore.getState();
-        const universalResume =
-          projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId
-            ? {
-                customJobRef: formatCustomJobRef({ agentId: selectedCustomAgentId, jobId: selectedCustomJobId }),
-              }
-            : undefined;
-
-        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true, universalResume);
-        
-        // ✅ Restore correct jobType from server (interrupted job may differ from current UI mode)
-        // Invariant I4 — but a clarify-paused non-task job (plan / visual)
-        // takes priority. Without this guard, resuming an unrelated code
-        // job would silently flip selectedJobType away from the paused
-        // plan, hijacking the next clarify answer (zonal-dreaming-novel).
-        const pausedNonTask = selectPausedNonTaskJob(useStore.getState());
-        if (pausedNonTask && pausedNonTask.jobType !== result.jobType) {
-          console.log(
-            `[useJobExecution] 🛡️ Skipping setSelectedJobType('${result.jobType}') — paused ${pausedNonTask.jobType} job ${pausedNonTask.jobId} is the active conversation`,
-          );
-        } else if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
-          useStore.setState({ jobStartPending: true });
-          useStore.getState().setSelectedJobType(result.jobType);
-        }
-        
-        // ✅ Update with new jobId from server
-        setRunning(true, result.jobId);
-      } catch (error) {
-        console.error('[useJobExecution] Failed to resume job:', error);
-        console.error('[useJobExecution] Error details:', error);
-        setRunning(false);
-        if (isCreditBlock(error)) {
-          useStore.getState().setCreditBlockActive?.(true);
-        } else {
-          showError(t('card.resumeFailed', { message: error instanceof Error ? error.message : t('common:error.unknown') }));
-        }
+      // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
+      // This prevents SSE initial state from auto-stopping the job
+      const prevDismissed = useStore.getState().dismissedInterruptTimestamp;
+      if (kanbanData?.interruption?.timestamp) {
+        useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
       }
+
+      // Phase 10 chat-SSOT — the cancelled card's "Resumed" badge
+      // arrives as a `choice_resolved` SSE line emitted by the BE
+      // `/jobs/:id/resume` route (chatService.resolveAllCancelledForJob).
+      // The FE projector folds it into the card automatically — no
+      // direct chat-message mutation needed here.
+
+      // ✅ Set running state immediately
+      setRunning(true, currentJobId);
+
+      // The definition ref for a universal job is the SERVER'S to recover —
+      // this hook used to send the composer's current selection, which names
+      // a different (agent, job) pair than the paused job after any reload.
+      const outcome = await resume(currentJobId, selectedProject, selectedFeature!);
+      if (!outcome.ok) {
+        setRunning(false);
+        useStore.getState().setDismissedInterruptTimestamp(prevDismissed);
+        return undefined;
+      }
+
+      // ✅ Restore correct jobType from server (interrupted job may differ from current UI mode)
+      // Invariant I4 — but a clarify-paused non-task job (plan / visual)
+      // takes priority. Without this guard, resuming an unrelated code
+      // job would silently flip selectedJobType away from the paused
+      // plan, hijacking the next clarify answer (zonal-dreaming-novel).
+      const pausedNonTask = selectPausedNonTaskJob(useStore.getState());
+      if (pausedNonTask && pausedNonTask.jobType !== outcome.jobType) {
+        console.log(
+          `[useJobExecution] 🛡️ Skipping setSelectedJobType('${outcome.jobType}') — paused ${pausedNonTask.jobType} job ${pausedNonTask.jobId} is the active conversation`,
+        );
+      } else if (outcome.jobType && outcome.jobType !== useStore.getState().selectedJobType) {
+        useStore.setState({ jobStartPending: true });
+        useStore.getState().setSelectedJobType(outcome.jobType);
+      }
+
+      // ✅ Update with new jobId from server
+      setRunning(true, outcome.jobId);
       return undefined;
     }
 
@@ -292,7 +273,7 @@ export function useJobExecution() {
       resolveJobId(undefined);
       return undefined;
     }
-  }, [setRunning, setStopping, setCurrentJob, setSession, refreshFileTree]);
+  }, [setRunning, setStopping, setCurrentJob, setSession, refreshFileTree, resume]);
 
   /**
    * Stop Job - Stop running job

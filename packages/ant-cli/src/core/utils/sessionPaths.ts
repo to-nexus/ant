@@ -119,6 +119,18 @@ export function isReservedSessionRelativePath(relativePath: string): boolean {
 export const SESSION_MAX_BYTES = 8 * 1024 * 1024;
 
 /**
+ * How far past {@link SESSION_MAX_BYTES} a REPAIR may still read a session.
+ *
+ * A file over the budget is refused by every reader and, because each writer's
+ * read-modify-write starts with one of those refusals, can be neither read nor
+ * rewritten — the feature's history and resume die with it. Repair needs to
+ * read it once to shed it back under the budget, so it gets its own bound
+ * rather than an unbounded read (which is the sink the budget exists to
+ * close). Past this ceiling the file is set aside instead of repaired.
+ */
+export const SESSION_REPAIR_MAX_BYTES = SESSION_MAX_BYTES * 4;
+
+/**
  * Largest window a JSONL log reader may materialise, and the ceiling on how many
  * lines it will parse out of that window.
  *
@@ -303,6 +315,40 @@ export async function readSessionTextContained(absPath: string): Promise<string 
     return read.text;
   }
   return readSessionTextBoundedAsync(absPath);
+}
+
+/**
+ * Read an OVER-BUDGET session for repair, bounded at
+ * {@link SESSION_REPAIR_MAX_BYTES}.
+ *
+ * Lives here rather than at the repair site because this module is the single
+ * owner of session-read bounds — a caller that stats and compares for itself
+ * is how the seam drifted into four near-copies once already. Returns a
+ * discriminated result instead of throwing: "too large to even repair" is an
+ * ordinary outcome for the caller, not an exception.
+ */
+export async function readSessionTextForRepair(
+  sessionFilePath: string,
+): Promise<
+  | { status: 'ok'; text: string; size: number }
+  | { status: 'missing' }
+  | { status: 'too-large'; size: number }
+> {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(sessionFilePath, 'r');
+  } catch {
+    return { status: 'missing' };
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) return { status: 'missing' };
+    const size = Number(stat.size);
+    if (size > SESSION_REPAIR_MAX_BYTES) return { status: 'too-large', size };
+    return { status: 'ok', text: await handle.readFile('utf-8'), size };
+  } finally {
+    await handle.close();
+  }
 }
 
 /** Thrown by the bounded session readers when a session file exceeds the budget. */

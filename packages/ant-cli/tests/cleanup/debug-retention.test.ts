@@ -3,6 +3,11 @@
  *
  * Locks the 3-source active-job protection (sessions union ∪ Redis
  * active jobs ∪ mtime <1h) plus the age and count cutoffs.
+ *
+ * Also the OVER-BUDGET path, which had no coverage: an oversized session made
+ * the protection set indeterminate, so the sweep fail-closed on that whole
+ * feature — correctly, but forever, because nothing repaired the file. The
+ * sweep is the only thing that notices, so it is the thing that repairs.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -164,5 +169,91 @@ describe('pruneDebugArtifacts', () => {
   it('handles missing dirs gracefully', async () => {
     const stats = await pruneDebugArtifacts(path.join(tmpRoot, 'missing'));
     expect(stats).toEqual({ removed: 0, kept: 0, protectedActive: 0 });
+  });
+});
+
+describe('pruneDebugArtifacts — over-budget session recovery', () => {
+  const SESSION_MAX_BYTES = 8 * 1024 * 1024;
+  const sessionPath = (featurePath: string) =>
+    path.join(featurePath, 'sessions', 'architect', 'code.json');
+
+  /** A session whose bulk is shed-eligible history, plus a resume core. */
+  async function writeOversizedSession(featurePath: string) {
+    await fs.promises.mkdir(path.dirname(sessionPath(featurePath)), { recursive: true });
+    const filler = 'x'.repeat(200_000);
+    const session = {
+      sessionId: 's1',
+      project: 'p1',
+      feature: 'f1',
+      runs: Array.from({ length: 60 }, (_, i) => ({
+        jobId: `job-${i}`,
+        status: 'completed',
+        kanbanSnapshot: { todo: [], inProgress: [], completed: [], filler },
+      })),
+      state: { jobId: 'live-job', taskQueue: [{ id: 't1' }], completedTasks: ['done-1'] },
+      artifacts: {},
+    };
+    await fs.promises.writeFile(sessionPath(featurePath), JSON.stringify(session));
+    const { size } = await fs.promises.stat(sessionPath(featurePath));
+    expect(size).toBeGreaterThan(SESSION_MAX_BYTES);
+  }
+
+  it('sheds an over-budget session back under the budget instead of leaving it bricked', async () => {
+    const featurePath = tmpRoot;
+    await ensureSubdirs(featurePath);
+    await writeOversizedSession(featurePath);
+
+    await pruneDebugArtifacts(featurePath, { nowMs: Date.now() });
+
+    const { size } = await fs.promises.stat(sessionPath(featurePath));
+    expect(size).toBeLessThanOrEqual(SESSION_MAX_BYTES);
+  });
+
+  it('never sheds the resume core while repairing', async () => {
+    const featurePath = tmpRoot;
+    await ensureSubdirs(featurePath);
+    await writeOversizedSession(featurePath);
+
+    await pruneDebugArtifacts(featurePath, { nowMs: Date.now() });
+
+    const repaired = JSON.parse(await fs.promises.readFile(sessionPath(featurePath), 'utf-8'));
+    expect(repaired.state.jobId).toBe('live-job');
+    expect(repaired.state.taskQueue).toHaveLength(1);
+    expect(repaired.state.completedTasks).toEqual(['done-1']);
+  });
+
+  it('still fail-closes the prune on the tick that found the oversized file', async () => {
+    // Repair and protection are separate concerns: the protection set for THIS
+    // tick was incomplete, so deleting anything would risk a live job's own
+    // artifacts. The next tick reads the repaired file and prunes normally.
+    const featurePath = tmpRoot;
+    await ensureSubdirs(featurePath);
+    await writeOversizedSession(featurePath);
+    const now = Date.now();
+    const stale = await writeFileAt(
+      featurePath, ARCHITECT_PROMPTS,
+      'prompt-cccccccc-1111-2222-3333-444444444444.md', now - 15 * 24 * 60 * 60 * 1000,
+    );
+
+    const first = await pruneDebugArtifacts(featurePath, { nowMs: now });
+    expect(first.removed).toBe(0);
+    await fs.promises.access(stale); // untouched
+
+    const second = await pruneDebugArtifacts(featurePath, { nowMs: now });
+    expect(second.removed).toBeGreaterThanOrEqual(1);
+  });
+
+  it('leaves a file too large to even read alone (set-aside is the escape hatch)', async () => {
+    const featurePath = tmpRoot;
+    await fs.promises.mkdir(path.dirname(sessionPath(featurePath)), { recursive: true });
+    // Past the repair ceiling (4× the budget): reading it is the very sink the
+    // budget exists to close.
+    await fs.promises.writeFile(sessionPath(featurePath), 'y'.repeat(SESSION_MAX_BYTES * 4 + 1024));
+    await ensureSubdirs(featurePath);
+
+    const stats = await pruneDebugArtifacts(featurePath, { nowMs: Date.now() });
+    expect(stats.removed).toBe(0);
+    const { size } = await fs.promises.stat(sessionPath(featurePath));
+    expect(size).toBeGreaterThan(SESSION_MAX_BYTES * 4);
   });
 });

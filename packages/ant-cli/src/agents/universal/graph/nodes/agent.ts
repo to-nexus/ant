@@ -432,6 +432,11 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
           _hookRedo: false,
           _truncationRedo: false,
           tokenUsage: state.tokenUsage,
+          // The per-model twin MUST ride along: LangGraph rebuilds the node's
+          // state from the channels each hop, and `accumulateTokenUsage`
+          // creates this field lazily — so a return that omits it restarts the
+          // map at `{}` every round and billing settles on the LAST call alone.
+          tokenUsageByModel: state.tokenUsageByModel,
           ...checklistPatch,
           ...(joined.tokenDelta as any),
         };
@@ -468,6 +473,11 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
           _subagentJoinRedo: false,
           truncationRounds: cuts + 1,
           tokenUsage: state.tokenUsage,
+          // The per-model twin MUST ride along: LangGraph rebuilds the node's
+          // state from the channels each hop, and `accumulateTokenUsage`
+          // creates this field lazily — so a return that omits it restarts the
+          // map at `{}` every round and billing settles on the LAST call alone.
+          tokenUsageByModel: state.tokenUsageByModel,
           ...checklistPatch,
         };
       }
@@ -521,6 +531,11 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
             _truncationRedo: false,
             hookBounceRounds: bounces + 1,
             tokenUsage: state.tokenUsage,
+            // The per-model twin MUST ride along: LangGraph rebuilds the node's
+            // state from the channels each hop, and `accumulateTokenUsage`
+            // creates this field lazily — so a return that omits it restarts the
+            // map at `{}` every round and billing settles on the LAST call alone.
+            tokenUsageByModel: state.tokenUsageByModel,
             ...checklistPatch,
           };
         }
@@ -558,6 +573,11 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
       streamingCompleted,
       chatMessageStarted: streamedAnything,
       tokenUsage: state.tokenUsage,
+      // The per-model twin MUST ride along: LangGraph rebuilds the node's
+      // state from the channels each hop, and `accumulateTokenUsage`
+      // creates this field lazily — so a return that omits it restarts the
+      // map at `{}` every round and billing settles on the LAST call alone.
+      tokenUsageByModel: state.tokenUsageByModel,
       _subagentJoinRedo: false,
       _hookRedo: false,
       ...hooksUnmetPatch,

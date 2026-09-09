@@ -10,7 +10,9 @@ import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver
 import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { assertJobAccess as assertJobAccessShared } from './helpers/jobAccess';
-import { sendErrorResponse } from './helpers/errorResponse';
+import { sendErrorResponse, sendRefusal } from './helpers/errorResponse';
+import { isJobLockActiveError } from '../../../../infrastructure/queue/errors';
+import { LOCK_DURATION } from '../../../../infrastructure/queue/constants';
 import { checkTeamMembership } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob, readSessionTextBounded } from '../../../../core/utils/sessionPaths';
 import { writeSessionBounded, sessionWriteGuardOf } from '../../../../core/session/stateBudget';
@@ -27,6 +29,7 @@ import {
   validateUniversalTurnMeta,
   findDuplicateActiveJob,
   findProjectPipelineActivation,
+  resolveUniversalResumeTarget,
   checkStartCredits as checkStartCreditsGate,
 } from '../../../../core/scheduling/UniversalDispatchGate';
 import type { JobStateTracker } from '../express/managers/JobStateTracker';
@@ -69,21 +72,36 @@ function resolveAgentForJobType(jobType: string): string {
  * (universal job on a canonical project) lives in
  * `resolveUniversalExecuteContext`. Truth table: `decideProjectJobGate`.
  */
+/**
+ * The one read of "is this a universal (workspace) project". Both the
+ * project×jobType gate below and the resume router ask it — a second copy is
+ * how one of them would keep answering `canonical` for a workspace project.
+ * Failure to resolve reports `false`: canonical paths fail loudly downstream
+ * if the project is truly broken.
+ */
+async function isUniversalProjectOf(
+  workspaceResolver: WorkspaceResolver,
+  userContext: { userId: string; organizationId: string },
+  projectId: string,
+): Promise<boolean> {
+  const { isUniversalProject } = await import('../../../../core/customAgents/universalContainer');
+  try {
+    return isUniversalProject(workspaceResolver.getProjectPath(userContext as any, projectId));
+  } catch {
+    // partial resolvers (tests) / lookup failures → canonical
+    return false;
+  }
+}
+
 async function rejectCanonicalJobOnUniversalProject(
   workspaceResolver: WorkspaceResolver,
   userContext: { userId: string; organizationId: string },
   projectId: string,
   jobType: string,
 ): Promise<{ status: number; error: string; code: string } | null> {
-  const { isUniversalProject, decideProjectJobGate } = await import('../../../../core/customAgents/universalContainer');
-  let projectType: 'universal' | 'canonical' = 'canonical';
-  try {
-    const projectPath = workspaceResolver.getProjectPath(userContext as any, projectId);
-    projectType = isUniversalProject(projectPath) ? 'universal' : 'canonical';
-  } catch {
-    // partial resolvers (tests) / lookup failures → canonical (gate passes;
-    // canonical paths fail loudly downstream if the project is truly broken)
-  }
+  const { decideProjectJobGate } = await import('../../../../core/customAgents/universalContainer');
+  const projectType: 'universal' | 'canonical' =
+    (await isUniversalProjectOf(workspaceResolver, userContext, projectId)) ? 'universal' : 'canonical';
   const gate = decideProjectJobGate(projectType, jobType);
   if (!gate.ok && gate.code === 'project-universal-requires-custom-job') {
     return {
@@ -233,7 +251,24 @@ export function createJobRoutes(deps: {
     return deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
   }
 
-  function hasResumableSession(featurePath: string, jobId: string): boolean {
+  /**
+   * Does a session on disk still hold leftover work for this jobId?
+   *
+   * `getAllSessionPaths` enumerates only the five CANONICAL (agent, jobType)
+   * files, which universal sessions are invisible to by design — their names
+   * are per-(agentId, customJobId). So a universal supersede always reported
+   * `false` and told the user "session data was cleared" about a session that
+   * was sitting right there. The sibling above already resolves the universal
+   * container; ask the universal locator on that plane instead of a path
+   * shape that cannot exist there.
+   */
+  async function hasResumableSession(featurePath: string, jobId: string, universal: boolean): Promise<boolean> {
+    if (universal) {
+      try {
+        const { findUniversalSessionFileByJobId } = await import('./helpers/universalRuns');
+        return (await findUniversalSessionFileByJobId(featurePath, jobId)) !== null;
+      } catch { return false; }
+    }
     for (const entry of getAllSessionPaths(featurePath)) {
       try {
         if (!fs.existsSync(entry.path)) continue;
@@ -406,7 +441,7 @@ export function createJobRoutes(deps: {
           const featurePath = universalCtx
             ? universalCtx.containerPath
             : deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-          const resumable = hasResumableSession(featurePath, existingJobId);
+          const resumable = await hasResumableSession(featurePath, existingJobId, !!universalCtx);
 
           logger.info(
             `Superseding interrupted job: ${existingJobId} (resumable=${resumable}) for new ${jobType} job`,
@@ -971,14 +1006,22 @@ export function createJobRoutes(deps: {
     });
   });
   
-  // Resume existing job
-  router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
+  // Resume existing job.
+  // Same admission axis as `/execute` and `/continue`: this starts a job run,
+  // so it carries their request budget too (an authenticated route is not a
+  // budgeted one).
+  router.post('/jobs/:jobId/resume', jobExecuteRateLimiter, async (req: Request, res: Response) => {
     const requestedJobId = req.params.jobId;
-    const { projectId, featureName, chatSource = true, customJobRef, intents, context, plan } = req.body;
+    // No `customJobRef` / `intents` / `context` / `plan` from the body: the
+    // universal resume target is recovered server-side from job-scoped durable
+    // records (`resolveUniversalResumeTarget`). The FE's copy named the
+    // COMPOSER'S CURRENT selection, which after a reload or an agent switch is
+    // a different (agent, job) pair than the paused job.
+    const { projectId, featureName, chatSource = true } = req.body;
     
     logger.debug(`\n🔄 [ResumeRoute] Resume request received`);
     logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
-    logger.debug(`   Requested jobId: ${requestedJobId} (will use session's jobId if found)`);
+    logger.debug(`   Requested jobId: ${requestedJobId}`);
     
     let sessionJobId: string | null = null;
     
@@ -1021,41 +1064,108 @@ export function createJobRoutes(deps: {
         }
       }
 
-      // ── Universal resume: the (agent, job) conversation is always-valid
-      // resume context (non-task job — no task-queue checkpoint to gate on).
-      // The FE supplies the definition ref; it round-trips through the
-      // payload/env chain exactly like a fresh start (E2E check 4).
-      if (customJobRef) {
-        const resolvedUniversal = await resolveUniversalExecuteContext(
-          deps.workspaceResolver, userContext, projectId, customJobRef,
-        );
-        if (!resolvedUniversal.ok) {
-          return res.status(resolvedUniversal.status).json({ error: resolvedUniversal.error, code: resolvedUniversal.code });
+      // A worker may still own this jobId: after an abrupt kill the BullMQ lock
+      // decays over `LOCK_DURATION`, and a same-id re-enqueue inside that
+      // window throws. Answer it HERE, before any side effect, so the refusal
+      // is a retryable 409 rather than an opaque 500 — and so a failed resume
+      // cannot leave the cancelled card badged "Resumed".
+      {
+        const queue = getInfrastructureFactory().getJobQueue();
+        const lockHeld = queue.isJobLockFresh
+          ? await queue.isJobLockFresh(requestedJobId).catch(() => false)
+          : false;
+        if (lockHeld) {
+          return sendRefusal(res, {
+            status: 409,
+            code: 'job-lock-active',
+            error: 'This job is still being processed — wait a moment and resume again.',
+            retryAfterMs: LOCK_DURATION,
+          }, 'JobResume');
         }
+      }
+
+      // ── Universal resume: routed by PROJECT TYPE, not by what the request
+      // body remembered. The (agent, job) conversation is always-valid resume
+      // context (non-task job — no task-queue checkpoint to gate on), and the
+      // definition ref comes from job-scoped durable records.
+      const universalProject = await isUniversalProjectOf(deps.workspaceResolver, userContext, projectId);
+      if (universalProject) {
         const { getSessionFilePath } = await import('../../../../core/utils/sessionPaths');
         const { UNIVERSAL_FEATURE } = await import('@ant/shared');
+        const { findUniversalSessionFileByJobId } = await import('./helpers/universalRuns');
+        let containerPath: string | null = null;
+        try {
+          containerPath = deps.workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
+        } catch { /* unresolvable → the mapping tier is the only one left */ }
+
+        const target = await resolveUniversalResumeTarget(
+          {
+            stateStore: deps.stateStore,
+            containerPath,
+            findRefByJobId: async (cp, jid) => {
+              const found = await findUniversalSessionFileByJobId(cp, jid);
+              return found ? { agentId: found.agentId, customJobId: found.customJobId } : null;
+            },
+          },
+          requestedJobId,
+        );
+        if (!target.ok) return sendRefusal(res, target, 'JobResume');
+
+        const resolvedUniversal = await resolveUniversalExecuteContext(
+          deps.workspaceResolver, userContext, projectId, target.customJobRef,
+        );
+        if (!resolvedUniversal.ok) {
+          return sendRefusal(res, {
+            status: resolvedUniversal.status,
+            code: resolvedUniversal.code,
+            error: resolvedUniversal.error,
+          }, 'JobResume');
+        }
+
+        // The interrupted instruction. `recordUserTurn` writes it to the
+        // durable chat log BEFORE the graph runs, so it survives a kill that
+        // sealed nothing — which is why a session file is no longer required
+        // to resume (a first-turn crash used to 404 forever here).
         const universalSessionPath = getSessionFilePath(
           resolvedUniversal.containerPath, resolvedUniversal.ref.agentId, resolvedUniversal.ref.jobId,
         );
-        const universalSessionRaw = readSessionTextBounded(universalSessionPath);
-        if (universalSessionRaw === null) {
-          return res.status(404).json({ error: 'No universal session found', message: `No session for custom job ${customJobRef}` });
+        const hasSession = readSessionTextBounded(universalSessionPath) !== null;
+        const interrupted = await deps.chatService?.findInterruptedTurn(
+          projectId, UNIVERSAL_FEATURE, requestedJobId, userContext,
+        ).catch(() => null);
+        if (!hasSession && !interrupted?.text) {
+          return sendRefusal(res, {
+            status: 409,
+            code: 'universal-resume-no-turn',
+            error:
+              `Nothing left to resume for ${requestedJobId} — neither a saved conversation ` +
+              `nor the interrupted instruction could be recovered. Send the request again.`,
+          }, 'JobResume');
         }
-        const universalSession = JSON.parse(universalSessionRaw);
-        const universalJobId = universalSession.state?.jobId ?? requestedJobId;
-        // Explicit turn meta must survive a resume. Without this the resumed
-        // turn fell back to the default/general intent even when the
-        // interrupted one pinned `@intent:` — the definition injections it
-        // had inlined silently vanished mid-job. Validated by the same
-        // funnel as a fresh start.
+
+        // Explicit turn meta must survive a resume, or the resumed turn falls
+        // back to the default intent even when the interrupted one pinned
+        // `@intent:` and inlined its injections. Recovered from the job mapping
+        // (the FE never sent it) and re-validated through the accept funnel.
         const resumeMeta = await validateUniversalTurnMeta(
-          resolvedUniversal.containerPath, resolvedUniversal.intentIds, intents, context, plan, resolvedUniversal.builtinTools,
+          resolvedUniversal.containerPath, resolvedUniversal.intentIds,
+          target.turnMeta?.intents, target.turnMeta?.context, target.turnMeta?.plan,
+          resolvedUniversal.builtinTools,
           resolvedUniversal.scopeRoots,
           { pipelineScopeRoots: resolvedUniversal.pipelineScopeRoots },
         );
         if (!resumeMeta.ok) {
-          return res.status(resumeMeta.status).json({ error: resumeMeta.error, code: resumeMeta.code });
+          return sendRefusal(res, {
+            status: resumeMeta.status, code: resumeMeta.code, error: resumeMeta.error,
+          }, 'JobResume');
         }
+
+        // The resume target is the REQUESTED job, full stop. `state.jobId` is
+        // written by the end-of-turn seal, so after a crash it names the
+        // PREVIOUS run — resuming under it re-queued an already-sealed id,
+        // overwrote that run's history row, and left the crashed job paused
+        // forever. The canonical branch below has always keyed on the
+        // requested id; this branch was the odd one out.
         const universalParams: ExecuteJobParams = {
           agent: 'universal',
           jobType: 'universal',
@@ -1064,34 +1174,44 @@ export function createJobRoutes(deps: {
           enableEvaluation: false,
           chatSource,
           userContext,
-          jobId: universalJobId,
+          jobId: requestedJobId,
           isResume: true,
-          customJobRef,
+          customJobRef: target.customJobRef,
           declaresSelfApi: resolvedUniversal.declaresSelfApi,
+          ...(interrupted?.text && { overrideDirective: interrupted.text }),
+          ...(interrupted?.turnId
+            ? { seedTurnId: interrupted.turnId }
+            : target.seedTurnId
+              ? { seedTurnId: target.seedTurnId }
+              : {}),
           ...(resumeMeta.meta && { universalTurnMeta: resumeMeta.meta }),
         };
         const universalResult = await deps.executeJob(universalParams);
-        await deps.stateStore.releaseLock(`ant:job-completed:${universalJobId}`);
-        await deps.stateStore.releaseLock(`ant:job-event:${universalJobId}:completed`);
-        await deps.stateStore.releaseLock(`ant:job-event:${universalJobId}:failed`);
-        await deps.stateStore.releaseLock(`ant:job-finalize:${universalJobId}`);
-        await deps.stateStore.releaseLock(`ant:job-pause:${universalJobId}`);
-        await deps.stateStore.releaseLock(`ant:job-poisoned:${universalJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-completed:${requestedJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-event:${requestedJobId}:completed`);
+        await deps.stateStore.releaseLock(`ant:job-event:${requestedJobId}:failed`);
+        await deps.stateStore.releaseLock(`ant:job-finalize:${requestedJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-pause:${requestedJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-poisoned:${requestedJobId}`);
+        // AFTER the dispatch: the card's "Resumed" badge is a claim about work
+        // that started. Universal never resolved its card at all, so a resumed
+        // universal job left an actionable card behind forever.
+        if (deps.chatService) {
+          await deps.chatService.resolveAllCancelledForJob(projectId, UNIVERSAL_FEATURE, requestedJobId, {
+            choiceSelected: 'resume',
+            resolvedLabel: 'Resumed',
+            userContext,
+          }).catch((err: unknown) => logger.warn(
+            `[ResumeRoute] cancelled-card resolve failed for ${requestedJobId}`,
+            { component: 'JobResume' }, err as any,
+          ));
+        }
         return res.json({
           success: true,
-          jobId: universalResult?.jobId ?? universalJobId,
+          jobId: universalResult?.jobId ?? requestedJobId,
           jobType: 'universal',
-          message: `Universal custom job ${customJobRef} resumed`,
+          message: `Universal custom job ${target.customJobRef} resumed`,
         });
-      }
-
-      // Canonical session scan below can never find a universal session —
-      // fail loud instead of a misleading "no interrupted job" 404.
-      {
-        const rejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, 'resume');
-        if (rejected) {
-          return res.status(rejected.status).json({ error: rejected.error, code: rejected.code });
-        }
       }
 
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
@@ -1161,20 +1281,6 @@ export function createJobRoutes(deps: {
       logger.debug(`   Job type: ${jobType}`);
       logger.debug(`   Starting resume job execution...`);
       
-      // ✅ Resolve all unresolved cancelled cards for this jobId. The
-      //   user chose to resume, so any open "Task cancelled" card the
-      //   chat is showing is no longer actionable. Each pause cycle
-      //   has a unique cardId (chat-SSOT §7 — pauseSeq), so we scan
-      //   chat.jsonl for cardType='cancelled' lines matching jobId
-      //   and emit choice_resolved for each.
-      if (deps.chatService && sessionJobId) {
-        await deps.chatService.resolveAllCancelledForJob(projectId, featureName, sessionJobId, {
-          choiceSelected: 'resume',
-          resolvedLabel: 'Resumed',
-          userContext,
-        });
-      }
-
       // Explicit resume re-opens dismissed work — clear the implicit-
       // continuation marker so the session's consent state matches the
       // user's action (setSessionDismissed is a no-op when not dismissed).
@@ -1213,6 +1319,21 @@ export function createJobRoutes(deps: {
       };
       
       const result = await deps.executeJob(params);
+
+      // ✅ Resolve all unresolved cancelled cards for this jobId — AFTER the
+      //   dispatch. The "Resumed" badge is a claim about work that started;
+      //   emitting it first left the card badged Resumed with nothing running
+      //   whenever the dispatch threw (e.g. a worker still holding the lock).
+      //   Each pause cycle has a unique cardId (chat-SSOT §7 — pauseSeq), so
+      //   we scan chat.jsonl for cardType='cancelled' lines matching jobId and
+      //   emit choice_resolved for each.
+      if (deps.chatService && sessionJobId) {
+        await deps.chatService.resolveAllCancelledForJob(projectId, featureName, sessionJobId, {
+          choiceSelected: 'resume',
+          resolvedLabel: 'Resumed',
+          userContext,
+        });
+      }
       
       // ✅ Clear idempotency locks AFTER executeJob so old BullMQ job is
       // removed first (inside enqueue). This closes the stale-event window
@@ -1239,6 +1360,17 @@ export function createJobRoutes(deps: {
         message: `Job ${sessionJobId} resumed`
       });
     } catch (error: any) {
+      // The pre-flight above is not a lock: a worker can pick the job up in
+      // between. Same verdict, same typed answer — never a 500 for a
+      // condition the client can simply retry.
+      if (isJobLockActiveError(error)) {
+        return sendRefusal(res, {
+          status: 409,
+          code: 'job-lock-active',
+          error: 'This job is still being processed — wait a moment and resume again.',
+          retryAfterMs: LOCK_DURATION,
+        }, 'JobResume');
+      }
       sendErrorResponse(res, 500, error, 'JobResume');
     }
   });

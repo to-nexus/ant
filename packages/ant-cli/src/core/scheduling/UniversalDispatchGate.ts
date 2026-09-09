@@ -395,6 +395,81 @@ export async function findDuplicateActiveJob(
 }
 
 /**
+ * Resume-target owner for a universal job — "which definition ref, which turn".
+ *
+ * The FE used to answer this, and it answered wrong: its value is the
+ * COMPOSER'S CURRENT SELECTION, so after a reload / job-tab switch / agent
+ * switch it names a different `(agentId, jobId)` pair than the paused job.
+ * Three of the four call sites did not send it at all, and the route then fell
+ * through to the canonical scan and refused with 400. So the ref is recovered
+ * here, server-side, from records that are durable and job-scoped:
+ *
+ *   1. the job mapping stamped at enqueue (AOF-durable, 24h TTL)
+ *   2. the session file whose sealed `state.jobId` / `runs[]` names this run —
+ *      the same "which file owns this run" question finalize, per-jobId kanban
+ *      restore and DELETE already ask
+ *   3. neither → a TYPED refusal, never a bare 500
+ *
+ * `findRefByJobId` is INJECTED (not imported): the scanner lives in the HTTP
+ * periphery and `core/` must not depend on it — the same shape `checkStartCredits`
+ * uses for the ledger.
+ */
+export async function resolveUniversalResumeTarget(
+  deps: {
+    stateStore: {
+      getJobMapping(jobId: string): Promise<
+        { customJobRef?: string; universalTurnMeta?: import('@ant/shared').UniversalTurnMeta } | null
+      >;
+      getJobStatus(jobId: string): Promise<{ turnId?: string } | null>;
+    };
+    /** `{project}/universal`, or null when the project has no universal plane. */
+    containerPath: string | null;
+    findRefByJobId: (
+      containerPath: string,
+      jobId: string,
+    ) => Promise<{ agentId: string; customJobId: string } | null>;
+  },
+  jobId: string,
+): Promise<
+  | {
+      ok: true;
+      customJobRef: string;
+      /** Preserved chat anchor — resuming under it avoids a second user bubble. */
+      seedTurnId?: string;
+      /** The interrupted turn's explicit meta, replayed through the accept funnel. */
+      turnMeta?: import('@ant/shared').UniversalTurnMeta;
+    }
+  | { ok: false; status: number; code: string; error: string }
+> {
+  const mapping = await deps.stateStore.getJobMapping(jobId).catch(() => null);
+  let customJobRef = mapping?.customJobRef;
+
+  if (!customJobRef && deps.containerPath) {
+    const found = await deps.findRefByJobId(deps.containerPath, jobId).catch(() => null);
+    if (found) customJobRef = `${found.agentId}/${found.customJobId}`;
+  }
+
+  if (!customJobRef) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'universal-resume-ref-unresolvable',
+      error:
+        `Cannot tell which custom agent job ${jobId} belongs to — its record has expired ` +
+        `and no session file references it. Start a new job instead of resuming this one.`,
+    };
+  }
+
+  const status = await deps.stateStore.getJobStatus(jobId).catch(() => null);
+  return {
+    ok: true,
+    customJobRef,
+    ...(status?.turnId && { seedTurnId: status.turnId }),
+    ...(mapping?.universalTurnMeta && { turnMeta: mapping.universalTurnMeta }),
+  };
+}
+
+/**
  * Pipeline mutual-exclusion gate: while a project has an ACTIVE pipeline, the
  * pipeline owns the project — every interactive job start (execute / resume /
  * continue / inline-ask) is rejected so scheduled steps are never superseded

@@ -161,22 +161,24 @@ export function stopJob(
   );
 }
 
+/**
+ * Resume an interrupted job.
+ *
+ * Carries NO definition ref for universal jobs: the server routes by project
+ * type and recovers the `(agentId, jobId)` pair from that job's own durable
+ * records. A ref held here is the composer's CURRENT selection, which after a
+ * reload / job-tab switch / agent switch names a different pair than the
+ * paused job — a wrong-answer source, not a spare one.
+ */
 export function resumeJob(
   jobId: string,
   projectId: string,
   featureName: string,
   chatSource: boolean = true,
-  /** Universal runtime — presence of `customJobRef` routes the resume through the universal path. */
-  universal?: { customJobRef: string },
-): Promise<{ jobId: string; originalJobId: string; jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'universal' }> {
+): Promise<{ jobId: string; jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'universal' }> {
   return apiPost(
     `${API_BASE()}/jobs/${encodeURIComponent(jobId)}/resume`,
-    {
-      projectId,
-      featureName,
-      chatSource,
-      ...(universal ? { customJobRef: universal.customJobRef } : {}),
-    },
+    { projectId, featureName, chatSource },
   );
 }
 

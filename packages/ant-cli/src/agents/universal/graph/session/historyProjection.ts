@@ -29,6 +29,26 @@ function assistantText(content: ConversationMessage['content']): string {
     .join('\n');
 }
 
+/**
+ * Is this job's turn ALREADY open at the tail of the transcript?
+ *
+ * A resume keeps the job's id and re-dispatches the interrupted directive,
+ * while a shutdown seal may have already persisted that same turn — stamped
+ * with this jobId by the runner's admission block. Re-opening it would show
+ * the user their request twice and hand the model a duplicate.
+ *
+ * Keyed on the stamp, never on comparing text: two legitimately identical
+ * requests are two turns, and a trimmed transcript must not change the answer.
+ */
+export function isTurnAlreadyOpened(
+  messages: ConversationMessage[] | undefined,
+  jobId: string | undefined,
+): boolean {
+  if (!jobId || !messages?.length) return false;
+  const tail = messages[messages.length - 1];
+  return tail?.role === 'user' && (tail as any)?.metadata?.jobId === jobId;
+}
+
 export function projectHistoryTurns(messages: ConversationMessage[]): UniversalHistoryTurn[] {
   const turns: UniversalHistoryTurn[] = [];
   for (const msg of messages) {

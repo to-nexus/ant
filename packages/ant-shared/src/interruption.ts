@@ -5,7 +5,7 @@
  * Used in session state, Kanban UI, and resume logic.
  */
 
-import { isMidGraphResumable } from './job';
+import { resumeGranularityOf, type ResumeGranularity } from './job';
 
 /** Categorizes why a job was interrupted */
 export type InterruptionReason =
@@ -38,9 +38,13 @@ export type InterruptionReason =
 /**
  * Infrastructure/lifecycle interruption reasons — the process/worker/host died
  * or the lock lapsed, as opposed to a model-level, user, or task-logic pause.
- * For these, "resume from where it stopped" only makes sense when the job type
- * checkpoints mid-graph (see `isMidGraphResumable` in job.ts). A non-checkpointing
- * job (plan/visual) can only *restart*, so its `canResume` must be false here.
+ * For these, WHETHER and HOW a job resumes is decided by one owner —
+ * `resumeGranularityOf` (job.ts): `'mid-graph'` continues from a task-queue
+ * checkpoint (code/design/learn), `'turn'` re-runs the interrupted instruction
+ * on the saved transcript (universal), and `null` cannot resume at all
+ * (plan/visual persist context, not a transcript, and admit no resumed turn).
+ * The distinction is load-bearing for WORDING as much as for the flag: a
+ * `'turn'` resume must never be described as resuming "from where it stopped".
  */
 export const INFRASTRUCTURE_INTERRUPTION_REASONS: readonly InterruptionReason[] = [
   'server_crash',
@@ -64,6 +68,14 @@ export interface InterruptionDetails {
   timestamp: string;
   canResume: boolean;
   /**
+   * HOW this job resumes, when it can — set alongside `canResume` by the
+   * single owner. The FE words its affordance from this (a `'turn'` resume
+   * re-runs the interrupted instruction; it does not continue a checkpoint).
+   * Absent on interruptions built before this field existed, and on pauses
+   * that carry their own hand-built details.
+   */
+  resumeGranularity?: ResumeGranularity;
+  /**
    * Implicit-continuation consent axis — orthogonal to `canResume` (work
    * integrity/kind). `true` after the user dismisses the cancelled card: a
    * subsequent chat turn must NOT silently continue this work, but an
@@ -80,29 +92,37 @@ export interface InterruptionDetails {
 /**
  * Single owner for infrastructure-interruption `InterruptionDetails`.
  *
- * `canResume` is computed by the DOCUMENTED rule (see the
- * `INFRASTRUCTURE_INTERRUPTION_REASONS` docstring above): only mid-graph
- * checkpointing job types (code/design/learn) can resume from where they
- * stopped; plan/visual can only restart, so `canResume` is false. Producers
+ * `canResume` and `resumeGranularity` are both derived from
+ * `resumeGranularityOf` (see the `INFRASTRUCTURE_INTERRUPTION_REASONS`
+ * docstring above), so the flag and the wording cannot disagree. Producers
  * (`JobWorker.shutdown`, the job-runner SIGTERM handler, `StaleJobRecovery`)
- * MUST route infra reasons through here so the flag cannot drift per site.
+ * MUST route infra reasons through here so neither drifts per site.
  */
 export function buildInfrastructureInterruption(
   reason: InterruptionReason,
   jobType: string | undefined | null,
   message?: string,
 ): InterruptionDetails {
-  const canResume = isMidGraphResumable(jobType);
+  const granularity = resumeGranularityOf(jobType);
   return {
     reason,
-    message: message ?? defaultInfrastructureMessage(reason, canResume),
+    message: message ?? defaultInfrastructureMessage(reason, granularity),
     timestamp: new Date().toISOString(),
-    canResume,
+    canResume: granularity !== null,
+    ...(granularity && { resumeGranularity: granularity }),
   };
 }
 
-function defaultInfrastructureMessage(reason: InterruptionReason, canResume: boolean): string {
-  const tail = canResume ? 'You can resume this job.' : 'This job did not finish.';
+function defaultInfrastructureMessage(
+  reason: InterruptionReason,
+  granularity: ResumeGranularity | null,
+): string {
+  const tail =
+    granularity === 'mid-graph'
+      ? 'You can resume this job.'
+      : granularity === 'turn'
+        ? 'Resume re-runs the interrupted instruction on the saved conversation.'
+        : 'This job did not finish.';
   switch (reason) {
     case 'server_shutdown':
       return `Server is shutting down. ${tail}`;

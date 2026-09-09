@@ -44,18 +44,47 @@ export function isNonTaskJob(jobType: string | undefined | null): jobType is Non
  * Whether a job type supports *mid-graph* resume — i.e. resuming continues
  * from where it stopped (a task-queue checkpoint) instead of restarting the
  * whole graph. Only task-decomposable jobs (code/design/learn) checkpoint
- * mid-execution. plan/visual persist a session (context) but have no mid-graph
- * checkpoint, so an infrastructure interruption cannot be meaningfully
- * "resumed" — resuming re-runs generation from the start. universal follows
- * the plan/visual model: the session (conversation history) persists, but
- * there is no task-queue checkpoint to resume into.
+ * mid-execution.
  *
- * Used with `isInfrastructureInterruption` (interruption.ts) to gate
- * `interruption.canResume`: the FE must not offer a "resume from where it
- * stopped" button for plan/visual after a server_crash / worker_stalled / …
+ * This answers ONE question ("does a checkpoint exist to resume into?"), not
+ * "is this job resumable at all" — see {@link resumeGranularityOf}. Widening
+ * it to a type with no task queue would make every checkpoint reader believe
+ * in a checkpoint that is not there.
  */
 export function isMidGraphResumable(jobType: string | undefined | null): boolean {
   return jobType === 'code' || jobType === 'design' || jobType === 'learn';
+}
+
+/**
+ * Whether a job type supports *turn-level* resume — resuming re-runs the
+ * interrupted instruction on the saved conversation rather than continuing
+ * from a checkpoint.
+ *
+ * The discriminator is what the persisted session IS. For `universal` the
+ * session holds the provider transcript itself, so a resumed turn appends to
+ * the very history the model saw; the interrupted directive is recoverable
+ * from the durable chat log (`recordUserTurn` writes it BEFORE the graph runs).
+ * plan/visual persist a session as *context*, not as a transcript, and their
+ * runners admit no resumed turn — widening this to them is a separate decision
+ * that needs runner work, not a one-line predicate change.
+ */
+export function isTurnResumable(jobType: string | undefined | null): boolean {
+  return jobType === 'universal';
+}
+
+/** How a resumed job continues. `null` = this job type cannot be resumed. */
+export type ResumeGranularity = 'mid-graph' | 'turn';
+
+/**
+ * THE resume-capability owner. `interruption.canResume` and every user-facing
+ * wording derive from this one function, so "can it resume" and "how does it
+ * resume" can never disagree — the two used to be the same boolean, which is
+ * how a universal job ended up with a Resume button the route refused.
+ */
+export function resumeGranularityOf(jobType: string | undefined | null): ResumeGranularity | null {
+  if (isMidGraphResumable(jobType)) return 'mid-graph';
+  if (isTurnResumable(jobType)) return 'turn';
+  return null;
 }
 
 /** Sessionable + non-task — the union actually persisted to disk under `sessions/{agent}/`. */

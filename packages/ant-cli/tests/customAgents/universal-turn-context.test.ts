@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { isTurnAlreadyOpened } from '../../src/agents/universal/graph/session/historyProjection';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as nodePath from 'path';
@@ -589,5 +590,51 @@ describe('planCompleteCardWrites — deterministic plan-complete CTA gate', () =
       null],
   ] as const)('%s', (_label, state, expected) => {
     expect(planCompleteCardWrites(state as any)).toEqual(expected);
+  });
+});
+
+/**
+ * Turn admission — the runner's rule for whether a dispatched directive opens
+ * a NEW turn or continues one already on the transcript. A resume keeps the
+ * job's id and re-dispatches the interrupted instruction, so without this the
+ * request would appear twice once a shutdown seal had persisted it.
+ */
+describe('isTurnAlreadyOpened — resume idempotency', () => {
+  const userTurn = (jobId?: string) => ({
+    role: 'user' as const,
+    content: 'do the thing',
+    ...(jobId ? { metadata: { jobId } } : {}),
+  });
+
+  it('continues the turn when the tail is this job\'s own stamped user message', () => {
+    expect(isTurnAlreadyOpened([userTurn('job-1')], 'job-1')).toBe(true);
+  });
+
+  it('opens a new turn when the tail belongs to a different job', () => {
+    expect(isTurnAlreadyOpened([userTurn('job-0')], 'job-1')).toBe(false);
+  });
+
+  it('opens a new turn when the tail is an assistant message (a completed turn)', () => {
+    expect(isTurnAlreadyOpened(
+      [userTurn('job-1'), { role: 'assistant', content: 'done' } as any],
+      'job-1',
+    )).toBe(false);
+  });
+
+  it('opens a new turn on a legacy unstamped transcript', () => {
+    expect(isTurnAlreadyOpened([userTurn()], 'job-1')).toBe(false);
+  });
+
+  it('is false for an empty transcript or a missing jobId — never guesses', () => {
+    expect(isTurnAlreadyOpened([], 'job-1')).toBe(false);
+    expect(isTurnAlreadyOpened(undefined, 'job-1')).toBe(false);
+    expect(isTurnAlreadyOpened([userTurn('job-1')], undefined)).toBe(false);
+  });
+
+  it('keys on the stamp, not the text — two identical requests are two turns', () => {
+    const sameText = [
+      { role: 'user' as const, content: 'do the thing', metadata: { jobId: 'job-0' } },
+    ];
+    expect(isTurnAlreadyOpened(sameText, 'job-1')).toBe(false);
   });
 });

@@ -352,9 +352,26 @@ check passed.
   refusal that is observably lossless, since such a line was never readable), the
   refusal also suppresses the SSE echo, and a pre-cap polluted file heals via a
   streaming pass that drops oversized lines without materialising them. ✅
+- **A refusal nothing can undo is an availability bug, so the budget owns its own
+  repair.** The same "retention, not refusal" rule the JSONL logs follow was
+  missing on the session JSON: a file past `SESSION_MAX_BYTES` is refused by every
+  reader, and each writer's read-modify-write STARTS with one of those refusals —
+  so it could be neither read nor rewritten, the feature's history and resume died
+  with it, and the retention sweep fail-closed on it once a minute forever (one
+  such file, 13.4 MB, was observed doing exactly that in production). The sweep is
+  the only thing that notices, so it repairs: `repairOversizedSession` reads once
+  through the session-read owner at its own `SESSION_REPAIR_MAX_BYTES` ceiling
+  (never unbounded — that is the sink the budget exists to close), runs the same
+  `shedToFit` ladder a normal write would, and writes it back. The resume core
+  (`taskQueue` / `currentTask` / `completedTasks` / `interruption` / `jobId`) is
+  never shed; past the repair ceiling or unparseable, the file is set aside
+  instead. A deterministic over-budget refusal is also never RETRIED — the size
+  does not change while a backoff sleeps, and retrying it spent 7.5 s per call
+  before reporting the misleading "no session". ✅
 - Guards: `tests/http/resource-admission.test.ts`,
   `tests/policy/resource-admission.test.ts`,
   `tests/policy/contained-io-adoption.test.ts` (seam/brand adoption),
+  `tests/cleanup/debug-retention.test.ts` (over-budget repair + fail-closed tick),
   `tests/security/session-namespace-bounds.test.ts`,
   `tests/core/context/actionMetadataBudget.test.ts`,
   `tests/core/context/compressPathsByFolder.test.ts`,

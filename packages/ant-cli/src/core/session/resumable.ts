@@ -12,7 +12,7 @@
  *
  * It operates purely on the persisted `SessionState` shape (the SSOT for "what
  * work is left") and delegates the jobType→`canResume` rule to the existing
- * `@ant/shared` owner `buildInfrastructureInterruption` / `isMidGraphResumable`,
+ * `@ant/shared` owner `buildInfrastructureInterruption` / `resumeGranularityOf`,
  * so the flag cannot drift from the reasons matrix either.
  */
 

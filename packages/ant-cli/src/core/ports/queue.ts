@@ -203,6 +203,17 @@ export interface JobQueuePort {
   }>;
   
   /**
+   * Whether a worker is CURRENTLY extending this job's lock — i.e. the job is
+   * genuinely alive, as opposed to holding a stale lock left by a killed
+   * process. Optional: the decision belongs to the queue implementation (it
+   * owns the lock), and a queue that cannot answer must not block callers.
+   *
+   * Callers use it to refuse a same-id re-enqueue with a retryable answer
+   * instead of discovering it as a throw from `enqueue`.
+   */
+  isJobLockFresh?(jobId: string): Promise<boolean>;
+
+  /**
    * Cleanup and close connections
    */
   close(): Promise<void>;

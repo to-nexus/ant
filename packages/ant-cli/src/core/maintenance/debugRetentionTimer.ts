@@ -18,6 +18,15 @@ import { logger } from '../../utils/logger';
 
 const DEFAULT_TICK_MS = 60_000;
 
+/**
+ * Cluster-wide leader lock for one sweep. Every API pod starts this timer, and
+ * they all mount the SAME shared workspace tree — so without a lock the whole
+ * tree is walked once per pod per tick, and each pod duplicates the other's
+ * work (and its log lines) against shared storage. Same idiom as
+ * `ant:lock:stale-job-recovery`; held for the tick, released in `finally`.
+ */
+const SWEEP_LOCK_KEY = 'ant:lock:debug-retention';
+
 export interface DebugRetentionTimerOptions {
   workspacesPath: string;
   stateStore?: StateStorePort;
@@ -37,7 +46,18 @@ export function startDebugRetentionTimer(
   const tick = async () => {
     if (running) return;
     running = true;
+    // TTL slightly under the tick so a pod that dies mid-sweep cannot park the
+    // lock for longer than one missed tick.
+    const lockTtlSeconds = Math.max(1, Math.floor((tickMs / 1000) * 0.9));
+    let holdsLock = false;
     try {
+      if (options.stateStore) {
+        holdsLock = await options.stateStore.acquireLock(SWEEP_LOCK_KEY, lockTtlSeconds).catch(() => true);
+        if (!holdsLock) {
+          logger.debug(`another pod holds the sweep lock — skipping this tick`, { component: 'debugRetentionTimer' });
+          return;
+        }
+      }
       const features = await listAllFeaturePaths(options.workspacesPath);
       for (const feat of features) {
         await pruneDebugArtifacts(feat.featurePath, {
@@ -51,11 +71,14 @@ export function startDebugRetentionTimer(
       }
     } catch (err) {
       logger.warn(
-        `[debugRetentionTimer] tick failed`,
+        `tick failed`,
         { component: 'debugRetentionTimer' },
         err,
       );
     } finally {
+      if (holdsLock && options.stateStore) {
+        await options.stateStore.releaseLock(SWEEP_LOCK_KEY).catch(() => { /* TTL reclaims it */ });
+      }
       running = false;
     }
   };
@@ -66,14 +89,14 @@ export function startDebugRetentionTimer(
   if (handle.unref) handle.unref();
 
   logger.info(
-    `[debugRetentionTimer] started — base=${options.workspacesPath} tick=${tickMs}ms`,
+    `started — base=${options.workspacesPath} tick=${tickMs}ms`,
     { component: 'debugRetentionTimer' },
   );
 
   return {
     stop: () => {
       clearInterval(handle);
-      logger.info(`[debugRetentionTimer] stopped`, { component: 'debugRetentionTimer' });
+      logger.info(`stopped`, { component: 'debugRetentionTimer' });
     },
   };
 }

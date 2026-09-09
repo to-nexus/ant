@@ -318,6 +318,11 @@ export function createInitialUniversalState(params: {
     _uiLocale: params.language,
     projectId: params.projectId,
     conversations: params.conversations ?? {},
+    // Seeded, not left absent: `foldSubagentUsage` only reports channels that
+    // are already `in state` (returning an undeclared key is an
+    // InvalidUpdateError), so an absent per-model map silently dropped every
+    // subagent's usage from the job total.
+    tokenUsageByModel: {},
     toolCalls: [],
     pendingToolCalls: [],
     recursionLimit: params.recursionLimit,
