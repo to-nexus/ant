@@ -16,7 +16,9 @@
  * contract, not a reimplementation of Lua.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { EventEmitter } from 'events';
+
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 import { SSEService } from '../../src/periphery/adapters/http/services/SSEService';
 
@@ -170,5 +172,112 @@ describe('SSEService — per-account channel subscription is single-flight', () 
 
     const second = await sse.admitConnection(USER);
     expect(second.ok).toBe(true);
+  });
+});
+
+
+/**
+ * Slot lifetime is the JOB's, not the client socket's.
+ *
+ * A workflow stream carries exactly one job's events, so once that job ends it
+ * can never carry another. Nothing closed it: `closeWorkflowClients` had zero
+ * call sites, the FE's `end` listener only routed a message, and the 10s
+ * heartbeat re-armed the slot's 30s TTL forever — so every completed job leaked
+ * one slot from a per-account budget of 10 that workflow and feature streams
+ * share. Universal makes a fresh job per turn, so ~10 turns spent the budget and
+ * the next feature stream was refused 429 `connection_limit`.
+ */
+describe('SSEService — a finished job returns its workflow slot', () => {
+  let store: SlotStore;
+  let sse: SSEService;
+
+  /** Minimal Response: `end()` fires 'close', which is what releases the slot. */
+  function fakeRes(): any {
+    const res: any = new EventEmitter();
+    res.writableEnded = false;
+    res.write = () => true;
+    res.end = () => {
+      if (res.writableEnded) return;
+      res.writableEnded = true;
+      res.emit('close');
+    };
+    return res;
+  }
+
+  beforeEach(async () => {
+    store = new SlotStore();
+    // This axis is about the close grace, not the subscribe window the cases
+    // above cover — a timer-backed subscribe would just deadlock fake timers.
+    store.subscribe = async (channel: string) => {
+      store.subscribeCalls.push(channel);
+      return () => {};
+    };
+    sse = new SSEService();
+    await sse.setupBroadcastSubscriptions(store as any);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function admitWorkflow(jobId: string) {
+    const admission = await sse.admitConnection(USER);
+    if (!admission.ok) throw new Error('expected admission');
+    const res = fakeRes();
+    sse.registerWorkflowClient(jobId, res, admission.reservation);
+    return res;
+  }
+
+  it('releases the slot when the job ends', async () => {
+    await admitWorkflow('job-1');
+    expect(await store.countSlots('ant:sse:slots:org1:u1')).toBe(1);
+
+    sse.sendWorkflowEndEvent('job-1');
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(await store.countSlots('ant:sse:slots:org1:u1')).toBe(0);
+  });
+
+  it('does not accumulate across successive jobs — the budget survives 15 turns', async () => {
+    for (let i = 0; i < 15; i++) {
+      await admitWorkflow(`job-${i}`);
+      sse.sendWorkflowEndEvent(`job-${i}`);
+      await vi.runOnlyPendingTimersAsync();
+    }
+
+    expect(await store.countSlots('ant:sse:slots:org1:u1')).toBe(0);
+    expect((await sse.admitConnection(USER)).ok).toBe(true);
+  });
+
+  it('ends only the finished job\'s streams', async () => {
+    await admitWorkflow('job-1');
+    await admitWorkflow('job-2');
+
+    sse.sendWorkflowEndEvent('job-1');
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(await store.countSlots('ant:sse:slots:org1:u1')).toBe(1);
+  });
+
+  it('shutdown releases workflow slots explicitly, not via a listener racing exit', async () => {
+    // The point of the fix is that release does NOT depend on the 'close'
+    // listener running — on shutdown `res.end()` is fire-and-forget and races
+    // `process.exit(0)`. So these responses never emit 'close': if `closeAll`
+    // only ended them, the slots would survive to their TTL and every
+    // reconnecting client would meet a budget that is still full.
+    for (const jobId of ['job-1', 'job-2']) {
+      const admission = await sse.admitConnection(USER);
+      if (!admission.ok) throw new Error('expected admission');
+      const res: any = new EventEmitter();
+      res.write = () => true;
+      res.end = () => {};
+      sse.registerWorkflowClient(jobId, res, admission.reservation);
+    }
+    expect(await store.countSlots('ant:sse:slots:org1:u1')).toBe(2);
+
+    await sse.closeAll();
+
+    expect(await store.countSlots('ant:sse:slots:org1:u1')).toBe(0);
   });
 });

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { registerFeatureParamDecoders } from './helpers/featureParam';
 import { 
   SSEService, 
+  SSE_CONNECTION_TTL_SECONDS,
   KanbanService, 
   ChatService, 
   ProjectService,
@@ -18,6 +19,72 @@ import { getSessionKey } from '../../../../core/chat/schema';
 import { getChatSyncChannel } from '../../../../infrastructure/state/redisConstants';
 import type { ActiveJobInfo } from '@ant/shared';
 import type { GitStateBroadcaster } from '../../../../core/realtime/GitStateBroadcaster';
+
+/** Well inside typical ALB idle-timeout defaults. */
+const SSE_HEARTBEAT_MS = 10000;
+
+/**
+ * Unsent bytes that mean the peer stopped reading rather than merely lagging.
+ * A heartbeat frame is ~50 bytes, so this is thousands of unacked ticks — but a
+ * genuinely slow link can cross it once on a large broadcast, so it only counts
+ * when it HOLDS (see `SSE_STALLED_TICKS`).
+ */
+const SSE_STALLED_WRITE_BYTES = 512 * 1024;
+
+/**
+ * Consecutive stalled ticks before the stream is judged dead. Three ticks is
+ * 30s of a buffer that never drains — a slow client always drains something.
+ */
+const SSE_STALLED_TICKS = 3;
+
+/**
+ * Heartbeat + slot keep-alive for one SSE stream.
+ *
+ * The heartbeat doubles as the liveness proof behind the per-account slot budget
+ * (`ant:sse:slots:{org}:{user}`), so it must never re-arm a slot whose stream is
+ * already gone. `res.write()` to a half-open socket — laptop sleep, dropped VPN,
+ * a peer that vanished without a FIN — does NOT throw, so the previous
+ * unconditional refresh kept a dead stream's slot alive past its TTL
+ * indefinitely and the Lua prune (`ZREMRANGEBYSCORE`) never saw it expire.
+ *
+ * Liveness is therefore decided by the socket, not by whether `write` threw:
+ * TCP keepalive makes the OS surface a dead peer in tens of seconds instead of
+ * hours, and unbounded write backpressure means the peer is not draining.
+ * Destroying fires `close`, which is what releases the slot.
+ */
+function startSseHeartbeat(res: Response, stateStore: StateStorePort | undefined): () => void {
+  const slot = (res as any).__sseSlot as { slotKey: string; member: string } | undefined;
+
+  res.socket?.setKeepAlive(true, 15000);
+
+  let stalledTicks = 0;
+
+  const interval = setInterval(() => {
+    if (res.destroyed || res.writableEnded) {
+      stop();
+      return;
+    }
+    stalledTicks = res.writableLength > SSE_STALLED_WRITE_BYTES ? stalledTicks + 1 : 0;
+    if (stalledTicks >= SSE_STALLED_TICKS) {
+      logger.warn('Destroying SSE stream: peer stopped draining', { component: 'SSE' });
+      stop();
+      res.destroy();
+      return;
+    }
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'heartbeat', ts: Date.now() })}\n\n`);
+      if (typeof (res as any).flush === 'function') (res as any).flush();
+      if (slot && stateStore) {
+        stateStore.refreshSlot(slot.slotKey, slot.member, SSE_CONNECTION_TTL_SECONDS).catch(() => {});
+      }
+    } catch {
+      stop();
+    }
+  }, SSE_HEARTBEAT_MS);
+
+  const stop = () => clearInterval(interval);
+  return stop;
+}
 
 /**
  * Unified SSE Routes
@@ -265,24 +332,11 @@ export function createSSERoutes(deps: {
     }
     
     // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic.
-    // 10s interval is well within typical ALB idle-timeout defaults.
-    // Also refreshes per-connection Redis key TTL (30s) so stale connections auto-expire.
-    const sseSlot = (res as any).__sseSlot as { slotKey: string; member: string } | undefined;
-    const keepAliveInterval = setInterval(() => {
-      try {
-        res.write(`data: ${JSON.stringify({ type: 'heartbeat', ts: Date.now() })}\n\n`);
-        if (typeof (res as any).flush === 'function') (res as any).flush();
-        if (sseSlot && deps.stateStore) {
-          deps.stateStore.refreshSlot(sseSlot.slotKey, sseSlot.member, 30).catch(() => {});
-        }
-      } catch (error) {
-        clearInterval(keepAliveInterval);
-      }
-    }, 10000);
+    const stopHeartbeat = startSseHeartbeat(res, deps.stateStore);
     
     // Handle disconnect
     res.on('close', () => {
-      clearInterval(keepAliveInterval);
+      stopHeartbeat();
       if (deps.gitWatcherService && userContext) {
         deps.gitWatcherService.stopWatchingGitChanges(userContext, projectId, featureName);
       }
@@ -348,25 +402,11 @@ export function createSSERoutes(deps: {
     logger.debug(`Workflow client registered`, { component: 'SSE', jobId });
     
     // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic
-    const workflowSlot = (res as any).__sseSlot as { slotKey: string; member: string } | undefined;
-    const keepAliveInterval = setInterval(() => {
-      try {
-        res.write(`data: ${JSON.stringify({ type: 'heartbeat', ts: Date.now() })}\n\n`);
-        if (typeof (res as any).flush === 'function') (res as any).flush();
-        // Refresh the connection-slot TTL for as long as the stream is live —
-        // otherwise the key expires under a healthy client and the slot is
-        // double-counted on the next connect.
-        if (workflowSlot && deps.stateStore) {
-          deps.stateStore.refreshSlot(workflowSlot.slotKey, workflowSlot.member, 30).catch(() => {});
-        }
-      } catch (error) {
-        clearInterval(keepAliveInterval);
-      }
-    }, 10000);
+    const stopHeartbeat = startSseHeartbeat(res, deps.stateStore);
 
     // Handle disconnect
     res.on('close', () => {
-      clearInterval(keepAliveInterval);
+      stopHeartbeat();
       logger.debug(`Workflow client disconnected`, { component: 'SSE', jobId });
     });
   });

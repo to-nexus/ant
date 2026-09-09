@@ -128,6 +128,21 @@ class SSEManager {
    */
   private unifiedRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * Backoff for a self-scheduled reconnect. ONE formula, monotonic in
+   * `attempts` and capped at 30s.
+   *
+   * This used to be two expressions picked by an `exhausted` branch whose
+   * exponent was offset differently (`attempts - maxReconnectAttempts` vs
+   * `attempts - 1`), so crossing the exhaustion boundary dropped the delay from
+   * 8s straight back to 1s — the client got MORE impatient exactly when the
+   * server was telling it to back off, turning one refusal into ~10 attempts in
+   * the first 76s.
+   */
+  private static retryDelayMs(attempts: number): number {
+    return Math.min(30000, 1000 * Math.pow(2, Math.max(0, attempts - 1)));
+  }
+
   private static retryKey(projectId: string, featureName: string, job: string): string {
     return `${projectId}|${featureName}|${job}`;
   }
@@ -319,9 +334,7 @@ class SSEManager {
           const exhausted = this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts;
 
           if (exhausted || browserGaveUp) {
-            const retryDelay = exhausted
-              ? Math.min(30000, 1000 * Math.pow(2, this.unifiedConnection.reconnectAttempts - this.maxReconnectAttempts))
-              : Math.min(30000, 1000 * Math.pow(2, this.unifiedConnection.reconnectAttempts - 1));
+            const retryDelay = SSEManager.retryDelayMs(this.unifiedConnection.reconnectAttempts);
             const savedProjectId = this.unifiedConnection.projectId;
             const savedFeatureName = this.unifiedConnection.featureName;
             const savedUrl = new URL(this.unifiedConnection.url);
@@ -535,7 +548,20 @@ class SSEManager {
         }
       };
       
-      // ✅ Handle 'end' event for workflow completion
+      // Handle 'end' event for workflow completion.
+      //
+      // This is the SINGLE owner of "the job ended, so close its workflow
+      // stream". A workflow stream exists to carry one job's events, so its
+      // lifetime is the job's — not the tab's. Leaving it open held a
+      // per-account SSE slot (`ant:sse:slots:{org}:{user}`, cap 10, shared with
+      // the feature stream) for the rest of the session, and the 10s heartbeat
+      // kept re-arming that slot's 30s TTL, so nothing ever reclaimed it. One
+      // leaked slot per completed job meant ~10 universal turns exhausted the
+      // budget and every further stream was refused 429 `connection_limit`.
+      //
+      // The store's completion path cannot own this: `handleKanbanUpdate` flips
+      // `isRunning` with a raw `set()` and never reaches `setRunning(false)`,
+      // where the only other `disconnectWorkflow` call lives.
       eventSource.addEventListener('end', () => {
         this.routeMessage({
           type: 'workflow',
@@ -546,6 +572,7 @@ class SSEManager {
             isCompleted: true
           }
         });
+        this.disconnectWorkflow(jobId);
       });
       
       eventSource.onerror = () => {
@@ -567,9 +594,7 @@ class SSEManager {
           const exhausted = conn.reconnectAttempts >= this.maxReconnectAttempts;
 
           if (exhausted || browserGaveUp) {
-            const retryDelay = exhausted
-              ? Math.min(30000, 1000 * Math.pow(2, conn.reconnectAttempts - this.maxReconnectAttempts))
-              : Math.min(30000, 1000 * Math.pow(2, conn.reconnectAttempts - 1));
+            const retryDelay = SSEManager.retryDelayMs(conn.reconnectAttempts);
             const carriedAttempts = conn.reconnectAttempts;
 
             this.disconnectWorkflow(jobId);

@@ -31,7 +31,9 @@ export type { SSEMessageType, SSEMessage, SSEBroadcastMessage, SSEWorkflowMessag
  */
 const MAX_SSE_CONNECTIONS_PER_USER = 10;
 const SSE_CONNECTION_SET_PREFIX = 'ant:sse:slots:';
-const SSE_CONNECTION_TTL_SECONDS = 30; // Slot expiry; refreshed by heartbeat
+export const SSE_CONNECTION_TTL_SECONDS = 30; // Slot expiry; refreshed by heartbeat
+/** Grace for the FE to close on `end` before the server reclaims the stream. */
+const WORKFLOW_END_CLOSE_GRACE_MS = 1000;
 
 /** The account's bounded slot set. One set per account, one member per stream. */
 function sseSlotKey(organizationId: string, userId: string): string {
@@ -233,6 +235,15 @@ export class SSEService {
         slotKey, member, MAX_SSE_CONNECTIONS_PER_USER, SSE_CONNECTION_TTL_SECONDS,
       );
       if (!admitted) {
+        // Name the live holder count in the refusal: it is the one datum that
+        // separates "this account really has N streams open" from "N ghosts are
+        // pinning the budget", and without it a report of this 429 is
+        // undiagnosable after the fact.
+        const held = await this.stateStore.countSlots(slotKey).catch(() => -1);
+        logger.warn(
+          `SSE budget spent for ${slotKey}: ${held}/${MAX_SSE_CONNECTIONS_PER_USER} slots held`,
+          { component: 'SSEService' },
+        );
         return { ok: false, status: 429, code: 'connection_limit' };
       }
       // MUST be awaited: it guarantees the subscription is live before initial
@@ -314,7 +325,7 @@ export class SSEService {
     logger.debug(`Workflow client registered: ${jobId} (total: ${this.workflowClients.get(jobId)!.size})`, { component: 'SSEService', jobId });
 
     // Handle client disconnect
-    res.on('close', () => {
+    const closeHandler = () => {
       this.workflowClients.get(jobId)?.delete(res);
       if (this.workflowClients.get(jobId)?.size === 0) {
         this.workflowClients.delete(jobId);
@@ -325,7 +336,11 @@ export class SSEService {
         });
       }
       logger.debug(`Workflow client disconnected: ${jobId}`, { component: 'SSEService', jobId });
-    });
+    };
+    res.on('close', closeHandler);
+    // `closeAll` removes this before ending the response so the slot is released
+    // once, explicitly, rather than by a listener racing process exit.
+    (res as any).__sseCloseHandler = closeHandler;
   }
   
   /**
@@ -566,7 +581,21 @@ export class SSEService {
   }
   
   /**
-   * Send workflow end event to local clients only
+   * Send workflow end event to local clients only, then close those streams.
+   *
+   * The close is the server-side backstop for the slot budget: a workflow
+   * stream carries exactly one job's events, so once the job has ended it can
+   * never carry another. Left open it pinned a per-account SSE slot
+   * (`MAX_SSE_CONNECTIONS_PER_USER`, shared with the feature stream) that the
+   * 10s heartbeat kept re-arming past its 30s TTL — one leaked slot per
+   * completed job until the account could open no stream at all (429
+   * `connection_limit`).
+   *
+   * The FE closes on the same `end` event, which is what keeps EventSource from
+   * auto-reconnecting; this runs a beat later so that close normally wins and
+   * `closeWorkflowClients` finds nothing left to do. It exists for the clients
+   * that never act on `end` — another tab, an older build, a stream reattached
+   * to an already-finished job.
    */
   private sendWorkflowEndEventLocal(jobId: string): void {
     const clients = this.workflowClients.get(jobId);
@@ -586,6 +615,8 @@ export class SSEService {
         clients.delete(res);
       }
     });
+
+    setTimeout(() => this.closeWorkflowClients(jobId), WORKFLOW_END_CLOSE_GRACE_MS).unref?.();
   }
   
   /**
@@ -687,8 +718,19 @@ export class SSEService {
     }
     this.clients.clear();
 
+    // Same shape as the feature loop above, and for the same reason: `res.end()`
+    // releases the slot only if the 'close' listener still runs, which races
+    // process exit on shutdown. Release explicitly instead of leaving the slot
+    // to its TTL — a rolling deploy would otherwise hand every reconnecting
+    // client a budget that is still full.
     for (const [, clients] of this.workflowClients.entries()) {
       clients.forEach(res => {
+        const handler = (res as any).__sseCloseHandler;
+        if (handler) res.removeListener('close', handler);
+        const slot = (res as any).__sseSlot as { slotKey: string; member: string } | undefined;
+        if (slot && this.stateStore) {
+          deleteOps.push(this.stateStore.releaseSlot(slot.slotKey, slot.member).catch(() => {}));
+        }
         try { res.end(); } catch { /* ignore */ }
         closed++;
       });
