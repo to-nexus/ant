@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Request } from 'express';
 import {
+  createCorsMiddleware,
   isAllowedFrontendOrigin,
   logCorsConfigSummary,
   __testing,
@@ -217,5 +218,46 @@ describe('logCorsConfigSummary', () => {
     logCorsConfigSummary();
     expect(warnSpy).not.toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledOnce();
+  });
+});
+
+
+/**
+ * Preflight caching. Without `Access-Control-Max-Age` the browser falls back to
+ * its own default (~5s in Chrome), so a cross-origin deployment re-asks on
+ * nearly every call — and each of those OPTIONS is a failure surface the FE's
+ * `/health` probe cannot see, because that probe is the one request we make
+ * with no headers and so the only one that is never preflighted.
+ */
+describe('CORS preflight cache', () => {
+  it('answers a preflight with a Max-Age', async () => {
+    const headers: Record<string, string> = {};
+    const reqHeaders: Record<string, string> = {
+      host: 'localhost:4100',
+      origin: 'http://localhost:4200',
+      'access-control-request-method': 'PUT',
+    };
+    const req = {
+      method: 'OPTIONS',
+      hostname: 'localhost',
+      protocol: 'http',
+      headers: reqHeaders,
+      header: (name: string) => reqHeaders[name.toLowerCase()],
+    } as unknown as Request;
+
+    const res = {
+      statusCode: 200,
+      setHeader(name: string, value: unknown) { headers[name] = String(value); },
+      getHeader(name: string) { return headers[name]; },
+      end() {},
+    } as any;
+
+    await new Promise<void>((resolve) => {
+      createCorsMiddleware()(req, res, () => resolve());
+      // A preflight is terminated by the middleware rather than passed on.
+      resolve();
+    });
+
+    expect(headers['Access-Control-Max-Age']).toBe('600');
   });
 });

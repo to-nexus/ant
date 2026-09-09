@@ -108,10 +108,9 @@
     "message": "The server connection was lost. Your in-progress work can be resumed after the server restarts.",
     "confirm": "OK"
   },
-  "gatewayBlocked": {
-    "title": "Request Blocked",
-    "message": "The server is healthy, but this request was blocked by an intermediary gateway. If the text contains something that looks like a shell command (e.g. `echo …`, `grep …`), remove or reword it and try again. Your input has been kept.",
-    "confirm": "OK"
+  "requestRefused": {
+    "message": "A request was refused before it reached the server ({{target}}).",
+    "withBody": "A request was refused before it reached the server ({{target}}). If it carried text that looks like a shell command, that may be why. Your input has been kept."
   },
   "turnTokenGauge": {
     "context": "Context",

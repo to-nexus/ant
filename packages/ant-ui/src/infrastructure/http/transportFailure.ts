@@ -13,15 +13,27 @@
  * import the hook (cycle).
  */
 
-let onTransportFailure: ((url: string) => void) | null = null;
+/**
+ * What the mint knows about the request that died. The consumer's verdict must
+ * not outrun this: `hasBody === false` rules out a content-based refusal
+ * outright, because there was no content to inspect.
+ */
+export interface TransportFailureInfo {
+  method: string;
+  hasBody: boolean;
+}
 
-export function setOnTransportFailure(cb: ((url: string) => void) | null): void {
+type TransportFailureHandler = (url: string, info: TransportFailureInfo) => void;
+
+let onTransportFailure: TransportFailureHandler | null = null;
+
+export function setOnTransportFailure(cb: TransportFailureHandler | null): void {
   onTransportFailure = cb;
 }
 
-export function notifyTransportFailure(url: string): void {
+export function notifyTransportFailure(url: string, info: TransportFailureInfo): void {
   try {
-    onTransportFailure?.(url);
+    onTransportFailure?.(url, info);
   } catch (err) {
     console.error('[Transport] failure notification threw', err);
   }

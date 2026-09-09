@@ -151,6 +151,11 @@ export function createCorsMiddleware(): RequestHandler {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    // Without this the browser caches a preflight for its own default (~5s in
+    // Chrome), so a cross-origin deployment re-asks on nearly every call. Only
+    // requests that carry a JSON body are preflighted now, but those are the
+    // writes — the ones worth not doubling.
+    maxAge: 600,
   };
 
   const delegate: cors.CorsOptionsDelegate<Request> = (req, callback) => {

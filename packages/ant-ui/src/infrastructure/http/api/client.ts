@@ -133,11 +133,20 @@ if (import.meta.env.DEV) {
  * ant_session cookie with every cross-origin request.
  */
 export async function authFetch(url: string, options?: RequestInit): Promise<Response> {
+  const hasBody = options?.body !== undefined;
   const isFormDataBody =
     typeof FormData !== 'undefined' && options?.body instanceof FormData;
 
+  // Only a request that HAS a JSON body declares one. `application/json` is not
+  // a CORS-safelisted `Content-Type`, so declaring it on a bodyless GET makes
+  // the request non-simple and buys a preflight per call — and in cloud the FE
+  // and the API are different origins, so that was every GET in the app paying
+  // an extra OPTIONS round trip. It also added a whole failure surface the
+  // health probe is blind to: `/health` is the one bodyless, header-free fetch
+  // we make, so a refused preflight always resolved to "the server is fine,
+  // your request was blocked".
   const baseHeaders: Record<string, string> = {};
-  if (!isFormDataBody) {
+  if (hasBody && !isFormDataBody) {
     baseHeaders['Content-Type'] = 'application/json';
   }
 
@@ -157,7 +166,7 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
     // server down, DNS/TLS failure, or an edge (WAF / ALB) answering without
     // CORS headers. Everything else (AbortError, TimeoutError) is the caller's.
     if (!(error instanceof TypeError)) throw error;
-    notifyTransportFailure(url);
+    notifyTransportFailure(url, { method: options?.method ?? 'GET', hasBody });
     throw new NetworkError(url, error);
   }
 }

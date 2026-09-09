@@ -4,8 +4,9 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { useTranslation } from 'react-i18next';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { API_BASE } from '@/infrastructure/http/api';
-import { setOnTransportFailure } from '@/infrastructure/http/transportFailure';
+import { setOnTransportFailure, type TransportFailureInfo } from '@/infrastructure/http/transportFailure';
 import { ConnectionBanner } from '@/presentation/components/common/ConnectionBanner';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 
 /**
  * Detects server-down events while a job is running and provides two-phase
@@ -20,25 +21,52 @@ import { ConnectionBanner } from '@/presentation/components/common/ConnectionBan
  * sets connectionStatus to 'error', the modal is shown regardless.
  *
  * Request path: a fetch that dies before a readable response exists arrives
- * here too (`setOnTransportFailure`). There the health probe is the verdict,
- * not just a filter — a healthy `/health` alongside a dead request means the
- * request itself was refused upstream (an edge/WAF answering without CORS
- * headers, which the browser can only report as `Failed to fetch`), so it gets
- * its own actionable modal instead of "the server is down".
+ * here too (`setOnTransportFailure`). A healthy `/health` alongside a dead
+ * request means the request was refused upstream rather than the server being
+ * down — but that is ALL it means. `/health` is bodyless, uncredentialed and
+ * public, so it cannot speak for a preflight, a cookie or an authenticated
+ * path, and the browser never exposes the status. So this path reports WHICH
+ * request died and offers the content-refusal reading only when there was
+ * content to refuse; it does not assert a cause it cannot observe.
+ *
+ * It also does not BLOCK. A background request dying mid project-switch is not
+ * something the user can act on, and a modal there interrupts work it cannot
+ * help — so the request path uses a toast and the banner. `serverDown` keeps
+ * its modal: that one really is a stop-everything condition.
  *
  * Must be rendered inside AlertModalProvider.
  */
+/** One notice per burst — a project switch fans out ~20 requests. */
+const REFUSAL_NOTICE_COOLDOWN_MS = 30_000;
+const REFUSAL_NOTICE_DURATION_MS = 6_000;
+
+/** `https://host/api/projects/x/config?q=1` → `/api/projects/x/config`. */
+function describeUrl(url: string): string {
+  try {
+    return new URL(url, window.location.origin).pathname;
+  } catch {
+    return url;
+  }
+}
+
 export function useServerDownDetector() {
   const { t } = useTranslation('common');
   const connectionStatus = useStore((state) => state.connectionStatus);
   const isRunning = useStore((state) => state.isRunning);
   const { showWarning } = useAlertModalContext();
+  const { toast } = useToastContext();
 
   const [bannerVisible, setBannerVisible] = useState(false);
 
   const prevStatusRef = useRef(connectionStatus);
   const wasRunningRef = useRef(isRunning);
   const healthCheckInFlightRef = useRef(false);
+  /**
+   * `healthCheckInFlightRef` only collapses failures that overlap; it is
+   * released in `finally`, so a burst that fails in sequence — one project
+   * switch fans out ~20 requests — announced itself once per failure.
+   */
+  const lastRefusalNoticeRef = useRef(0);
 
   useEffect(() => {
     wasRunningRef.current = isRunning;
@@ -54,20 +82,33 @@ export function useServerDownDetector() {
     );
   }, [showWarning, t]);
 
-  const showGatewayBlockedModal = useCallback(() => {
-    showWarning(
-      t('gatewayBlocked.message', 'The server is healthy, but this request was blocked by an intermediary gateway.'),
-      {
-        title: t('gatewayBlocked.title', 'Request Blocked'),
-        confirmText: t('gatewayBlocked.confirm', 'OK'),
-      },
+  /**
+   * The request was refused before Express saw it. Name it, and add the
+   * content-refusal hint ONLY when the request carried content — a bodyless GET
+   * cannot have been refused for what it contained, and telling the user to
+   * reword input they never typed is advice they cannot act on.
+   */
+  const noticeRequestRefused = useCallback((url: string, info: TransportFailureInfo) => {
+    const now = Date.now();
+    if (now - lastRefusalNoticeRef.current < REFUSAL_NOTICE_COOLDOWN_MS) return;
+    lastRefusalNoticeRef.current = now;
+
+    const target = `${info.method} ${describeUrl(url)}`;
+    toast.error(
+      info.hasBody
+        ? t('requestRefused.withBody', { target, defaultValue:
+            'A request was refused before it reached the server ({{target}}). If it carried text that looks like a shell command, that may be why. Your input has been kept.' })
+        : t('requestRefused.message', { target, defaultValue:
+            'A request was refused before it reached the server ({{target}}).' }),
+      REFUSAL_NOTICE_DURATION_MS,
     );
-  }, [showWarning, t]);
+  }, [toast, t]);
 
   /**
    * Banner → health probe → verdict. Shared by both entry points; `onHealthy`
-   * is what separates them (SSE: transient, say nothing. Request: the request
-   * was refused upstream, say so).
+   * is what separates them (SSE: transient, say nothing. Request: name the
+   * request that was refused). An unhealthy probe is the one verdict the probe
+   * CAN establish on its own, and it keeps the blocking modal.
    */
   const probe = useCallback(async (onHealthy: () => void) => {
     if (healthCheckInFlightRef.current) return;
@@ -103,9 +144,11 @@ export function useServerDownDetector() {
 
   // --- Request path: a fetch with no readable response ---
   useEffect(() => {
-    setOnTransportFailure(() => { void probe(showGatewayBlockedModal); });
+    setOnTransportFailure((url, info) => {
+      void probe(() => noticeRequestRefused(url, info));
+    });
     return () => setOnTransportFailure(null);
-  }, [probe, showGatewayBlockedModal]);
+  }, [probe, noticeRequestRefused]);
 
   // --- Slow path: connectionStatus transition fallback ---
   useEffect(() => {

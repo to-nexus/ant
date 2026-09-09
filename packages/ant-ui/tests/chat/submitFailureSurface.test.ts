@@ -25,18 +25,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
-import { authFetch, apiPost, ApiError, NetworkError } from '../../src/infrastructure/http/api/client';
-import { setOnTransportFailure } from '../../src/infrastructure/http/transportFailure';
+import { authFetch, apiGet, apiPost, ApiError, NetworkError } from '../../src/infrastructure/http/api/client';
+import { setOnTransportFailure, type TransportFailureInfo } from '../../src/infrastructure/http/transportFailure';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src');
 const SUBMIT = path.join(SRC, 'presentation/components/chat/hooks/useChatSubmit.ts');
 
 describe('authFetch — transport failure has exactly one mint', () => {
   let notified: string[];
+  let reported: Array<{ url: string; info: TransportFailureInfo }>;
 
   beforeEach(() => {
     notified = [];
-    setOnTransportFailure((url) => notified.push(url));
+    reported = [];
+    setOnTransportFailure((url, info) => {
+      notified.push(url);
+      reported.push({ url, info });
+    });
   });
 
   afterEach(() => {
@@ -80,6 +85,77 @@ describe('authFetch — transport failure has exactly one mint', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 
     await expect(apiPost('https://api.test/api/x', { a: 1 })).rejects.toBeInstanceOf(NetworkError);
+  });
+
+  /**
+   * The consumer's verdict may not outrun what the mint observed. A bodyless
+   * request cannot have been refused for its content, so `hasBody` travels with
+   * the notification and the content-refusal reading is gated on it — the modal
+   * used to tell a user mid project-switch to reword input they never typed.
+   */
+  it('reports a bodyless request as hasBody:false', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+
+    await apiGet('https://api.test/api/projects/p/config').catch(() => {});
+
+    expect(reported).toHaveLength(1);
+    expect(reported[0].info).toEqual({ method: 'GET', hasBody: false });
+  });
+
+  it('reports a body-carrying request as hasBody:true with its method', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+
+    await apiPost('https://api.test/api/x', { a: 1 }).catch(() => {});
+
+    expect(reported).toHaveLength(1);
+    expect(reported[0].info).toEqual({ method: 'POST', hasBody: true });
+  });
+});
+
+/**
+ * `application/json` is not a CORS-safelisted `Content-Type`, so declaring it
+ * makes a request non-simple and costs a preflight. Declaring it on bodyless
+ * GETs bought one per call against a cross-origin API — and a refused preflight
+ * is invisible to the `/health` probe, which is the one fetch we make that has
+ * no headers at all.
+ */
+describe('authFetch — only a request with a body declares a Content-Type', () => {
+  let seen: RequestInit | undefined;
+
+  beforeEach(() => {
+    seen = undefined;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      seen = init;
+      return new Response('{}', { status: 200 });
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const contentType = () => (seen?.headers as Record<string, string> | undefined)?.['Content-Type'];
+
+  it('omits it on a bodyless GET', async () => {
+    await authFetch('https://api.test/api/x');
+    expect(contentType()).toBeUndefined();
+  });
+
+  it('sets it on a JSON body', async () => {
+    await authFetch('https://api.test/api/x', { method: 'POST', body: JSON.stringify({ a: 1 }) });
+    expect(contentType()).toBe('application/json');
+  });
+
+  it('omits it on FormData so the browser can set the multipart boundary', async () => {
+    await authFetch('https://api.test/api/x', { method: 'POST', body: new FormData() });
+    expect(contentType()).toBeUndefined();
+  });
+
+  it('lets an explicit caller header win', async () => {
+    await authFetch('https://api.test/api/x', {
+      method: 'POST', body: 'raw', headers: { 'Content-Type': 'text/plain' },
+    });
+    expect(contentType()).toBe('text/plain');
   });
 });
 
