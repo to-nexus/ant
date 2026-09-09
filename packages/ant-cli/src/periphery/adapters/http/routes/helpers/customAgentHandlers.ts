@@ -19,6 +19,7 @@ import {
   isValidCustomId,
   validateMcpServers,
   validateApiServers,
+  clarifyExitOutcomes,
   type CustomAgentDefinitionFileNode,
   type DefinitionValidationResult,
   type CustomAgentSummary,
@@ -39,7 +40,6 @@ import {
   INTENT_CATALOG_CAP,
   validateHooksFileDoc,
   validateInferFile,
-  clarifyExitOutcomes,
 } from '../../../../../core/customAgents/intents';
 
 // ── scaffolds ────────────────────────────────────────────────────────────────

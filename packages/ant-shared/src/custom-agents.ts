@@ -349,9 +349,9 @@ export const INTENTS_DIR_NAME = 'intents' as const;
 
 /**
  * Required per-intent criterion file inside `intents/{intentId}/` — optional
- * YAML frontmatter (only `clarify: <bool>`) + prose body = the inference
- * criterion ("applies when"). The intent id is the directory name; no file
- * declares it.
+ * YAML frontmatter (`clarify: <bool>`, `outcomes: [..]` — see
+ * {@link validateInferFrontmatter}) + prose body = the inference criterion
+ * ("applies when"). The intent id is the directory name; no file declares it.
  */
 export const INTENT_INFER_FILE_NAME = 'infer.md' as const;
 
@@ -375,6 +375,121 @@ export function splitFrontmatter(raw: string): { frontmatter: string | null; bod
   const m = /^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(raw);
   if (!m) return { frontmatter: null, body: raw, unterminated: true };
   return { frontmatter: m[1] ?? '', body: raw.slice(m[0].length) };
+}
+
+/**
+ * Retired `infer.md` frontmatter keys, each with a pointed move message — per
+ * AGENTS.md, silently ignoring a removed key is how an author concludes a
+ * knob works.
+ */
+const BANNED_INFER_FRONTMATTER_KEYS: Record<string, (intentId: string) => string> = {
+  default: () =>
+    `"default" was removed — there is no catalog default; an unpinned turn always runs as "${GENERAL_INTENT}" and self-selects off the Intent Catalog. Where you relied on the default (scheduled/API runs), pin the intent explicitly via @intent: / turn meta`,
+  injections: (id) =>
+    `"injections" was removed — an intent owns exactly one prose file, ${INTENTS_DIR_NAME}/${id}/${INTENT_PROMPT_FILE_NAME}; move the referenced content there`,
+  description: () =>
+    `"description" is not a frontmatter key — the infer.md BODY (below the closing ---) is the inference criterion`,
+  id: (id) =>
+    `"id" is not declared anywhere — the intent id IS the ${INTENTS_DIR_NAME}/${id}/ directory name (rename the directory to rename the intent)`,
+  hooks: (id) => `"hooks" moved to ${INTENTS_DIR_NAME}/${id}/${INTENT_HOOKS_FILE_NAME} — declare it there`,
+};
+
+/**
+ * Outcome ids that name the runtime's clarify exit rather than a conclusion the
+ * work reached. Checked at SAVE only (both save gates — the BE
+ * `gateDefinitionSave` and the FE settings editor), never from
+ * {@link validateInferFrontmatter}, which the loader also reaches: a definition
+ * already carrying one must keep loading.
+ * Deliberately narrow: it matches ids naming the clarify mechanism or a missing
+ * INPUT, never a missing finding — "insufficient-evidence" is a real verdict in
+ * an audit and must pass.
+ */
+const CLARIFY_EXIT_OUTCOME_IDS = new Set([
+  'needs-clarification', 'need-clarification', 'clarification-needed', 'clarification-required',
+  'needs-clarify', 'needs-input', 'need-input', 'input-needed', 'input-required',
+  'insufficient-input', 'missing-input', 'input-missing', 'incomplete-input',
+]);
+
+export function clarifyExitOutcomes(outcomes: string[] | undefined): string[] {
+  return (outcomes ?? []).filter((o) => CLARIFY_EXIT_OUTCOME_IDS.has(o));
+}
+
+/**
+ * Validate one `infer.md` frontmatter MAPPING — the key grammar, owned once for
+ * the BE loader and the FE settings editor (the same discipline
+ * {@link splitFrontmatter} already holds for the fence bytes; splitting the
+ * grammar across two copies is what let `outcomes` load fine while the editor
+ * refused to open the file).
+ *
+ * Takes an ALREADY-PARSED value, not raw text, so this package keeps zero
+ * runtime deps — each caller parses YAML with its own lib. `null`/`undefined`
+ * (fence absent, or comments-only) is valid and declares nothing.
+ *
+ * `label` is baked into the messages rather than prefixed by callers because
+ * the separator differs per message (`{label} frontmatter …` vs `{label}: …`).
+ * Errors short-circuit in declaration order, so `errors[0]` is the fail-fast
+ * message.
+ */
+export function validateInferFrontmatter(
+  raw: unknown,
+  opts: { intentId: string; label: string },
+): { clarify?: boolean; outcomes?: string[]; errors: string[] } {
+  const { intentId, label } = opts;
+  if (raw == null) return { errors: [] };
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { errors: [`${label} frontmatter must be a YAML mapping (or comments only)`] };
+  }
+
+  const doc = raw as Record<string, unknown>;
+  const keys = Object.keys(doc);
+  for (const key of keys) {
+    const banned = BANNED_INFER_FRONTMATTER_KEYS[key];
+    if (banned) return { errors: [`${label}: ${banned(intentId)}`] };
+  }
+  const extras = keys.filter((k) => k !== 'clarify' && k !== 'outcomes');
+  if (extras.length > 0) {
+    return {
+      errors: [`${label} frontmatter allows only "clarify" and "outcomes" (got: ${keys.join(', ')})`],
+    };
+  }
+
+  const clarify = doc.clarify;
+  if (clarify !== undefined && typeof clarify !== 'boolean') {
+    return {
+      errors: [
+        `${label}: clarify must be true or false (got: ${JSON.stringify(clarify)}) — ` +
+        `false declares turns under this intent autonomous/unattended: the agent never asks a blocking question and proceeds with sensible defaults`,
+      ],
+    };
+  }
+
+  const rawOutcomes = doc.outcomes;
+  let outcomes: string[] | undefined;
+  if (rawOutcomes !== undefined) {
+    if (
+      !Array.isArray(rawOutcomes) ||
+      rawOutcomes.length < INTENT_OUTCOMES_MIN ||
+      rawOutcomes.length > INTENT_OUTCOMES_MAX ||
+      rawOutcomes.some((o) => typeof o !== 'string' || !isValidCustomId(o))
+    ) {
+      return {
+        errors: [
+          `${label}: outcomes must be ${INTENT_OUTCOMES_MIN}–${INTENT_OUTCOMES_MAX} kebab-case ids ` +
+          `(the decision vocabulary a turn ends with as <verdict>…</verdict>; got: ${JSON.stringify(rawOutcomes)})`,
+        ],
+      };
+    }
+    if (new Set(rawOutcomes).size !== rawOutcomes.length) {
+      return { errors: [`${label}: outcomes must be unique`] };
+    }
+    outcomes = rawOutcomes as string[];
+  }
+
+  return {
+    ...(clarify !== undefined ? { clarify } : {}),
+    ...(outcomes ? { outcomes } : {}),
+    errors: [],
+  };
 }
 
 /**

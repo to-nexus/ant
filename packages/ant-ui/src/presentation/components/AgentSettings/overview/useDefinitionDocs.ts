@@ -34,6 +34,7 @@ import {
   applyHooks,
   applyInferBody,
   applyInferClarify,
+  applyInferOutcomes,
   applyMainDraft,
   applyMcpServers,
   applyApiServers,
@@ -126,7 +127,7 @@ function toDoc(key: DocKey, path: string, raw: string, savedRaw: string): Defini
   const parseError = key.startsWith('prompt:')
     ? null // plain prose — nothing to parse
     : key.startsWith('infer:')
-      ? parseInferMd(raw).error
+      ? parseInferMd(raw, key.slice('infer:'.length)).error
       : parseYamlDoc(raw).error;
   return { key, path, raw, savedRaw, dirty: raw !== savedRaw, parseError };
 }
@@ -258,7 +259,7 @@ export function useDefinitionDocs(
       Object.keys(inferDocs)
         .sort()
         .map((intentId) => {
-          const infer = parseInferMd(inferDocs[intentId].raw).value;
+          const infer = parseInferMd(inferDocs[intentId].raw, intentId).value;
           const hooksParsed = hooksDocs[intentId] ? parseYamlDoc(hooksDocs[intentId].raw).doc : null;
           return { intentId, infer, hooksParsed };
         }),
@@ -277,6 +278,7 @@ export function useDefinitionDocs(
             id: intentId,
             infer: infer.body.trim(),
             ...(infer.clarify !== undefined ? { clarify: infer.clarify } : {}),
+            ...(infer.outcomes ? { outcomes: infer.outcomes } : {}),
             ...(hooks ? { hooks } : {}),
             ...(hasPrompt ? { hasPrompt: true } : {}),
           };
@@ -346,6 +348,9 @@ export function useDefinitionDocs(
       }
       if ('clarify' in patch) {
         editInfer(intentId, (raw) => applyInferClarify(raw, patch.clarify));
+      }
+      if ('outcomes' in patch) {
+        editInfer(intentId, (raw) => applyInferOutcomes(raw, patch.outcomes));
       }
     },
     [edit, setRaw, editInfer],

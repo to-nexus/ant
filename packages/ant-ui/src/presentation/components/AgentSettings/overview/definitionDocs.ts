@@ -13,7 +13,9 @@
 import { isMap, parseDocument, type Document } from 'yaml';
 import {
   ON_DEMAND_DIR_NAME,
+  clarifyExitOutcomes,
   splitFrontmatter,
+  validateInferFrontmatter,
   validateIntentHooks,
   type CustomIntentDef,
   type IntentHooks,
@@ -166,19 +168,37 @@ function sanitizeHooks(raw: unknown): IntentHooks | undefined {
 
 // ── infer.md algebra (frontmatter + criterion body) ─────────────────────────
 //
-// The fence convention is the shared `splitFrontmatter` — BE loader and this
-// editor MUST parse the same bytes the same way, so neither side owns its own
-// regex. Edits are comment-preserving: the fence text is patched through a
-// yaml Document (comments survive), and the body is spliced verbatim.
+// BE loader and this editor MUST parse the same bytes the same way, so NEITHER
+// owns a rule: the fence split is the shared `splitFrontmatter` and the key
+// grammar is the shared `validateInferFrontmatter`. (A second key allowlist
+// lived here once and went stale the moment `outcomes` landed BE-side — the
+// editor then refused to open files the runtime loaded fine.) Only the YAML
+// parse is local, because @ant/shared carries no yaml dep.
+// Edits are comment-preserving: the fence text is spliced line-wise and the
+// body verbatim.
 
 export interface InferDraft {
   clarify?: boolean;
+  /** Declared decision vocabulary — absent on a producing (non-judgment) intent. */
+  outcomes?: string[];
   /** The prose criterion (frontmatter excluded, untrimmed). */
   body: string;
 }
 
-/** Parse failures are surfaced, never thrown — the card shows a banner instead. */
-export function parseInferMd(raw: string): { value: InferDraft; error: string | null } {
+/**
+ * The label the shared grammar stamps into its messages. The BE uses the full
+ * `intents/{id}/infer.md` path; this screen is already inside one intent, so
+ * the bare file name reads right under the card's own heading (and
+ * `validateInferDoc` prefixes the intent for the catalog-wide list).
+ */
+const INFER_FILE_LABEL = 'infer.md';
+
+/**
+ * Parse failures are surfaced, never thrown — the card shows a banner instead.
+ * `intentId` is what the shared grammar interpolates into its retired-key
+ * messages ("move it to intents/{id}/prompt.md"), so it must be the real id.
+ */
+export function parseInferMd(raw: string, intentId: string): { value: InferDraft; error: string | null } {
   const { frontmatter, body, unterminated } = splitFrontmatter(raw);
   if (unterminated) {
     return { value: { body: '' }, error: 'infer.md opens a "---" frontmatter fence that never closes' };
@@ -186,20 +206,17 @@ export function parseInferMd(raw: string): { value: InferDraft; error: string | 
   if (frontmatter === null) return { value: { body: raw }, error: null };
   const { doc, error } = parseYamlDoc(frontmatter);
   if (error) return { value: { body }, error: `frontmatter: ${error}` };
-  const root = doc ? (doc.toJS() as Record<string, unknown> | null) : null;
+  const root = doc ? (doc.toJS() as unknown) : null;
   if (root == null) return { value: { body }, error: null }; // comments-only fence
-  if (typeof root !== 'object' || Array.isArray(root)) {
-    return { value: { body }, error: 'infer.md frontmatter must be a YAML mapping (or comments only)' };
-  }
-  const extras = Object.keys(root).filter((k) => k !== 'clarify');
-  if (extras.length > 0) {
-    return { value: { body }, error: `infer.md frontmatter allows only "clarify" (got: ${extras.join(', ')})` };
-  }
-  const clarify = root.clarify;
-  if (clarify !== undefined && typeof clarify !== 'boolean') {
-    return { value: { body }, error: `clarify must be true or false (got: ${JSON.stringify(clarify)})` };
-  }
-  return { value: { ...(clarify !== undefined ? { clarify } : {}), body }, error: null };
+  const { clarify, outcomes, errors } = validateInferFrontmatter(root, {
+    intentId,
+    label: INFER_FILE_LABEL,
+  });
+  if (errors.length > 0) return { value: { body }, error: errors[0] };
+  return {
+    value: { ...(clarify !== undefined ? { clarify } : {}), ...(outcomes ? { outcomes } : {}), body },
+    error: null,
+  };
 }
 
 /** Replace the criterion body, keeping the frontmatter fence byte-verbatim. */
@@ -211,27 +228,64 @@ export function applyInferBody(raw: string, body: string): string {
 }
 
 /**
- * Set/clear the frontmatter `clarify` key, preserving fence comments.
- * `undefined` = "inherit" (key deleted); a fence left with nothing (no keys,
- * no comments) is removed entirely; setting onto a fenceless file mints one.
+ * Splice one frontmatter key into/out of the fence, preserving its comments.
+ * `line` undefined = delete the key; a fence left with nothing (no keys, no
+ * comments) is removed entirely; setting onto a fenceless file mints one.
  *
- * The edit is LINE-LEVEL text splicing, not a yaml Document rewrite: the
- * fence grammar allows exactly one key, and the Document route deletes a
- * key's leading comments with it (the yaml lib attaches them to the pair) —
- * which would erase the authoring-guidance comments the fence exists to hold.
+ * The edit is LINE-LEVEL text splicing, not a yaml Document rewrite, because
+ * the Document route deletes a key's leading comments with it (the yaml lib
+ * attaches them to the pair) — which would erase the authoring-guidance
+ * comments the fence exists to hold. So: comment lines ALWAYS survive, and a
+ * removal takes the key's line plus its value continuation lines — an indented
+ * block or a zero-indent `- ` sequence — since leaving those behind would turn
+ * a deleted `outcomes:` into a stray list that no longer parses as a mapping.
  */
-export function applyInferClarify(raw: string, clarify: boolean | undefined): string {
+function applyFenceKey(raw: string, key: string, line: string | undefined): string {
   const { frontmatter, body, unterminated } = splitFrontmatter(raw);
   if (unterminated) return raw;
   if (frontmatter === null) {
-    if (clarify === undefined) return raw;
-    return `---\nclarify: ${clarify}\n---\n${body}`;
+    if (line === undefined) return raw;
+    return `---\n${line}\n---\n${body}`;
   }
-  const kept = frontmatter.split('\n').filter((l) => !/^clarify\s*:/.test(l));
-  if (clarify !== undefined) kept.push(`clarify: ${clarify}`);
+  const keyRe = new RegExp(`^${key}\\s*:`);
+  const kept: string[] = [];
+  let dropping = false;
+  for (const l of frontmatter.split('\n')) {
+    if (keyRe.test(l)) {
+      dropping = true;
+      continue;
+    }
+    if (dropping) {
+      if (/^\s*#/.test(l)) {
+        kept.push(l);
+        continue;
+      }
+      if (/^(?:\s+\S|\s*-\s)/.test(l)) continue;
+      dropping = false;
+    }
+    kept.push(l);
+  }
+  if (line !== undefined) kept.push(line);
   const fm = kept.join('\n').replace(/\n+$/, '');
   if (fm.trim() === '') return body;
   return `---\n${fm}\n---\n${body}`;
+}
+
+/** Set/clear the frontmatter `clarify` flag. `undefined` = inherit (key deleted). */
+export function applyInferClarify(raw: string, clarify: boolean | undefined): string {
+  return applyFenceKey(raw, 'clarify', clarify === undefined ? undefined : `clarify: ${clarify}`);
+}
+
+/**
+ * Set/clear the frontmatter `outcomes` vocabulary. An empty list means "not a
+ * judgment intent" and deletes the key — the declared-but-empty state is not
+ * expressible and must not be written. Always re-emitted in flow style, so a
+ * block sequence normalizes to one line on the first edit and the round-trip
+ * stays stable thereafter.
+ */
+export function applyInferOutcomes(raw: string, outcomes: string[] | undefined): string {
+  const line = outcomes && outcomes.length > 0 ? `outcomes: [${outcomes.join(', ')}]` : undefined;
+  return applyFenceKey(raw, 'outcomes', line);
 }
 
 /** One `intents/{id}/hooks.yaml` document → its declaration ({} / absent → undefined). */
@@ -352,12 +406,13 @@ export function applyApiServers(doc: Document, servers: Record<string, RestApiSe
 }
 
 /**
- * Intent edits are SURGICAL per file: `infer`/`clarify` splice the
- * infer.md text (`applyInferBody` / `applyInferClarify` — fence comments
- * survive), `hooks` routes to the sibling hooks.yaml document. There is no
- * yaml entry document anymore — infer.md is prose + a one-key fence.
+ * Intent edits are SURGICAL per file: `infer`/`clarify`/`outcomes` splice the
+ * infer.md text (`applyInferBody` / `applyInferClarify` / `applyInferOutcomes`
+ * — fence comments survive), `hooks` routes to the sibling hooks.yaml
+ * document. There is no yaml entry document anymore — infer.md is prose plus
+ * a two-key fence.
  */
-export type IntentPatch = Partial<Pick<CustomIntentDef, 'infer' | 'hooks' | 'clarify'>>;
+export type IntentPatch = Partial<Pick<CustomIntentDef, 'infer' | 'hooks' | 'clarify' | 'outcomes'>>;
 
 /** Write one hooks.yaml's `hooks.stop` list; an empty list deletes the `hooks` key. */
 export function applyHooks(doc: Document, stop: IntentStopHook[]): void {
@@ -391,12 +446,23 @@ export function editRaw(raw: string, mutate: (doc: Document) => void): string {
  * is also an error: infer.md is the required file and is never delete-on-empty.
  */
 export function validateInferDoc(raw: string, dirname: string): string[] {
-  const { value, error } = parseInferMd(raw);
+  const { value, error } = parseInferMd(raw, dirname);
   if (error) return [`intent "${dirname}" ${error}`];
   const body = value.body.trim();
   if (body.length === 0) return [`intent "${dirname}" requires a matching criterion (the infer.md body)`];
   if (body.length > INFER_CRITERION_MAX)
     return [`intent "${dirname}" criterion exceeds ${INFER_CRITERION_MAX} chars — move procedure into prompt.md`];
+  // Save-only, mirroring the BE gate: the loader deliberately does not re-check
+  // this, so an older definition carrying such an id keeps loading — but a save
+  // from this screen would be refused, and catching it here says why without
+  // spending the round trip.
+  const clarifyExits = clarifyExitOutcomes(value.outcomes);
+  if (clarifyExits.length > 0) {
+    return [
+      `intent "${dirname}" outcomes may not include "${clarifyExits.join('", "')}" — an outcome is a ` +
+      `conclusion the work reached, and "the inputs were missing" is the clarify exit, not a verdict`,
+    ];
+  }
   return [];
 }
 

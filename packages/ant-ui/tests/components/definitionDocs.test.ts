@@ -16,6 +16,7 @@ import {
   applyHooks,
   applyInferBody,
   applyInferClarify,
+  applyInferOutcomes,
   applyMainDraft,
   applyMcpServers,
   applyApiServers,
@@ -86,14 +87,14 @@ describe('raw → structured derivation', () => {
   });
 
   it('reads one infer.md — clarify frontmatter + criterion body, guidance comments excluded', () => {
-    expect(parseInferMd(INFER_MD)).toEqual({
+    expect(parseInferMd(INFER_MD, 'weekly')).toEqual({
       value: { clarify: false, body: 'produce the weekly report\n' },
       error: null,
     });
   });
 
   it('a fenceless infer.md is body-verbatim with no flags', () => {
-    expect(parseInferMd('just a criterion\n')).toEqual({
+    expect(parseInferMd('just a criterion\n', 'weekly')).toEqual({
       value: { body: 'just a criterion\n' },
       error: null,
     });
@@ -101,22 +102,44 @@ describe('raw → structured derivation', () => {
 
   it('a comments-only fence is valid (guidance channel) and derives no clarify', () => {
     const raw = '---\n# guidance only\n---\nCriterion.\n';
-    expect(parseInferMd(raw)).toEqual({ value: { body: 'Criterion.\n' }, error: null });
+    expect(parseInferMd(raw, 'weekly')).toEqual({ value: { body: 'Criterion.\n' }, error: null });
   });
 
   it.each([
     ['unterminated fence', '---\nclarify: false\nno close\n', /never closes/],
     ['non-mapping fence', '---\n- a\n---\nx\n', /must be a YAML mapping/],
-    ['unknown frontmatter key', '---\nfoo: 1\n---\nx\n', /allows only "clarify"/],
-    ['retired default key', '---\ndefault: true\n---\nx\n', /allows only "clarify"/],
+    ['unknown frontmatter key', '---\nfoo: 1\n---\nx\n', /allows only "clarify" and "outcomes"/],
+    ['retired default key', '---\ndefault: true\n---\nx\n', /"default" was removed/],
+    ['retired hooks key', '---\nhooks: {}\n---\nx\n', /moved to intents\/weekly\/hooks\.yaml/],
     ['non-boolean clarify', '---\nclarify: maybe\n---\nx\n', /clarify must be true or false/],
+    ['single outcome', '---\noutcomes: [ok]\n---\nx\n', /outcomes must be 2–5 kebab-case ids/],
+    ['too many outcomes', '---\noutcomes: [a, b, c, d, e, f]\n---\nx\n', /outcomes must be 2–5 kebab-case ids/],
+    ['non-kebab outcome', '---\noutcomes: [ok, Not_Kebab]\n---\nx\n', /outcomes must be 2–5 kebab-case ids/],
+    ['duplicate outcomes', '---\noutcomes: [ok, ok]\n---\nx\n', /outcomes must be unique/],
   ] as const)('parseInferMd reports %s', (_label, raw, pattern) => {
-    expect(parseInferMd(raw).error).toMatch(pattern);
+    expect(parseInferMd(raw, 'weekly').error).toMatch(pattern);
+  });
+
+  // The drift this file used to pin: `outcomes` is the verdict vocabulary the
+  // BE loader has accepted since verdict routing landed, and the editor read
+  // the same bytes as a hard error — the card was permanently frozen on any
+  // judgment intent the agent-builder authored.
+  it('reads the outcomes vocabulary, alongside clarify', () => {
+    const raw = '---\nclarify: false\noutcomes: [approved, rejected]\n---\nCriterion.\n';
+    expect(parseInferMd(raw, 'weekly')).toEqual({
+      value: { clarify: false, outcomes: ['approved', 'rejected'], body: 'Criterion.\n' },
+      error: null,
+    });
+  });
+
+  it('reads a block-sequence outcomes list the same as the flow form', () => {
+    const raw = '---\noutcomes:\n  - approved\n  - rejected\n---\nCriterion.\n';
+    expect(parseInferMd(raw, 'weekly').value.outcomes).toEqual(['approved', 'rejected']);
   });
 
   it('a "---" line NOT at offset 0 is body text, never a fence (markdown hr survives)', () => {
     const raw = 'criterion first\n---\nmore prose\n';
-    expect(parseInferMd(raw)).toEqual({ value: { body: raw }, error: null });
+    expect(parseInferMd(raw, 'weekly')).toEqual({ value: { body: raw }, error: null });
   });
 
   it('reads one hooks.yaml declaration', () => {
@@ -196,18 +219,18 @@ describe('structured → raw application', () => {
     const next = applyInferBody(INFER_MD, 'produce or revise the weekly report\n');
     expect(next).toContain('# the report lane (authored while drafting v2)');
     expect(next).toContain('clarify: false');
-    expect(parseInferMd(next).value.body).toBe('produce or revise the weekly report\n');
+    expect(parseInferMd(next, 'weekly').value.body).toBe('produce or revise the weekly report\n');
   });
 
   it('a clarify patch rewrites the flag, keeps fence comments, and undefined deletes the key', () => {
     const flipped = applyInferClarify(INFER_MD, true);
     expect(flipped).toContain('# the report lane (authored while drafting v2)');
-    expect(parseInferMd(flipped).value).toEqual({ clarify: true, body: 'produce the weekly report\n' });
+    expect(parseInferMd(flipped, 'weekly').value).toEqual({ clarify: true, body: 'produce the weekly report\n' });
 
     const inherited = applyInferClarify(flipped, undefined);
     expect(inherited).not.toContain('clarify:');
     expect(inherited).toContain('# the report lane');
-    expect(parseInferMd(inherited).value.clarify).toBeUndefined();
+    expect(parseInferMd(inherited, 'weekly').value.clarify).toBeUndefined();
   });
 
   it('deleting clarify from a flag-only fence removes the fence entirely', () => {
@@ -217,13 +240,54 @@ describe('structured → raw application', () => {
 
   it('setting clarify on a fenceless file mints the fence', () => {
     const next = applyInferClarify('criterion\n', false);
-    expect(parseInferMd(next).value).toEqual({ clarify: false, body: 'criterion\n' });
+    expect(parseInferMd(next, 'weekly').value).toEqual({ clarify: false, body: 'criterion\n' });
   });
 
-  it('a broken (unterminated) fence makes both splices a no-op — the raw view owns the repair', () => {
+  it('a broken (unterminated) fence makes every splice a no-op — the raw view owns the repair', () => {
     const broken = '---\nclarify: false\nno close\n';
     expect(applyInferBody(broken, 'x\n')).toBe(broken);
     expect(applyInferClarify(broken, true)).toBe(broken);
+    expect(applyInferOutcomes(broken, ['a', 'b'])).toBe(broken);
+  });
+
+  it('an outcomes patch writes flow style, keeps fence comments, and undefined deletes the key', () => {
+    const next = applyInferOutcomes(INFER_MD, ['approved', 'rejected']);
+    expect(next).toContain('# the report lane (authored while drafting v2)');
+    expect(next).toContain('outcomes: [approved, rejected]');
+    expect(parseInferMd(next, 'weekly').value).toEqual({
+      clarify: false,
+      outcomes: ['approved', 'rejected'],
+      body: 'produce the weekly report\n',
+    });
+
+    const cleared = applyInferOutcomes(next, undefined);
+    expect(cleared).not.toContain('outcomes:');
+    expect(parseInferMd(cleared, 'weekly').value).toEqual({ clarify: false, body: 'produce the weekly report\n' });
+  });
+
+  // Deleting a block sequence by the clarify splice's single-line filter would
+  // strand its `- ` rows, and the fence would stop parsing as a mapping.
+  it('clearing a block-sequence outcomes list takes its entries with it', () => {
+    const raw = '---\n# lane note\noutcomes:\n  - approved\n  - rejected\nclarify: false\n---\ncriterion\n';
+    const cleared = applyInferOutcomes(raw, undefined);
+    expect(cleared).toBe('---\n# lane note\nclarify: false\n---\ncriterion\n');
+    expect(parseInferMd(cleared, 'weekly').error).toBeNull();
+  });
+
+  it('a zero-indent block sequence is cleared just as completely', () => {
+    const raw = '---\noutcomes:\n- approved\n- rejected\n---\ncriterion\n';
+    expect(applyInferOutcomes(raw, undefined)).toBe('criterion\n');
+  });
+
+  it('the two frontmatter keys are independent — editing one keeps the other', () => {
+    const both = applyInferOutcomes(applyInferClarify('criterion\n', false), ['ok', 'anomaly']);
+    expect(parseInferMd(both, 'weekly').value).toEqual({
+      clarify: false,
+      outcomes: ['ok', 'anomaly'],
+      body: 'criterion\n',
+    });
+    const flipped = applyInferClarify(both, true);
+    expect(parseInferMd(flipped, 'weekly').value.outcomes).toEqual(['ok', 'anomaly']);
   });
 
   it('applyHooks writes the declaration, keeps file comments, and an empty list deletes the key', () => {

@@ -1,8 +1,8 @@
 /**
  * Intent catalog — parsing and validation for the per-intent directories
  * `jobs/{jobId}/intents/{intentId}/`:
- *   infer.md    REQUIRED — optional `clarify` frontmatter + prose body = the
- *               inference criterion rendered into the Intent Catalog
+ *   infer.md    REQUIRED — optional `clarify`/`outcomes` frontmatter + prose
+ *               body = the criterion rendered into the Intent Catalog
  *   prompt.md   OPTIONAL — prose inlined while the intent is active
  *   hooks.yaml  OPTIONAL — the completion contract (shared H1–H6 rules)
  *
@@ -29,11 +29,10 @@ import {
   INTENT_INFER_FILE_NAME,
   INTENT_PROMPT_FILE_NAME,
   INTENT_HOOKS_FILE_NAME,
-  INTENT_OUTCOMES_MAX,
-  INTENT_OUTCOMES_MIN,
   CUSTOM_ID_HINT,
   isValidCustomId,
   splitFrontmatter,
+  validateInferFrontmatter,
   validateIntentHooks,
   type CustomIntentDef,
   type IntentHooks,
@@ -63,23 +62,6 @@ function hooksFileLabel(intentId: string): string {
   return `${INTENTS_DIR_NAME}/${intentId}/${INTENT_HOOKS_FILE_NAME}`;
 }
 
-/**
- * Retired frontmatter/schema keys, each with a pointed move message — per
- * AGENTS.md, silently ignoring a removed key is how an author concludes a
- * knob works.
- */
-const BANNED_FRONTMATTER_KEYS: Record<string, (intentId: string) => string> = {
-  default: (id) =>
-    `"default" was removed — there is no catalog default; an unpinned turn always runs as "${GENERAL_INTENT}" and self-selects off the Intent Catalog. Where you relied on the default (scheduled/API runs), pin the intent explicitly via @intent: / turn meta`,
-  injections: (id) =>
-    `"injections" was removed — an intent owns exactly one prose file, ${INTENTS_DIR_NAME}/${id}/${INTENT_PROMPT_FILE_NAME}; move the referenced content there`,
-  description: () =>
-    `"description" is not a frontmatter key — the infer.md BODY (below the closing ---) is the inference criterion`,
-  id: (id) =>
-    `"id" is not declared anywhere — the intent id IS the ${INTENTS_DIR_NAME}/${id}/ directory name (rename the directory to rename the intent)`,
-  hooks: (id) => `"hooks" moved to ${hooksFileLabel(id)} — declare it there`,
-};
-
 function assertNotGeneral(intentId: string, agentId: string, jobId?: string): void {
   if (intentId === GENERAL_INTENT) {
     throw new CustomAgentValidationError(
@@ -91,11 +73,10 @@ function assertNotGeneral(intentId: string, agentId: string, jobId?: string): vo
 }
 
 /**
- * Validate one raw `infer.md` file (per-file rules only — the cross-file cap
- * stays in `parseIntentsDir`). Frontmatter is optional and allows exactly two
- * keys (`clarify: <bool>`, `outcomes: [..]`); a comments-only frontmatter
- * block is valid (that is where authoring guidance lives without reaching the
- * rendered prompt).
+ * Validate one raw `infer.md` file — the FILE-level rules (fence integrity,
+ * YAML syntax, body). The frontmatter KEY GRAMMAR is not owned here: it is
+ * `validateInferFrontmatter` in `@ant/shared`, so the settings editor judges
+ * the same bytes the same way. The cross-file cap stays in `parseIntentsDir`.
  * The prose body is the inference criterion: non-empty after trim, bounded.
  */
 export function validateInferFile(
@@ -128,60 +109,12 @@ export function validateInferFile(
         jobId,
       );
     }
-    if (doc != null) {
-      if (typeof doc !== 'object' || Array.isArray(doc)) {
-        throw new CustomAgentValidationError(
-          `${label} frontmatter must be a YAML mapping (or comments only)`,
-          agentId,
-          jobId,
-        );
-      }
-      const keys = Object.keys(doc as Record<string, unknown>);
-      for (const key of keys) {
-        const banned = BANNED_FRONTMATTER_KEYS[key];
-        if (banned) {
-          throw new CustomAgentValidationError(`${label}: ${banned(intentId)}`, agentId, jobId);
-        }
-      }
-      const extras = keys.filter((k) => k !== 'clarify' && k !== 'outcomes');
-      if (extras.length > 0) {
-        throw new CustomAgentValidationError(
-          `${label} frontmatter allows only "clarify" and "outcomes" (got: ${keys.join(', ')})`,
-          agentId,
-          jobId,
-        );
-      }
-      const value = (doc as Record<string, unknown>).clarify;
-      if (value !== undefined && typeof value !== 'boolean') {
-        throw new CustomAgentValidationError(
-          `${label}: clarify must be true or false (got: ${JSON.stringify(value)}) — ` +
-          `false declares turns under this intent autonomous/unattended: the agent never asks a blocking question and proceeds with sensible defaults`,
-          agentId,
-          jobId,
-        );
-      }
-      clarify = value as boolean | undefined;
-      const rawOutcomes = (doc as Record<string, unknown>).outcomes;
-      if (rawOutcomes !== undefined) {
-        if (
-          !Array.isArray(rawOutcomes) ||
-          rawOutcomes.length < INTENT_OUTCOMES_MIN ||
-          rawOutcomes.length > INTENT_OUTCOMES_MAX ||
-          rawOutcomes.some((o) => typeof o !== 'string' || !isValidCustomId(o))
-        ) {
-          throw new CustomAgentValidationError(
-            `${label}: outcomes must be ${INTENT_OUTCOMES_MIN}–${INTENT_OUTCOMES_MAX} kebab-case ids ` +
-            `(the decision vocabulary a turn ends with as <verdict>…</verdict>; got: ${JSON.stringify(rawOutcomes)})`,
-            agentId,
-            jobId,
-          );
-        }
-        if (new Set(rawOutcomes).size !== rawOutcomes.length) {
-          throw new CustomAgentValidationError(`${label}: outcomes must be unique`, agentId, jobId);
-        }
-        outcomes = rawOutcomes as string[];
-      }
+    const parsed = validateInferFrontmatter(doc, { intentId, label });
+    if (parsed.errors.length > 0) {
+      throw new CustomAgentValidationError(parsed.errors[0], agentId, jobId);
     }
+    clarify = parsed.clarify;
+    outcomes = parsed.outcomes;
   }
 
   const infer = body.trim();
@@ -211,25 +144,6 @@ export function validateInferFile(
  * editor) with the universal-preset judgement injected for H6. Cross-file
  * satisfiability (H7/H8) stays in `loadCustomJob`.
  */
-/**
- * Outcome ids that name the runtime's clarify exit rather than a conclusion the
- * work reached. Checked at SAVE only (see the infer.md branch of
- * `gateDefinitionSave`) — never from `validateInferFile` itself, which the
- * loader also calls, so a definition already carrying one keeps loading.
- * Deliberately narrow: it matches ids naming the clarify mechanism or a missing
- * INPUT, never a missing finding — "insufficient-evidence" is a real verdict in
- * an audit and must pass.
- */
-const CLARIFY_EXIT_OUTCOME_IDS = new Set([
-  'needs-clarification', 'need-clarification', 'clarification-needed', 'clarification-required',
-  'needs-clarify', 'needs-input', 'need-input', 'input-needed', 'input-required',
-  'insufficient-input', 'missing-input', 'input-missing', 'incomplete-input',
-]);
-
-export function clarifyExitOutcomes(outcomes: string[] | undefined): string[] {
-  return (outcomes ?? []).filter((o) => CLARIFY_EXIT_OUTCOME_IDS.has(o));
-}
-
 export function validateHooksFileDoc(
   doc: unknown,
   intentId: string,

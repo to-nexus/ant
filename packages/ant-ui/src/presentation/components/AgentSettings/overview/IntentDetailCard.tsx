@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Textarea } from '@/presentation/components/aurora';
 import { AuroraSelect, CONTROL_MEASURE, FIELD_MEASURE, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { OutcomesEditor } from './OutcomesEditor';
 import { DefinitionCard } from './DefinitionCard';
 import { INFER_CRITERION_MAX } from './definitionDocs';
 import { inferDocKey } from './useDefinitionDocs';
@@ -96,7 +97,7 @@ export function IntentDetailCard({
       title={t('intent.criteriaTitle', 'Matching criteria')}
       description={t(
         'intent.criteriaDesc',
-        'Prose describing when this intent applies — the agent reads it verbatim in its Intent Catalog every turn, and it is what an @intent: mention selects. The Raw view shows the file with its optional clarify frontmatter.',
+        'Prose describing when this intent applies — the agent reads it verbatim in its Intent Catalog every turn, and it is what an @intent: mention selects. The Raw view shows the file with its optional clarify/outcomes frontmatter.',
       )}
       doc={doc}
       readonly={ctx.readonly}
@@ -167,6 +168,12 @@ export function IntentDetailCard({
               </FieldHint>
             </div>
           </div>
+
+          <OutcomesEditor
+            outcomes={entry.outcomes}
+            disabled={disabled}
+            onChange={(next) => docs.updateIntent(intentId, { outcomes: next })}
+          />
 
           {docs.intentErrors.length > 0 && (
             <div

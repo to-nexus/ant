@@ -17,12 +17,13 @@ import { PROSE_MEASURE, PROSE_WRAP } from './measures';
  *   - Width is the PROSE measure, never the control's. A hint wrapped by the
  *     420px box an input needs becomes a third text column in the same card.
  */
-export type FieldHintTone = 'default' | 'muted' | 'warn';
+export type FieldHintTone = 'default' | 'muted' | 'warn' | 'error';
 
 const TONE_COLOR: Record<FieldHintTone, string> = {
   default: 'var(--text-3)',
   muted: 'var(--text-4)',
   warn: 'var(--amber-500, var(--text-3))',
+  error: 'var(--status-error-fg, var(--text-3))',
 };
 
 const SPACING_MARGIN: Record<'none' | 'above' | 'below', string> = {
