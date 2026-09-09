@@ -33,7 +33,7 @@ overrides:
   shell-quote: ^1.8.4
   '@babel/core': ^7.29.1
   rollup: ^4.59.0
-  sharp: ^0.35.3
+  sharp: ^0.35.4
   next@<15.5.21: ^15.5.21
   fast-uri@>=3.0.0 <3.1.6: ^3.1.6
 
@@ -230,7 +230,7 @@ importers:
         specifier: ^7.8.5
         version: 7.8.5
       sharp:
-        specifier: ^0.35.3
+        specifier: ^0.35.4
         version: 0.35.4(@types/node@20.19.43)
       simple-git:
         specifier: ^3.36.0
