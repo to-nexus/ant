@@ -233,7 +233,7 @@ export interface UIActions {
   setAccountConfigScrollTarget: (target: string | null) => void;
   // Actions panel
   openActionsPanel: (actionId?: string) => void;
-  setActionsStep: (step: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit' | 'intent-detail') => void;
+  setActionsStep: (step: UIState['actionsStep']) => void;
   setBasisEditInitialTier: (tier: 'techTier' | 'visualTier' | 'gameArtTier' | undefined) => void;
   setBasisEditOverride: (enabled: boolean) => void;
   selectAction: (actionId: string) => void;

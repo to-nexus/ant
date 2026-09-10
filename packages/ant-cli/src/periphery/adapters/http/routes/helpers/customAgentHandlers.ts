@@ -15,7 +15,11 @@ import {
   INTENT_PROMPT_FILE_NAME,
   INTENT_HOOKS_FILE_NAME,
   ON_DEMAND_DIR_NAME,
+  DEFINITION_ICON_NAMES,
+  DEFINITION_ICON_MAX_BYTES,
+  DEFINITION_ICON_MIME,
   isAllowedDefinitionPath,
+  isDefinitionIconPath,
   isValidCustomId,
   validateMcpServers,
   validateApiServers,
@@ -36,6 +40,7 @@ import {
   type CustomAgentScopeRoot,
 } from '../../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../../core/customAgents/types';
+import { detectImageMimeFromBuffer } from '../../../../../core/utils/imageMime';
 import {
   INTENT_CATALOG_CAP,
   validateHooksFileDoc,
@@ -210,6 +215,58 @@ export function buildDefinitionTree(agentDir: string, rel = ''): CustomAgentDefi
       } catch { /* skip stat failures */ }
       return { name: e.name, path: childRel, type: 'file' as const, size };
     });
+}
+
+/**
+ * The ONE writer behind both multipart definition lanes (`files/upload` and
+ * `/import`). They used to carry byte-identical loops that each ended in
+ * `writeFileSync(full, buffer.toString('utf-8'), 'utf-8')` — a silent binary
+ * corrupter, and two places for the whitelist verdict to drift.
+ *
+ * The buffer is written verbatim (a no-op for valid text) and the icon carries
+ * its own admission: the magic-byte sniff must agree with the name it is being
+ * stored under, so a `.png`-named JPEG is refused rather than served with a
+ * lying Content-Type. On success the sibling icon names are unlinked, which is
+ * what keeps "one agent, one icon" true without a second owner.
+ */
+export function writeDefinitionUpload(
+  agentDir: string,
+  relPath: string,
+  buffer: Buffer,
+): { ok: true } | { ok: false; reason: string } {
+  const rel = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!rel || !isAllowedDefinitionPath(rel)) {
+    return { ok: false, reason: 'outside the definition whitelist' };
+  }
+  if (isDefinitionIconPath(rel)) {
+    if (buffer.length > DEFINITION_ICON_MAX_BYTES) {
+      return { ok: false, reason: `icon exceeds ${DEFINITION_ICON_MAX_BYTES} bytes` };
+    }
+    const sniffed = detectImageMimeFromBuffer(buffer);
+    if (sniffed !== DEFINITION_ICON_MIME[rel]) {
+      return {
+        ok: false,
+        reason: `icon bytes are ${sniffed ?? 'not a supported image'}, expected ${DEFINITION_ICON_MIME[rel]}`,
+      };
+    }
+  }
+  let full: string;
+  try {
+    full = resolveDefinitionPath(agentDir, rel);
+  } catch {
+    return { ok: false, reason: 'outside the definition whitelist' };
+  }
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, buffer);
+  if (isDefinitionIconPath(rel)) {
+    for (const other of DEFINITION_ICON_NAMES) {
+      if (other === rel) continue;
+      try {
+        fs.rmSync(path.join(agentDir, other), { force: true });
+      } catch { /* nothing to drop */ }
+    }
+  }
+  return { ok: true };
 }
 
 export type DefinitionSaveGate =

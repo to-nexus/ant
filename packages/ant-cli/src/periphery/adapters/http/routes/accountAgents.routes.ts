@@ -22,7 +22,6 @@ import {
   CUSTOM_ID_HINT,
   GENERAL_INTENT,
   MEMBERSHIP_REQUIRED,
-  isAllowedDefinitionPath,
   isValidCustomId,
   type CustomJobPromptPreview,
 } from '@ant/shared';
@@ -44,9 +43,9 @@ import {
   decorateOrgAgentSummaries,
   findWritableAgent,
   patchYamlFile,
-  resolveDefinitionPath,
   scaffoldAgent,
   scaffoldJob,
+  writeDefinitionUpload,
 } from './helpers/customAgentHandlers';
 import { computeOrgResourcePermissions, updateOrgAgentAcl } from './helpers/orgAclStore';
 import { resolveLiveTeamMembership } from './helpers/teamRole';
@@ -588,14 +587,9 @@ export function createAccountAgentRoutes(deps: AccountAgentsRoutesDeps): Router 
       for (let i = 0; i < files.length; i++) {
         const withAgent = (relativePaths[i] || files[i].originalname).replace(/\\/g, '/').replace(/^\/+/, '');
         const rel = withAgent.split('/').slice(1).join('/');
-        if (!rel || !isAllowedDefinitionPath(rel)) {
-          skipped.push({ path: withAgent, reason: 'outside the definition whitelist' });
-          continue;
-        }
-        const full = resolveDefinitionPath(agentDir, rel);
-        fs.mkdirSync(path.dirname(full), { recursive: true });
-        fs.writeFileSync(full, files[i].buffer.toString('utf-8'), 'utf-8');
-        uploaded.push(rel);
+        const written = writeDefinitionUpload(agentDir, rel, files[i].buffer);
+        if (written.ok) uploaded.push(rel);
+        else skipped.push({ path: withAgent, reason: written.reason });
       }
       logger.info(`Custom agent imported: ${agentId} (${uploaded.length} files, ${skipped.length} skipped)`, { component: 'AccountAgents' });
       res.status(201).json({ success: true, agentId, uploaded, skipped });

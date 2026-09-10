@@ -11,6 +11,7 @@ import type multer from 'multer';
 import { boundedMultipartUpload } from '../../middleware/boundedMultipart';
 import {
   CUSTOM_ID_HINT,
+  DEFINITION_ICON_MIME,
   GENERAL_INTENT,
   classifyDefinitionDir,
   isAllowedDefinitionDir,
@@ -25,12 +26,14 @@ import {
   gateDefinitionSave,
   resolveDefinitionPath,
   validateDefinitionSave,
+  writeDefinitionUpload,
 } from '../helpers/customAgentHandlers';
 import { canEditOrgResource } from '../helpers/orgAclStore';
 import { extractUserContext } from '../helpers/userContext';
 import { sendErrorResponse } from '../helpers/errorResponse';
 import { streamDefinitionArchive } from '../helpers/definitionArchive';
 import { downloadRateLimiter } from '../../middleware/rateLimiter';
+import { detectDefinitionIcon } from '../../../../../core/customAgents/CustomAgentLoader';
 import {
   isStructuralFile,
   parseIntentDirPath,
@@ -97,6 +100,38 @@ export function registerDefinitionFileRoutes(
         });
       }
       res.json({ path: rel, content: fs.readFileSync(full, 'utf-8') });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'AccountAgents');
+    }
+  });
+
+  /**
+   * The agent icon's bytes — the one binary leg of this surface (`GET …/file`
+   * is utf-8 JSON and would hand back mojibake).
+   *
+   * `attachment` + `nosniff` is the origin rule, not a download affordance: the
+   * FE reads this through `authFetch` into a blob, and a direct navigation must
+   * never render user-supplied bytes as a document on the control-plane origin.
+   * The file is capped at 256 KiB by the write seam, so reading it whole is in
+   * budget.
+   */
+  router.get('/:agentId/icon', (req: Request, res: Response) => {
+    try {
+      const found = findViewableAgent(res, scopeRootsFor(req), req.params.agentId);
+      if (!found) return;
+      const icon = detectDefinitionIcon(found.agentDir);
+      if (!icon) return res.status(404).json({ error: 'This agent has no icon' });
+      const full = resolveDefinitionPath(found.agentDir, icon.name);
+      const body = fs.readFileSync(full);
+      const etag = `"${icon.version}-${body.length}"`;
+      if (req.headers['if-none-match'] === etag) return res.status(304).end();
+      res.setHeader('Content-Type', DEFINITION_ICON_MIME[icon.name]);
+      res.setHeader('Content-Length', String(body.length));
+      res.setHeader('Content-Disposition', 'attachment');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+      res.end(body);
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
@@ -316,14 +351,9 @@ export function registerDefinitionFileRoutes(
       const skipped: Array<{ path: string; reason: string }> = [];
       for (let i = 0; i < files.length; i++) {
         const rel = (relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
-        if (!isAllowedDefinitionPath(rel)) {
-          skipped.push({ path: rel, reason: 'outside the definition whitelist' });
-          continue;
-        }
-        const full = resolveDefinitionPath(found.agentDir, rel);
-        fs.mkdirSync(path.dirname(full), { recursive: true });
-        fs.writeFileSync(full, files[i].buffer.toString('utf-8'), 'utf-8');
-        uploaded.push(rel);
+        const written = writeDefinitionUpload(found.agentDir, rel, files[i].buffer);
+        if (written.ok) uploaded.push(rel);
+        else skipped.push({ path: rel, reason: written.reason });
       }
       res.json({ success: true, uploaded, skipped });
     } catch (error: any) {

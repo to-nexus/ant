@@ -544,7 +544,21 @@ export interface CustomAgentSummary {
   readonly: boolean;
   /** Per-caller org permissions — only on ACL-governed scope-`org` agents. */
   org?: CustomAgentOrgPermissions;
+  /**
+   * Uploaded agent icon, when the definition dir holds one. `version` is the
+   * file's mtime — the cache key every icon consumer keys its fetch on, so a
+   * re-upload supersedes the previous bytes everywhere at once.
+   */
+  icon?: CustomAgentIconRef;
   jobs: CustomJobSummary[];
+}
+
+/** {@link CustomAgentSummary.icon} — the stored file name plus its cache key. */
+export interface CustomAgentIconRef {
+  /** One of {@link DEFINITION_ICON_NAMES}. */
+  name: string;
+  /** `mtimeMs` of the icon file. */
+  version: number;
 }
 
 /**
@@ -1095,6 +1109,36 @@ export interface CustomJobPromptPreview {
 export const ON_DEMAND_DIR_NAME = 'on-demand' as const;
 export const ON_DEMAND_FILE_EXTENSIONS = ['.md', '.json'] as const;
 
+/**
+ * The agent icon — a single raster file at the definition root.
+ *
+ * It lives INSIDE the definition dir so that promote (an `fs.rename` between
+ * scope roots), delete, id rename and ZIP export/import all carry it with no
+ * per-site patch, the way an out-of-dir sidecar (`agent-acl.json`) would need.
+ *
+ * SVG is deliberately absent: it has no binary signature to verify, and an SVG
+ * served from the control-plane origin executes script on direct navigation.
+ *
+ * The cap is far below `UPLOAD_FILE_MAX_BYTES` on purpose — this file is
+ * fetched by every agent surface, so it carries its own budget rather than
+ * inheriting the upload lane's.
+ */
+export const DEFINITION_ICON_NAMES = ['icon.png', 'icon.jpg', 'icon.webp'] as const;
+export const DEFINITION_ICON_MAX_BYTES = 256 * 1024;
+export const DEFINITION_ICON_MIME: Readonly<Record<string, string>> = {
+  'icon.png': 'image/png',
+  'icon.jpg': 'image/jpeg',
+  'icon.webp': 'image/webp',
+};
+/** Accept attribute / picker filter — the client-side twin of the sniff. */
+export const DEFINITION_ICON_ACCEPT = 'image/png,image/jpeg,image/webp';
+
+/** True for the three icon names, at the agent root only. */
+export function isDefinitionIconPath(relPath: string): boolean {
+  const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  return (DEFINITION_ICON_NAMES as readonly string[]).includes(normalized);
+}
+
 function isOnDemandFileName(name: string): boolean {
   return ON_DEMAND_FILE_EXTENSIONS.some((ext) => name.endsWith(ext) && name.length > ext.length);
 }
@@ -1107,7 +1151,9 @@ export function isAllowedDefinitionPath(relPath: string): boolean {
   if (parts[0] === ON_DEMAND_DIR_NAME && parts.length >= 2) {
     return isOnDemandFileName(parts[parts.length - 1]);
   }
-  if (parts.length === 1) return parts[0] === 'agent.yaml';
+  if (parts.length === 1) {
+    return parts[0] === 'agent.yaml' || (DEFINITION_ICON_NAMES as readonly string[]).includes(parts[0]);
+  }
   if (parts.length === 2) {
     return parts[0] === 'base' && MD_NAME.test(parts[1]);
   }
@@ -1178,7 +1224,11 @@ export function getDefinitionDirPolicy(relPath: string): DefinitionDirPolicy {
   const kind = classifyDefinitionDir(relPath);
   switch (kind) {
     case 'agent-root':
-      return { kind, fixedFiles: ['agent.yaml'], fixedDirs: ['base', 'jobs', ON_DEMAND_DIR_NAME] };
+      return {
+        kind,
+        fixedFiles: ['agent.yaml', ...DEFINITION_ICON_NAMES],
+        fixedDirs: ['base', 'jobs', ON_DEMAND_DIR_NAME],
+      };
     case 'agent-base':
     case 'job-base':
       return { kind, fixedFiles: [], acceptedExtensions: ['.md'], fixedDirs: [] };

@@ -19,8 +19,9 @@ import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { ActionChipGrid } from '../Actions';
-import { IntentChipGrid } from '../Actions/ActionChipGrid';
 import { useUniversalActionSurface } from '../Actions/useUniversalActionSurface';
+import { UniversalActionCards } from '../Actions/UniversalActionCards';
+import { AgentIcon } from '../AgentIcon';
 import { DomainBadge } from '../Actions/DomainBadge';
 import { useStore } from '@/domain/store';
 import { selectFileStats } from '@/domain/store/selectors/chat';
@@ -266,43 +267,31 @@ function ChatActionCards() {
 }
 
 /**
- * Universal empty state: the selected agent's jobs. Picking one selects it and
- * hands off to the actions panel at the intent step — the same depth handoff a
- * canonical chip performs.
+ * Universal empty state — the SAME cards the actions panel shows, at the same
+ * level, from the one renderer. It used to be a job-only grid that ejected the
+ * reader into the panel on every click; the two surfaces are one vocabulary and
+ * must not offer different depths of it.
+ *
+ * The watermark is the selected agent's own mark, so the chat says whose desk
+ * it is before a single card is read.
  */
 function UniversalChatActionCards() {
   const { t } = useTranslation('actions');
   const surface = useUniversalActionSurface();
-  const openActionsPanel = useStore(s => s.openActionsPanel);
-  const setActionsStep = useStore(s => s.setActionsStep);
-
-  const handleSelect = (jobId: string) => {
-    surface.selectJob(jobId);
-    openActionsPanel();
-    setActionsStep('pick-intent');
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '28rem' }}>
-      <img
-        src={AGENT_MARK_SRC}
-        alt=""
-        className="w-20 h-20 mb-4 opacity-80 watermark-empty-icon"
-        style={{ flexShrink: 0 }}
+      <AgentIcon
+        agentId={surface.agentId ?? undefined}
+        size={80}
+        className="mb-4 opacity-80 watermark-empty-icon"
       />
-      {surface.ready ? (
-        <div style={{ width: '100%', flexShrink: 0 }}>
-          <IntentChipGrid
-            items={surface.jobChipItems}
-            onSelect={handleSelect}
-            title={t('universal.pickJobTitle', { defaultValue: 'What should this agent do?' })}
-            subtitle={surface.agentName}
-          />
-        </div>
+      {surface.hasAgents ? (
+        <UniversalActionCards surface={surface} variant="chat" />
       ) : (
         <div className="flex flex-col items-center gap-1.5 text-center">
           <span className="text-sm" style={{ color: 'var(--text-2)' }}>
-            {t('universal.noAgent', { defaultValue: 'Select an agent in the chat toolbar first' })}
+            {t('universal.noAgent', { defaultValue: 'No agents are available in this workspace' })}
           </span>
           <span className="text-xs" style={{ color: 'var(--text-3)', maxWidth: 380, lineHeight: 1.6 }}>
             {t('universal.noAgentHint', {

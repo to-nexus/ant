@@ -79,6 +79,13 @@ export interface ActionChipProps {
   readiness?: ActionReadiness;
   /** Override icon (intent-level chips). When `actionId` is set, ACTION_VISUALS[actionId].icon is used. */
   icon?: React.ComponentType<{ className?: string }>;
+  /**
+   * Content above the label in the `large` tile. Agent chips put the agent's
+   * mark here rather than in the watermark slot: the watermark is tinted
+   * `currentColor` at 0.18 for monochrome glyphs, which an uploaded raster
+   * cannot honour.
+   */
+  leading?: React.ReactNode;
   /** Override gradient/colors (intent-level chips). */
   iconBg?: string;
   iconColor?: string;
@@ -98,6 +105,7 @@ export function ActionChip(props: ActionChipProps) {
     onClick,
     actionId,
     icon,
+    leading,
     disabled = false,
     blockReason,
     selected = false,
@@ -117,6 +125,7 @@ export function ActionChip(props: ActionChipProps) {
         description={description}
         onClick={onClick}
         IconCmp={IconCmp}
+        leading={leading}
         gradient={grad.gradient}
         hue={grad.hue}
         disabled={disabled}
@@ -152,6 +161,7 @@ interface LargeTileProps {
   description?: string;
   onClick: () => void;
   IconCmp?: React.ComponentType<{ className?: string }>;
+  leading?: React.ReactNode;
   gradient: string;
   hue: number;
   disabled: boolean;
@@ -166,6 +176,7 @@ function LargeTile({
   description,
   onClick,
   IconCmp,
+  leading,
   gradient,
   hue,
   disabled,
@@ -318,6 +329,7 @@ function LargeTile({
           paddingRight: 44,
         }}
       >
+        {leading}
         <span
           style={{
             fontFamily: 'var(--font-display)',

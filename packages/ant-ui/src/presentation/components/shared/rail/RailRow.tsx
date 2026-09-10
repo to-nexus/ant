@@ -3,8 +3,16 @@ import type { LucideIcon } from 'lucide-react';
 import { selectedRowLabel, selectedRowStyle } from '@/presentation/components/aurora/selection';
 import { RAIL_INDENT, RAIL_ROW_CLASS } from './railTokens';
 
+/**
+ * A row's concept glyph. Widened past `LucideIcon` for the agent rows, whose
+ * mark is an uploaded image rather than a lucide component.
+ */
+export type RailRowIcon =
+  | LucideIcon
+  | ((props: { size?: number; className?: string; style?: CSSProperties }) => ReactNode);
+
 export interface RailRowProps {
-  icon: LucideIcon;
+  icon: RailRowIcon;
   iconSize?: number;
   iconStyle?: CSSProperties;
   label: string;

@@ -5,6 +5,7 @@
  */
 
 import { API_BASE, authFetch, apiGet, apiPost, apiDelete, apiPut, ApiError } from './client';
+import { DEFINITION_ICON_MIME } from '@ant/shared';
 import type {
   CustomAgentSummary,
   CustomAgentOrgPermissions,
@@ -21,6 +22,11 @@ import { planUploadBatches, runUploadBatches } from '@/shared/utils/upload-utils
 export type { CustomAgentDefinitionFileNode, DefinitionValidationResult };
 
 const base = () => `${API_BASE()}/definitions/agents`;
+
+/** mime → the file name it must be stored under (the inverse of the BE map). */
+const DEFINITION_ICON_NAME_BY_MIME: Record<string, string> = Object.fromEntries(
+  Object.entries(DEFINITION_ICON_MIME).map(([name, mime]) => [mime, name]),
+);
 
 export function fetchAccountAgents(): Promise<{
   agents: CustomAgentSummary[];
@@ -247,6 +253,34 @@ async function postMultipart(
   });
 
   return { success: true, uploaded, skipped, agentId: first?.agentId };
+}
+
+/**
+ * The agent icon's bytes. The endpoint answers `Content-Disposition: attachment`
+ * so a direct navigation can never render user bytes on the API origin — the
+ * app therefore reads it here and renders it from a blob URL instead of putting
+ * the URL in an `<img src>`.
+ */
+export async function fetchAgentIconBlob(agentId: string): Promise<Blob> {
+  const response = await authFetch(`${base()}/${encodeURIComponent(agentId)}/icon`);
+  if (!response.ok) throw new ApiError(`Failed to load agent icon`, response.status);
+  return response.blob();
+}
+
+/**
+ * Store an agent icon. There is no dedicated write route: the icon is a
+ * whitelisted definition file, so it rides the one multipart definition lane,
+ * which owns the magic-byte sniff, the size cap and the sibling-name unlink.
+ */
+export async function uploadAgentIcon(agentId: string, file: File): Promise<DefinitionUploadResult> {
+  const name = DEFINITION_ICON_NAME_BY_MIME[file.type];
+  if (!name) throw new ApiError(`Unsupported icon type: ${file.type || 'unknown'}`, 400);
+  return uploadDefinitionFiles(agentId, [{ file, relativePath: name }]);
+}
+
+/** Remove whichever icon name the agent currently holds. */
+export function deleteAgentIcon(agentId: string, name: string): Promise<void> {
+  return deleteDefinitionFile(agentId, name);
 }
 
 /** `replaceDir` makes this a directory-unit REPLACE (job / intent folder upload). */

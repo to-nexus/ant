@@ -659,7 +659,7 @@ describe('definition file endpoints', () => {
 
 describe('definition dir policy (create/upload vocabulary)', () => {
   it.each([
-    ['', ['agent.yaml'], undefined, ['base', 'jobs', 'on-demand'], undefined],
+    ['', ['agent.yaml', 'icon.png', 'icon.jpg', 'icon.webp'], undefined, ['base', 'jobs', 'on-demand'], undefined],
     ['base', [], ['.md'], [], undefined],
     ['jobs', [], undefined, [], 'job'],
     ['jobs/weekly', ['job.yaml'], undefined, ['base', 'intents', 'on-demand'], undefined],
@@ -783,6 +783,116 @@ describe('directory-unit upload (replaceDir)', () => {
     expect(res.status).toBe(400);
     // The pre-existing directory is untouched — validation precedes the rm.
     expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base/stale.md'))).toBe(true);
+  });
+});
+
+describe('agent icon', () => {
+  // Minimal valid signatures — the write seam sniffs the bytes, so a fixture
+  // whose extension disagrees with its magic must be refused.
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  const JPEG = Buffer.from('ffd8ffe000104a464946', 'hex');
+  const WEBP = Buffer.concat([
+    Buffer.from('RIFF'),
+    Buffer.from([0x1a, 0, 0, 0]),
+    Buffer.from('WEBPVP8 '),
+  ]);
+
+  beforeEach(async () => {
+    await createAgent();
+  });
+
+  function iconUpload(name: string, bytes: Buffer): FormData {
+    const form = new FormData();
+    form.append('files', new Blob([new Uint8Array(bytes)]), name);
+    form.append('relativePaths', name);
+    return form;
+  }
+
+  const upload = (name: string, bytes: Buffer) =>
+    fetch(`${baseUrl}/api/definitions/agents/ops/files/upload`, {
+      method: 'POST',
+      body: iconUpload(name, bytes),
+    });
+
+  const iconPath = (name: string) => path.join(userDir, '.ant/agents/ops', name);
+
+  it('stores the bytes verbatim — the text-only upload path would have mangled them', async () => {
+    const res = await upload('icon.png', PNG);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ uploaded: ['icon.png'], skipped: [] });
+    expect(fs.readFileSync(iconPath('icon.png')).equals(PNG)).toBe(true);
+  });
+
+  it('a second icon of another type replaces the first — one agent, one icon', async () => {
+    expect((await upload('icon.png', PNG)).status).toBe(200);
+    expect((await upload('icon.webp', WEBP)).status).toBe(200);
+    expect(fs.existsSync(iconPath('icon.png'))).toBe(false);
+    expect(fs.existsSync(iconPath('icon.webp'))).toBe(true);
+  });
+
+  it.each([
+    ['bytes disagree with the name', 'icon.png', JPEG],
+    ['not an image at all', 'icon.png', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
+    ['over the cap', 'icon.png', Buffer.concat([PNG, Buffer.alloc(256 * 1024)])],
+  ])('refuses with a reason and writes nothing: %s', async (_label, name, bytes) => {
+    const res = await upload(name as string, bytes as Buffer);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { uploaded: string[]; skipped: Array<{ reason: string }> };
+    expect(body.uploaded).toEqual([]);
+    expect(body.skipped[0].reason).toBeTruthy();
+    expect(fs.existsSync(iconPath('icon.png'))).toBe(false);
+  });
+
+  it('icon.svg stays outside the whitelist entirely', async () => {
+    const res = await upload('icon.svg', Buffer.from('<svg/>'));
+    const body = (await res.json()) as { skipped: Array<{ reason: string }> };
+    expect(body.skipped[0].reason).toContain('outside the definition whitelist');
+  });
+
+  it('the whitelist admits the icon at the agent root only', async () => {
+    const res = await fetch(`${baseUrl}/api/definitions/agents/ops/files/upload`, {
+      method: 'POST',
+      body: (() => {
+        const form = new FormData();
+        form.append('files', new Blob([new Uint8Array(PNG)]), 'icon.png');
+        form.append('relativePaths', 'jobs/weekly/icon.png');
+        return form;
+      })(),
+    });
+    const body = (await res.json()) as { uploaded: string[]; skipped: Array<{ reason: string }> };
+    expect(body.uploaded).toEqual([]);
+    expect(body.skipped[0].reason).toContain('outside the definition whitelist');
+  });
+
+  it('serves the bytes with a nosniff attachment header, and 304s on the ETag', async () => {
+    await upload('icon.jpg', JPEG);
+    const res = await fetch(`${baseUrl}/api/definitions/agents/ops/icon`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('content-disposition')).toBe('attachment');
+    expect(Buffer.from(await res.arrayBuffer()).equals(JPEG)).toBe(true);
+
+    const etag = res.headers.get('etag')!;
+    const again = await fetch(`${baseUrl}/api/definitions/agents/ops/icon`, {
+      headers: { 'If-None-Match': etag },
+    });
+    expect(again.status).toBe(304);
+  });
+
+  it('404s while the agent holds no icon', async () => {
+    expect((await fetch(`${baseUrl}/api/definitions/agents/ops/icon`)).status).toBe(404);
+  });
+
+  it('the discovery listing reports the icon, and drops it once removed', async () => {
+    await upload('icon.png', PNG);
+    const listed = async () =>
+      ((await (await api('')).json()) as { agents: Array<{ id: string; icon?: { name: string } }> })
+        .agents.find((a) => a.id === 'ops');
+    expect((await listed())?.icon?.name).toBe('icon.png');
+
+    await api('/ops/file?path=icon.png', { method: 'DELETE' });
+    expect((await listed())?.icon).toBeUndefined();
   });
 });
 

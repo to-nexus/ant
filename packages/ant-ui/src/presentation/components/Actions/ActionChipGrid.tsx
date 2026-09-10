@@ -82,6 +82,8 @@ export interface ChipItem {
   /** Optional subtitle — real UI copy only; see `ActionChipProps.description`. */
   description?: string;
   icon?: any;
+  /** Rendered above the label in the tile — see `ActionChipProps.leading`. */
+  leading?: React.ReactNode;
   bg?: string;
   text?: string;
   disabled?: boolean;
@@ -95,9 +97,16 @@ interface IntentChipGridProps {
   onSelect: (id: string) => void;
   title?: string;
   subtitle?: string;
+  /**
+   * Size the grid for this many columns instead of `items.length`. Grouped
+   * grids (the agent scope groups) pass the widest group's count so every
+   * group's cards land on the same tracks — sizing each group by its own count
+   * would centre a one-card group away from its own header.
+   */
+  columnCount?: number;
 }
 
-export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipGridProps) {
+export function IntentChipGrid({ items, onSelect, title, subtitle, columnCount }: IntentChipGridProps) {
   return (
     <div className="flex flex-col items-center w-full">
       {title && (
@@ -109,7 +118,7 @@ export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipG
         <p className="text-sm mb-6" style={{ color: 'var(--text-3)' }}>{subtitle}</p>
       )}
 
-      <div style={chipGridStyle(items.length)}>
+      <div style={chipGridStyle(columnCount ?? items.length)}>
         {items.map((item, idx) => (
           <div key={item.id} className="w-full h-full">
             <ActionChip
@@ -118,6 +127,7 @@ export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipG
               variant="large"
               onClick={() => onSelect(item.id)}
               icon={item.icon}
+              leading={item.leading}
               iconBg={item.bg}
               iconColor={item.text}
               disabled={item.disabled}

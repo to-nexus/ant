@@ -35,6 +35,8 @@ import {
   validateApiServers,
   API_TOOL_PREFIX,
   MCP_TOOL_PREFIX,
+  DEFINITION_ICON_NAMES,
+  type CustomAgentIconRef,
   type CustomAgentScope,
   type CustomAgentSummary,
   type CustomJobSummary,
@@ -300,6 +302,22 @@ function summarizeJobs(agentDir: string): CustomJobSummary[] {
 }
 
 /**
+ * The agent's uploaded icon, or undefined. First name wins — the upload seam
+ * unlinks the siblings, so more than one present is a hand-edited dir.
+ */
+export function detectDefinitionIcon(agentDir: string): CustomAgentIconRef | undefined {
+  for (const name of DEFINITION_ICON_NAMES) {
+    try {
+      const stat = fs.statSync(path.join(agentDir, name));
+      if (stat.isFile()) return { name, version: Math.floor(stat.mtimeMs) };
+    } catch {
+      // absent — try the next name
+    }
+  }
+  return undefined;
+}
+
+/**
  * List all custom agents across scope roots. Closer scope wins id collisions
  * (roots must be passed in D8 priority order).
  */
@@ -321,6 +339,7 @@ export function discoverAgents(scopeRoots: CustomAgentScopeRoot[]): CustomAgentS
           // Conservative default for ACL-governed roots — the route layer
           // flips it per caller after resolving the org ACL + live role.
           readonly: aclGoverned ? true : readonly,
+          icon: detectDefinitionIcon(agentDir),
           jobs: summarizeJobs(agentDir),
         });
       } catch {

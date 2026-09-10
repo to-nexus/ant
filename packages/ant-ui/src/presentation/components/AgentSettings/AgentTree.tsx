@@ -35,7 +35,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Bot, Briefcase, CircleCheckBig, FilePlus, FolderDown, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Briefcase, CircleCheckBig, FilePlus, FolderDown, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
 import {
   getDefinitionDirPolicy,
   toCustomId,
@@ -59,6 +59,7 @@ import { useFilePicker } from '@/application/hooks/ui/useFilePicker';
 import { STORAGE_KEYS } from '@/domain/store/storage';
 import type { AgentSettingsSelection, DefinitionTreeEntry } from '@/domain/store/slices/agentSettingsSlice';
 import { DefinitionFileTree } from './overview/DefinitionFileTree';
+import { agentIconComponent } from '@/presentation/components/AgentIcon';
 
 type TreeView = 'human' | 'files';
 
@@ -520,7 +521,7 @@ export function AgentTree({
               return (
                 <div key={agent.id}>
                   <RailRow
-                    icon={Bot}
+                    icon={agentIconComponent(agent.id)}
                     label={agent.name}
                     active={agentSelected}
                     idleColor="var(--text-2)"

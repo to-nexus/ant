@@ -292,7 +292,13 @@ export interface UIState {
   mainPanelTabOrder: MainPanelTabOrderItem[];
   // Actions panel state ('intent-detail' is universal-only — the panel splits
   // by project kind before any step logic, so canonical never sees it)
-  actionsStep: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit' | 'intent-detail';
+  /**
+   * `pick-agent` and `intent-detail` are universal-only levels riding the shared
+   * channel: the canonical panel's `STEP_ORDER.indexOf` yields -1 for both and
+   * it never receives them, while sharing the channel is what lets the chat
+   * action area and an open panel always show the same level.
+   */
+  actionsStep: 'pick-agent' | 'pick-action' | 'pick-intent' | 'config' | 'basis-edit' | 'intent-detail';
   // Ephemeral: which tier the basis wizard should land on when entering
   // 'basis-edit'. Set by tier-specific edit buttons (BasisSummaryBar). Cleared
   // by the wizard itself or by global edit triggers that don't target a tier.

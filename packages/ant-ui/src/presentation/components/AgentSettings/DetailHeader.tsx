@@ -5,9 +5,10 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { Bot, Briefcase, Target } from 'lucide-react';
+import { Briefcase, Target } from 'lucide-react';
 import { Badge, type BadgeTone } from '@/presentation/components/aurora';
 import { Crumb, CRUMB_SEPARATOR } from '@/presentation/components/shared/Crumb';
+import { agentIconComponent } from '@/presentation/components/AgentIcon';
 
 export type DetailLevel = 'agent' | 'job' | 'intent';
 
@@ -19,6 +20,7 @@ const LEVEL_TONE: Record<DetailLevel, BadgeTone> = {
 
 export function DetailHeader({
   level,
+  agentId,
   agentName,
   jobName,
   intentId,
@@ -27,6 +29,7 @@ export function DetailHeader({
   status,
 }: {
   level: DetailLevel;
+  agentId: string;
   agentName: string;
   jobName?: string;
   intentId?: string;
@@ -43,7 +46,7 @@ export function DetailHeader({
 
   return (
     <div className="flex items-center gap-2 flex-wrap" style={{ padding: '2px 2px 6px' }}>
-      <Crumb icon={Bot} label={agentName} current={level === 'agent'} onClick={onSelectAgent} />
+      <Crumb icon={agentIconComponent(agentId)} label={agentName} current={level === 'agent'} onClick={onSelectAgent} />
       {jobName != null && (
         <>
           {CRUMB_SEPARATOR}

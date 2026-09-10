@@ -14,6 +14,7 @@ import { isMap, parseDocument, type Document } from 'yaml';
 import {
   ON_DEMAND_DIR_NAME,
   clarifyExitOutcomes,
+  isDefinitionIconPath,
   splitFrontmatter,
   validateInferFrontmatter,
   validateIntentHooks,
@@ -531,6 +532,7 @@ export function planSaves(docs: readonly SaveDocLike[]): PlannedSave[] {
 
 export type DefinitionPathKind =
   | { kind: 'agent-yaml' }
+  | { kind: 'agent-icon' }
   | { kind: 'job-dir'; jobId: string }
   | { kind: 'job-yaml'; jobId: string }
   | { kind: 'intent-dir'; jobId: string; intentId: string }
@@ -560,6 +562,9 @@ const isOnDemandDocName = (name: string): boolean => name.endsWith('.md') || nam
 export function classifyDefinitionPath(path: string): DefinitionPathKind {
   const parts = path.replace(/\\/g, '/').replace(/^\/+/, '').split('/');
   if (parts.length === 1 && parts[0] === 'agent.yaml') return { kind: 'agent-yaml' };
+  // The icon is a file with no editor of its own; the agent card owns it, so a
+  // tree click lands on the card that can replace it.
+  if (parts.length === 1 && isDefinitionIconPath(parts[0])) return { kind: 'agent-icon' };
   if (parts[0] === ON_DEMAND_DIR_NAME) {
     return parts.length >= 2 && isOnDemandDocName(parts[parts.length - 1]) ? { kind: 'on-demand' } : { kind: 'other' };
   }
@@ -603,6 +608,7 @@ export function classifyDefinitionPath(path: string): DefinitionPathKind {
  */
 export const CARD_OF_KIND: Record<Exclude<DefinitionPathKind['kind'], 'other'>, string> = {
   'agent-yaml': 'c3g-agent',
+  'agent-icon': 'c3g-agent',
   'job-dir': 'c3g-tools',
   'job-yaml': 'c3g-tools',
   'intents-dir': 'c3g-intents',

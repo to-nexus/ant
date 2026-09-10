@@ -9,6 +9,8 @@ import { useTranslation } from 'react-i18next';
 import type { Agent } from '@/infrastructure/http/api';
 import type { AgentWithMetadata, JobWithMetadata } from './hooks/useAgentJobOptions';
 import { AgentLogo } from '../AgentLogo';
+import { AgentIcon } from '../AgentIcon';
+import { groupAgentsByScope } from '../Actions/universalSurfaceRules';
 import { TurnTokenGauge } from './TurnTokenGauge';
 
 interface AgentJobToolbarProps {
@@ -92,6 +94,7 @@ export function AgentJobToolbar({
   onSubmit,
 }: AgentJobToolbarProps) {
   const { t } = useTranslation('chat');
+  const { t: tAgents } = useTranslation('agents');
   const selectedJobType = useStore((state) => state.selectedJobType);
   const setSelectedJobType = useStore((state) => state.setSelectedJobType);
   const selectedAgent = useStore((state) => state.selectedAgent);
@@ -244,7 +247,7 @@ export function AgentJobToolbar({
                 title={currentCustomAgent?.name ?? t('universal.selectAgent', { defaultValue: 'Select an agent' })}
                 aria-label={currentCustomAgent?.name ?? t('universal.selectAgent', { defaultValue: 'Select an agent' })}
               >
-                <AgentLogo size={14} />
+                <AgentIcon agentId={currentCustomAgent?.id} size={14} />
                 {!compact && (
                   <span className="truncate max-w-[120px]">
                     {currentCustomAgent?.name ?? t('universal.selectAgent', { defaultValue: 'Select an agent' })}
@@ -288,45 +291,59 @@ export function AgentJobToolbar({
                     boxShadow: 'var(--shadow-lg)',
                   }}
                 >
-                  {customAgents.map((agent) => {
-                    const enabled = agent.jobs.length > 0;
-                    const isSelected = enabled && agent.id === selectedCustomAgentId;
-                    return (
-                      <button
-                        key={agent.id}
-                        onClick={() => {
-                          if (!enabled) return;
-                          selectCustomJob(agent.id, agent.jobs[0].id);
-                          setShowAgentMenu(false);
-                        }}
-                        disabled={!enabled}
-                        className={`w-full px-2.5 py-1.5 text-left text-xs
-                                   hover:bg-[color:var(--bg-hover)]
-                                   transition-colors flex flex-col gap-0.5 ${
-                          !enabled
-                            ? 'opacity-50 cursor-not-allowed'
-                            : isSelected
-                            ? 'border-l-2'
-                            : ''
-                        }`}
-                        style={{
-                          color: 'var(--text-1)',
-                          ...(isSelected
-                            ? {
-                                background: 'oklch(from var(--violet-500) l c h / 0.10)',
-                                borderLeftColor: 'var(--violet-500)',
-                              }
-                            : {}),
-                        }}
+                  {/* Grouped by scope — personal / organization / built-in — the
+                      same partition and order the settings rail and the actions
+                      cards use, so one agent is never filed differently twice. */}
+                  {groupAgentsByScope(customAgents).map((group) => (
+                    <div key={group.scope}>
+                      <div
+                        className="px-2.5 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide"
+                        style={{ color: 'var(--text-4)' }}
                       >
-                        {/* Custom agents carry a name only — the persona lives in base/ prose. */}
-                        <span className="font-medium flex items-center gap-1.5">
-                          <AgentLogo size={13} />
-                          {agent.name}
-                        </span>
-                      </button>
-                    );
-                  })}
+                        {tAgents(`tree.scope.${group.scope}`, group.scope)}
+                      </div>
+                      {group.agents.map((agent) => {
+                        const enabled = agent.jobs.length > 0;
+                        const isSelected = enabled && agent.id === selectedCustomAgentId;
+                        return (
+                          <button
+                            key={agent.id}
+                            onClick={() => {
+                              if (!enabled) return;
+                              selectCustomJob(agent.id, agent.jobs[0].id);
+                              setShowAgentMenu(false);
+                            }}
+                            disabled={!enabled}
+                            className={`w-full px-2.5 py-1.5 text-left text-xs
+                                       hover:bg-[color:var(--bg-hover)]
+                                       transition-colors flex flex-col gap-0.5 ${
+                              !enabled
+                                ? 'opacity-50 cursor-not-allowed'
+                                : isSelected
+                                ? 'border-l-2'
+                                : ''
+                            }`}
+                            style={{
+                              color: 'var(--text-1)',
+                              ...(isSelected
+                                ? {
+                                    background: 'oklch(from var(--violet-500) l c h / 0.10)',
+                                    borderLeftColor: 'var(--violet-500)',
+                                  }
+                                : {}),
+                            }}
+                          >
+                            {/* Custom agents carry a name and an optional uploaded icon —
+                                the persona itself lives in base/ prose. */}
+                            <span className="font-medium flex items-center gap-1.5">
+                              <AgentIcon agentId={agent.id} size={13} />
+                              {agent.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

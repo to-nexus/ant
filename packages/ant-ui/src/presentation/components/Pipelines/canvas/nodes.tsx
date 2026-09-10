@@ -10,6 +10,7 @@
 import { memo, useState, type ReactNode } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { Clock, Bot, ShieldCheck, Plus, Zap, Ban, Link2, type LucideIcon } from 'lucide-react';
+import { AgentIcon } from '@/presentation/components/AgentIcon';
 import { useTranslation } from 'react-i18next';
 import type { GateDecision, PipelineStepStatus } from '@ant/shared';
 import { TRIGGER_NODE_ID, type TriggerMode } from '../draft';
@@ -56,6 +57,8 @@ export interface PipelineNodeData {
   flowDir: FlowDir;
   /** Trigger nodes: picks the icon. */
   triggerMode?: TriggerMode;
+  /** Job steps: whose agent runs it — the card draws that agent's mark. */
+  agentId?: string;
   /** The "+" affordance: insert between / branch off. Absent = hidden. */
   onAdd?: (afterNodeId: string, kind: 'job' | 'gate', mode: 'insert' | 'branch') => void;
   /** First step that already depends on this node — names what an insert lands BEFORE, and gates the branch section. */
@@ -379,7 +382,7 @@ export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeD
     <CardShell kind="step" data={data}>
       <NodeHeader
         kind="step"
-        icon={data.invalid ? <Ban size={14} /> : <Bot size={14} />}
+        icon={data.invalid ? <Ban size={14} /> : <AgentIcon agentId={data.agentId} size={14} />}
         primary={data.primary}
         caption={data.caption}
         captionTitle={data.captionTitle}

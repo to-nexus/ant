@@ -29,6 +29,8 @@ export interface StepIdentity {
   captionTitle?: string;
   /** False when `primary` fell back to the job name (or a placeholder). */
   primaryIsIntent: boolean;
+  /** Whose agent this step runs — the canvas card draws that agent's mark. */
+  agentId?: string;
 }
 
 const SEP = ' · ';
@@ -57,6 +59,7 @@ export function resolveStepIdentity(step: PipelineStepDef, agents: IdentityAgent
   return {
     primary,
     caption,
+    agentId: ref.agentId,
     captionTitle: `${caption}\n${step.customJobRef}`,
     primaryIsIntent: intent !== undefined,
   };

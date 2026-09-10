@@ -788,6 +788,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           >
             <DetailHeader
               level={level}
+              agentId={selection.agentId!}
               agentName={selectedAgent?.name ?? selection.agentId!}
               jobName={selection.jobId ? (selectedJob?.name ?? selection.jobId) : undefined}
               intentId={selection.intentId}

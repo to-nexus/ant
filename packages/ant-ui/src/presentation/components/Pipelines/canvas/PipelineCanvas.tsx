@@ -138,6 +138,7 @@ function PipelineCanvasInner({ def, cronSummary, customAgents, run, approversByG
           primary: identity.primary,
           caption: identity.caption,
           captionTitle: identity.captionTitle,
+          agentId: identity.agentId,
           status: statusOf.get(step.id),
           selected: false,
           flowDir: 'ltr',
