@@ -1220,7 +1220,10 @@ human-carried seams as pipeline boundaries — a gate holds a run for a
 person's DECISION, never their labor; work a person performs between steps
 means the downstream chain's real trigger is the handoff arriving, so it is
 authored as its own pipeline, manual-fired until the seam is automated
-(`runCompleted` after), reversibly. The agent builder's review intent gains
+(`runCompleted` after), reversibly — refined 2026-09-10 into doc 46's
+two-question seam table (what the next step needs; whether the person present
+holds it or a third party/date produces it), which also separates relays from
+seams. The agent builder's review intent gains
 its missing audit lane: read the build instructions (not inlined on review
 turns), audit the definition against them, and check the manifest against
 the definition (entry coverage, `status:` vs declared connections, the

@@ -748,7 +748,8 @@ delete (`findWritablePipeline` funnel: 403 `org-pipeline-forbidden` per ACL;
 non-blocking `catalogWarnings` — the catalog-binding findings the
 enable gate hard-fails on, PLUS def-structural advisories
 (`collectPipelineDefAdvisories`: an approval gate no step needs — a
-decision the run does not execute is a seam, not a gate) and
+decision the run does not execute belongs in the report's Left to a person,
+not in the graph) and
 catalog advisories (`collectPipelineCatalogAdvisories`: pin-needs
 coherence — a `context` pin whose producing step, identified by
 exact stop-glob match, is not in the pinning step's needs closure
@@ -767,7 +768,14 @@ that no `verdict:` edge reads and that carries no `onMissingVerdict` (the
 smooth-mending-coral shape: four such steps, no `retry` — one forgotten
 `<verdict>` tag fails the step and aborts a run that cleared two human gates,
 for a decision nothing downstream consumes; routed steps are exempt because
-there the fallback is a routing choice). All of these are ONE structured
+there the fallback is a routing choice); and `entry-no-case-channel` — the
+entry step of a manual or chained pipeline that pins nothing, carries no
+`{{…}}` in its directive, and runs an intent declaring `clarify: false` on a
+case-keyed (`*`) stop glob, so the run has no channel to learn its case and
+proceeds on defaults (the rapid-killing-pilot shape). Judged on the explicit
+intent-level knob only — the job/agent default is not in the summary, and a
+`general` entry is not judged — and only on `*` globs, so a case-free
+manual intent (fixed output path) stays silent. All of these are ONE structured
 source, `collectPipelineAdvisoryItems` (`{ code, stepId, field, message }`) —
 the string collectors map its `message`, the FE anchors the same item to the
 step and field — and, on
@@ -1099,9 +1107,11 @@ The pipeline builder's own run report (`pipeline-report/{pipelineId}.md`,
 contracted by its build intent's `artifact:` stop hook, rewritten whole on
 every authoring turn) is where those obligations land durably. Like the
 dependency report it has ZERO programmatic readers — do not teach the
-scheduler to parse it. Five sections: substitutes, human seams, **intent
-changes this pipeline needs**, run entry, and what was left to a person. The
-third is the load-bearing one: a limitation of the AGENT reaches the lane that
+scheduler to parse it. One file per FLOW (`pipeline-report/{flowId}.md`,
+however many pipelines the flow splits into — the split and its reasons are
+readable only whole), eight sections: flow, seams, relays, substitutes,
+**intent changes this flow needs**, outcome coverage, run entry, and what was
+left to a person. The fifth is the load-bearing one: a limitation of the AGENT reaches the lane that
 can fix it only through that list. Six loop rounds in 2026-09 produced the
 motivating case three times — the deciding intent's `outcomes`
 (adverse/standard) cannot express the standard-form-contract case that needs
@@ -1117,23 +1127,60 @@ The obligations live at authoring time, in the pipeline builder's contract:
   `artifact:`-only completion; the same-project manifest is read
   opportunistically as the status ledger) and name those steps in the stated
   design and the report, so a green run is never mistaken for the real work.
-- **The seam rule** — an approval gate holds a run for a person's DECISION,
-  never their labor. When a person performs work between steps (relaying a
-  deliverable into a system no agent reaches), the downstream chain's real
-  trigger is that handoff arriving, so the domain is authored as **multiple
-  pipelines** split at the seam: the upstream one ends at the handoff
-  deliverable, the downstream one is manual-fired while the seam is human
-  (`runCompleted` only once it is automated). The split is reversible —
-  wiring the seam later means chaining or merging the two. No inter-pipeline
-  ordering machinery exists or is planned; `runCompleted` and manual fire are
-  the whole vocabulary.
-  Two rationalizations for keeping a labor seam inside a gate are settled by
-  facts, and the contract states both so the rule is not a preference to trade
-  away: an approval carries **no payload** (one bit — it delivers none of what
-  the person produced, so the downstream step re-asks through clarify or
-  asserts a receipt it cannot verify), and covering a whole procedure is not an
-  argument against splitting, since the whole flow IS covered by several
-  pipelines, one per seam-bounded stretch.
+- **The seam table — two questions, not "decision vs labor".** A *seam* is a
+  point where the run cannot continue until a person acts; a *relay* is a
+  person carrying a deliverable onward while the run does not wait. Two
+  observable questions classify every point where a person stands between two
+  steps. (1) What does the NEXT step need from the person? Permission alone →
+  an approval gate (one bit, no payload). A value it reads or a state its
+  action presumes → that step's own intent `clarify` (text under the directive
+  ceiling; a file as the artifacts path it was uploaded to). Permission AND a
+  value → clarify first, gate on the record. Nothing — no step reads or
+  presumes the work's product → a relay: no node, and no directive may assert
+  the work happened (a relay holds only while the consuming steps run on
+  substitutes; the wiring turn re-asks the question). (2) Does it exist when
+  the run reaches that step? Held by the person who pressed Run or answers the
+  card — an entry step's inputs always are — → the run continues through that
+  channel. Produced only by a third party's work or on a calendar date → its
+  arrival is the next stretch's trigger, so the seam is a **boundary between
+  pipelines**: the upstream one ends at the hand-off deliverable, the
+  downstream one is manual-fired while the seam is human (`runCompleted` once
+  automated), both authored in one turn, the split reversible. The facts that
+  arbitrate: a gate carries no payload; `clarify` is text-only and three
+  rounds per step; an activation runs ONE live run (run-now 409
+  `existingRunId`) and an activator three, so a run parked on a lead time
+  serializes every later case behind it; no step sleeps until a date; a gate
+  `timeout` sized to a lead time parks a decision nobody can yet make, sized
+  shorter it rejects before the work exists. Only three shapes are FORCED by
+  those facts — a wait that may exceed the 30d bound, more cases than free
+  activations during the lead time, a calendar arrival; the rest of "third
+  party → boundary" is the contract's stated default, with one exception (a
+  reply the answering person can fetch without leaving the card is held). The
+  older rule — a gate for a DECISION, never for LABOR (`477e496e3`, motivated
+  by a 3-day gate over a week-long legal review) — was this table's shadow:
+  it could not express the operator-held value (clarify), the unconsumed
+  relay, or permission-plus-value, and it left the rounds P6–P16 pattern
+  (seam = clarify at the consuming step, verified live) and the boundary rule
+  standing side by side with no criterion between them. `rapid-killing-pilot`
+  (2026-09-10) showed the cost: ~250 lines of design deliberation, three
+  reversals, directives asserting deliveries no step observed, and an entry
+  step with no channel for its case (below).
+- **A directive states as fact only what a step of THIS pipeline observed.**
+  Work outside the run is named as owed, never as done. P1's F9 (a gate over an
+  extraction relay → the mail-send artifact asserted "extraction complete, PTS
+  received" on one approval bit) recurred in `rapid-killing-pilot` with no
+  gate at all: "after the publishing deliverables are complete", "once the
+  recipient list and the send HTML are ready" written into directives of a
+  pipeline whose steps never receive either.
+- **An entry step must have a channel for its case.** Manual and chained
+  entries learn the case through a pin or through clarify — template variables
+  render only time and ids there. `rapid-killing-pilot` saved an entry step
+  with no pin, no run-known value in its directive, and an intent declaring
+  `clarify: false` (all nine intents of the material did, authored with no rule
+  for the knob): `clarify: false` means "proceed on defaults", so Run now does
+  not fail — it writes a case nobody supplied and seals `completed`. The
+  `entry-no-case-channel` save advisory (§7) names the shape; the agent
+  builder's contract now says when the knob may be false.
 - **Verdict routing is owed where the vocabulary exists** — a run seals a
   verdict whether or not an edge reads it, so an upstream `outcomes`-declaring
   intent whose judgment nothing routes on has had its decision discarded, and
@@ -1167,20 +1214,14 @@ The obligations live at authoring time, in the pipeline builder's contract:
   the run's inputs are unknowable at authoring time, they are left out and the
   report names the steps that will therefore stop for `clarify` — otherwise a
   person expects Run now to complete unattended.
-- **The seam's data channel is the consuming step, not the gate.** Resolving
-  an approval sends `decision` and nothing else, so a gate `prompt` that
-  invites the approver to enter a value describes a channel that does not
-  exist, and a directive claiming the gate delivered content makes the step
-  work from an assumption. A 2026-09-04 authoring round produced exactly that
-  pair (`legal-gate` "enter the reply summary below" + `comparison-table`
-  "the reply content, delivered at the approval gate"): the step then did not
-  ask, wrote its own artifact hedge ("assumed to affirm the provisional
-  judgment"), and that hedge survived neither its own document's title, nor
-  its answer, nor the sealed `verdict: adverse`, nor the next step's artifact
-  ("legal review **determined** it adverse"). A clarify answer also stays with
-  the step that asked it — `{{steps.<id>.answer}}` is the final answer text,
-  not the clarify — so anything later steps need from a person must be
-  captured into an artifact by the step that asked.
+- **A clarify answer stays with the step that asked it** — `{{steps.<id>.answer}}`
+  is the final answer text, not the clarify — so anything later steps need from
+  a person must be captured into an artifact by the step that asked. The
+  2026-09-04 pair (`legal-gate` "enter the reply summary below" +
+  `comparison-table` "the reply content, delivered at the approval gate")
+  invented a gate payload; the step then did not ask, hedged in its own
+  artifact, and the hedge survived neither its title, its answer, its sealed
+  `verdict: adverse`, nor the next step's artifact.
 - **A step that can end by recording "not applicable" wants an edge, not a
   judgment.** Same round: `regulator-report` ran a full job to write "no
   regulator filing needed", and `recipient-extract` decided individual-notice
@@ -1301,6 +1342,12 @@ The obligations live at authoring time, in the pipeline builder's contract:
 - **Backlog (user-locked)**: Slack/email channels, webhook triggers.
 
 ---
+
+- **Not built — a per-case date wait.** A step cannot sleep until a date the
+  case carries (an enforcement date), and `on.schedule` is case-blind; today's
+  vocabulary is a boundary plus manual Run on the day (an hours-scale wait is
+  the operator answering the clarify card at the hour). A `wait`/`runAt` step
+  kind sits behind doc 48 D3 gap ⑤ (event triggers).
 
 ## Read next
 

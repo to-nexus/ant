@@ -10,10 +10,11 @@
 - Check the graph: every `needs` names an existing step, no cycles, every
   approval gate has an upstream step, and each `on` condition can actually be
   reached.
-- Read `pipeline-report/{pipelineId}.md` if the pipeline has one: it is where
-  the build turn recorded the substitutes, the human seams, the intent changes
-  it needs from the Agent Builder, and the policies it left open. Its absence
-  on a pipeline that was authored here is a finding. So is a claim in it that
+- Read the flow report under `pipeline-report/` whose Flow section names this
+  pipeline, if one exists: it is where the build turn recorded why the flow
+  splits where it does, the substitutes, the seams and relays, the intent
+  changes it needs from the Agent Builder, and the policies it left open. Its
+  absence on a pipeline that was authored here is a finding. So is a claim in it that
   the definition contradicts — and so is a limitation you can see in the
   definition that the report does not name. The report speaks from its
   authoring turn: a state that changed afterwards (enabled, activated, runs
@@ -66,10 +67,18 @@ step, and say which:
 - A gate no step `needs`, or one whose downstream work is reachable without
   it: approving and rejecting lead to the same run, so the decision is
   decoration.
-- A gate that waits for a person's labor rather than their decision. An
-  approval carries one bit and no payload, so check what the downstream step
-  needs: if it needs the content that labor produced, the gate cannot deliver
-  it and the seam belongs on a pipeline boundary.
+- A seam classified against the material — judge what the downstream step
+  needs and when it exists, never who does the work. A gate where the step
+  needs content (one bit carries none); an in-run clarify for a value that
+  exists only after a third party's work or on a date (the run parks the
+  activation's one live slot for that lead time); a boundary for a value the
+  person pressing Run already holds (each boundary re-enters the case through
+  clarify and pins across pipelines as cross-case globs). The boundary is the
+  contract's default for third-party values, so an over-split is a judgment
+  call with a cost to name, not a finding.
+- A directive asserting as done an event outside the run — a delivery, a
+  reply, a posting — that no step of the pipeline observed. Naming the work as
+  owed is not the defect; stating it as fact is.
 - A directive that duplicates what a contract already owns — the intent's
   procedure or output paths, an outcomes vocabulary's definitions, a condition
   its `on` edge already enforces — or that carries no input the run alone

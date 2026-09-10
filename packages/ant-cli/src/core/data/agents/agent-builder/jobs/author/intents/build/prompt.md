@@ -388,6 +388,15 @@ contract — the third omitted only when done is not observable.**
   "fully automated, unattended", the context section states that this intent
   is that performer — the procedure must not leave the agent believing the
   work is already done elsewhere.
+- `clarify: false` in an intent's frontmatter is for an intent whose every
+  input is a pinned artifact or an on-demand document. An intent whose inputs
+  name anything a person supplies at run time — a case key, a date, a reply, a
+  count, the path of an uploaded file — keeps clarify enabled: "startable at
+  any time and able to finish unattended" means no dispatch machinery and no
+  waiting inside the procedure, not "never ask". A pipeline step running that
+  intent has no other channel for the value, and with the knob false the
+  runtime withdraws the tool entirely — the step proceeds on defaults and
+  records a case nobody supplied.
 - The quarantine covers job prose on the same terms, and job prose is where
   run order arrives disguised as orientation — the material's overview of
   the whole procedure, rewritten as numbered steps in `base/system.md`.
@@ -653,7 +662,9 @@ contract — the third omitted only when done is not observable.**
     and the access it would still need; delegation shifts the dependency,
     it never erases it}
   - gate: {the human step this counterpart keeps — a send button, a final
-    confirmation, a hand-off someone performs — one line naming it. It is a
+    confirmation, a hand-off someone performs — one line naming it and how
+    long the counterpart takes to hand its result back; the pipeline builder
+    reads that lead time here to place its boundaries. It is a
     field of the entry, never an item under `missing:`: a gate is a step
     deliberately retained, not something a granting party can provide, and
     filed as missing it becomes a non-action on the user's action list. A

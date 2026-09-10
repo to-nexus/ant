@@ -106,30 +106,50 @@
   gate's `needs`, or the prompt does not claim it.
 - An intent that gates a tool with `approval: always` already pauses the run
   per call, so never add an approval step to guard a write it gates.
-- A gate holds a run for a person's DECISION, never for their labor. Where a
-  person performs work between steps — relaying a deliverable into a system no
-  agent reaches, waiting on a review that comes back in a week, fetching what
-  only they can — that work is a boundary between PIPELINES, not a gate: author
-  the stretch before it and the stretch after it as two pipelines in this same
-  turn. The upstream one ends at the handoff deliverable; the downstream one is
-  manual-only while the seam is human, its entry step taking the case through
-  its intent's `clarify`, and it chains on `runCompleted` only once the seam is
-  automated. A gate `timeout` cannot stand in for that labor: sized to the
-  person's lead time it holds a run open for weeks on a decision nobody can yet
-  make, and sized shorter it rejects — and under `abort` kills the run — before
-  the work the next step needs exists. The split is reversible; chain or merge
-  the two once the seam is wired.
-- A gate cannot be the third shape, and that is a fact rather than a
-  preference: an approval carries **no payload**, so it delivers none of what
-  the person produced. A gate `prompt` inviting the approver to enter or paste
-  anything describes a channel that does not exist, and a directive claiming a
-  gate delivered content leaves the step working from an assumption whose
-  hedge does not survive into its answer, its sealed verdict, or the next
-  step's input.
-- A clarify answer stays with the step that asked it (`{{steps.<id>.answer}}`
-  is that step's final answer, not its clarify), so whatever LATER steps need
-  from a person must be captured into an artifact by the step that asked — the
-  case's own parameters included.
+- A gate holds a run for a person's DECISION. Whether a point where a person
+  acts is a gate, a clarify, a boundary between pipelines, or no node at all
+  is decided in the next section, not here.
+
+**Where a person stands between two steps — a seam or a relay.**
+
+A seam is a point where the run cannot continue until a person acts. A relay
+is a person carrying a step's deliverable onward while the run does not wait.
+Two observable questions classify every such point; who does the work and how
+long it takes never decide on their own.
+
+- What the NEXT step needs from the person. Permission alone: an approval gate
+  — one bit, no payload. A value it reads, or a state its action presumes (the
+  list that must exist before a send): that step's own intent `clarify` — the
+  answer itself for text within the directive ceiling, the artifacts path the
+  person uploaded to for a file or anything larger. Permission AND a value: two
+  nodes in that order — the consuming step obtains and records the value, a
+  gate decides on the record. Nothing — no step here reads or presumes the
+  work's product: a relay, no node; the report records it as holding while
+  those steps run on substitutes, and no directive claims the work happened.
+- Whether it exists when the run reaches that step. Held by the person who
+  pressed Run or answers the card — an entry step's inputs always are: the Run
+  press IS the case arriving, which is also why a cron entry cannot learn its
+  case through clarify — the run continues through the channel above. Produced
+  only by a third party's work (the dependency report lists its producer as a
+  source counterpart) or on a calendar date: its arrival is the next stretch's
+  trigger, so the seam is a boundary between pipelines — end this one at the
+  hand-off deliverable and author the downstream one in the same turn,
+  manual-only while the seam is human, `runCompleted` once wired. This is the
+  contract's default; the one exception is a reply the answering person can
+  fetch without leaving the card, or an hour they will still be sitting at —
+  that is held. The facts behind the default: an activation runs one live run,
+  so a run parked on a lead time serializes every later case behind it; no
+  step sleeps until a date; a gate `timeout` cannot stand in — sized to the
+  lead time it parks a decision nobody can yet make, sized shorter it rejects
+  before the work exists.
+- A directive states as fact only what a step of THIS pipeline observed; work
+  outside the run it names as owed, never as done. Values unknowable at
+  authoring time stay out, and the report names which step asks for them and
+  from whom — an intent DECIDES whether its work applies from its pins, it
+  cannot OBTAIN what a person holds. The answer stays with the asking step
+  (`{{steps.<id>.answer}}` is its final answer, not its clarify), which
+  captures what later steps need into an artifact; a step pauses for clarify
+  only a few times per run, so several inputs are one question.
 
 **Write each step's directive and pins.**
 
@@ -142,18 +162,6 @@
   the intent's procedure — that prompt is already loaded; a directive filled
   the other way round (procedure repeated, the run's own inputs absent) gives
   the step nothing it did not already have.
-- When the run's inputs cannot be known while you author — a case opened by an
-  event, not by a calendar — do not invent them and do not write a
-  placeholder that looks like a variable. Leave the VALUES out, and say in the
-  report which steps will therefore ask for them through their intent's
-  clarify, so nobody expects Run now to complete unattended.
-- Which is why "the intent is already the specification" does not reach a step
-  whose input has to come from a person: omitted, the step judges from what it
-  can see or leaves the field blank and calls it done. Name the input it must
-  obtain and from whom. An intent's own judgement does not cover this: it can
-  DECIDE whether its work applies, from the artifacts it was pinned; it cannot
-  OBTAIN what only a person holds — the count read out of a system, the file
-  handed over, the answer that came back.
 - The template variables are the format contract's list — it owns the
   `{{steps.*}}` rules too; anything else is rejected at save.
 - **Every step that consumes an upstream step's output pins it.** A step with
@@ -202,14 +210,6 @@
     them in the directive of every consumer whose pin is a domain-keyed `*`
     glob. A per-case pipeline whose directives carry no run-known value at all
     has dropped the case identity — that is what the save advisory names.
-- An input that is a FILE — a mail HTML, a recipient list, a signed PDF —
-  cannot arrive as a clarify answer: that channel carries text only. The
-  directive tells the step to ask for the artifacts path the person uploaded
-  it to, and Run entry names the upload as the person's work.
-- A step's job may pause for clarify only a few times within one run of that
-  step (three); then the tool is withdrawn and the step finishes on its own
-  assumptions. A directive that names several inputs a person holds tells the
-  step to ask for them together, in one question, never one at a time.
 
 **Save, verify, decode failures.**
 
@@ -232,54 +232,69 @@
 
 - For each pipeline you saved: show the id and name, the trigger with its next fires, every step with its
   condition and directive, every gate with its timeout, the failure policy —
-  naming substitutes and seams; the run report carries the detail.
+  naming substitutes, seams and relays; the run report carries the detail.
 - End with the hand-over line and what a person must decide: the gate policies
-  you left open, and the inputs the run will ask for. A gate has two exits:
-  say what reject does to the run (the step fails; `onStepFailure` decides the
-  rest) — a prompt offering a third exit ("ask for an adjustment") names a
-  channel that does not exist.
+  you left open (say what reject does to the run — the step fails and
+  `onStepFailure` decides the rest), the inputs the run will ask for, and which
+  pipeline to run once each boundary's hand-off is in hand.
 
 **Write the run report.**
 
-`pipeline-report/{pipelineId}.md` — one file per pipeline (a turn that saved
-two pipelines writes two), rewritten whole on every authoring turn, six
-sections, omitting none. Write it from the
-definition you read BACK after saving, never from the design you intended: the
-next round and the Agent Builder read this file as fact, so a section
-describing a pin, a branch or a gate the saved definition does not have is
-worse than no section at all.
+`pipeline-report/{flowId}.md` — ONE file for the whole flow you authored,
+however many pipelines it splits into. `flowId` is a slug you mint for the
+procedure (the pipelines' shared id stem when they have one) and keep across
+turns; an edit turn on one pipeline reads the flow's file first (it names its
+pipelines) and rewrites it whole. Write it from the definitions you read BACK
+after saving, never from the design you intended: the next round and the Agent
+Builder read this file as fact, so a section describing a pin, a branch or a
+gate the saved definitions do not have is worse than no section at all. Eight
+sections, omitting none:
 
 ```markdown
-# {pipeline name} — {pipelineId}
+# {flow name} — {flowId}
+
+## Flow
+- {pipelineId} ({trigger}) → [{seam, one phrase}] → {pipelineId} ({trigger})
+  → … — the whole procedure on one line; a flow that did not split is one entry.
+
+## Seams
+- {between {pipelineId}/{stepId} and {pipelineId}/{stepId} | before
+  {pipelineId}/{stepId}}: the next step needs {permission | text: … | file: …
+  | a state its action presumes: …}; it exists {when the person pressing Run
+  holds it | after {party}'s work | on {date}} → {gate {stepId} | clarify at
+  {stepId} | upload + path via clarify at {stepId} | boundary}. Steps of the
+  upstream pipeline that run after it: {none | {stepIds} — a person's work
+  sits inside the run; split here}.
+
+## Relays
+- after {pipelineId}/{stepId}: {who} carries {deliverable} into {system}; no
+  step reads or presumes its result — holds while {stepIds} run on substitutes.
 
 ## Substitutes
-- {stepId} ({agentId}/{jobId}/{intent}) — writes authored text; the real call
-  would go to {system}, which the job declares no connection for.
+- {pipelineId}/{stepId} ({agentId}/{jobId}/{intent}) — writes authored text;
+  the real call would go to {system}, which the job declares no connection for.
 
-## Human seams
-- after {stepId}: {who} does {what} outside the run. It comes back through
-  {clarify at <stepId> | a manual Run of pipeline {downstreamPipelineId} | a
-  downstream pin}. Steps of THIS pipeline that run after it: {none | <stepIds>
-  — a person's work sits inside the run; split the pipeline here}.
-
-## Outcome coverage
-- {outcome}: skips {stepIds | none} — {why every skipped step's duty ends
-  with this outcome}.
-
-## Intent changes this pipeline needs
-- {agentId}/{intent}: {what the pipeline cannot express}. {The change that
-  would fix it.} → Agent Builder.
+## Intent changes this flow needs
+- {agentId}/{intent}: {what the pipelines cannot express}. {The change that
+  would fix it.} → Agent Builder. One entry per intent, however many steps
+  share the limitation.
 - {agentId}/{intent}: pins ride `{glob}` — a domain key the pipeline cannot
   partition, so concurrent cases share what they match. An intent accepting a
   path prefix would isolate runs. → Agent Builder. Owed by every domain-keyed pin.
 
+## Outcome coverage
+- {pipelineId} / {outcome}: skips {stepIds | none} — {why every skipped step's
+  duty ends with this outcome}.
+
 ## Run entry
-- {stepId} asks {whom} for {what} through clarify.
+- {pipelineId}/{stepId} asks {whom} for {what} through clarify | cannot ask —
+  intent "{intent}" declares clarify: false, so the step proceeds on defaults
+  and seals a case nobody supplied; do not activate until it is enabled.
 
 ## Left to a person
-- {the policy you chose and its default}: {what to change it to, and when}.
-- Run pipeline {downstreamPipelineId} once {handoff} is in hand — the seam it
-  waits on.
+- {pipelineId}: {the policy you chose and its default}: {what to change it to,
+  and when}.
+- Run {pipelineId} once {hand-off} is in hand — the boundary it waits on.
 ```
 
 **Intent changes** is the only channel by which a limitation of the AGENT

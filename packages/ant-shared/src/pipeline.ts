@@ -1221,6 +1221,8 @@ export interface PipelineCatalogIntent {
   outcomes?: string[];
   /** Stop-hook subset (structural match of `IntentHooks`) — pin-needs advisories only. */
   hooks?: { stop: Array<{ artifact?: string; action?: string }> };
+  /** Intent-level clarify knob (`infer.md` frontmatter) — the entry-channel advisory only; the job/agent default is not carried. */
+  clarify?: boolean;
 }
 export interface PipelineCatalogJob {
   id: string;
@@ -1326,7 +1328,8 @@ export type PipelineAdvisoryCode =
   | 'pin-not-in-needs'
   | 'case-identity-not-threaded'
   | 'chained-pinless-consumer'
-  | 'unrouted-verdict-no-fallback';
+  | 'unrouted-verdict-no-fallback'
+  | 'entry-no-case-channel';
 
 /**
  * One save-time advisory. `message` is the wire form (the save response's
@@ -1387,7 +1390,7 @@ export function collectPipelineDefAdvisoryItems(def: PipelineDef): PipelineAdvis
         code: 'gate-holds-nothing',
         stepId: step.id,
         field: 'needs',
-        message: `approval step "${step.id}" holds back nothing: no step needs it, so its decision only sets the run's final status. A decision the run does not execute is a human seam for the report, not a gate — wire the steps it should hold back, or record the seam and drop the gate`,
+        message: `approval step "${step.id}" holds back nothing: no step needs it, so its decision only sets the run's final status. A decision the run does not execute belongs in the report's Left to a person, not in the graph — wire the steps it should hold back, or record the decision there and drop the gate`,
       });
     }
     // The authoring contract: a gate whose timeout is long or absent carries
@@ -1442,6 +1445,31 @@ export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: Pi
       field: 'onMissingVerdict',
       message: `step "${step.id}" pins intent "${step.intent}", which declares outcomes (${outcomes.join(', ')}), but no edge routes on its verdict and no onMissingVerdict is set — a run that seals no valid verdict fails this step (and, under abort, the whole run) for a decision nothing reads; set onMissingVerdict: <outcome>, or route on the verdict`,
     });
+  }
+  // A manual or chained pipeline's entry step is where the case arrives, and
+  // an entry learns it through a pin or through clarify — template variables
+  // there render only time and ids. Pinning nothing, saying nothing, and
+  // running an intent that declares `clarify: false` on a case-keyed output
+  // path, the step cannot ask: it proceeds on defaults and seals a case nobody
+  // supplied (the rapid-killing-pilot shape). Judged on the explicit
+  // intent-level knob only (the job/agent default is not in the summary) and
+  // only on `*` globs — a case-free intent writes a fixed path.
+  if (def.on?.schedule === undefined) {
+    const closureOfEntry = needsClosureOf(def);
+    for (const step of def.steps) {
+      if (isApprovalStep(step)) continue;
+      if (closureOfEntry(step.id).size > 0) continue;
+      if ((step.context ?? []).length > 0 || /\{\{/.test(step.directive ?? '')) continue;
+      const intent = intentOfStep(step);
+      if (intent?.clarify !== false) continue;
+      if (!(intent.hooks?.stop ?? []).some((h) => h.artifact?.includes('*'))) continue;
+      out.push({
+        code: 'entry-no-case-channel',
+        stepId: step.id,
+        field: 'directive',
+        message: `step "${step.id}" is the run's entry and has no channel to learn its case: it pins nothing, its directive carries no run-known value, and intent "${step.intent}" declares clarify: false — the step will proceed on defaults and seal a case nobody supplied; enable clarify on the intent (Agent Builder), or pin the case's artifacts`,
+      });
+    }
   }
   // stop artifact glob → job steps whose pinned intent declares it
   const producersByGlob = new Map<string, string[]>();

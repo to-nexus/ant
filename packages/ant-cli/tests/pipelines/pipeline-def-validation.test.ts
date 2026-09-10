@@ -745,3 +745,53 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
     ).toHaveLength(0);
   });
 });
+
+describe('collectPipelineCatalogAdvisories — entry-no-case-channel (the rapid-killing-pilot shape)', () => {
+  // Nine intents authored `clarify: false` with no rule for the knob; the manual
+  // pipeline's entry pinned nothing and threaded nothing, so Run now would write
+  // a case nobody supplied and seal completed.
+  const CATALOG: PipelineCatalogAgent[] = [
+    {
+      id: 'terms',
+      jobs: [
+        {
+          id: 'notice',
+          intents: [
+            { id: 'plan', clarify: false, hooks: { stop: [{ artifact: 'terms/*/schedule.md' }] } },
+            { id: 'plan-asks', hooks: { stop: [{ artifact: 'terms/*/schedule.md' }] } },
+            { id: 'ledger', clarify: false, hooks: { stop: [{ artifact: 'ledger/summary.md' }] } },
+            { id: 'legal', hooks: { stop: [{ artifact: 'terms/*/legal-request.md' }] } },
+          ],
+        },
+      ],
+    },
+  ];
+  const def = (steps: unknown[], on?: object): PipelineDef =>
+    ({ version: PIPELINE_DEF_VERSION, name: 'n', ...(on !== undefined && { on }), steps } as unknown as PipelineDef);
+  const step = (id: string, intent: string, extra: object = {}) =>
+    ({ id, customJobRef: 'terms/notice', intent, ...extra });
+  const hits = (pipeline: PipelineDef) =>
+    collectPipelineCatalogAdvisories(pipeline, CATALOG).filter((m) => m.includes('no channel to learn its case'));
+
+  it('fires for a manual entry that pins nothing, threads nothing, and runs a clarify:false intent on a case-keyed path', () => {
+    const items = collectPipelineAdvisoryItems(
+      def([step('plan', 'plan'), step('legal', 'legal', { context: ['terms/*/schedule.md'], directive: '{{steps.plan.artifacts}}' })]),
+      CATALOG,
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ code: 'entry-no-case-channel', stepId: 'plan', field: 'directive' });
+    expect(items[0].message).toMatch(/intent "plan" declares clarify: false/);
+    expect(items[0].message).toMatch(/seal a case nobody supplied/);
+  });
+
+  it.each([
+    ['the intent does not declare the knob (the job/agent default is not inferred)', def([step('plan', 'plan-asks')])],
+    ["the entry pins a previous pipeline's artifact", def([step('plan', 'plan', { context: ['terms/*/legal-request.md'] })])],
+    ['the directive carries a run-known value', def([step('plan', 'plan', { directive: 'case {{run.id}}' })])],
+    ['the pipeline fires on a schedule (the fire is the input)', def([step('plan', 'plan')], { schedule: { cron: '0 9 * * 1' } })],
+    ['the step is not the entry', def([step('legal', 'legal'), step('plan', 'plan', { needs: ['legal'] })])],
+    ['the intent writes a fixed, case-free path', def([step('ledger', 'ledger')])],
+  ])('stays silent when %s', (_label, pipeline) => {
+    expect(hits(pipeline)).toHaveLength(0);
+  });
+});
