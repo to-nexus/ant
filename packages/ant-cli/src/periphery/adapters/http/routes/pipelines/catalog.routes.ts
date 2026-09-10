@@ -90,7 +90,26 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       }
       const scopeRoots = scopeRootsOf(owner);
       const root = derivePipelinesRoot(ctxOf(owner));
-      const requestedId = typeof req.body?.id === 'string' ? req.body.id : toCustomId(def.name);
+      // `id` is optional only while `def.name` has something to slug. A name
+      // with no [a-z0-9] run (any non-Latin script — legitimate for a
+      // user-authored definition) slugs to "", which is not an invalid id the
+      // caller sent: it is an id nobody could derive. Saying so, and where the
+      // field belongs, is the difference between one round trip and a guessing
+      // loop — a Korean-named draft cost an LLM author two of six saves.
+      const suppliedId = typeof req.body?.id === 'string' ? req.body.id : undefined;
+      const requestedId = suppliedId ?? toCustomId(def.name);
+      if (!requestedId) {
+        const inQuery = typeof req.query?.id === 'string' && req.query.id.length > 0;
+        res.status(400).json({
+          error:
+            `Cannot derive a pipeline id from name "${def.name}" — it has no [a-z0-9] characters to slug. ` +
+            (inQuery
+              ? 'Send `id` in the request BODY (`{ id, def }`), not the query string.'
+              : 'Send an explicit `id` in the request body (`{ id, def }`).'),
+          code: 'pipeline-id-required',
+        });
+        return;
+      }
       if (!isValidCustomId(requestedId)) {
         res.status(400).json({ error: `Invalid pipeline id: "${requestedId}"`, code: 'invalid-pipeline-id' });
         return;

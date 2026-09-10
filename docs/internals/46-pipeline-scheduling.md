@@ -1103,7 +1103,7 @@ already holds: the definition's connection block, and the dispatcher's
 `artifact:` vs `action:` stop-hook partition (today used only to collect
 `{{steps.*.artifacts}}` globs).
 
-The pipeline builder's own run report (`pipeline-report/{pipelineId}.md`,
+The pipeline builder's own run report (`pipeline-report/{flowId}.md`,
 contracted by its build intent's `artifact:` stop hook, rewritten whole on
 every authoring turn) is where those obligations land durably. Like the
 dependency report it has ZERO programmatic readers — do not teach the

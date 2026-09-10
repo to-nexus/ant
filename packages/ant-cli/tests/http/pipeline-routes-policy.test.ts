@@ -275,6 +275,34 @@ describe('catalog binding — enable/activate hard-fail, save is advisory', () =
   });
 });
 
+describe('create — the id a non-Latin name cannot slug', () => {
+  // solar-edging-bride: `id` is documented optional and defaults to a slug of
+  // `def.name`. A Korean name has no [a-z0-9] run, so the slug was "" and the
+  // caller got `Invalid pipeline id: ""` — blamed for an id it never sent, with
+  // no hint the field belongs in the body. Two of six saves went to this.
+  it('refuses with pipeline-id-required, naming the body, when the name has nothing to slug', async () => {
+    const res = await api('', { method: 'POST', body: JSON.stringify({ def: DEF('약관 변경 고지 — 준비') }) });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe('pipeline-id-required');
+    expect(body.error).toMatch(/no \[a-z0-9\] characters to slug/);
+    expect(body.error).toMatch(/request body/);
+  });
+
+  it('says where the field belongs when the id rode the query string instead', async () => {
+    const res = await api('?id=terms-prep', { method: 'POST', body: JSON.stringify({ def: DEF('약관 변경 고지') }) });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/BODY/);
+  });
+
+  it('still slugs a Latin name, and an explicit id always wins', async () => {
+    expect((await api('', { method: 'POST', body: JSON.stringify({ def: DEF('Weekly Digest') }) })).status).toBe(201);
+    const named = await api('', { method: 'POST', body: JSON.stringify({ id: 'terms-prep', def: DEF('약관 변경 고지') }) });
+    expect(named.status).toBe(201);
+    expect((await named.json()).id).toBe('terms-prep');
+  });
+});
+
 describe('activation — one per project, many per pipeline', () => {
   it('activate gates in order: disabled → non-universal → project taken → live job', async () => {
     await createPipeline();

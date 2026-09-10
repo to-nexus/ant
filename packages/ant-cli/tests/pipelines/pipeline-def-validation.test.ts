@@ -794,4 +794,29 @@ describe('collectPipelineCatalogAdvisories — entry-no-case-channel (the rapid-
   ])('stays silent when %s', (_label, pipeline) => {
     expect(hits(pipeline)).toHaveLength(0);
   });
+
+  // solar-edging-bride: a boundary split's downstream pipeline pinned five
+  // globs its own steps never write, and the hand-over told the operator to
+  // activate both halves on one project — which Gate 2 refuses. The pin is
+  // the observable half, so it is where the save-time warning belongs.
+  describe('pin-has-no-producer-here', () => {
+    const noProducer = (pipeline: PipelineDef) =>
+      collectPipelineAdvisoryItems(pipeline, CATALOG).filter((i) => i.code === 'pin-has-no-producer-here');
+
+    it('fires for a pin the catalog produces but no step of this pipeline does', () => {
+      const items = noProducer(def([step('legal', 'legal', { context: ['terms/*/schedule.md'] })]));
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ stepId: 'legal', field: 'context' });
+      expect(items[0].message).toMatch(/no step of this pipeline produces/);
+      expect(items[0].message).toMatch(/one active pipeline at a time/);
+    });
+
+    it.each([
+      ['the producing step is in this pipeline', def([step('plan', 'plan'), step('legal', 'legal', { context: ['terms/*/schedule.md'] })])],
+      ['the pin is a concrete file no intent declares', def([step('legal', 'legal', { context: ['resource/procedure.html'] })])],
+      ['the step pins nothing', def([step('legal', 'legal')])],
+    ])('stays silent when %s', (_label, pipeline) => {
+      expect(noProducer(pipeline)).toHaveLength(0);
+    });
+  });
 });

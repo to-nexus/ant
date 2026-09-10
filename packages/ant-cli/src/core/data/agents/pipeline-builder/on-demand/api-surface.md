@@ -29,7 +29,7 @@ base — pass them exactly as written, starting with `/`.
 | `GET /definitions/pipelines` | `{ pipelines[], invalid[], orphanActivations[], caps }` — every pipeline this user can see, each with `scope`, per-caller `readonly`, `enabled`, and activation rows |
 | `GET /definitions/pipelines/{id}` | `{ id, def, scope, readonly, enabled, org?, activations }` — `def` is the full definition to edit |
 | `GET /definitions/pipelines/{id}/permissions` | who owns and may edit an organization pipeline |
-| `GET /definitions/pipelines/activatable-projects` | `{ projects: [{ id, name, activePipelineId }] }` — where a person could activate the draft |
+| `GET /definitions/pipelines/activatable-projects` | `{ projects: [{ id, name, activePipelineId }] }` — where a person could activate the draft. A project whose `activePipelineId` is set is already TAKEN: one active pipeline per project, so activating there means deactivating that one first. Call this before writing a hand-over that names a project |
 | `GET /definitions/agents` | every agent this user can see, with its jobs and their intents |
 | `GET /definitions/agents/{agentId}/files`, `…/file?path=…` | an agent's definition tree and one file's content — where the operating-context sections live |
 
@@ -46,7 +46,7 @@ YAML text. Writes have no mount: they go through the calls below.
 
 | Call | Body | Effect |
 |---|---|---|
-| `POST /definitions/pipelines` | `{ id?, def }` | new pipeline in the personal scope, saved as a **disabled draft**; `id` defaults to a slug of `def.name` |
+| `POST /definitions/pipelines` | `{ id?, def }` | new pipeline in the personal scope, saved as a **disabled draft**; `id` defaults to a slug of `def.name`, which only works for a Latin-script name — mint the `id` yourself and put it in the BODY (never the query string) |
 | `PUT /definitions/pipelines/{id}` | `{ def }` | **replaces the whole definition** — fetch first, edit, send everything back |
 | `DELETE /definitions/pipelines/{id}` | — | removes the definition; refused while enabled |
 
@@ -68,6 +68,7 @@ authority — never compute fire times yourself.
 |---|---|---|
 | `400` code `invalid-pipeline-def` | the definition breaks a rule | read the FULL `errors[]`, fix every named rule, save again |
 | `400` code `invalid-pipeline-id` | id is not `[a-z0-9][a-z0-9-]*` | propose a valid id |
+| `400` code `pipeline-id-required` | `def.name` has no `[a-z0-9]` run to slug, so no id could be derived | send an explicit `id` in the BODY (`{ id, def }`) — always do this when the name is not Latin-script |
 | `400` code `cap-exceeded` | account pipeline cap reached | tell the user; deleting old drafts is their call |
 | `409` code `pipeline-exists` | id taken, in any scope | propose another id |
 | `409` code `pipeline-enabled` | published definitions are immutable | a person disables it in the Pipelines tab first; stop and say so |

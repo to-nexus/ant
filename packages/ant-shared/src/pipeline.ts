@@ -1326,6 +1326,7 @@ export type PipelineAdvisoryCode =
   | 'gate-waits-forever'
   | 'self-pin'
   | 'pin-not-in-needs'
+  | 'pin-has-no-producer-here'
   | 'case-identity-not-threaded'
   | 'chained-pinless-consumer'
   | 'unrouted-verdict-no-fallback'
@@ -1471,6 +1472,19 @@ export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: Pi
       });
     }
   }
+  // Every stop glob the CATALOG can produce, whichever agent/job/intent owns
+  // it — the discriminator that separates "a pin this pipeline forgot to
+  // produce" from "a concrete file a person put in the container".
+  const catalogGlobs = new Set<string>();
+  for (const agent of agents) {
+    for (const job of agent.jobs ?? []) {
+      for (const intent of job.intents ?? []) {
+        for (const hook of intent.hooks?.stop ?? []) {
+          if (hook.artifact !== undefined) catalogGlobs.add(hook.artifact);
+        }
+      }
+    }
+  }
   // stop artifact glob → job steps whose pinned intent declares it
   const producersByGlob = new Map<string, string[]>();
   for (const step of def.steps) {
@@ -1507,7 +1521,25 @@ export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: Pi
         continue;
       }
       const producers = (producersByGlob.get(pin) ?? []).filter((p) => p !== step.id);
-      if (producers.length === 0) continue;
+      if (producers.length === 0) {
+        // No step of THIS pipeline writes it, yet the catalog says an intent
+        // does — so the pin resolves only from a container some OTHER
+        // pipeline already filled. A project holds one active pipeline, so
+        // that is never a co-activation: it is a deactivate-then-activate
+        // swap, and on a project the upstream never ran the glob matches
+        // nothing and the step fails at dispatch (`invalid-context-path`).
+        // Advisory, not a gate — the swap is a legitimate boundary hand-over
+        // when the report says so.
+        if (catalogGlobs.has(pin)) {
+          out.push({
+            code: 'pin-has-no-producer-here',
+            stepId: step.id,
+            field: 'context',
+            message: `step "${step.id}" pins "${pin}", which no step of this pipeline produces — it resolves only in a project another pipeline already filled, and a project holds one active pipeline at a time: the hand-over is deactivate-then-activate on the SAME project, never both at once. On a project the producer never ran this step fails at dispatch. Add the producing step here, or say the swap in the report's Left to a person`,
+          });
+        }
+        continue;
+      }
       const upstream = producers.filter((p) => ancestors.has(p));
       if (upstream.length === 0) {
         // What you pin, you needs — a producer outside the needs closure is

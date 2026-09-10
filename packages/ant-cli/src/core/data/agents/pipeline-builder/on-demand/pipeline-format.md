@@ -231,8 +231,15 @@ re-validates it), activates it on one or more projects, and from then on the
 definition is immutable until every activation is gone and someone disables
 it. Runs bill the activator, run history lives with the activation, and an
 active pipeline owns its project — interactive jobs there are refused while
-the binding exists. An activation runs one live run at a time: while a run
-waits on a person, Run now answers 409 `existingRunId`. `clarify` carries text
+the binding exists, and a project holds exactly ONE active pipeline (a second
+activation answers 409 `project-has-active-pipeline`). So a flow you split at
+a human boundary cannot have both halves activated on one project at the same
+time: the hand-over is a SWAP — deactivate the upstream pipeline, then activate
+the downstream one on the same project. Deactivating removes only the binding,
+so the upstream run's artifacts stay in that container and the downstream
+pipeline's pins still reach them. Never write a hand-over telling the operator
+to activate both at once. An activation runs one live run at a time: while a
+run waits on a person, Run now answers 409 `existingRunId`. `clarify` carries text
 under the directive ceiling and is withdrawn after three rounds within one
 step's run. Your half ends at a draft that previews correctly; say so in every
 report.

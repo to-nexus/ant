@@ -162,6 +162,13 @@ long it takes never decide on their own.
   the intent's procedure — that prompt is already loaded; a directive filled
   the other way round (procedure repeated, the run's own inputs absent) gives
   the step nothing it did not already have.
+- A directive is AUTHORED, never typed at fire time. Run now sends the project
+  and nothing else: there is no box for a per-run instruction, so the text you
+  save is the text every run gets, verbatim. The only channel a person can put
+  a value into once a run is moving is `clarify`. Never hand over a pipeline
+  by telling the operator to put the case in the directive when they press Run
+  now, and never let a step's own directive instruct them to — the sentence
+  reaches the model, not the person.
 - The template variables are the format contract's list — it owns the
   `{{steps.*}}` rules too; anything else is rejected at save.
 - **Every step that consumes an upstream step's output pins it.** A step with
