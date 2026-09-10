@@ -300,6 +300,20 @@ describe('structured → raw application', () => {
     expect(deriveHooks(docOf(cleared))).toBeUndefined();
   });
 
+  it('applyHooks carries `arm` — a glob-builder save must not drop the author\'s arming policy', () => {
+    const armed = editRaw(HOOKS_YAML, (doc) => applyHooks(doc, [{ action: 'create_file' }], 'on-write'));
+    expect(deriveHooks(docOf(armed))).toEqual({ stop: [{ action: 'create_file' }], arm: 'on-write' });
+
+    // An edit that only touches the list keeps the declared policy.
+    const relisted = editRaw(armed, (doc) => applyHooks(doc, [{ artifact: 'out/*.md' }]));
+    expect(deriveHooks(docOf(relisted))).toEqual({ stop: [{ artifact: 'out/*.md' }], arm: 'on-write' });
+
+    // `always` is the default and is not written.
+    const reset = editRaw(relisted, (doc) => applyHooks(doc, [{ artifact: 'out/*.md' }], 'always'));
+    expect(deriveHooks(docOf(reset))).toEqual({ stop: [{ artifact: 'out/*.md' }] });
+    expect(reset).not.toContain('arm:');
+  });
+
 });
 
 describe('mcp.servers round-trip', () => {

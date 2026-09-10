@@ -5,4 +5,4 @@
 #   clarify: <bool>    # false = turns under this intent never ask blocking questions
 #   outcomes: [..]     # 2-5 kebab-case ids — a judgment intent's verdict vocabulary
 ---
-Creating or changing definitions: a new agent, a job or intent under one that exists, edits to prose, tools, connections, or structure — or turning a body of material into one or more complete agents at once.
+Any turn about agent definitions: turning a body of material into one or more complete agents, changing a definition's prose, tools, connections, or structure, auditing one against the build contract, or explaining how one is put together.

@@ -130,17 +130,18 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   //      clarify pause DEFERS the contract (the answer turn re-gates via
   //      intent + ledger inheritance) but still records met hooks below.
   const fileSystem = state.deps?.fileSystem;
+  const evidence = {
+    writes: state._turnToolWrites ?? [],
+    actions: state._turnToolActions ?? [],
+    ledger: state.restoredHookLedger,
+  };
   const activeHooks =
     state.turnContext?.planTurn === true
       ? []
-      : activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? []);
+      : activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? [], evidence);
   let hookChecks: StopHookCheck[] = [];
   if (activeHooks.length > 0) {
-    const rawChecks = checkStopHooks(activeHooks, {
-      writes: state._turnToolWrites ?? [],
-      actions: state._turnToolActions ?? [],
-      ledger: state.restoredHookLedger,
-    });
+    const rawChecks = checkStopHooks(activeHooks, evidence);
     hookChecks = fileSystem
       ? await verifyChecksOnDisk(rawChecks, (p) => fileSystem.fileExists(p))
       : rawChecks;

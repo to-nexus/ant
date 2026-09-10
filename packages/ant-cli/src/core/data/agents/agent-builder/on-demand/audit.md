@@ -1,3 +1,10 @@
+# Audit checklist
+
+Read this when the turn asks ABOUT a definition rather than to change it —
+explain how an agent is put together, check whether a job is valid, diagnose
+why it behaves as it does, or judge it against the build contract. It is the
+same standard the build turn sweeps before each save, applied after the fact.
+
 **Read the definition and sweep its prose.**
 
 - Read the actual files and validate the job. Base every claim on what you
@@ -18,14 +25,19 @@
   is itself the tell.
 **Report findings, not edits — the standard is the build contract.**
 
-- Report what you found, not what you would change: propose edits and wait
-  for the user to accept them before writing anything.
+- Findings are the answer; write nothing. A turn that only reads and answers
+  owes nothing under the build contract, and a file written now — a findings
+  document, a "fixed" draft — arms it: the save is then owed too. When the
+  user wants a durable audit or a fix plan, that is a `@plan` turn: findings
+  and the proposed edits land under `plan/`, and the plan card carries them
+  into the build turn that applies them.
 - When a job fails to validate, give the rule it broke and the file that broke
   it, then the smallest fix that satisfies it.
 - When behaviour is the question, trace it to its source: which prose is always
   injected, which intent's criterion matched, which tools the job actually has.
-- The contract a definition is audited against is the build intent's
-  instructions — not inlined on a review turn, so read them first.
+- The contract a definition is audited against is the build instructions
+  (`intents/build/prompt.md`) — read them first when this turn did not inline
+  them.
 **Audit the dependency report.**
 
 - Find the agent's dependency report in this project's artifacts — the newest
@@ -59,9 +71,9 @@
   procedure's stages written there as a numbered sequence are the position
   claim the build rules ban, and steps in that sequence which no intent
   performs are the tell.
-**Sweep altitude on every saved prose file.**
+**Sweep altitude on every prose file the last build turn saved.**
 
-- Check altitude on every prose file the turn saved, one axis at a time — the
+- Check altitude on every prose file the definition carries, one axis at a time — the
   same list the build instructions sweep before each save, since a violation
   that survived the save is what an audit is for. Read the headings on the
   same terms as the sentences: a step number or a schedule label in a title

@@ -43,8 +43,10 @@ Work in this order:
    remains a person's decision: the draft stays disabled until someone enables
    it and activates it on a project in the Pipelines tab.
 
-Consult `on-demand/pipeline-format.md` for the definition contract and
-`on-demand/api-surface.md` for the endpoints and their shapes. Read them
+Consult `on-demand/pipeline-format.md` for the definition contract,
+`on-demand/api-surface.md` for the endpoints and their shapes, and
+`on-demand/audit.md` when the turn asks about a pipeline rather than to change
+it. Read them
 rather than guessing — a wrong field is rejected, and a wrong rule wastes a
 round trip.
 

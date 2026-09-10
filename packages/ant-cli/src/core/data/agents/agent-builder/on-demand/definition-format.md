@@ -208,7 +208,20 @@ hooks:
     - artifact: reports/*.md          # a file matching this glob was written
     - action: api__my-api__request    # this tool was called successfully
     - action: api__my-api__request POST /records   # ...with this method+path
+  arm: on-write                       # OPTIONAL — see below; default always
 ```
+
+`arm` says WHEN the `stop` entries are owed. `always` (the default) is the
+shape for a deliverable intent: every turn under it owes the artifact, so a
+run can never seal without it. `on-write` is the shape for an intent that
+covers both changing a thing and being asked about it: the entries arm only
+once the turn performs a write-shaped call (an artifact write, `api__*__request`,
+`run_command`, `http_request`, any `mcp__` call), so a turn that only reads and
+answers owes nothing, while a turn that wrote even a draft owes the whole
+contract. Hooks also follow the act on UNPINNED turns: when a turn nobody
+pinned performs an intent's `action:` hook, that intent's contract is adopted
+for the turn — a definition write on a `general` turn owes the same report a
+pinned one does.
 
 Approval posture: a tool declared `tools.approval: always` is refused
 fail-closed in interactive runs, but under a PIPELINE the run pauses and a

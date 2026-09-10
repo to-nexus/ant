@@ -658,6 +658,7 @@ describe('loadCustomJob — intents catalog validation table', () => {
     ['hooks as a list, not a mapping', { a: { hooks: { hooks: [{ artifact: 'r.md' }] } } }, /hooks must be a mapping/],
     ['unknown hook event key', { a: { hooks: { hooks: { preTool: [{ action: 'read_file' }] } } } }, /unknown event/],
     ['empty stop list', { a: { hooks: { hooks: { stop: [] } } } }, /non-empty list/],
+    ['arm outside the enum', { a: { hooks: { hooks: { stop: [{ artifact: 'r.md' }], arm: 'sometimes' } } } }, /hooks.arm must be one of "always" \| "on-write"/],
     ['stop list over the cap', { a: { hooks: { hooks: { stop: Array.from({ length: 9 }, (_, i) => ({ artifact: `f${i}.md` })) } } } }, /cap is 8/],
     ['entry with both artifact and action', { a: { hooks: { hooks: { stop: [{ artifact: 'r.md', action: 'read_file' }] } } } }, /exactly one of "artifact" \| "action"/],
     ['entry with an extra key', { a: { hooks: { hooks: { stop: [{ artifact: 'r.md', when: 'always' }] } } } }, /exactly one of "artifact" \| "action"/],

@@ -71,8 +71,8 @@ through the validated route.
 `PUT /file` REPLACES the file at `path` with `content`. A second PUT to the
 same path does not continue the first — it destroys what the first one wrote.
 There is no append: no endpoint takes a partial file, and the definition
-mount you can read at `_agent-definition/` is read-only, so a write tool
-cannot reach it either. Send each file's full text in one call, however long
+mount you read other agents through (`_agents/{agentId}/…`) is read-only, so
+a write tool cannot reach a definition either. Send each file's full text in one call, however long
 it is; `prompt.md` and `on-demand/**` have no size limit.
 
 If a write is refused, the body names the field or the rule that refused it.

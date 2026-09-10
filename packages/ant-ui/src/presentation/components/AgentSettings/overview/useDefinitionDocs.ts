@@ -339,7 +339,7 @@ export function useDefinitionDocs(
           // an absent hooks.yaml is the canonical "no hooks".
           setRaw(hooksDocKey(intentId), '');
         } else {
-          edit(hooksDocKey(intentId), (doc) => applyHooks(doc, stop));
+          edit(hooksDocKey(intentId), (doc) => applyHooks(doc, stop, patch.hooks?.arm));
         }
       }
       if ('infer' in patch) {

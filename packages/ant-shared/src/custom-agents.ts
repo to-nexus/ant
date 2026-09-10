@@ -118,7 +118,21 @@ export const INTENT_OUTCOMES_MAX = 5;
  */
 export interface IntentHooks {
   stop: IntentStopHook[];
+  /**
+   * When the `stop` obligations arm. `always` (default): every turn under
+   * this intent owes them — the shape for a deliverable intent, whose whole
+   * point is that the run cannot seal without the artifact. `on-write`: they
+   * arm only once the turn performs a write-shaped call (an artifact write,
+   * `api__*__request`, `run_command`, `http_request`, any `mcp__` call) — a
+   * turn that only reads and answers owes nothing. The shape for an intent
+   * that covers both changing a thing and being asked about it: the same
+   * pinned turn may explain, audit, or edit, and only the edit is a contract.
+   */
+  arm?: IntentHooksArm;
 }
+
+export const INTENT_HOOKS_ARM_VALUES = ['always', 'on-write'] as const;
+export type IntentHooksArm = (typeof INTENT_HOOKS_ARM_VALUES)[number];
 
 // ── stop-hook syntax validation (single rule set, BE loader + FE editor) ─────
 
@@ -308,9 +322,13 @@ export function validateIntentHooks(
     return { errors: ['hooks must be a mapping of event → entries (e.g. hooks: { stop: [...] })'] };
   }
   const events = Object.keys(raw as Record<string, unknown>);
-  const unknownEvents = events.filter((e) => e !== 'stop');
+  const unknownEvents = events.filter((e) => e !== 'stop' && e !== 'arm');
   if (unknownEvents.length > 0) {
-    return { errors: [`hooks declares unknown event(s) "${unknownEvents.join(', ')}" — only "stop" is supported`] };
+    return { errors: [`hooks declares unknown event(s) "${unknownEvents.join(', ')}" — only "stop" (and the "arm" policy) is supported`] };
+  }
+  const arm = (raw as Record<string, unknown>).arm;
+  if (arm !== undefined && !(INTENT_HOOKS_ARM_VALUES as readonly unknown[]).includes(arm)) {
+    return { errors: [`hooks.arm must be one of ${INTENT_HOOKS_ARM_VALUES.map((v) => `"${v}"`).join(' | ')} (got: ${JSON.stringify(arm)})`] };
   }
   const stop = (raw as Record<string, unknown>).stop;
   if (!Array.isArray(stop) || stop.length === 0) {
@@ -338,7 +356,11 @@ export function validateIntentHooks(
     seen.add(dedupKey);
     entries.push(normalized);
   }
-  return errors.length > 0 ? { errors } : { normalized: { stop: entries }, errors: [] };
+  if (errors.length > 0) return { errors };
+  return {
+    normalized: { stop: entries, ...(arm !== undefined && arm !== 'always' ? { arm: arm as IntentHooksArm } : {}) },
+    errors: [],
+  };
 }
 
 /** Implicit fallback intent — reserved, never declarable, maps no injections. */

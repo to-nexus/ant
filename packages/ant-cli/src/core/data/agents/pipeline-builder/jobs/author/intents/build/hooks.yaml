@@ -1,11 +1,13 @@
-# Turn completion contract for pinned/inherited build turns: the turn is not
-# done until a definition write actually went through the API AND the run
+# Turn completion contract for build turns: once a turn WRITES anything, it is
+# not done until a definition write actually went through the API AND the run
 # report was (re)written — what stands between this draft and the automation
 # it is a draft of. The chat report is read once; this file is what the next
-# person, the next round and the agent-builder lane still have. When there is
-# legitimately nothing to write, the exit is clarify (exempt from this gate) —
-# never a re-save of identical content.
+# person, the next round and the agent-builder lane still have. A turn that
+# only reads and answers (a question, an audit) owes nothing — `arm: on-write`
+# is what lets the one intent cover both. A turn that changed nothing writes
+# nothing.
 hooks:
+  arm: on-write
   stop:
     # Narrowed to the definition writes (create is POST on the root, update is
     # PUT on the id) — a bare tool name is satisfied by ANY successful call,

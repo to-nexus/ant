@@ -21,7 +21,15 @@
  */
 
 import type { CustomIntentDef, IntentStopHook } from '@ant/shared';
-import { GENERAL_INTENT, API_ACTION_NARROWED_PATTERN, matchesNarrowedApiAction } from '@ant/shared';
+import {
+  GENERAL_INTENT,
+  API_ACTION_NARROWED_PATTERN,
+  ARTIFACT_WRITE_TOOLS,
+  MUTATING_BUILTIN_TOOLS,
+  isApiToolName,
+  isMcpToolName,
+  matchesNarrowedApiAction,
+} from '@ant/shared';
 
 /** Forced agent re-entries per turn before the gate concedes to a pause. */
 export const UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET = 2;
@@ -38,12 +46,18 @@ export const UNIVERSAL_TRUNCATION_CONTINUE_BUDGET = 3;
 export interface ActiveStopHook {
   intentId: string;
   hook: IntentStopHook;
+  /** Owed because this turn performed the intent's `action:` hook while the intent was not pinned. */
+  adopted?: true;
+  /** The owning intent's arm policy when it is not the default `always`. */
+  arm?: 'on-write';
 }
 
 /** One hook's verdict at a stop point. */
 export interface StopHookCheck {
   intentId: string;
   hook: IntentStopHook;
+  /** See {@link ActiveStopHook.adopted}. */
+  adopted?: true;
   /** Artifact hooks: this turn's real writes matching the glob. */
   matchedWrites: string[];
   met: boolean;
@@ -60,20 +74,85 @@ export interface StopHookCheck {
  */
 export type StopHookLedger = Record<string, { metAtTurn: true }>;
 
+/** This turn's observed tool evidence — the same record `checkStopHooks` judges. */
+export interface StopHookEvidence {
+  writes: readonly string[];
+  actions: readonly string[];
+  ledger?: StopHookLedger;
+}
+
 /**
- * Flatten the active intents' declared stop hooks. `general` is reserved and
- * can never declare hooks, so an unpinned/general turn yields `[]`.
+ * An action token that changed something: an artifact write, a declared-API
+ * write half, a mutating builtin, or any MCP call (the token carries no
+ * read-only annotation, so MCP is judged conservatively — over-arming demands
+ * work that was maybe not owed, under-arming lets owed work slip).
+ */
+export function isWriteShapedAction(token: string): boolean {
+  const name = token.split(' ')[0];
+  return (
+    (ARTIFACT_WRITE_TOOLS as readonly string[]).includes(name) ||
+    (MUTATING_BUILTIN_TOOLS as readonly string[]).includes(name) ||
+    (isApiToolName(name) && name.endsWith('__request')) ||
+    isMcpToolName(name)
+  );
+}
+
+/** Did this turn change anything at all? The `arm: on-write` trigger. */
+export function turnHasWriteEvidence(evidence: Pick<StopHookEvidence, 'writes' | 'actions'>): boolean {
+  return evidence.writes.length > 0 || evidence.actions.some(isWriteShapedAction);
+}
+
+function actionHookMatches(hook: IntentStopHook, actions: readonly string[]): boolean {
+  if (!('action' in hook)) return false;
+  return API_ACTION_NARROWED_PATTERN.test(hook.action)
+    ? actions.some((tok) => matchesNarrowedApiAction(hook.action, tok))
+    : actions.includes(hook.action);
+}
+
+/**
+ * The stop hooks this turn owes. Hooks follow the act, not the label:
+ *
+ * - A PINNED intent's hooks are owed per its `arm` policy — `always` (default)
+ *   unconditionally, `on-write` only once the turn produced write evidence.
+ * - An UNPINNED intent's hooks are ADOPTED when one of its `action:` hooks was
+ *   observed this turn: the write itself is the evidence of which intent's
+ *   work was done, so that intent's obligations (its report) are owed even
+ *   though nobody pinned it. `general` turns are exactly where this matters —
+ *   before adoption a definition write on an unpinned turn owed nothing.
+ *
+ * Without `evidence` (the prompt band, judged before any tool ran) the pinned
+ * intents' declared hooks are returned whole, flagged with their arm policy
+ * so the band can say which ones arm only on a write. `general` is reserved
+ * and can never declare hooks.
  */
 export function activeStopHooksOf(
   catalog: readonly CustomIntentDef[],
   activeIntents: readonly string[],
+  evidence?: Pick<StopHookEvidence, 'writes' | 'actions'>,
 ): ActiveStopHook[] {
   const active = new Set(activeIntents.filter((i) => i !== GENERAL_INTENT));
+  const wrote = evidence ? turnHasWriteEvidence(evidence) : undefined;
   const result: ActiveStopHook[] = [];
+  const seen = new Set<string>();
+  const push = (intentId: string, hook: IntentStopHook, adopted: boolean, arm: 'always' | 'on-write') => {
+    const entry: ActiveStopHook = { intentId, hook, ...(adopted && { adopted: true }), ...(arm === 'on-write' && { arm }) };
+    const key = hookKeyOf(entry);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(entry);
+  };
   for (const intent of catalog) {
-    if (!active.has(intent.id)) continue;
-    for (const hook of intent.hooks?.stop ?? []) {
-      result.push({ intentId: intent.id, hook });
+    const hooks = intent.hooks?.stop ?? [];
+    if (hooks.length === 0) continue;
+    const arm = intent.hooks?.arm ?? 'always';
+    if (active.has(intent.id)) {
+      if (evidence && arm === 'on-write' && !wrote) continue;
+      for (const hook of hooks) push(intent.id, hook, false, arm);
+      continue;
+    }
+    if (!evidence) continue;
+    if (hooks.some((h) => actionHookMatches(h, evidence.actions))) {
+      for (const hook of hooks) push(intent.id, hook, true, arm);
     }
   }
   return result;
@@ -182,20 +261,20 @@ export function checkStopHooks(
 ): StopHookCheck[] {
   const actionSet = new Set(evidence.actions);
   return hooks.map((h) => {
+    const base = { intentId: h.intentId, hook: h.hook, ...(h.adopted && { adopted: true as const }) };
     if (evidence.ledger?.[hookKeyOf(h)]?.metAtTurn === true) {
-      return { intentId: h.intentId, hook: h.hook, matchedWrites: [], met: true, viaLedger: true };
+      return { ...base, matchedWrites: [], met: true, viaLedger: true };
     }
     if ('artifact' in h.hook) {
       const glob = h.hook.artifact;
       const matchedWrites = Array.from(new Set(evidence.writes.map(normalizeArtifactPath))).filter((w) =>
         matchArtifactGlob(glob, w),
       );
-      return { intentId: h.intentId, hook: h.hook, matchedWrites, met: matchedWrites.length > 0 };
+      return { ...base, matchedWrites, met: matchedWrites.length > 0 };
     }
     const action = h.hook.action;
     return {
-      intentId: h.intentId,
-      hook: h.hook,
+      ...base,
       matchedWrites: [],
       // A narrowed value never matches the bare tool name, so a scaffold POST
       // cannot satisfy a hook that asks for a specific write.
@@ -264,7 +343,7 @@ function describeHook(c: StopHookCheck): string {
 /** ✓/✗ split line list — met hooks acknowledged so a sequence continues instead of restarting. */
 function checkLines(checks: readonly StopHookCheck[]): string {
   return checks
-    .map((c) => `- ${c.met ? '✓ met' : '✗ unmet'} — [${c.intentId}] ${describeHook(c)}`)
+    .map((c) => `- ${c.met ? '✓ met' : '✗ unmet'} — [${c.intentId}${c.adopted ? ', adopted: this turn performed its action' : ''}] ${describeHook(c)}`)
     .join('\n');
 }
 
@@ -310,9 +389,11 @@ export function formatStopHookManifest(
 
 /** Prompt-band lines for the Turn Completion Contract (agent system prompt). */
 export function formatStopHookContractLines(hooks: readonly ActiveStopHook[]): string[] {
-  return hooks.map((h) =>
-    'artifact' in h.hook
-      ? `[${h.intentId}] a file matching \`${h.hook.artifact}\` is actually written this turn`
-      : `[${h.intentId}] \`${h.hook.action}\` is successfully called this turn`,
-  );
+  return hooks.map((h) => {
+    const line =
+      'artifact' in h.hook
+        ? `[${h.intentId}] a file matching \`${h.hook.artifact}\` is actually written this turn`
+        : `[${h.intentId}] \`${h.hook.action}\` is successfully called this turn`;
+    return h.arm === 'on-write' ? `${line} — owed only if this turn writes anything; a turn that only reads and answers owes nothing` : line;
+  });
 }

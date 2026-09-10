@@ -266,17 +266,22 @@ describe('shipped assistant definition', () => {
 describe('shipped agent-builder definition', () => {
   it('agent-builder/author exposes the authoring catalog — every intent carries its own prompt', () => {
     const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
-    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['build', 'review']);
+    // ONE intent. `review` was a hookless twin of build that existed only
+    // because build's contract was owed unconditionally — a pinned build turn
+    // that merely answered had to exit through clarify. `arm: on-write` made
+    // that twin unnecessary: the same intent explains, audits, or edits, and
+    // only the edit is a contract. Read-only is the `@plan` turn's job, not an
+    // intent's.
+    expect(resolved.intents.map((i) => i.id)).toEqual(['build']);
     for (const intent of resolved.intents) {
       expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
       expect(intent.infer).not.toContain('#');
     }
   });
 
-  it('the intents are units of work, not CRUD verbs — build contracts a real write, review never blocks', () => {
+  it('build is a unit of work, not a CRUD verb — it contracts a real write, armed only once the turn writes', () => {
     const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
     const build = resolved.intents.find((i) => i.id === 'build');
-    const review = resolved.intents.find((i) => i.id === 'review');
     // A pinned build turn is done only when a definition write went through
     // the API AND the agent's dependency report was (re)written — build's
     // run manifest (quick-catching-couch: prose-only obligation produced
@@ -289,13 +294,13 @@ describe('shipped agent-builder definition', () => {
     // scaffolds, wrote all 49 definition files into the artifacts tree with
     // create_file, and never called PUT reported success with an empty
     // definition (civil-dusting-couch).
-    expect(build?.hooks?.stop).toEqual([
-      { action: 'api__ant__request PUT /definitions/agents/*/file' },
-      { artifact: 'dependency-report/*.md' },
-    ]);
-    // Inspection reports with stated assumptions instead of blocking on questions.
-    expect(review?.clarify).toBe(false);
-    expect(review?.hooks).toBeUndefined();
+    expect(build?.hooks).toEqual({
+      arm: 'on-write',
+      stop: [
+        { action: 'api__ant__request PUT /definitions/agents/*/file' },
+        { artifact: 'dependency-report/*.md' },
+      ],
+    });
   });
 
   /**
@@ -341,7 +346,7 @@ describe('shipped agent-builder definition', () => {
 
   it('carries its format contract as on-demand documents, not standing prose', () => {
     const docsDir = path.join(SRC_AGENTS_DIR, 'agent-builder', 'on-demand');
-    expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'definition-format.md']);
+    expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'audit.md', 'definition-format.md']);
   });
 
   // The dependency report is a HANDOFF: its skeleton must name the path a
@@ -421,17 +426,17 @@ describe('shipped agent-builder definition', () => {
 describe('shipped pipeline-builder definition', () => {
   it('pipeline-builder/author exposes the authoring catalog — every intent carries its own prompt', () => {
     const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
-    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['build', 'review']);
+    // ONE intent — same reasoning as agent-builder above.
+    expect(resolved.intents.map((i) => i.id)).toEqual(['build']);
     for (const intent of resolved.intents) {
       expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
       expect(intent.infer).not.toContain('#');
     }
   });
 
-  it('the intents are units of work — build contracts a real write, review never blocks', () => {
+  it('build is a unit of work — it contracts a real write, armed only once the turn writes', () => {
     const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
     const build = resolved.intents.find((i) => i.id === 'build');
-    const review = resolved.intents.find((i) => i.id === 'review');
     // A pinned build turn is done only when a definition write went through
     // the API AND the run report was (re)written. The report is the only
     // durable channel for the two things a chat report loses: which steps run
@@ -442,12 +447,13 @@ describe('shipped pipeline-builder definition', () => {
     // sanctioned no-op exit is clarify, which this gate exempts. The action is
     // NARROWED to the definition writes (create POST, update PUT) — a bare
     // tool name is satisfied by any successful call, a catalog GET included.
-    expect(build?.hooks?.stop).toEqual([
-      { action: 'api__ant__request POST|PUT /definitions/pipelines**' },
-      { artifact: 'pipeline-report/*.md' },
-    ]);
-    expect(review?.clarify).toBe(false);
-    expect(review?.hooks).toBeUndefined();
+    expect(build?.hooks).toEqual({
+      arm: 'on-write',
+      stop: [
+        { action: 'api__ant__request POST|PUT /definitions/pipelines**' },
+        { artifact: 'pipeline-report/*.md' },
+      ],
+    });
   });
 
   /**
@@ -481,7 +487,7 @@ describe('shipped pipeline-builder definition', () => {
 
   it('carries its format contract as on-demand documents, not standing prose', () => {
     const docsDir = path.join(SRC_AGENTS_DIR, 'pipeline-builder', 'on-demand');
-    expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'pipeline-format.md']);
+    expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'audit.md', 'pipeline-format.md']);
   });
 
   // The agent-builder's format doc once taught a hooks.yaml shape its own

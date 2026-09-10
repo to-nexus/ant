@@ -164,7 +164,9 @@ function sanitizeHooks(raw: unknown): IntentHooks | undefined {
     return keys.length === 1 && (keys[0] === 'artifact' || keys[0] === 'action')
       && typeof (e as Record<string, unknown>)[keys[0]] === 'string';
   });
-  return entries.length === stop.length ? { stop: entries } : undefined;
+  if (entries.length !== stop.length) return undefined;
+  const arm = (raw as Record<string, unknown>).arm;
+  return { stop: entries, ...(arm === 'on-write' ? { arm } : {}) };
 }
 
 // ── infer.md algebra (frontmatter + criterion body) ─────────────────────────
@@ -415,10 +417,22 @@ export function applyApiServers(doc: Document, servers: Record<string, RestApiSe
  */
 export type IntentPatch = Partial<Pick<CustomIntentDef, 'infer' | 'hooks' | 'clarify' | 'outcomes'>>;
 
-/** Write one hooks.yaml's `hooks.stop` list; an empty list deletes the `hooks` key. */
-export function applyHooks(doc: Document, stop: IntentStopHook[]): void {
-  if (stop.length > 0) doc.set('hooks', doc.createNode({ stop }));
-  else doc.delete('hooks');
+/**
+ * Write one hooks.yaml's `hooks.stop` list; an empty list deletes the `hooks`
+ * key. The `arm` policy is a sibling of `stop` under the same key — an editor
+ * that only knows `stop` must carry it through, or a save from the glob
+ * builder silently drops the author's declaration.
+ */
+export function applyHooks(doc: Document, stop: IntentStopHook[], arm?: IntentHooks['arm']): void {
+  if (stop.length === 0) {
+    doc.delete('hooks');
+    return;
+  }
+  const existing = doc.get('hooks');
+  const keptArm = arm ?? (existing && typeof existing === 'object' && 'get' in (existing as object)
+    ? ((existing as { get: (k: string) => unknown }).get('arm') as IntentHooks['arm'] | undefined)
+    : undefined);
+  doc.set('hooks', doc.createNode({ stop, ...(keptArm === 'on-write' ? { arm: keptArm } : {}) }));
 }
 
 /**

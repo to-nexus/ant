@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET,
   activeStopHooksOf,
+  isWriteShapedAction,
   matchArtifactGlob,
   buildStopHookGateMessage,
   buildStopHookLedger,
@@ -97,6 +98,77 @@ describe('activeStopHooksOf', () => {
 
   it('general is reserved — never yields hooks', () => {
     expect(activeStopHooksOf(catalog, ['general'])).toEqual([]);
+  });
+
+  // Hooks follow the act, not the label. One builder intent covers greenfield,
+  // refactor, audit and plain questions; the same turn may write or only
+  // answer, and only the write is a contract. `arm: on-write` lets a pinned
+  // turn that changed nothing end clean; adoption makes an unpinned turn
+  // that performed an intent's action owe that intent's report.
+  describe('with turn evidence — arm and adoption', () => {
+    const builders: CustomIntentDef[] = [
+      {
+        id: 'build',
+        infer: 'x',
+        hooks: {
+          arm: 'on-write',
+          stop: [{ action: 'api__ant__request PUT /definitions/agents/*/file' }, { artifact: 'dependency-report/*.md' }],
+        },
+      },
+      { id: 'deliver', infer: 'y', hooks: { stop: [{ artifact: 'terms/*/schedule.md' }] } },
+    ];
+    const none = { writes: [], actions: [] };
+    const putToken = 'api__ant__request PUT /definitions/agents/foo/file';
+
+    it('on-write + a turn that only read: nothing owed', () => {
+      expect(activeStopHooksOf(builders, ['build'], { writes: [], actions: ['read_file', 'api__ant__get'] })).toEqual([]);
+    });
+
+    it('on-write + a draft written into artifacts but no save: the WHOLE contract is owed (staged-draft failure stays caught)', () => {
+      const owed = activeStopHooksOf(builders, ['build'], { writes: ['drafts/agent.yaml'], actions: ['create_file'] });
+      expect(owed).toHaveLength(2);
+      expect(owed.every((h) => h.intentId === 'build' && h.arm === 'on-write' && !h.adopted)).toBe(true);
+    });
+
+    it('on-write + an api write: owed', () => {
+      expect(activeStopHooksOf(builders, ['build'], { writes: [], actions: ['api__ant__request', putToken] })).toHaveLength(2);
+    });
+
+    it('always (default) is unchanged by evidence — a deliverable intent owes on every turn', () => {
+      expect(activeStopHooksOf(builders, ['deliver'], none)).toHaveLength(1);
+      expect(activeStopHooksOf(builders, ['deliver'], { writes: ['terms/a/schedule.md'], actions: ['create_file'] })).toHaveLength(1);
+    });
+
+    it('adoption: a general turn that performed an unpinned intent\'s action owes that intent\'s hooks, marked adopted', () => {
+      const owed = activeStopHooksOf(builders, ['general'], { writes: [], actions: ['api__ant__request', putToken] });
+      expect(owed).toHaveLength(2);
+      expect(owed.every((h) => h.intentId === 'build' && h.adopted === true)).toBe(true);
+    });
+
+    it('no adoption on artifact writes alone — only an observed action hook names whose work it was', () => {
+      expect(activeStopHooksOf(builders, ['general'], { writes: ['notes.md'], actions: ['create_file'] })).toEqual([]);
+    });
+
+    it('pinned + adopted union is deduplicated per hook key', () => {
+      const owed = activeStopHooksOf(builders, ['build'], { writes: [], actions: [putToken] });
+      expect(owed).toHaveLength(2);
+    });
+
+    it('without evidence (the prompt band) pinned hooks are listed whole and carry their arm policy', () => {
+      const band = activeStopHooksOf(builders, ['build']);
+      expect(band).toHaveLength(2);
+      expect(band.every((h) => h.arm === 'on-write')).toBe(true);
+      expect(activeStopHooksOf(builders, ['general'])).toEqual([]);
+    });
+
+    it('isWriteShapedAction: api write half, mutating builtins, artifact writes and any mcp call — not reads', () => {
+      for (const tok of ['api__ant__request', putToken, 'run_command', 'http_request', 'create_file', 'delete_file', 'mcp__jira__create_issue']) {
+        expect(isWriteShapedAction(tok), tok).toBe(true);
+      }
+      for (const tok of ['read_file', 'list_files', 'api__ant__get', 'search_web', 'fetch_url']) {
+        expect(isWriteShapedAction(tok), tok).toBe(false);
+      }
+    });
   });
 });
 

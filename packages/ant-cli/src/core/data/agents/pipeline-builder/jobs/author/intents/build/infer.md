@@ -5,4 +5,4 @@
 #   clarify: <bool>    # false = turns under this intent never ask blocking questions
 #   outcomes: [..]     # 2-5 kebab-case ids — a judgment intent's verdict vocabulary
 ---
-Creating or changing one or more pipeline definitions: composing a cron trigger and a step chain over agents that already exist, adding or rewiring steps and approval gates, turning described recurring automation into a scheduled draft, or splitting a described flow at its human seams into several pipelines.
+Any turn about pipeline definitions: composing a trigger and a step chain over agents that already exist, rewiring or splitting one at its human seams, auditing a definition against the agents it runs and the material it automates, or explaining what it does and when it fires.

@@ -1,3 +1,9 @@
+**Asked about a definition rather than to change it** — to explain how it is
+put together, check whether a job validates, or audit it — read
+`on-demand/audit.md` and answer. A turn that writes nothing owes nothing under
+the contract below; the contract arms the moment the turn writes. Asked to
+change, everything that follows applies.
+
 **Design the partition.**
 
 - Scope the whole request before the first write. It may be one file's edit or
@@ -194,8 +200,9 @@
   is a terminal conversion step, never the shape of the chain: the plane's
   file tools do not read or write binary, so intermediate deliverables stay
   text and the converting intent's contract is an `action:`.
-- An intent that exists to perform a gated write declares
-  `tools.approval` for that tool: a gated call is refused when no one is
+- When an intent exists to perform a gated write, the JOB that owns it
+  declares `tools.approval` for that tool (in `job.yaml` — an intent's
+  frontmatter has no such key): a gated call is refused when no one is
   present, so an unattended intent that leaves its own write gated can never
   complete. Declare `never` only for the write the intent exists to perform,
   keep the duplicate guard beside it, and note in the operating-context

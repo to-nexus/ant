@@ -1,11 +1,13 @@
-# Turn completion contract for pinned/inherited build turns: the turn is not
-# done until at least one definition write actually went through the API AND
-# the agent's dependency report was (re)written — build's own run manifest,
+# Turn completion contract for build turns: once a turn WRITES anything, it is
+# not done until at least one definition write actually went through the API
+# AND the agent's dependency report was (re)written — build's own run manifest,
 # recording each counterpart the definition names without a connection, or the
-# verdict that none remain. When there is legitimately nothing to write, the
-# exit is clarify (exempt from this gate) — never a re-save of identical
-# content.
+# verdict that none remain. A turn that only reads and answers (a question, an
+# audit) owes nothing — `arm: on-write` is what lets the one intent cover both.
+# Writing a draft into artifacts INSTEAD of saving it still arms the contract,
+# so the save is still owed. A turn that changed nothing writes nothing.
 hooks:
+  arm: on-write
   stop:
     - action: api__ant__request PUT /definitions/agents/*/file
     - artifact: dependency-report/*.md

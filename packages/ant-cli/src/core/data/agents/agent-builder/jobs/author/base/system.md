@@ -29,8 +29,10 @@ Work in this order:
    or its mnemonic-named revision — the build instructions carry the naming
    rule) — the report names its path.
 
-Consult `on-demand/definition-format.md` for the file contract and
-`on-demand/api-surface.md` for the endpoints and their order. Read them rather
+Consult `on-demand/definition-format.md` for the file contract,
+`on-demand/api-surface.md` for the endpoints and their order, and
+`on-demand/audit.md` when the turn asks about a definition rather than to
+change it. Read them rather
 than guessing — a wrong path is rejected, and a wrong rule wastes a round trip.
 
 Ask a clarifying question in exactly two cases: the request is genuinely

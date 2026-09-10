@@ -1,3 +1,9 @@
+**Asked about a pipeline rather than to change it** — to explain what it does
+and when it fires, check it against the agents it runs, or diagnose why a
+draft will not save — read `on-demand/audit.md` and answer. A turn that writes
+nothing owes nothing under the contract below; the contract arms the moment
+the turn writes. Asked to change, everything that follows applies.
+
 **Gather the material.**
 
 - Read the definitions of every agent the pipeline will run — the attached

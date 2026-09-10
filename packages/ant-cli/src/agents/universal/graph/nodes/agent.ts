@@ -497,13 +497,14 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
     // tool results only; plan turns are exempt (plan_complete owns them).
     let hooksUnmetPatch: Partial<UniversalGraphState> = {};
     if (toolCalls.length === 0 && state.turnContext?.planTurn !== true) {
-      const activeHooks = activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? []);
+      const evidence = {
+        writes: state._turnToolWrites ?? [],
+        actions: state._turnToolActions ?? [],
+        ledger: state.restoredHookLedger,
+      };
+      const activeHooks = activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? [], evidence);
       if (activeHooks.length > 0) {
-        const rawChecks = checkStopHooks(activeHooks, {
-          writes: state._turnToolWrites ?? [],
-          actions: state._turnToolActions ?? [],
-          ledger: state.restoredHookLedger,
-        });
+        const rawChecks = checkStopHooks(activeHooks, evidence);
         const fileSystem = state.deps?.fileSystem;
         const checks = fileSystem
           ? await verifyChecksOnDisk(rawChecks, (p) => fileSystem.fileExists(p))

@@ -186,7 +186,7 @@ is conditional):
   loud — an agent with no prose is a harness with no purpose.
 - **Intent catalog = one directory per intent, three files, no yaml schema**:
   `jobs/{jobId}/intents/{intentId}/infer.md` (REQUIRED — optional frontmatter
-  fence allowing exactly one key, `clarify: <bool>`; the prose BODY is the
+  fence allowing two keys, `clarify: <bool>` and `outcomes: [..]`; the prose BODY is the
   inference criterion, capped at `INFER_BODY_MAX` = 1000 chars since it
   renders into every turn's catalog) + optional `prompt.md` (prose inlined
   while the intent is active; whitespace-only = absent) + optional
@@ -597,6 +597,23 @@ The builtin `agent-builder` agent is the first consumer of this form; job
 authoring therefore goes through the same validated write funnel as the
 settings UI (`PUT /definitions/agents/:agentId/file` → `gateDefinitionSave` →
 `loadCustomJob`), and needs no new write plane.
+
+Both builders (`agent-builder`, `pipeline-builder`) carry ONE intent, `build`,
+with `hooks.arm: on-write`. They used to carry a second, `review`: a hookless,
+`clarify: false` twin whose only distinction was prose saying "do not write" —
+nothing in the tool policy backed it (tools and API allow lists are job-wide;
+an intent's frontmatter accepts `clarify` and `outcomes` only), the one intent
+told to "wait for the user to accept" was the one that could not ask, and its
+criterion ("inspecting without changing") named an outcome, not an arriving
+situation, so "validate and fix" matched both. It existed because build's
+contract was owed unconditionally, and a pinned build turn that merely
+answered had to exit through clarify. `arm: on-write` removed that reason:
+one intent explains, audits or edits, and only the edit arms the contract.
+The audit checklist that was `review/prompt.md` is `on-demand/audit.md`, read
+when a turn asks about a definition. Read-only is the `@plan` turn's job — a
+mode orthogonal to every request, machine-enforced (plan/-confined writes,
+API and execution refused) and with its own acceptance affordance
+(`plan_complete`) — never an intent's.
 
 Out of scope by design: session-login dances, request signing (HMAC), OAuth —
 a `${secret:KEY}` resolves into declared headers only, never into a request
@@ -1671,9 +1688,31 @@ Declaration → evidence → gate → bounded bounce → interruption:
   and an audit report that ended mid-sentence was reported as a completed
   job (7c27129e3).
 
+- **Hooks follow the act, not the label** (`activeStopHooksOf` with turn
+  evidence). Two rules, one reason — a hook was a per-INTENT label, and the
+  label was decided once per turn by the pin, so the label and the act could
+  disagree in both directions. (1) `hooks.arm: on-write` (default `always`):
+  a pinned intent's obligations arm only once the turn produced write
+  evidence (`turnHasWriteEvidence` — an artifact write, `api__*__request`,
+  a mutating builtin, any `mcp__` call). This is what lets ONE builder intent
+  cover greenfield, refactor, audit and plain questions: before it, a pinned
+  `build` turn that only answered had to exit through clarify because "PUT
+  AND report" was owed unconditionally — which is why `review` existed as a
+  hookless twin. Writing a draft into artifacts INSTEAD of saving still arms
+  the contract, so the save is still owed (the staged-draft failure the build
+  prose warns about stays caught). (2) Adoption: an UNPINNED intent's hooks
+  are owed when one of its `action:` hooks was observed this turn — the write
+  is the evidence of whose work was done. Before this, a definition write on a
+  `general` turn (the common "add an intent to my agent" with no pin) owed no
+  report at all; `hooks.yaml`'s own comment admitted the contract held for
+  "pinned/inherited build turns" only. Adopted checks are marked in the gate
+  message. The prompt band (judged before any tool ran) lists a pinned
+  intent's declared hooks whole and says which arm only on a write.
+
 Exemptions (all pure code): plan turns (plan_complete owns their contract;
 writes are plan/-confined), clarify pauses (deferred — the answer turn
-re-gates via inheritance), `general` (reserved, cannot declare hooks).
+re-gates via inheritance), `general` (reserved, cannot declare hooks — it
+can only ADOPT another intent's, per the rule above).
 The checklist is deliberately untouched in both directions: it is LLM
 self-narration (soft), the hook is a code-judged contract (hard).
 

@@ -554,6 +554,14 @@ debugging session.
   because a client-held ref names the composer's current selection rather than
   the paused pair. Never word a `turn` resume as continuing from where it
   stopped, and never let a decided refusal reach the client as a code-less 500.
+- **Hooks follow the act, not the label.** An intent that also answers
+  questions or audits declares `hooks.arm: on-write` — its contract arms only
+  once the turn writes anything (a draft in artifacts included), so a turn that
+  only reads ends clean; a deliverable intent keeps the default `always`. An
+  unpinned (`general`) turn that performs an intent's `action:` hook ADOPTS
+  that intent's contract. Never author a hookless "read-only" twin intent to get
+  a turn that does not owe a write — read-only is the `@plan` turn, which is
+  machine-enforced; a prose "do not write" is not.
 
 ```bash
 rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0

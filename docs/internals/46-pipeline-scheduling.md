@@ -1116,8 +1116,8 @@ can fix it only through that list. Six loop rounds in 2026-09 produced the
 motivating case three times — the deciding intent's `outcomes`
 (adverse/standard) cannot express the standard-form-contract case that needs
 seven days AND individual notice, so routing on the verdict drops it and not
-routing burns two steps writing "not applicable" — named by the review lane
-twice and the build lane once, and reaching the Agent Builder never, because
+routing burns two steps writing "not applicable" — named by the audit turn
+twice and the build turn once, and reaching the Agent Builder never, because
 each naming lived in a chat report.
 
 The obligations live at authoring time, in the pipeline builder's contract:
@@ -1191,7 +1191,7 @@ The obligations live at authoring time, in the pipeline builder's contract:
   meant to hold reached their work through a sibling branch: approving and
   rejecting led to the same run. The contract requires a gate to have an
   upstream step; it now also requires naming what the gate holds back, and the
-  review lane counts a needs-nothing gate as decoration.
+  audit turn counts a needs-nothing gate as decoration.
 - **An intent decides, a directive obtains.** The round-5 rule (a directive is
   owed where a person owes the input) was answered in round 6 by omitting six
   of nine directives, on the reasoning that each intent's prompt already says
@@ -1264,7 +1264,7 @@ The obligations live at authoring time, in the pipeline builder's contract:
   only fails on every other outcome. Round 7's `regulator-report` pinned
   `mail-send-request.md` while `mail-send` was adverse-only: every standard run
   would have failed at the last step, with `abort` taking the run down after
-  all its work. Found by the review lane reading the run log and the graph
+  all its work. Found by the audit turn reading the run log and the graph
   together; the loop's audit tool grew the same check (C3b).
 - **A pin's `*` is not run-scoped.** Globs expand against the whole artifacts
   tree at dispatch (newest-first, per-glob capped), so a `*` where a case key
