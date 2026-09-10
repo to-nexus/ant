@@ -7,8 +7,9 @@
  * runner (conversation memory). Run history rides the same file's `runs[]`
  * (already part of the Session schema), keyed by the per-run BullMQ jobId —
  * finalize appends via `appendRunToSessionFile`, the helpers below read and
- * delete. All mutation is raw-JSON + atomic rename so unknown fields survive;
- * `state.conversations` / `state.checklist` are never touched.
+ * locate. Deletion policy is shared with the canonical plane — see
+ * `core/session/runRemoval.ts`; this module only resolves WHICH file holds a
+ * given run.
  */
 
 import * as path from 'path';
@@ -16,11 +17,11 @@ import { selectSealedConversation } from '../../../../../core/customAgents/unive
 import type { KanbanData } from '@ant/shared';
 import type { KanbanService } from '../../services';
 import type { SessionRun } from '../../../../../core/types/session';
-import { writeSessionBounded, sessionWriteGuardOf, type SessionWriteGuard } from '../../../../../core/session/stateBudget';
+import { sessionWriteGuardOf, type SessionWriteGuard } from '../../../../../core/session/stateBudget';
+import { removeRunFromSessionFile } from '../../../../../core/session/runRemoval';
 import { readSessionTextContained } from '../../../../../core/utils/sessionPaths';
 import { readBoundedEntries, type TraversalBudget } from '../../../../../core/customAgents/universalContainer';
 import { logger } from '../../../../../utils/logger';
-import { deleteArchivedState } from '../../../../../core/session/archive';
 
 export interface UniversalSessionFileRef {
   path: string;
@@ -245,47 +246,28 @@ export async function readUniversalRunExtras(sessionPath: string): Promise<Parti
 
 /**
  * Remove one run's footprint from its universal session file — the universal
- * counterpart of `deleteJobRunFromSession`. Deliberately does NOT inject the
- * canonical state-reset fields (taskQueue / completedTasks / currentTask):
- * universal state carries a checklist and conversations, not tasks, and must
- * not grow kanban-shaped keys. Only `state.jobId` is nulled when it matches.
+ * counterpart of `deleteJobRunFromSession`, and its twin only in path
+ * resolution: universal sessions are keyed per (agentId, customJobId), so the
+ * file has to be FOUND rather than computed.
+ *
+ * The removal policy itself is shared (`removeRunFromSessionFile`): the run's
+ * `runs[]` entry goes, a `state` pinned to it keeps only the keys the (agent,
+ * job) THREAD owns — `conversations` / `conversationChannel` / `customJobRef` —
+ * and a file no run references any more is unlinked. Nulling `state.jobId`
+ * alone left the deleted run's checklist, token usage and pause markers behind
+ * while the board broadcast showed them gone.
+ *
+ * No archive sweep here: `findArchivedState` walks `SESSION_SEARCH_MAP`, which
+ * carries no universal row, and `archiveSupersededState` is only ever called by
+ * architect code/design — a universal archive cannot exist.
  */
 export async function deleteUniversalRunFromSession(
   kanbanService: KanbanService | undefined,
   containerPath: string,
   jobId: string,
 ): Promise<void> {
-  await deleteArchivedState(containerPath, jobId).catch(() => {});
   const ref = await findUniversalSessionFileByJobId(containerPath, jobId);
   if (!ref) return;
-  // Read-modify-write from the API process while a worker may be sealing the
-  // same file: the adapter's mutex is instance-local, so nothing orders these
-  // two. CAS on the bytes we read rather than clobbering a newer seal.
-  const read = await readSessionJsonGuarded(ref.path);
-  if (!read) return;
-  const { session, guard } = read;
-  let mutated = false;
-  if (Array.isArray(session.runs)) {
-    const before = session.runs.length;
-    session.runs = session.runs.filter((r: any) => r?.jobId !== jobId);
-    if (session.runs.length !== before) mutated = true;
-  }
-  if (session.state?.jobId === jobId) {
-    session.state = { ...session.state, jobId: null };
-    mutated = true;
-  }
-  if (mutated) {
-    session.updatedAt = new Date().toISOString();
-    try {
-      await writeSessionBounded(ref.path, session, { expect: guard });
-    } catch (err) {
-      logger.warn(
-        `[UniversalRuns] Failed to write session after jobId removal`,
-        { component: 'UniversalRuns' },
-        err,
-      );
-      return;
-    }
-  }
+  await removeRunFromSessionFile(ref.path, jobId, 'universal');
   kanbanService?.invalidateSessionCache(ref.path);
 }

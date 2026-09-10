@@ -16,6 +16,7 @@ import {
   readSessionTextContained,
 } from '../../../../../core/utils/sessionPaths';
 import { writeSessionBounded } from '../../../../../core/session/stateBudget';
+import { removeRunFromSessionFile } from '../../../../../core/session/runRemoval';
 import { wouldRegressRun } from '../../../../../core/utils/sessionRunGuard';
 import { deleteArchivedState } from '../../../../../core/session/archive';
 
@@ -364,17 +365,17 @@ export async function scrubJobDebugArtifacts(
 }
 
 /**
- * Remove a single jobId's footprint from the session file — used by the
- * UI trash-can path (`DELETE /features/:feature/jobs/:jobId`) after the
+ * Remove a single jobId's footprint from the canonical session file — used by
+ * the UI trash-can path (`DELETE /features/:feature/jobs/:jobId`) after the
  * Redis half is sealed. Does NOT touch Redis.
  *
- * Cleanup surface (best-effort, non-fatal on individual failures):
- *  - Session file: drop matching `runs[]` entry; clear `state` if it is
- *    still pinned to this jobId
- *  - KanbanService session cache invalidation
+ * Path resolution and the archive sweep are all this owns; the removal policy
+ * itself (which `state` keys survive, and when a runless file is unlinked)
+ * lives in `removeRunFromSessionFile` so canonical and universal share one
+ * rule rather than two hand-maintained erase lists.
  *
- * Note: `feature.jsonl` collapse via `FileSessionAdapter.collapseByJobId`
- * is handled by the route handler so this helper stays dependency-light.
+ * Note: `feature.jsonl` / `chat.jsonl` collapse is handled by the route
+ * handler so this helper stays dependency-light.
  */
 export async function deleteJobRunFromSession(
   kanbanService: KanbanService | undefined,
@@ -386,61 +387,7 @@ export async function deleteJobRunFromSession(
   // deletes its archived resume state too.
   await deleteArchivedState(featurePath, jobId).catch(() => {});
   const sessionPath = getSessionFilePathByJob(featurePath, jobType);
-  let raw: string | null = null;
-  try {
-    raw = await readSessionFileBounded(sessionPath);
-  } catch (err: any) {
-    if (err.code !== 'ENOENT') {
-      logger.warn(
-        `[SessionCleanup] Failed to read session for jobId removal`,
-        { component: 'SessionCleanup' },
-        err,
-      );
-    }
-    return;
-  }
-  let session: any;
-  try {
-    session = JSON.parse(raw);
-  } catch (err) {
-    logger.warn(
-      `[SessionCleanup] Session unparseable during jobId removal`,
-      { component: 'SessionCleanup' },
-      err,
-    );
-    return;
-  }
-  let mutated = false;
-  if (Array.isArray(session.runs)) {
-    const before = session.runs.length;
-    session.runs = session.runs.filter((r: SessionRun) => r.jobId !== jobId);
-    if (session.runs.length !== before) mutated = true;
-  }
-  if (session.state?.jobId === jobId) {
-    session.state = {
-      ...session.state,
-      jobId: null,
-      jobTiming: null,
-      currentTask: null,
-      taskQueue: [],
-      completedTasks: [],
-      completedTasksDetails: [],
-      interruption: null,
-    };
-    mutated = true;
-  }
-  if (mutated) {
-    session.updatedAt = new Date().toISOString();
-    try {
-      await writeSessionBounded(sessionPath, session);
-    } catch (err) {
-      logger.warn(
-        `[SessionCleanup] Failed to write session after jobId removal`,
-        { component: 'SessionCleanup' },
-        err,
-      );
-    }
-  }
+  await removeRunFromSessionFile(sessionPath, jobId, jobType);
   if (kanbanService) {
     kanbanService.invalidateSessionCache(sessionPath);
   }

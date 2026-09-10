@@ -1114,15 +1114,19 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   async collapseByJobId(jobId: string): Promise<void> {
-    const filePath = getFeatureJsonlPath(this.featurePath);
-    await this.withJsonlLock(filePath, { requireCrossPod: true }, () =>
-      this.rewriteJsonlStreaming(filePath, obj => {
-        if (obj.jobId === jobId && obj.type !== 'boundary' && !obj.collapsed) {
-          return { ...obj, collapsed: true };
-        }
-        return null;
-      }),
-    );
+    await this.collapseJobIdInFile(getFeatureJsonlPath(this.featurePath), jobId);
+  }
+
+  /**
+   * Collapse one jobId's chat.jsonl lines — the display half of the trash-can
+   * delete, whose `feature.jsonl` twin above is the prompt-context half.
+   *
+   * Both logs tag every line with `jobId` (`LineBase`), and the delete promises
+   * the run's logs are gone; collapsing only one of them left the deleted run
+   * still rendered in the chat panel.
+   */
+  async collapseChatByJobId(jobId: string): Promise<void> {
+    await this.collapseJobIdInFile(getChatJsonlPath(this.featurePath), jobId);
   }
 
   /**
@@ -1138,6 +1142,17 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   // ───── Private JSONL helpers ─────
+
+  private async collapseJobIdInFile(filePath: string, jobId: string): Promise<void> {
+    await this.withJsonlLock(filePath, { requireCrossPod: true }, () =>
+      this.rewriteJsonlStreaming(filePath, obj => {
+        if (obj.jobId === jobId && obj.type !== 'boundary' && !obj.collapsed) {
+          return { ...obj, collapsed: true };
+        }
+        return null;
+      }),
+    );
+  }
 
   private async collapseAllInFile(filePath: string): Promise<void> {
     await this.withJsonlLock(filePath, { requireCrossPod: true }, () =>

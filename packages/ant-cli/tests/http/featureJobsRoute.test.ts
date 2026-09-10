@@ -153,6 +153,119 @@ describe('GET /projects/:id/features/:feature/jobs — feature-wide', () => {
 });
 
 /**
+ * DELETE parity — the run-removal rule is one rule, so the canonical plane must
+ * show the same three outcomes the universal block asserts. The two planes differ
+ * only in how the session file is located.
+ */
+describe('DELETE /jobs/:jobId — canonical plane parity', () => {
+  let tmpDir: string;
+  let server: http.Server;
+  let baseUrl: string;
+
+  const codeSessionPath = () => getSessionFilePathByJob(tmpDir, 'code');
+
+  const writeCodeSession = async (runs: any[], state: Record<string, unknown>) => {
+    const file = codeSessionPath();
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({
+      sessionId: 's-1',
+      project: 'p1',
+      feature: 'f1',
+      createdAt: '2026-06-10T00:00:00.000Z',
+      updatedAt: '2026-06-10T00:00:00.000Z',
+      runs,
+      artifacts: {},
+      state,
+    }), 'utf-8');
+  };
+  const run = (jobId: string) => ({
+    runId: 1,
+    job: 'code',
+    timestamp: '2026-06-10T00:00:00.000Z',
+    input: { type: 'text', summary: '' },
+    output: {},
+    jobId,
+    status: 'completed',
+  });
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ant-jobs-del-'));
+    const stateStore = Object.assign(new FakeStateStore(), {
+      getJobStatus: async () => null,
+      deleteJobStatus: async () => undefined,
+      deleteTaskQueue: async () => undefined,
+      deleteWorkflowState: async () => undefined,
+      clearUserStopped: async () => undefined,
+      deleteJobMapping: async () => undefined,
+      deleteKillReason: async () => undefined,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use(
+      createFeaturesRoutes({
+        projectService: {} as any,
+        stateStore: stateStore as unknown as StateStorePort,
+        workspaceResolver: { getFeaturePath: () => tmpDir },
+      }),
+    );
+    await new Promise<void>((resolve) => { server = app.listen(0, () => resolve()); });
+    const addr = server.address();
+    baseUrl = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('drops the pinned run\'s checkpoint whole — canonical carries nothing across runs', async () => {
+    await writeCodeSession([run('code-1'), run('code-2')], {
+      jobId: 'code-1',
+      taskQueue: [{ id: 't1' }],
+      completedTasks: ['t0'],
+      planText: 'plan',
+      conversations: { 'session:main': [{ role: 'user', content: 'hi' }] },
+    });
+
+    const res = await fetch(`${baseUrl}/projects/p1/features/f1/jobs/code-1?type=code`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    const session = JSON.parse(await fs.readFile(codeSessionPath(), 'utf-8'));
+    expect(session.runs.map((r: any) => r.jobId)).toEqual(['code-2']);
+    // A fresh canonical run overwrites the slot anyway — nothing is thread-owned.
+    expect(session.state).toEqual({});
+  });
+
+  it('unlinks the session file once no run is left', async () => {
+    await writeCodeSession([run('code-1')], { jobId: 'code-1', taskQueue: [] });
+
+    const res = await fetch(`${baseUrl}/projects/p1/features/f1/jobs/code-1?type=code`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    await expect(fs.stat(codeSessionPath())).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('collapses the run\'s chat.jsonl lines', async () => {
+    await writeCodeSession([run('code-1'), run('code-2')], {});
+    const chat = path.join(tmpDir, 'sessions', 'chat.jsonl');
+    await fs.writeFile(
+      chat,
+      ['code-1', 'code-2']
+        .map((id) => JSON.stringify({ ts: '2026-06-10T00:00:00.000Z', jobId: id, turnId: 't', jobType: 'code', type: 'user_turn' }))
+        .join('\n') + '\n',
+      'utf-8',
+    );
+
+    await fetch(`${baseUrl}/projects/p1/features/f1/jobs/code-1?type=code`, { method: 'DELETE' });
+
+    const lines = (await fs.readFile(chat, 'utf-8')).trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines.find((l) => l.jobId === 'code-1').collapsed).toBe(true);
+    expect(lines.find((l) => l.jobId === 'code-2').collapsed).toBeUndefined();
+  });
+});
+
+/**
  * Universal rows — history/restore/DELETE must resolve the CONTAINER
  * (`{project}/universal`), never the phantom `{project}/features/universal`
  * the canonical resolver fabricates, and must read/write the
@@ -168,7 +281,7 @@ describe('feature routes — universal container (phantom-path regression)', () 
   const uniSessionPath = () => path.join(containerDir(), 'sessions', 'assistant', 'chat.json');
   const phantomDir = () => path.join(projectDir, 'features', 'universal');
 
-  const seedUniversalSession = async (runs: any[]) => {
+  const seedUniversalSession = async (runs: any[], extraState: Record<string, unknown> = {}) => {
     await fs.mkdir(path.dirname(uniSessionPath()), { recursive: true });
     await fs.writeFile(uniSessionPath(), JSON.stringify({
       sessionId: 's-1',
@@ -178,8 +291,24 @@ describe('feature routes — universal container (phantom-path regression)', () 
       updatedAt: '2026-08-15T00:00:00.000Z',
       runs,
       artifacts: {},
-      state: { customJobRef: 'assistant/chat', conversations: { 'session:main': [{ role: 'user', content: 'hi' }] } },
+      state: {
+        customJobRef: 'assistant/chat',
+        conversations: { 'session:main': [{ role: 'user', content: 'hi' }] },
+        ...extraState,
+      },
     }), 'utf-8');
+  };
+  const seedChatLog = async (jobIds: string[]) => {
+    const chat = path.join(containerDir(), 'sessions', 'chat.jsonl');
+    await fs.mkdir(path.dirname(chat), { recursive: true });
+    await fs.writeFile(
+      chat,
+      jobIds
+        .map((id) => JSON.stringify({ ts: '2026-08-15T00:00:00.000Z', jobId: id, turnId: 't', jobType: 'universal', type: 'user_turn' }))
+        .join('\n') + '\n',
+      'utf-8',
+    );
+    return chat;
   };
   const sealedRun = (jobId: string) => ({
     runId: 1,
@@ -295,5 +424,44 @@ describe('feature routes — universal container (phantom-path regression)', () 
     expect('completedTasks' in session.state).toBe(false);
     // Phantom plane still absent after the full DELETE pipeline.
     await expect(fs.stat(phantomDir())).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('DELETE drops the pinned run\'s checkpoint — the thread keeps only its memory', async () => {
+    await seedUniversalSession([sealedRun('uni-1'), sealedRun('uni-2')], {
+      jobId: 'uni-1',
+      checklist: { items: [{ id: 'item-1', text: 'x', state: 'done' }] },
+      tokenUsage: { totalTokens: 42 },
+      lastTurnHooks: [{ intentId: 'build', hook: 'artifact', met: true }],
+    });
+
+    const res = await fetch(`${baseUrl}/projects/p1/features/universal/jobs/uni-1?type=universal`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    const session = JSON.parse(await fs.readFile(uniSessionPath(), 'utf-8'));
+    expect(session.runs.map((r: any) => r.jobId)).toEqual(['uni-2']);
+    // Exactly the cross-run keys survive — the board no longer shows a
+    // checklist the disk still held.
+    expect(Object.keys(session.state).sort()).toEqual(['conversations', 'customJobRef']);
+  });
+
+  it('DELETE of the LAST run unlinks the session file and prunes the agent dir', async () => {
+    await seedUniversalSession([sealedRun('uni-1')], { jobId: 'uni-1' });
+
+    const res = await fetch(`${baseUrl}/projects/p1/features/universal/jobs/uni-1?type=universal`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    await expect(fs.stat(uniSessionPath())).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.stat(path.dirname(uniSessionPath()))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('DELETE collapses the run\'s chat.jsonl lines and leaves other runs alone', async () => {
+    await seedUniversalSession([sealedRun('uni-1'), sealedRun('uni-2')]);
+    const chat = await seedChatLog(['uni-1', 'uni-2']);
+
+    await fetch(`${baseUrl}/projects/p1/features/universal/jobs/uni-1?type=universal`, { method: 'DELETE' });
+
+    const lines = (await fs.readFile(chat, 'utf-8')).trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines.find((l) => l.jobId === 'uni-1').collapsed).toBe(true);
+    expect(lines.find((l) => l.jobId === 'uni-2').collapsed).toBeUndefined();
   });
 });

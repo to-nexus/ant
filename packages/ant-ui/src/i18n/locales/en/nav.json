@@ -108,7 +108,7 @@
     "canceledJob": "Canceled",
     "pausedJob": "Paused",
     "deleteJobId": "Delete Job",
-    "deleteJobIdDesc": "Permanently delete all session data, logs, and artifacts for Job ID '{{jobId}}'. Continue?",
+    "deleteJobIdDesc": "Permanently deletes this run's record, logs and session state for Job ID '{{jobId}}'. If it is the job's last run, the session file goes too. Artifacts are not removed. Continue?",
     "deleteJobIdBlocked": "Cannot delete a running or paused job. Stop it first.",
     "deletedJobId": "Job deleted",
     "deleteJobIdFailed": "Failed to delete job",

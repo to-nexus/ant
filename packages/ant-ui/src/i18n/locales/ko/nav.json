@@ -108,7 +108,7 @@
     "canceledJob": "취소됨",
     "pausedJob": "중단됨",
     "deleteJobId": "Job 삭제",
-    "deleteJobIdDesc": "Job ID '{{jobId}}' 와 관련된 모든 세션·로그·아티팩트를 영구 삭제합니다. 계속하시겠습니까?",
+    "deleteJobIdDesc": "이 실행(Job ID '{{jobId}}')의 기록·로그·세션 상태를 영구 삭제합니다. 이 잡의 마지막 실행이면 세션 파일도 함께 삭제됩니다. 산출물 파일은 지우지 않습니다. 계속하시겠습니까?",
     "deleteJobIdBlocked": "실행 중이거나 일시중단된 Job 은 먼저 정지해야 삭제할 수 있습니다.",
     "deletedJobId": "Job 을 삭제했습니다",
     "deleteJobIdFailed": "Job 삭제에 실패했습니다",

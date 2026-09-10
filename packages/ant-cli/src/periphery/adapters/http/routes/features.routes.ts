@@ -640,11 +640,15 @@ export function createFeaturesRoutes(deps: {
    *  - Redis: status / logs / taskQueue (+ checkpoint) / workflow / mapping
    *    / userStopped + jobsByFeature index entry
    *  - BullMQ: removes any queue residue (waiting/delayed)
-   *  - Disk: unlinks debug files containing the jobId, removes the jobId's
-   *    `runs[]` entry from the session file
-   *  - feature.jsonl: collapses jobId-tagged lines via
-   *    `FileSessionAdapter.collapseByJobId`
+   *  - Disk: unlinks debug files containing the jobId; drops the jobId's
+   *    `runs[]` entry and (when `state` was pinned to it) its checkpoint, and
+   *    unlinks the session file once no run references it — one rule for every
+   *    job type, owned by `core/session/runRemoval.ts`
+   *  - feature.jsonl + chat.jsonl: collapses jobId-tagged lines
    *  - Realtime: rebroadcasts the kanban so all open tabs stay in sync
+   *
+   * Deliberately NOT touched: artifacts (a deliverable outlives the run that
+   * produced it) and agent/job definitions (a different layer entirely).
    */
   router.delete('/projects/:id/features/:feature/jobs/:jobId', async (req: Request, res: Response) => {
     try {
@@ -711,8 +715,9 @@ export function createFeaturesRoutes(deps: {
       );
       await scrubJobDebugArtifacts(featurePath, jobType, jobId);
       if (jobType === 'universal') {
-        // Universal: drop the run from its per-(agentId, customJobId) file
-        // without injecting canonical task-state resets (checklist ≠ tasks).
+        // Universal differs only in WHERE the run's session file is: it is
+        // keyed per (agentId, customJobId), so it must be found rather than
+        // computed. The removal policy itself is shared.
         await deleteUniversalRunFromSession(deps.kanbanService, featurePath, jobId);
       } else {
         await deleteJobRunFromSession(
@@ -723,15 +728,19 @@ export function createFeaturesRoutes(deps: {
         );
       }
 
-      // Collapse feature.jsonl lines tied to this jobId so future prompts
-      // (resolve → plan/direct) no longer inject its turns as context.
+      // Collapse both journals for this jobId: feature.jsonl so future prompts
+      // (resolve → plan/direct) no longer inject its turns as context, and
+      // chat.jsonl so the deleted run stops rendering in the chat panel. Both
+      // are jobId-tagged and both live under `sessions/` — collapsing one and
+      // not the other is what left half the run on screen.
       try {
         const agent = getAgentForJob(jobType);
         const adapter = new FileSessionAdapter(featurePath, agent, projectId, featureName);
         await adapter.collapseByJobId(jobId);
+        await adapter.collapseChatByJobId(jobId);
       } catch (err) {
         logger.warn(
-          `Failed to collapse feature.jsonl for jobId=${jobId}`,
+          `Failed to collapse session journals for jobId=${jobId}`,
           { component: 'Features' },
           err,
         );

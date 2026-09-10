@@ -9,7 +9,7 @@ import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
-import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
+import { getSessionFilePath, getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
 import { writeSessionBounded } from '../../../../../core/session/stateBudget';
 import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../routes/helpers/sessionCleanup';
 import { findUniversalSessionFileByJobId, readUniversalRunOverlay, readUniversalRunExtras } from '../../routes/helpers/universalRuns';
@@ -883,7 +883,7 @@ export class JobCleanupManager {
       );
       return;
     }
-    const sessionPath = path.join(container, 'sessions', ref.agentId, `${ref.jobId}.json`);
+    const sessionPath = getSessionFilePath(container, ref.agentId, ref.jobId);
     // The board handed to us is the synthesized empty non-task one; the run's
     // checklist / token usage live in the sealed session state next to it —
     // and so do the run record's audit fields (hookReport, input summary).
