@@ -1,7 +1,8 @@
 
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { ChevronRight, X, Layers, Gamepad2, Bot } from 'lucide-react';
+import { ChevronRight, Layers, Gamepad2, Bot } from 'lucide-react';
 import { selectedRowStyle, selectedRowLabel } from '../../aurora/selection';
+import { ClearSelectionButton } from './ClearSelectionButton';
 import type { Domain } from '@ant/shared';
 import type { ProjectType } from '@/domain/store/slices/universalSlice';
 
@@ -29,7 +30,7 @@ interface ProjectRowProps {
   disabledReason?: string;
   /** Called when an inactive row is intentionally switched-to. */
   onSwitch: () => void;
-  /** Active row: ✕ clears selection. */
+  /** Active row: ☑ clears selection. */
   onClear?: () => void;
   /** Optional right-side adornment (e.g. small status text). */
   rightSlot?: ReactNode;
@@ -45,7 +46,7 @@ interface ProjectRowProps {
  *    intent (spec §5.4: switching cost must be acknowledged, so the
  *    transition is gated by an explicit affordance rather than implicit
  *    hover behaviour).
- *  • Active row: shows ✕ clear + ⚙ settings on the right; no 「전환」.
+ *  • Active row: shows ☑ clear + ⚙ settings on the right; no 「전환」.
  *
  * Visual: domain icon (Layers=service / Gamepad2=game) tinted with the
  * per-project accent color, mono name, 28px height. Domain is a single
@@ -189,44 +190,12 @@ export function ProjectRow({
         </button>
       )}
 
-      {isActive && (
-        <>
-          {onClear && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClear();
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--violet-600)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-3)';
-              }}
-              aria-label="Clear selection"
-              title="선택 해제"
-              style={{
-                height: 22,
-                width: 22,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 6,
-                color: 'var(--text-3)',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                flexShrink: 0,
-                transition: 'all var(--dur-fast)',
-              }}
-            >
-              <X size={12} />
-            </button>
-          )}
-        </>
+      {isActive && onClear && (
+        <ClearSelectionButton
+          accent="violet"
+          ariaLabel="Clear selection"
+          onClick={onClear}
+        />
       )}
     </div>
   );

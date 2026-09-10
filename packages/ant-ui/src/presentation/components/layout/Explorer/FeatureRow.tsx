@@ -2,6 +2,7 @@
 import { useState, type MouseEvent } from 'react';
 import { ChevronRight, GitBranch, X } from 'lucide-react';
 import { selectedRowStyle, selectedRowLabel } from '../../aurora/selection';
+import { ClearSelectionButton } from './ClearSelectionButton';
 
 interface FeatureRowProps {
   name: string;
@@ -30,7 +31,7 @@ interface FeatureRowProps {
  * Spec contract (§5.4 / §6.2 T8):
  *  • Inactive row: 「전환」 mini button is the only switch affordance
  *    visible on hover/focus. Clicking the body also fires onSwitch.
- *  • Active row: right side shows ONLY [📺 에디터] + [✕]. No 「열기」/
+ *  • Active row: right side shows ONLY [📺 에디터] + [☑ 해제]. No 「열기」/
  *    「fix」/「installing」/「starting」/「running」/「error」 button is
  *    ever rendered here.
  *  • No Preview server status panel JSX.
@@ -219,44 +220,12 @@ export function FeatureRow({
         )
       )}
 
-      {isActive && (
-        <>
-          {onClear && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClear();
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--pink-600)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-3)';
-              }}
-              aria-label="Clear feature selection"
-              title="선택 해제"
-              style={{
-                height: 22,
-                width: 22,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 6,
-                color: 'var(--text-3)',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                flexShrink: 0,
-                transition: 'all var(--dur-fast)',
-              }}
-            >
-              <X size={12} />
-            </button>
-          )}
-        </>
+      {isActive && onClear && (
+        <ClearSelectionButton
+          accent="pink"
+          ariaLabel="Clear feature selection"
+          onClick={onClear}
+        />
       )}
     </div>
   );
