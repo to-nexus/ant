@@ -24,7 +24,8 @@
       "uploadIntentFolder": "Upload intent folder…",
       "newNamed": "New {{name}}",
       "newNamedDir": "New {{name}}/",
-      "downloadFolder": "Download folder"
+      "downloadFolder": "Download folder",
+      "downloadHandoff": "Download handoff · {{intent}}"
     },
     "scope": {
       "user": "My Agents",

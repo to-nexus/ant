@@ -13,6 +13,7 @@ export const DEFINITION_CLI_COMMANDS = [
   'validate-pipeline',
   'preview-fires',
   'check-review',
+  'handoff',
 ] as const;
 
 export type DefinitionCliCommand = (typeof DEFINITION_CLI_COMMANDS)[number];

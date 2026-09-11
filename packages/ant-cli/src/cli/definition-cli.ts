@@ -11,6 +11,7 @@
  *   pnpm --filter @ant/cli definition validate-pipeline <pipeline.yaml> [--agents dir]... [--no-builtin] [--strict] [--json]
  *   pnpm --filter @ant/cli definition preview-fires "<cron>" [--tz zone] [--json]
  *   pnpm --filter @ant/cli definition check-review <report.md> <materialDir> [--json]
+ *   pnpm --filter @ant/cli definition handoff <agentId> <jobId> <intentId> [--out file] [--json]
  *
  * Exit codes: 0 clean · 1 findings · 2 usage / IO.
  */
@@ -21,6 +22,7 @@ import { runValidateAgent } from './definition/validateAgent';
 import { runValidatePipeline } from './definition/validatePipeline';
 import { runPreviewFires } from './definition/previewFires';
 import { runCheckReview } from './definition/checkReview';
+import { runHandoff } from './definition/handoff';
 
 function emit(result: CliResult, json: boolean): void {
   process.stdout.write((json ? JSON.stringify(result.json, null, 2) : result.lines.join('\n')) + '\n');
@@ -66,6 +68,17 @@ program
   .option('--json', 'print the result', false)
   .action((report: string, materialDir: string, opts: { json: boolean }) => {
     emit(runCheckReview(report, materialDir), opts.json);
+  });
+
+program
+  .command('handoff')
+  .argument('<agentId>', 'a builtin builder: agent-builder | pipeline-builder')
+  .argument('<jobId>', 'its job (author)')
+  .argument('<intentId>', 'build | review')
+  .option('--out <file>', 'write the bundle to this file instead of stdout')
+  .option('--json', 'print the manifest instead of the bundle', false)
+  .action((agentId: string, jobId: string, intentId: string, opts: { out?: string; json: boolean }) => {
+    emit(runHandoff(agentId, jobId, intentId, { out: opts.out }), opts.json);
   });
 
 program.parse(process.argv);

@@ -566,7 +566,10 @@ debugging session.
   `review-report/*.md` through an `artifact:` hook with the default arm, and
   its offline twin for an external agent is `docs/guides/builder-handoff/`
   (channel deltas only — the shipped prose stays the one contract, guarded by
-  `tests/policy/builder-handoff-binding.test.ts`).
+  `tests/policy/builder-handoff-binding.test.ts`). The clone-less form is the
+  GENERATED bundle (`GET …/handoff/{jobId}/{intentId}`, `definition handoff`)
+  composed by `builderHandoff.ts` from the delta doc + the definition files;
+  never hand-edit a bundle, never commit one.
 
 ```bash
 rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0

@@ -15,26 +15,24 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { DEFINITION_CLI_COMMANDS } from '../../src/cli/definition/commands';
+import {
+  BUILDER_HANDOFFS,
+  composeBuilderHandoff,
+  handoffReadList,
+} from '../../src/core/customAgents/builderHandoff';
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const HANDOFF_DIR = path.join(REPO_ROOT, 'docs/guides/builder-handoff');
 const AGENTS_DIR = 'packages/ant-cli/src/core/data/agents';
+const ROOTS = {
+  agentsRoot: path.join(REPO_ROOT, AGENTS_DIR),
+  docsRoot: path.join(REPO_ROOT, 'docs'),
+  examplesRoot: path.join(REPO_ROOT, 'examples'),
+};
 
-interface HandoffRow {
-  doc: string;
-  agentId: string;
-  jobId: string;
-  intentId: string;
-  /** Build handoffs substitute EVERY route the builder can call; review handoffs use a subset. */
-  routesComplete: boolean;
-}
-
-const HANDOFFS: HandoffRow[] = [
-  { doc: 'agent-build.md', agentId: 'agent-builder', jobId: 'author', intentId: 'build', routesComplete: true },
-  { doc: 'agent-review.md', agentId: 'agent-builder', jobId: 'author', intentId: 'review', routesComplete: false },
-  { doc: 'pipeline-build.md', agentId: 'pipeline-builder', jobId: 'author', intentId: 'build', routesComplete: true },
-  { doc: 'pipeline-review.md', agentId: 'pipeline-builder', jobId: 'author', intentId: 'review', routesComplete: false },
-];
+// The table has ONE owner — the composer the route and the CLI serve from —
+// so a handoff the menu offers is always one this suite has judged.
+const HANDOFFS = BUILDER_HANDOFFS;
 
 const SECTIONS = [
   '## What this is',
@@ -108,19 +106,38 @@ describe('builder handoff binding', () => {
       }
     });
 
+    const shipped = [
+      ...listFiles(`${agentRel}/base`),
+      ...listFiles(`${agentRel}/on-demand`),
+      `${agentRel}/jobs/${row.jobId}/job.yaml`,
+      ...listFiles(`${agentRel}/jobs/${row.jobId}/base`),
+      ...listFiles(`${agentRel}/jobs/${row.jobId}/intents`),
+    ];
+
     it('its read-list names every shipped file of the definition', () => {
-      const shipped = [
-        ...listFiles(`${agentRel}/base`),
-        ...listFiles(`${agentRel}/on-demand`),
-        `${agentRel}/jobs/${row.jobId}/job.yaml`,
-        ...listFiles(`${agentRel}/jobs/${row.jobId}/base`),
-        ...listFiles(`${agentRel}/jobs/${row.jobId}/intents`),
-      ];
       expect(shipped.length).toBeGreaterThan(5);
       const quoted = new Set(backticked(text));
       for (const rel of shipped) {
         expect(quoted.has(rel), `${row.doc} does not name ${rel}`).toBe(true);
       }
+    });
+
+    // The bundle is what a clone-less agent holds INSTEAD of these files, so
+    // it must carry each of them byte-for-byte, plus the handoff itself and
+    // the worked example — a partial bundle is a partial contract.
+    it('the composed bundle inlines the handoff and every shipped file verbatim', () => {
+      expect(new Set(handoffReadList(row, ROOTS.agentsRoot))).toEqual(new Set(shipped));
+      const bundle = composeBuilderHandoff(row, ROOTS, new Date(0));
+      expect(bundle).toContain(text.trimEnd());
+      for (const rel of shipped) {
+        const content = read(rel).trimEnd();
+        expect(bundle, `bundle lacks ${rel}`).toContain(`## FILE: \`${rel}\``);
+        expect(bundle, `bundle alters ${rel}`).toContain(content);
+      }
+      expect(bundle).toContain('# Part 3 — Worked example');
+      expect(bundle).toContain('## FILE: `examples/custom-agents/ops-team/agent.yaml`');
+      // The working-directory rule rides every bundle: outside the clone, or where the person says.
+      expect(bundle).toContain('OUTSIDE any Ant clone');
     });
 
     it('every repo path it quotes exists', () => {

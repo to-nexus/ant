@@ -35,6 +35,13 @@ import {
 } from '../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../core/customAgents/types';
 import { validateDefinitionSave } from '../../../../core/customAgents/definitionGate';
+import {
+  composeBuilderHandoff,
+  findBuilderHandoff,
+  listBuilderHandoffs,
+} from '../../../../core/customAgents/builderHandoff';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+import { resolveSourceRoot } from '../../../../agents/common/tool/antSource/core';
 import { buildCustomJobSystemBlock } from '../../../../core/customAgents/promptBlock';
 import { moveUniversalAgentData, moveUniversalJobData } from '../../../../core/customAgents/universalContainer';
 import { MUTATING_BUILTIN_TOOLS, UNIVERSAL_BUILTIN_TOOLS } from '../../../../core/customAgents/universalToolPolicy';
@@ -90,6 +97,14 @@ export function createAccountAgentRoutes(deps: AccountAgentsRoutesDeps): Router 
       if (extractUserContext(req).organizationKind === 'team') {
         agents = decorateOrgAgentSummaries(agents, scopeRoots, await orgGateFor(req)());
       }
+      // Builtin builders advertise their downloadable handoff bundles; the
+      // table is the composer's, so the menu can never offer a bundle the
+      // route cannot compose.
+      agents = agents.map((agent) => {
+        if (agent.scope !== 'builtin') return agent;
+        const handoffs = listBuilderHandoffs(agent.id).map(({ jobId, intentId }) => ({ jobId, intentId }));
+        return handoffs.length > 0 ? { ...agent, handoffs } : agent;
+      });
       // builtinToolPreset supplies the settings form's tool-checkbox
       // vocabulary from the runtime SSOT — never hardcoded in the FE.
       // mutatingBuiltinTools marks the tools whose approval defaults to
@@ -540,6 +555,33 @@ export function createAccountAgentRoutes(deps: AccountAgentsRoutesDeps): Router 
       if (error instanceof CustomAgentValidationError) {
         return res.status(400).json({ valid: false, error: error.message });
       }
+      sendErrorResponse(res, 500, error, 'AccountAgents');
+    }
+  });
+
+  // ── builder handoff bundle — the running server's own files, so an
+  //    external agent works from exactly the version it will import into ──
+  router.get('/:agentId/handoff/:jobId/:intentId', (req: Request, res: Response) => {
+    try {
+      const { agentId, jobId, intentId } = req.params;
+      const spec = findBuilderHandoff(agentId, jobId, intentId);
+      if (!spec) {
+        return res.status(404).json({
+          error: `No handoff bundle for ${agentId}/${jobId}/${intentId} — bundles exist for the builtin builders' intents only`,
+          code: 'no-handoff',
+        });
+      }
+      const docsRoot = resolveSourceRoot('docs');
+      const examplesRoot = path.resolve(docsRoot, '..', 'examples');
+      const bundle = composeBuilderHandoff(spec, {
+        agentsRoot: WorkspacePathResolver.getBuiltinAgentsPath(),
+        docsRoot,
+        ...(fs.existsSync(examplesRoot) ? { examplesRoot } : {}),
+      });
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${agentId}-${jobId}-${intentId}-handoff.md"`);
+      res.send(bundle);
+    } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
   });

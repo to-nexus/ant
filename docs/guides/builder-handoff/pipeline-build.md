@@ -11,6 +11,10 @@ of the flow and one run report for the flow.
 
 ## Read, in this order
 
+Reading a bundle? These files follow verbatim under "Part 2 — Contract files",
+in this order; the paths below are where a clone keeps them. Either way, read
+every file in full before designing.
+
 1. `packages/ant-cli/src/core/data/agents/pipeline-builder/base/role.md`
 2. `packages/ant-cli/src/core/data/agents/pipeline-builder/jobs/author/base/system.md`
    — the five-step procedure; step 2 is where the agents' operating-context
@@ -84,6 +88,9 @@ hooks, `api__ant__request POST|PUT /definitions/pipelines**` and
 - your reply is the report-and-hand-over the contract describes: the trigger
   with its next fires, each step and what it runs, what remains a person's
   decision.
+
+Without a clone there is no validator to run: deliver, let the person import,
+and treat the `validation` lines the import answers as the findings to fix.
 
 ## Out of scope offline
 

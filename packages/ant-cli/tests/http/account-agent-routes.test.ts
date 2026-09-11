@@ -896,6 +896,34 @@ describe('agent icon', () => {
   });
 });
 
+describe('builder handoff bundle', () => {
+  it('the list advertises bundles for the builtin builders only', async () => {
+    const body = (await (await api('')).json()) as { agents: Array<{ id: string; handoffs?: Array<{ jobId: string; intentId: string }> }> };
+    const builder = body.agents.find((a) => a.id === 'agent-builder');
+    expect(builder?.handoffs).toEqual([
+      { jobId: 'author', intentId: 'build' },
+      { jobId: 'author', intentId: 'review' },
+    ]);
+    expect(body.agents.find((a) => a.id === 'assistant')?.handoffs).toBeUndefined();
+  });
+
+  it('serves the bundle as markdown, composed from this server\'s own files', async () => {
+    const res = await fetch(`${baseUrl}/api/definitions/agents/agent-builder/handoff/author/build`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/markdown');
+    expect(res.headers.get('content-disposition')).toContain('agent-builder-author-build-handoff.md');
+    const text = await res.text();
+    expect(text).toContain('# Part 1 — Handoff');
+    expect(text).toContain('## FILE: `packages/ant-cli/src/core/data/agents/agent-builder/jobs/author/intents/build/hooks.yaml`');
+  });
+
+  it('a pair without a handoff is a typed 404, not a composer crash', async () => {
+    const res = await fetch(`${baseUrl}/api/definitions/agents/assistant/handoff/chat/analysis`);
+    expect(res.status).toBe(404);
+    expect((await res.json()).code).toBe('no-handoff');
+  });
+});
+
 describe('folder import', () => {
   it('missing agent.yaml → 400; valid folder → 201 with skip-with-reason for off-whitelist files', async () => {
     const form = new FormData();

@@ -629,7 +629,14 @@ accepted: an artifact-only hook is never adopted, so an unpinned "review
 this" turn owes no report (the Actions chip or `@intent:review` is the
 contracted path); and a review in the build's own session sees the author's
 reasoning and the already-read manifest — the independent review is the same
-intent run by an external agent from `docs/guides/builder-handoff/`.
+intent run by an external agent from `docs/guides/builder-handoff/`. That
+handoff needs no clone: `GET /definitions/agents/{builderId}/handoff/{jobId}/{intentId}`
+(Agent Settings → "Download handoff", or `definition handoff` from a clone)
+composes one self-contained bundle — the hand-written delta document, then
+every contract file inlined in reading order, then the worked example — from
+the RUNNING server's files (`core/customAgents/builderHandoff.ts`), so the
+version an agent reads is the version it imports into. The bundle is a
+rendering, never a source; the guard pins that it carries every shipped byte.
 
 Out of scope by design: session-login dances, request signing (HMAC), OAuth —
 a `${secret:KEY}` resolves into declared headers only, never into a request

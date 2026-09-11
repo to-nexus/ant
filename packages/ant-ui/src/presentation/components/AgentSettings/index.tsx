@@ -11,6 +11,7 @@ import {
   deleteAccountAgentJob,
   deleteDefinitionFile,
   downloadAgentFolder,
+  downloadBuilderHandoff,
   importAgentFolder,
   renameAccountAgentId,
   renameAccountAgentJobId,
@@ -534,6 +535,14 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     }
   };
 
+  const handleDownloadHandoff = async (agentId: string, jobId: string, intentId: string) => {
+    try {
+      await downloadBuilderHandoff(agentId, jobId, intentId);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const [pendingImport, setPendingImport] = useState<{ entries: UploadFileEntry[]; agentId: string } | null>(null);
 
   const importFolder = (entries: UploadFileEntry[], overwrite?: boolean) =>
@@ -921,6 +930,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onCreateFile={handleCreateDefinitionFile}
           onCreateDir={handleCreateDefinitionDir}
           onDownloadAgent={handleDownloadAgent}
+          onDownloadHandoff={handleDownloadHandoff}
           onDropRefused={upload.showNotice}
           isTeamActive={isTeamActive}
           loadError={accountAgentsError}

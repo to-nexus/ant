@@ -11,6 +11,10 @@ dependency report.
 
 ## Read, in this order
 
+Reading a bundle? These files follow verbatim under "Part 2 — Contract files",
+in this order; the paths below are where a clone keeps them. Either way, read
+every file in full before designing.
+
 Read every file in full before designing. The order is the order the runtime
 injects them.
 
@@ -100,6 +104,9 @@ hooks, `api__ant__request PUT /definitions/agents/*/file` and
   path.
 
 A turn that changed nothing writes nothing — say so instead.
+
+Without a clone there is no validator to run: deliver, let the person import,
+and treat the `validation` lines the import answers as the findings to fix.
 
 ## Out of scope offline
 

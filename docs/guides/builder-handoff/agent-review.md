@@ -11,6 +11,10 @@ to a working tree; the contract is the intent's own prose.
 
 ## Read, in this order
 
+Reading a bundle? These files follow verbatim under "Part 2 — Contract files",
+in this order; the paths below are where a clone keeps them. Either way, read
+every file in full before designing.
+
 1. `packages/ant-cli/src/core/data/agents/agent-builder/base/role.md`
 2. `packages/ant-cli/src/core/data/agents/agent-builder/jobs/author/base/system.md`
 3. `packages/ant-cli/src/core/data/agents/agent-builder/jobs/author/job.yaml`
@@ -74,6 +78,9 @@ The builtin's `hooks.yaml` for this intent carries one stop hook,
 
 Change nothing else: no edited definition, no "fixed" draft. Findings the
 user wants applied are the build intent's next turn.
+
+Without a clone there is no validator to run: deliver, let the person import,
+and treat the `validation` lines the import answers as the findings to fix.
 
 ## Out of scope offline
 

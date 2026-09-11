@@ -573,6 +573,19 @@ export interface CustomAgentSummary {
    */
   icon?: CustomAgentIconRef;
   jobs: CustomJobSummary[];
+  /**
+   * Builder handoffs this agent offers — the (job, intent) pairs for which
+   * `GET /definitions/agents/{id}/handoff/{jobId}/{intentId}` composes a
+   * self-contained bundle an external agent can work from. Builtin builders
+   * only; absent otherwise.
+   */
+  handoffs?: CustomAgentHandoffRef[];
+}
+
+/** {@link CustomAgentSummary.handoffs} — one downloadable bundle. */
+export interface CustomAgentHandoffRef {
+  jobId: string;
+  intentId: string;
 }
 
 /** {@link CustomAgentSummary.icon} — the stored file name plus its cache key. */

@@ -332,6 +332,18 @@ export function downloadAgentFolder(agentId: string): Promise<void> {
 }
 
 /**
+ * Builder handoff bundle — one self-contained markdown file an external agent
+ * works from with no Ant access; composed from THIS server's definition files.
+ * Offered only where the list carries `handoffs` (the builtin builders).
+ */
+export function downloadBuilderHandoff(agentId: string, jobId: string, intentId: string): Promise<void> {
+  return downloadAttachment(
+    `${base()}/${encodeURIComponent(agentId)}/handoff/${encodeURIComponent(jobId)}/${encodeURIComponent(intentId)}`,
+    `${agentId}-${jobId}-${intentId}-handoff.md`,
+  );
+}
+
+/**
  * Whole-agent import from a folder upload (webkitdirectory).
  *
  * `/import` validates its invariants per REQUEST — exactly one top-level folder

@@ -13,6 +13,7 @@ import { runValidateAgent } from '../../src/cli/definition/validateAgent';
 import { runValidatePipeline } from '../../src/cli/definition/validatePipeline';
 import { runPreviewFires } from '../../src/cli/definition/previewFires';
 import { runCheckReview, extractTracePaths } from '../../src/cli/definition/checkReview';
+import { runHandoff } from '../../src/cli/definition/handoff';
 
 const CLI_ROOT = path.resolve(__dirname, '../..');
 const BUILTIN_DIR = path.join(CLI_ROOT, 'src/core/data/agents');
@@ -37,7 +38,7 @@ function writeTree(root: string, files: Record<string, string>): void {
 
 describe('definition CLI — command table', () => {
   it('names exactly the four subcommands the handoffs may quote', () => {
-    expect([...DEFINITION_CLI_COMMANDS]).toEqual(['validate-agent', 'validate-pipeline', 'preview-fires', 'check-review']);
+    expect([...DEFINITION_CLI_COMMANDS]).toEqual(['validate-agent', 'validate-pipeline', 'preview-fires', 'check-review', 'handoff']);
     expect(EXIT).toEqual({ CLEAN: 0, FINDINGS: 1, USAGE: 2 });
   });
 
@@ -202,5 +203,35 @@ describe('check-review', () => {
     fs.writeFileSync(report, '# Review\n\nnothing here\n', 'utf-8');
     expect(extractTracePaths(fs.readFileSync(report, 'utf-8'))).toBeNull();
     expect(runCheckReview(report, path.join(tmp, 'material')).exitCode).toBe(EXIT.FINDINGS);
+  });
+});
+
+describe('handoff', () => {
+  const roots = {
+    agentsRoot: BUILTIN_DIR,
+    docsRoot: path.resolve(CLI_ROOT, '../../docs'),
+    examplesRoot: path.resolve(CLI_ROOT, '../../examples'),
+  };
+
+  it('prints a self-contained bundle for a known builder intent', () => {
+    const result = runHandoff('agent-builder', 'author', 'build', { roots });
+    expect(result.exitCode).toBe(EXIT.CLEAN);
+    expect(result.json?.files.length).toBeGreaterThan(5);
+    expect(result.lines[0]).toContain('# Part 1 — Handoff');
+    expect(result.lines[0]).toContain('## FILE: `packages/ant-cli/src/core/data/agents/agent-builder/jobs/author/intents/build/prompt.md`');
+  });
+
+  it('--out writes the file and reports its size', () => {
+    const out = path.join(tmp, 'bundles', 'review.md');
+    const result = runHandoff('pipeline-builder', 'author', 'review', { out, roots });
+    expect(result.exitCode).toBe(EXIT.CLEAN);
+    expect(fs.existsSync(out)).toBe(true);
+    expect(fs.statSync(out).size).toBe(result.json?.bytes);
+  });
+
+  it('an unknown triple is a usage error naming the known ones', () => {
+    const result = runHandoff('assistant', 'chat', 'analysis', { roots });
+    expect(result.exitCode).toBe(EXIT.USAGE);
+    expect(result.lines[0]).toContain('agent-builder author build');
   });
 });

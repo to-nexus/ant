@@ -35,7 +35,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Briefcase, CircleCheckBig, FilePlus, FolderDown, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Briefcase, CircleCheckBig, FileDown, FilePlus, FolderDown, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
 import {
   getDefinitionDirPolicy,
   toCustomId,
@@ -113,6 +113,8 @@ export interface AgentTreeProps {
   onCreateDir: (agentId: string, path: string) => Promise<void>;
   /** Whole-agent folder export (ZIP) — offered in every scope, readonly included. */
   onDownloadAgent: (agentId: string) => Promise<void>;
+  /** Builder handoff bundle (markdown) — offered where the summary carries `handoffs`. */
+  onDownloadHandoff: (agentId: string, jobId: string, intentId: string) => Promise<void>;
   /** A drop this tree cannot accept — reported on the rail's own surface. */
   onDropRefused: (message: string) => void;
   /** Empty-state copy for the org group depends on whether a team is active. */
@@ -245,6 +247,7 @@ export function AgentTree({
   onCreateFile,
   onCreateDir,
   onDownloadAgent,
+  onDownloadHandoff,
   onDropRefused,
   isTeamActive,
   loadError,
@@ -353,7 +356,15 @@ export function AgentTree({
       label: t('tree.menu.downloadFolder', 'Download folder'),
       onClick: () => void onDownloadAgent(agent.id),
     };
-    if (agent.readonly) return [download];
+    // A handoff is a READ too: the bundle an external agent does this
+    // builder's job from. Only the builtin builders advertise any.
+    const handoffs: KebabMenuItem[] = (agent.handoffs ?? []).map(({ jobId, intentId }) => ({
+      icon: FileDown,
+      label: t('tree.menu.downloadHandoff', 'Download handoff · {{intent}}', { intent: intentId }),
+      onClick: () => void onDownloadHandoff(agent.id, jobId, intentId),
+    }));
+    const reads = [download, ...handoffs];
+    if (agent.readonly) return reads;
     const writes =
       view === 'files'
         ? dirMenu(agent.id, '', definitionTrees[agent.id]?.tree ?? [])
@@ -365,7 +376,7 @@ export function AgentTree({
               onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, fileListToEntries(files)), { directory: true }),
             },
           ];
-    return writes.length > 0 ? [...writes, 'separator', download] : [download];
+    return writes.length > 0 ? [...writes, 'separator', ...reads] : reads;
   };
 
   const jobMenu = (agent: CustomAgentSummary, jobId: string): KebabMenuItem[] =>
