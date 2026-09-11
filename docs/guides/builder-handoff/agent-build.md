@@ -5,9 +5,9 @@
 The shipped `agent-builder` definition is the contract for authoring a custom
 agent; this file only maps its runtime channels to a working tree. Read the
 contract from a clone at the server's commit (see
-`docs/guides/builder-handoff/README.md`), do the work in `out/`, and hand back
-the same two deliverables the builtin owes: the definition folder and its
-dependency report.
+`docs/guides/builder-handoff/README.md`), and hand back the same two
+deliverables the builtin owes: the definition folder and its dependency
+report.
 
 ## Read, in this order
 
@@ -50,31 +50,42 @@ A worked example that already passes the validator:
 
 ## Working tree
 
-```
-in/agents/{agentId}/…                     existing definitions you were asked to edit (downloaded zips)
-in/artifacts/dependency-report/…          the agent's earlier reports, when any
-in/material/…                             what the agent is to be authored from
-out/agents/{agentId}/…                    the definition — folder name = agent id
-out/artifacts/dependency-report/{agentId}.md
-```
+No layout is prescribed. Four names bind; group everything else however suits
+you, and say in your closing report where you put it.
+
+- Work where the person says. When nobody says, make a fresh folder OUTSIDE
+  any Ant clone — anything written under a repository root, `packages/` or
+  `docs/` lands in git's working tree, where a checkout can sweep it away.
+- **The definition folder's name IS the agent id.** The import reads the id
+  off that single top-level folder, so it is `payments-ops/agent.yaml`, never
+  `my-agent/agent.yaml` or a nested `definition/payments-ops/`.
+- **Inside it, every path is the API's `path` verbatim**: `agent.yaml`,
+  `base/role.md`, `jobs/{jobId}/job.yaml`,
+  `jobs/{jobId}/intents/{intentId}/prompt.md`, `on-demand/*.md`.
+- **The report is `dependency-report/{agentId}.md`** — keep it under a folder
+  of that name and the upload target names itself.
+
+Keep what you were given apart from what you produce, and never write back
+into the inputs. One shape that works, when nothing else is asked for:
+`material/`, `given/`, `{agentId}/`, `dependency-report/`.
 
 ## Channel substitution table
 
 | Runtime instruction (where in the prose) | Offline equivalent | Same validator? |
 |---|---|---|
-| "Look first" — `GET /definitions/agents` (`base/system.md` step 1) | `ls in/agents/` plus `ls packages/ant-cli/src/core/data/agents/` — builtin ids are taken and answer `409` on import | n/a |
-| `GET /definitions/agents/{agentId}/files`, `GET /definitions/agents/{agentId}/file?path=…`, `read_file _agents/{agentId}/…`, `_agent-definition/…` | read `in/agents/{agentId}/{path}` (the Agent Settings download, unzipped) or the clone path for a builtin | n/a |
-| `POST /definitions/agents` `{ id, name }` | `mkdir out/agents/{agentId}` and write `agent.yaml` (`id` = folder name, `name`, `version: 1`) — write the real `base/role.md`, not a scaffold | yes, via `validate-agent` |
-| `POST /definitions/agents/{agentId}/jobs` `{ id, name }` | `mkdir out/agents/{agentId}/jobs/{jobId}` and write `job.yaml` + `base/system.md` | yes |
-| `PUT /definitions/agents/{agentId}/file` `{ path, content }` — the write you will use most | write `out/agents/{agentId}/{path}`, whole file; the whitelist and the 1 MiB per-file cap are enforced by the validator | yes — `gateDefinitionSave` per file |
+| "Look first" — `GET /definitions/agents` (`base/system.md` step 1) | list the definitions the person handed you, plus `ls packages/ant-cli/src/core/data/agents/` (or Part 2 of a bundle) — builtin ids are taken and answer `409` on import | n/a |
+| `GET /definitions/agents/{agentId}/files`, `GET /definitions/agents/{agentId}/file?path=…`, `read_file _agents/{agentId}/…`, `_agent-definition/…` | read `{path}` inside the definition you were given (the Agent Settings download, unzipped); for a builtin, the clone path or the bundle's Part 2 | n/a |
+| `POST /definitions/agents` `{ id, name }` | create the definition folder, named `{agentId}`, and write `agent.yaml` in it (`id` = folder name, `name`, `version: 1`) — write the real `base/role.md`, not a scaffold | yes, via `validate-agent` |
+| `POST /definitions/agents/{agentId}/jobs` `{ id, name }` | `mkdir {agentId}/jobs/{jobId}` and write `job.yaml` + `base/system.md` | yes |
+| `PUT /definitions/agents/{agentId}/file` `{ path, content }` — the write you will use most | write `{agentId}/{path}`, whole file; the whitelist and the 1 MiB per-file cap are enforced by the validator | yes — `gateDefinitionSave` per file |
 | `PATCH /definitions/agents/{agentId}`, `POST /definitions/agents/{agentId}/rename`, `DELETE /definitions/agents/{agentId}` | edit `agent.yaml` `name`; rename the folder (and the `id` inside); delete the folder | yes |
 | `PATCH /definitions/agents/{agentId}/jobs/{jobId}`, `POST /definitions/agents/{agentId}/jobs/{jobId}/rename`, `DELETE /definitions/agents/{agentId}/jobs/{jobId}` | edit `job.yaml` `name`; rename the job folder (and its `id`); delete it | yes |
-| `POST /definitions/agents/{agentId}/files/create`, `POST /definitions/agents/{agentId}/files/mkdir`, `POST /definitions/agents/{agentId}/files/rename`, `DELETE /definitions/agents/{agentId}/file?path=…` | plain file operations under `out/agents/{agentId}` | yes |
-| `GET /definitions/agents/{agentId}/jobs/{jobId}/validate` (`base/system.md` step 4) | `pnpm --filter @ant/cli definition validate-agent out/agents/{agentId}` — every job; `--job {jobId}` for one; exit `0` is "valid" | yes — same `loadCustomJob`, same advisories, same words |
+| `POST /definitions/agents/{agentId}/files/create`, `POST /definitions/agents/{agentId}/files/mkdir`, `POST /definitions/agents/{agentId}/files/rename`, `DELETE /definitions/agents/{agentId}/file?path=…` | plain file operations under `{agentId}/` | yes |
+| `GET /definitions/agents/{agentId}/jobs/{jobId}/validate` (`base/system.md` step 4) | `pnpm --filter @ant/cli definition validate-agent <the definition folder>` — every job; `--job {jobId}` for one; exit `0` is "valid" | yes — same `loadCustomJob`, same advisories, same words |
 | `4xx` bodies — "When a call fails" (`base/role.md`) | the validator's `error:` lines carry the server's own messages; `403`/`404` cannot happen offline; `409` is deferred to the import | yes |
 | `GET /definitions/agents/{agentId}/jobs/{jobId}/prompt-preview` | none offline — after import, the agent settings screen shows the composed prompt | n/a |
 | `GET /definitions/agents/{agentId}/permissions` | none offline — org access is a person's setting | n/a |
-| `create_file dependency-report/{agentId}.md` (`build/prompt.md`, "Write the agent's dependency report") | write `out/artifacts/dependency-report/{agentId}.md`; the newest-existing rule reads `in/artifacts/dependency-report/{agentId}*.md` (legacy `dependencies/{agentId}.md`) and, when one exists from an earlier session, you write `{agentId}-{mnemonic}.md` instead | n/a (a report, not a definition) |
+| `create_file dependency-report/{agentId}.md` (`build/prompt.md`, "Write the agent's dependency report") | write `dependency-report/{agentId}.md`; the newest-existing rule reads the earlier reports you were given (`{agentId}*.md`, legacy `dependencies/{agentId}.md`), and when one exists from an earlier session you write `{agentId}-{mnemonic}.md` instead | n/a (a report, not a definition) |
 | `<checklist>` before the first write | a plain checklist at the top of your reply | n/a |
 | clarify — the two cases in `base/system.md` | stop and ask the person before the first write; do not guess a partition that reshapes their material | n/a |
 | `read_ant_source`, `list_ant_files`, `search_ant_code` | read the clone: `packages/ant-cli/src/**`, `packages/ant-shared/src/**`, `docs/**` | n/a |
@@ -82,13 +93,12 @@ out/artifacts/dependency-report/{agentId}.md
 
 ## Bring it in
 
-Agent Settings → upload icon on the rail → pick `out/agents/{agentId}`. A
+Agent Settings → upload icon on the rail → pick the definition folder. A
 `409` means the id exists: replace only an agent you own, otherwise rename the
 folder and the `id` inside `agent.yaml`. The response carries the loader
-verdict for every job and the screen reports it — it should say nothing,
-because `validate-agent` already passed. Then upload
-`out/artifacts/dependency-report/{agentId}.md` into the project's Artifacts
-panel under `dependency-report/`.
+verdict for every job and the screen reports it. Then upload
+`dependency-report/{agentId}.md` into the project's Artifacts panel under
+`dependency-report/`.
 
 ## Done when
 
@@ -96,10 +106,10 @@ The builtin's `hooks.yaml` for this intent reads `arm: on-write` with two stop
 hooks, `api__ant__request PUT /definitions/agents/*/file` and
 `dependency-report/*.md`. Offline that is:
 
-- at least one definition file exists under `out/agents/{agentId}/` and
-  `pnpm --filter @ant/cli definition validate-agent out/agents/{agentId}` exits `0`;
-- `out/artifacts/dependency-report/{agentId}.md` (or its `-{mnemonic}`
-  revision) exists and follows the skeleton in `build/prompt.md`;
+- the definition folder holds at least one definition file and
+  `pnpm --filter @ant/cli definition validate-agent <that folder>` exits `0`;
+- `dependency-report/{agentId}.md` (or its `-{mnemonic}` revision) exists and
+  follows the skeleton in `build/prompt.md`;
 - your reply is the chat report the contract describes, naming the report's
   path.
 

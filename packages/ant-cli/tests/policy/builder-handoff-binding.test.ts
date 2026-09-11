@@ -34,6 +34,9 @@ const ROOTS = {
 // so a handoff the menu offers is always one this suite has judged.
 const HANDOFFS = BUILDER_HANDOFFS;
 
+/** The human entry points, one per language; the handoffs themselves are the agent's. */
+const INDEX_DOCS = ['README.md', 'README.ko.md'];
+
 const SECTIONS = [
   '## What this is',
   '## Read, in this order',
@@ -68,17 +71,29 @@ function routesOf(text: string): Set<string> {
 }
 
 describe('builder handoff binding', () => {
-  it('the index names every handoff and only existing ones', () => {
-    const readme = read('docs/guides/builder-handoff/README.md');
+  // The entry docs are the human's — one per language. A translation that
+  // drifts is a guide that sends someone to a route or a command that is not
+  // there, so both are held to the same bindings.
+  it.each(INDEX_DOCS)('%s names every handoff, and the directory holds exactly these files', (index) => {
+    const readme = read(`docs/guides/builder-handoff/${index}`);
     for (const row of HANDOFFS) {
-      expect(readme, `README does not list ${row.doc}`).toContain(`docs/guides/builder-handoff/${row.doc}`);
+      expect(readme, `${index} does not list ${row.doc}`).toContain(`docs/guides/builder-handoff/${row.doc}`);
     }
-    expect(fs.readdirSync(HANDOFF_DIR).sort()).toEqual(['README.md', ...HANDOFFS.map((h) => h.doc)].sort());
+    expect(fs.readdirSync(HANDOFF_DIR).sort()).toEqual([...INDEX_DOCS, ...HANDOFFS.map((h) => h.doc)].sort());
+  });
+
+  it.each(INDEX_DOCS)('%s quotes only repo paths that exist', (index) => {
+    const paths = backticked(read(`docs/guides/builder-handoff/${index}`))
+      .filter((t) => /^(packages|docs|examples)\//.test(t) && !/[{*]/.test(t));
+    expect(paths.length).toBeGreaterThan(0);
+    for (const rel of paths) {
+      expect(fs.existsSync(path.join(REPO_ROOT, rel)), `${index} names ${rel}, which does not exist`).toBe(true);
+    }
   });
 
   it('every CLI command the handoffs quote is registered, and every registered command is documented', () => {
     const pkg = JSON.parse(read('packages/ant-cli/package.json')) as { scripts: Record<string, string> };
-    const all = ['README.md', ...HANDOFFS.map((h) => h.doc)].map((d) => read(`docs/guides/builder-handoff/${d}`)).join('\n');
+    const all = [...INDEX_DOCS, ...HANDOFFS.map((h) => h.doc)].map((d) => read(`docs/guides/builder-handoff/${d}`)).join('\n');
     const scripts = [...all.matchAll(/pnpm --filter @ant\/cli ([a-z:-]+)/g)].map((m) => m[1]);
     expect(scripts.length).toBeGreaterThan(0);
     for (const script of new Set(scripts)) {

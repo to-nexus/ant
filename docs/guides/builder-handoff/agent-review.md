@@ -36,32 +36,38 @@ every file in full before designing.
 
 ## Working tree
 
-```
-in/agents/{agentId}/…                         the definition under review (downloaded zip, or the clone for a builtin)
-in/artifacts/dependency-report/{agentId}*.md  the authoring report(s); legacy dependencies/{agentId}.md
-in/artifacts/review-report/{agentId}*.md      earlier reviews, when any
-in/material/…                                 the material the definition was authored from — the WHOLE folder
-out/artifacts/review-report/{agentId}.md      the deliverable
-```
+No layout is prescribed. Work where the person says; when nobody says, make a
+fresh folder OUTSIDE any Ant clone, so nothing you write lands in a git
+working tree. Two names bind:
+
+- **the report is `review-report/{agentId}.md`**, or its `-{mnemonic}`
+  revision when a review from an earlier session was handed to you;
+- **its Trace table's first column is the material path relative to the
+  material folder's root**, because `check-review` diffs that column against a
+  real listing.
+
+You were given four things, wherever the person put them: the definition under
+review, the material it was authored from (the WHOLE folder), the authoring
+report, and any earlier reviews. Write nothing back into them.
 
 ## Channel substitution table
 
 | Runtime instruction (where in the prose) | Offline equivalent | Same validator? |
 |---|---|---|
-| the attached `_agents/{agentId}/…` files, `list_files _agents/{agentId}/`, `GET /definitions/agents/{agentId}/files`, `GET /definitions/agents/{agentId}/file?path=…` | `find in/agents/{agentId} -type f` and read every file | n/a |
+| the attached `_agents/{agentId}/…` files, `list_files _agents/{agentId}/`, `GET /definitions/agents/{agentId}/files`, `GET /definitions/agents/{agentId}/file?path=…` | `find <the definition> -type f` and read every file | n/a |
 | `GET /definitions/agents` — which agent | the folder you were given | n/a |
-| the attached material directory; "Enumerate before judging" with `list_files` | `find in/material -name '*.md' \| sort` — that listing is the row floor; read every file, `deprecated/` included | yes — `check-review` diffs the table against it |
-| the newest `dependency-report/{agentId}*.md` in artifacts | `ls -t in/artifacts/dependency-report/{agentId}*.md \| head -1`; its absence is a finding, and every `claim` cell then reads `not-claimed` | n/a |
-| `search_files` for the material's repeated headings ("Form coverage") | `grep -rh '^## ' in/material \| sort \| uniq -c` | n/a |
-| `create_file review-report/{agentId}.md` ("Write the review report") | write `out/artifacts/review-report/{agentId}.md`; when `in/artifacts/review-report/{agentId}*.md` exists from an earlier session, write `{agentId}-{mnemonic}.md` instead | partly — `check-review` verifies the Trace table's coverage; the verdicts are yours |
+| the attached material directory; "Enumerate before judging" with `list_files` | `find <the material> -name '*.md' \| sort` — that listing is the row floor; read every file, `deprecated/` included | yes — `check-review` diffs the table against it |
+| the newest `dependency-report/{agentId}*.md` in artifacts | the newest `{agentId}*.md` among the authoring reports you were given; its absence is a finding, and every `claim` cell then reads `not-claimed` | n/a |
+| `search_files` for the material's repeated headings ("Form coverage") | `grep -rh '^## ' <the material> \| sort \| uniq -c` | n/a |
+| `create_file review-report/{agentId}.md` ("Write the review report") | write `review-report/{agentId}.md`; when a review from an earlier session was handed to you, write `{agentId}-{mnemonic}.md` instead | partly — `check-review` verifies the Trace table's coverage; the verdicts are yours |
 | clarify — the definition or the material is not in hand | ask the person before writing; a review against memory is not a review | n/a |
 | the already-read manifest / the authoring turn in session history | you have neither, which is the point: judge from the files | n/a |
 | `read_ant_source`, `list_ant_files`, `search_ant_code` | the clone | n/a |
 
 ## Bring it in
 
-Upload `out/artifacts/review-report/{agentId}.md` into the project's
-Artifacts panel under `review-report/`. A later build turn in that project
+Upload `review-report/{agentId}.md` into the project's Artifacts panel under
+`review-report/`. A later build turn in that project
 (or the next reviewer) reads it from there.
 
 ## Done when
@@ -69,9 +75,9 @@ Artifacts panel under `review-report/`. A later build turn in that project
 The builtin's `hooks.yaml` for this intent carries one stop hook,
 `review-report/*.md`, with the default arm (always). Offline that is:
 
-- `out/artifacts/review-report/{agentId}.md` exists and follows the skeleton
-  in `review/prompt.md` — the invariant line reads `files without a row: 0`;
-- `pnpm --filter @ant/cli definition check-review out/artifacts/review-report/{agentId}.md in/material`
+- `review-report/{agentId}.md` exists and follows the skeleton in
+  `review/prompt.md` — the invariant line reads `files without a row: 0`;
+- `pnpm --filter @ant/cli definition check-review <the report> <the material>`
   exits `0` (every material file has a row, every row names a file);
 - your reply gives the counts, the verdict tally, the report's path and the
   findings that most change what the user does next.
