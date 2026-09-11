@@ -362,7 +362,7 @@ describe('connection manager — apis channel', () => {
       stubResolver({ DOUZONE_TOKEN: 'Bearer tok' }),
       { douzone: { baseUrl: 'https://erp.example.com/api', headers: { Authorization: '${secret:DOUZONE_TOKEN}' } } },
     );
-    await mcp.connect();
+    await mcp.connect({ failFast: true });
     expect(mcp.listToolInfos().map((t) => t.name)).toEqual(['api__douzone__get', 'api__douzone__request']);
     // Dispatch bypasses the MCP Client entirely: the failure is a network
     // error result, never an "MCP server not connected" throw.
@@ -378,14 +378,14 @@ describe('connection manager — apis channel', () => {
       stubResolver({}),
       { douzone: { baseUrl: 'https://erp.example.com/api', headers: { Authorization: '${secret:MISSING}' } } },
     );
-    const err = await mcp.connect().then(() => null, (e) => e);
+    const err = await mcp.connect({ failFast: true }).then(() => null, (e) => e);
     expect(isMcpConfigError(err)).toBe(true);
     expect(String(err.message)).toMatch(/API server "douzone"/);
   });
 
   it('an invalid baseUrl fails connect as McpConfigError', async () => {
     const mcp = new McpConnectionManager({}, stubResolver({}), { d: { baseUrl: 'not-a-url' } });
-    const err = await mcp.connect().then(() => null, (e) => e);
+    const err = await mcp.connect({ failFast: true }).then(() => null, (e) => e);
     expect(isMcpConfigError(err)).toBe(true);
   });
 });

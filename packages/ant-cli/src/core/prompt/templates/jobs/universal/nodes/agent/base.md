@@ -27,6 +27,18 @@ This job has external MCP servers connected. Their tools appear in your tool lis
 This job declares REST API connections. Each appears in your tool list as two generic tools: `api__{server}__get` (read) and `api__{server}__request` (write, may require approval). Authentication headers are attached by the runtime — never ask for or handle credentials yourself. Endpoint knowledge (paths, fields, call sequences) comes from this job's instructions and reference files; read them before calling — do not guess paths. Compose requests yourself: read what you need, then act, reacting to each HTTP response.
 {{/if}}
 
+{{#if capabilityStatus}}
+## ⚠️ Capability Status
+
+Some connections this definition declares could not be established this turn. Every tool in your tool list works; a failed server's tools are simply absent.
+
+{{#each capabilityStatus}}
+- {{this}}
+{{/each}}
+
+When the user asks about a failure or a missing capability, answer directly from the reason above and name the concrete fix (register the credential in Agent Settings, correct the server URL or definition, or retry later for a transient network failure). Never simulate or retry an absent tool. When the requested work needs an unavailable tool, say which capability is missing and what would unblock it instead of attempting a workaround the definition does not sanction.
+{{/if}}
+
 {{#if planDocs}}
 ## Plan Documents
 
@@ -50,7 +62,7 @@ Derived from plan: `{{existingChecklistPlan}}`
 {{existingChecklist}}
 ```
 
-Continue this list — re-emit it with updated marks after every tool call that completes an item; do not create a new one unless the user starts unrelated multi-deliverable work.
+Continue this list when the user's message continues the work — re-emit it with updated marks after every tool call that completes an item; do not create a new one unless the user starts unrelated multi-deliverable work. When the message is a question or an unrelated request, answer it first — the list stays as it is until the work resumes.
 {{/if}}
 
 {{#if planTurn}}

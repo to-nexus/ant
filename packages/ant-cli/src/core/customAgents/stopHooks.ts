@@ -124,11 +124,19 @@ function actionHookMatches(hook: IntentStopHook, actions: readonly string[]): bo
  * intents' declared hooks are returned whole, flagged with their arm policy
  * so the band can say which ones arm only on a write. `general` is reserved
  * and can never declare hooks.
+ *
+ * An INHERITED turn (clarify / approval / stop-hook pause continuation) arms
+ * with `on-write` semantics regardless of the declared arm: the pause already
+ * proved the contract exists and the seal keeps carrying it, so a continuation
+ * that only answers a question owes nothing THIS turn — the contract defers to
+ * the turn that actually resumes the work (never lost: the deferral re-seal in
+ * respond keeps `awaitingStopHooks` alive; see `shouldDeferInheritedContract`).
  */
 export function activeStopHooksOf(
   catalog: readonly CustomIntentDef[],
   activeIntents: readonly string[],
   evidence?: Pick<StopHookEvidence, 'writes' | 'actions'>,
+  opts?: { inheritedTurn?: boolean },
 ): ActiveStopHook[] {
   const active = new Set(activeIntents.filter((i) => i !== GENERAL_INTENT));
   const wrote = evidence ? turnHasWriteEvidence(evidence) : undefined;
@@ -144,7 +152,7 @@ export function activeStopHooksOf(
   for (const intent of catalog) {
     const hooks = intent.hooks?.stop ?? [];
     if (hooks.length === 0) continue;
-    const arm = intent.hooks?.arm ?? 'always';
+    const arm = opts?.inheritedTurn === true ? 'on-write' : (intent.hooks?.arm ?? 'always');
     if (active.has(intent.id)) {
       if (evidence && arm === 'on-write' && !wrote) continue;
       for (const hook of hooks) push(intent.id, hook, false, arm);
@@ -241,6 +249,31 @@ export function matchArtifactGlob(pattern: string, path: string): boolean {
 /** Normalize a tool-reported write path to the glob vocabulary (artifact-root relative posix). */
 export function normalizeArtifactPath(rawPath: string): string {
   return rawPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+}
+
+/**
+ * Deferral rule for an INHERITED turn that only answered (the C3 half of
+ * "hooks follow the act" on pause continuations): the previous turn sealed a
+ * pending contract, this turn produced no write evidence, so the contract is
+ * DEFERRED — respond re-seals `awaitingStopHooks` (context + ledger carried
+ * through) and the job ends as a normal success. Without this re-seal a
+ * question-only continuation would self-clear the pause markers and silently
+ * LOSE the contract. Mutually exclusive with an unmet-hooks pause: no write
+ * evidence means no `always`-armed hook was active under the inherited-arm
+ * override, so `hooksUnmet` is empty whenever this returns true.
+ */
+export function shouldDeferInheritedContract(args: {
+  source: 'pinned' | 'inherited' | 'unpinned' | undefined;
+  planTurn: boolean;
+  paused: boolean;
+  catalog: readonly CustomIntentDef[];
+  intents: readonly string[];
+  evidence: Pick<StopHookEvidence, 'writes' | 'actions'>;
+}): boolean {
+  if (args.source !== 'inherited' || args.planTurn || args.paused) return false;
+  if (turnHasWriteEvidence(args.evidence)) return false;
+  const active = new Set(args.intents.filter((i) => i !== GENERAL_INTENT));
+  return args.catalog.some((intent) => active.has(intent.id) && (intent.hooks?.stop?.length ?? 0) > 0);
 }
 
 /** Stable ledger key: `<intentId>#artifact:<glob>` | `<intentId>#action:<tool>`. */
@@ -363,7 +396,7 @@ export function buildStopHookGateMessage(
     `(verified from actual tool results, attempt ${attempt}/${budget + 1}):\n` +
     `${checkLines(checks)}\n` +
     `Satisfy the unmet hooks with real tool calls now, or state explicitly why you cannot — ` +
-    `do NOT claim completion.`
+    `do NOT claim completion. (This instruction binds THIS turn only.)`
   );
 }
 

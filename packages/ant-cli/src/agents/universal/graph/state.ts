@@ -152,6 +152,13 @@ export interface UniversalGraphState extends ResolvableState {
    * met on a prior turn of the paused sequence are not re-demanded.
    */
   restoredHookLedger?: StopHookLedger;
+  /**
+   * This turn's extension-connection attempts (attended lane degrade) —
+   * feeds the Capability Status prompt band, the chat warning, and the seal's
+   * `lastConnectionReport` (next turn's fast-retry set). Empty/undefined =
+   * every declared connection came up (or none declared).
+   */
+  connectionReport?: import('../../../core/customAgents/connectionReport').ConnectionReport;
   /** Top-level artifact tree overview built by resolve (existence band). */
   artifactsOverview?: string;
   /** Per-phase cumulative usage history (token popup rows). */
@@ -248,6 +255,7 @@ export const UniversalAnnotation = Annotation.Root({
   _truncationRedo: Annotation<boolean | undefined>,
   _hooksUnmet: Annotation<StopHookCheck[] | undefined>,
   restoredHookLedger: Annotation<StopHookLedger | undefined>,
+  connectionReport: Annotation<import('../../../core/customAgents/connectionReport').ConnectionReport | undefined>,
   artifactsOverview: Annotation<string | undefined>,
   phaseTokenUsages: Annotation<import('@ant/shared').PhaseTokenUsage[] | undefined>,
   // Undeclared channels are DROPPED by LangGraph — declare every field.
@@ -301,6 +309,8 @@ export function createInitialUniversalState(params: {
   sessionChannel?: string;
   /** Sibling channels the seal carries through untouched. */
   carriedChannels?: Record<string, ConversationMessage[]>;
+  /** This turn's extension-connection attempts (attended-lane degrade). */
+  connectionReport?: import('../../../core/customAgents/connectionReport').ConnectionReport;
 }): UniversalGraphState {
   return {
     featurePath: params.containerPath,
@@ -339,5 +349,6 @@ export function createInitialUniversalState(params: {
     _approvalGrantTool: params.approvalGrantTool,
     _sessionChannel: params.sessionChannel,
     _carriedChannels: params.carriedChannels,
+    connectionReport: params.connectionReport,
   } as unknown as UniversalGraphState;
 }

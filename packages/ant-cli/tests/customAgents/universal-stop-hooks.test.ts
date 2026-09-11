@@ -23,6 +23,7 @@ import {
   hookKeyOf,
   normalizeArtifactPath,
   parseSealedHookLedger,
+  shouldDeferInheritedContract,
   verifyChecksOnDisk,
   type ActiveStopHook,
 } from '../../src/core/customAgents/stopHooks';
@@ -169,6 +170,62 @@ describe('activeStopHooksOf', () => {
         expect(isWriteShapedAction(tok), tok).toBe(false);
       }
     });
+  });
+});
+
+// An INHERITED turn (clarify / approval / stop-hook pause continuation) arms
+// with on-write semantics regardless of the declared arm: the pause already
+// proved the contract and the seal carries it, so a continuation that only
+// answers owes nothing THIS turn — the contract defers, never disappears.
+describe('inherited turns arm on-write — pause-continuity de-coercion', () => {
+  const catalog: CustomIntentDef[] = [
+    { id: 'deliver', infer: 'y', hooks: { stop: [{ artifact: 'terms/*/schedule.md' }] } },
+  ];
+  const none = { writes: [], actions: [] };
+  const inherited = { inheritedTurn: true };
+
+  it('declared always × inherited × no write: nothing owed', () => {
+    expect(activeStopHooksOf(catalog, ['deliver'], none, inherited)).toEqual([]);
+  });
+
+  it('declared always × inherited × write: owed, flagged on-write', () => {
+    const owed = activeStopHooksOf(catalog, ['deliver'], { writes: ['terms/a/schedule.md'], actions: ['create_file'] }, inherited);
+    expect(owed).toHaveLength(1);
+    expect(owed[0].arm).toBe('on-write');
+  });
+
+  it('non-inherited turn is unchanged: always owes without write evidence', () => {
+    expect(activeStopHooksOf(catalog, ['deliver'], none, { inheritedTurn: false })).toHaveLength(1);
+    expect(activeStopHooksOf(catalog, ['deliver'], none)).toHaveLength(1);
+  });
+
+  it('band call (no evidence) on an inherited turn carries the on-write flag — the band prints the owed-only-on-write suffix', () => {
+    const band = activeStopHooksOf(catalog, ['deliver'], undefined, inherited);
+    expect(band).toHaveLength(1);
+    expect(band[0].arm).toBe('on-write');
+  });
+});
+
+describe('shouldDeferInheritedContract — truth table', () => {
+  const catalog: CustomIntentDef[] = [
+    { id: 'deliver', infer: 'y', hooks: { stop: [{ artifact: 'terms/*/schedule.md' }] } },
+    { id: 'chat', infer: 'z' },
+  ];
+  const noWrite = { writes: [], actions: ['read_file'] };
+  const wrote = { writes: ['terms/a/schedule.md'], actions: ['create_file'] };
+  const base = { source: 'inherited' as const, planTurn: false, paused: false, catalog, intents: ['deliver'], evidence: noWrite };
+
+  it.each([
+    ['inherited answer-only turn under a hooked intent → defer', base, true],
+    ['the turn wrote → no defer (the gate enforces instead)', { ...base, evidence: wrote }, false],
+    ['pinned turn → no defer', { ...base, source: 'pinned' as const }, false],
+    ['unpinned turn → no defer', { ...base, source: 'unpinned' as const }, false],
+    ['plan turn → no defer (plan_complete owns it)', { ...base, planTurn: true }, false],
+    ['paused turn (clarify/approval) → no defer (their rails carry the context)', { ...base, paused: true }, false],
+    ['inherited intent with no hooks → nothing to defer', { ...base, intents: ['chat'] }, false],
+    ['general never defers', { ...base, intents: ['general'] }, false],
+  ] as const)('%s', (_label, args, expected) => {
+    expect(shouldDeferInheritedContract(args as any)).toBe(expected);
   });
 });
 

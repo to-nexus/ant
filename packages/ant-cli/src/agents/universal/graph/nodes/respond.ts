@@ -14,11 +14,13 @@ import { sealUniversalConversation } from '../session/sealConversation';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import { isUnderPlanDir } from '../../../../core/customAgents/universalToolPolicy';
+import { hasConnectionFailures } from '../../../../core/customAgents/connectionReport';
 import {
   activeStopHooksOf,
   buildStopHookLedger,
   checkStopHooks,
   formatStopHookManifest,
+  shouldDeferInheritedContract,
   verifyChecksOnDisk,
   type StopHookCheck,
 } from '../../../../core/customAgents/stopHooks';
@@ -138,7 +140,9 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   const activeHooks =
     state.turnContext?.planTurn === true
       ? []
-      : activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? [], evidence);
+      : activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? [], evidence, {
+          inheritedTurn: state.turnContext?.source === 'inherited',
+        });
   let hookChecks: StopHookCheck[] = [];
   if (activeHooks.length > 0) {
     const rawChecks = checkStopHooks(activeHooks, evidence);
@@ -157,6 +161,19 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   // exempted both.
   const hooksUnmet = state._clarifyPause || state._approvalPause ? [] : hookChecks.filter((c) => !c.met);
 
+  // Inherited answer-only turn under a pending contract — DEFER, never lose:
+  // the seal below keeps `awaitingStopHooks` alive (context + ledger carried
+  // through) while the job ends as a normal success (user decision: success +
+  // one manifest line, no re-published interruption).
+  const deferInherited = shouldDeferInheritedContract({
+    source: state.turnContext?.source,
+    planTurn: state.turnContext?.planTurn === true,
+    paused: !!(state._clarifyPause || state._approvalPause),
+    catalog: resolved.intents,
+    intents: state.turnContext?.intents ?? [],
+    evidence,
+  });
+
   // 2. Artifact manifest — only when writes happened. Stop-hook verdict
   //    lines share the manifest slot (✓/✗ split, unmet patterns verbatim so
   //    an author's glob typo is visible).
@@ -164,13 +181,18 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
     !state._clarifyPause && !state._approvalPause && hookChecks.length > 0
       ? formatStopHookManifest(hookChecks, state.language)
       : null;
-  if (writes.length > 0 || hookManifest) {
+  const deferNote = deferInherited
+    ? state.language === 'ko'
+      ? '⏸️ 완료 계약은 보류 중입니다 — 작업을 재개하는 턴에서 이어집니다.'
+      : '⏸️ The completion contract is still pending — it resumes with the turn that resumes the work.'
+    : null;
+  if (writes.length > 0 || hookManifest || deferNote) {
     const writesManifest =
       writes.length > 0
         ? (state.language === 'ko' ? `📦 **이번 턴 산출물**\n` : `📦 **Artifacts written this turn**\n`) +
           writes.map((w) => `- \`${w}\``).join('\n')
         : null;
-    const manifest = '\n\n' + [writesManifest, hookManifest].filter(Boolean).join('\n\n');
+    const manifest = '\n\n' + [writesManifest, hookManifest, deferNote].filter(Boolean).join('\n\n');
     await chatAPI.startMessage();
     await chatAPI.sendLLMEvent({ type: 'text', text: manifest });
     await chatAPI.finalizeMessage();
@@ -256,6 +278,15 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
           ...(state.turnContext && { hookTurnContext: state.turnContext }),
           hookLedger: buildStopHookLedger(hookChecks),
         }),
+        // Deferred contract (inherited answer-only turn) — the pause markers
+        // survive verbatim so the NEXT turn still inherits intent + ledger;
+        // mutually exclusive with the unmet-hooks seal above.
+        ...(deferInherited && {
+          awaitingStopHooks: true,
+          ...(state.turnContext && { hookTurnContext: state.turnContext }),
+          ...(state.restoredHookLedger &&
+            Object.keys(state.restoredHookLedger).length > 0 && { hookLedger: state.restoredHookLedger }),
+        }),
         ...(state._clarifyPause &&
           hookChecks.some((c) => c.met) && { hookLedger: buildStopHookLedger(hookChecks) }),
         // Audit record of THIS turn's hook evaluation — until now the only
@@ -269,6 +300,11 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
             met: c.met,
             ...(c.matchedWrites.length > 0 && { matchedWrites: c.matchedWrites }),
           })),
+        }),
+        // Extension-connect failures this turn — the next turn's fast-retry
+        // set. Self-clears when every declared connection comes up again.
+        ...(hasConnectionFailures(state.connectionReport) && {
+          lastConnectionReport: state.connectionReport,
         }),
       };
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });

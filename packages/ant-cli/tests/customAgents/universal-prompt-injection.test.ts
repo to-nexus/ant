@@ -139,6 +139,27 @@ describe('PromptBuilder inertSystemAppend gate', () => {
     expect(onResult.user).toContain('mcp__ops-api__create_incident');
   });
 
+  it('capabilityStatus gate: off → no Capability Status band; on → band with the failure rows', async () => {
+    const offResult = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: baseVars,
+    });
+    expect(offResult.user).not.toContain('Capability Status');
+
+    const onResult = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: {
+        ...baseVars,
+        capabilityStatus: [
+          '1 of 2 declared connection(s) failed this turn.',
+          '`jira` (MCP) — unavailable: credential key "JIRA_TOKEN" is not registered [config — definition or credential fix needed]',
+        ],
+      },
+    });
+    expect(onResult.user).toContain('Capability Status');
+    expect(onResult.user).toContain('JIRA_TOKEN');
+  });
+
   it('planDocs gate: off → no Plan Documents band; on → listed paths', async () => {
     const offResult = await builder.build({
       templates: TEMPLATE_PATHS.universalAgent,

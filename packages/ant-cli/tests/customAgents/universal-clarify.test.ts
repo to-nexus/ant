@@ -220,13 +220,16 @@ describe('findDanglingClarifyToolUse — structural detection table', () => {
 });
 
 describe('buildClarifyToolResultTurn', () => {
-  it('closes the given id with the user text under the single framing', () => {
+  it('closes the given id with the verbatim user text riding the tool_result', () => {
+    // Contract: the user's text is carried verbatim, and the framing must not
+    // present it as necessarily the answer (a question or a new request rides
+    // the same closure). The English sentence itself is not pinned.
     const turn = buildClarifyToolResultTurn('tu_9', '7d please');
     expect(turn.role).toBe('user');
     expect(turn.content).toHaveLength(1);
     expect(turn.content[0].type).toBe('tool_result');
     expect(turn.content[0].tool_use_id).toBe('tu_9');
-    expect(turn.content[0].content).toBe('User replied:\n7d please');
+    expect(String(turn.content[0].content)).toMatch(/\n7d please$/);
   });
 });
 

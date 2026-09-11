@@ -32,6 +32,12 @@ import { extractMCPTextContent, extractMCPImageContent } from '../utils/mcpConte
 import { MCP_TOOL_PREFIX } from './universalToolPolicy';
 import { parseSecretRef, isForbiddenMcpEnvKey, isSelfApiConfig } from '@ant/shared';
 import { McpConfigError } from './McpConfigError';
+import {
+  boundErrorMessage,
+  connectionErrorKindOf,
+  type ConnectionAttempt,
+  type ConnectionReport,
+} from './connectionReport';
 import type { McpCredentialResolver } from './McpCredentialResolver';
 import type { McpServerConfig, RestApiServerConfig } from './types';
 import {
@@ -45,6 +51,9 @@ import {
 import { assertUserCodeIsolationOrThrow, wrapCommandForChildIdentity } from '../config/childIdentity';
 
 const CONNECT_TIMEOUT_MS = 60_000;
+/** Fast-retry lane: a server that failed on the previous turn must not hold a
+ * question turn hostage for the full connect timeout. */
+const RETRY_CONNECT_TIMEOUT_MS = 8_000;
 const CALL_TIMEOUT_MS = 60_000;
 
 export interface McpToolInfo {
@@ -117,11 +126,26 @@ export function buildStdioChildEnv(resolvedEnv: Record<string, string> | undefin
   return { ...base, ...safeDeclared };
 }
 
+export interface McpConnectOptions {
+  /**
+   * `true` — unattended lane (pipeline/scheduled): the first failure closes
+   * everything and throws, exactly the legacy fail-loud contract.
+   * `false` — attended lane: each server degrades independently; failures are
+   * FACTS in the connection report, connected siblings stay open, and the
+   * agent runs and explains. The mode is explicit and required so a new call
+   * site cannot drift into an implicit default.
+   */
+  failFast: boolean;
+  /** Servers that failed on the previous turn — retried with a short timeout. */
+  knownBad?: ReadonlySet<string>;
+}
+
 export class McpConnectionManager {
   private clients = new Map<string, Client>();
   private restServers = new Map<string, CompiledRestServer>();
   private tools: McpToolInfo[] = [];
   private connected = false;
+  private report: ConnectionReport = [];
 
   constructor(
     private readonly servers: Record<string, McpServerConfig>,
@@ -162,56 +186,92 @@ export class McpConnectionManager {
     return resolved;
   }
 
-  /** Connect every declared server and collect its tool list. Fail-loud. */
-  async connect(): Promise<void> {
+  /**
+   * Connect every declared server and collect its tool list.
+   * `failFast: true` keeps the legacy fail-loud contract (first failure closes
+   * everything and throws); `failFast: false` degrades per server and records
+   * every attempt in the connection report.
+   */
+  async connect(opts: McpConnectOptions): Promise<void> {
     if (this.connected) return;
+    const knownBad = opts.knownBad ?? new Set<string>();
+    const attempt = async (unit: () => Promise<ConnectionAttempt>, serverName: string, channel: 'mcp' | 'api') => {
+      try {
+        this.report.push(await unit());
+      } catch (e) {
+        if (opts.failFast) throw e;
+        this.report.push({
+          server: serverName,
+          channel,
+          status: 'failed',
+          error: boundErrorMessage(e),
+          errorKind: connectionErrorKindOf(e),
+          ...(knownBad.has(serverName) && { repeated: true }),
+        });
+        console.warn(`⚠️ [MCP] "${serverName}" (${channel}) failed to connect — continuing without it: ${boundErrorMessage(e)}`);
+      }
+    };
     // Declared REST APIs first — compile + resolve connectivity, no network I/O
     // (nothing to handshake; requests fail per call). A definition mistake
-    // (bad baseUrl, unregistered credential) and a self entry's missing
-    // wiring both fail loud here as McpConfigError → config_invalid.
+    // (bad baseUrl, unregistered credential) and a self entry's missing wiring
+    // surface here as McpConfigError — fatal on the fail-fast lane, a report
+    // fact on the attended lane.
     for (const [serverName, cfg] of Object.entries(this.apis)) {
-      // A self entry declares no headers, so it never reaches the credential
-      // resolver — its bearer comes from the env the parent injected.
-      const connectivity = resolveRestConnectivity(
-        serverName,
-        cfg,
-        isSelfApiConfig(cfg) ? {} : await this.resolveCredentials(cfg.headers, 'headers', serverName, 'API server'),
-      );
-      this.restServers.set(serverName, compileRestServer(serverName, cfg, connectivity));
-      this.tools.push(...buildRestToolInfos(serverName, cfg, connectivity.label));
-      console.log(`🔌 [API] "${serverName}" declared — 2 synthesized tools (base: ${connectivity.label})`);
+      await attempt(() => this.connectApi(serverName, cfg), serverName, 'api');
     }
     for (const [serverName, cfg] of Object.entries(this.servers)) {
-      const client = new Client({ name: 'ant-universal', version: '1.0.0' });
-      let transport;
-      if (cfg.transport === 'stdio') {
-        // A stdio MCP server is arbitrary code execution. The SDK spawns it
-        // internally with no uid/gid option, so — fail closed in cloud unless a
-        // distinct child UID is configured (H-014), then re-exec under setpriv
-        // so the child actually drops off the service UID (its /proc and the
-        // shared credential store are otherwise readable by a same-UID child).
-        assertUserCodeIsolationOrThrow(`mcp:stdio:${serverName}`);
-        const wrapped = wrapCommandForChildIdentity(cfg.command!, cfg.args ?? []);
-        transport = new StdioClientTransport({
-          command: wrapped.command,
-          args: wrapped.args,
-          // Declared env ONLY (resolved from the encrypted store), plus the
-          // minimum a process needs to execute. Never `...process.env` — that
-          // handed every third-party server the host's full secret set (LLM
-          // provider keys, JWT secret, Redis URL).
-          env: buildStdioChildEnv(await this.resolveCredentials(cfg.env, 'env', serverName)),
-        });
-      } else {
-        transport = new StreamableHTTPClientTransport(new URL(cfg.url!), {
-          requestInit: { headers: await this.resolveCredentials(cfg.headers, 'headers', serverName) },
-        });
-      }
+      const timeoutMs = knownBad.has(serverName) ? RETRY_CONNECT_TIMEOUT_MS : CONNECT_TIMEOUT_MS;
+      await attempt(() => this.connectMcpServer(serverName, cfg, timeoutMs), serverName, 'mcp');
+    }
+    this.connected = true;
+  }
 
-      console.log(`🔌 [MCP] Connecting to server "${serverName}" (${cfg.transport})`);
-      await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, `MCP connect "${serverName}"`);
+  private async connectApi(serverName: string, cfg: RestApiServerConfig): Promise<ConnectionAttempt> {
+    // A self entry declares no headers, so it never reaches the credential
+    // resolver — its bearer comes from the env the parent injected.
+    const connectivity = resolveRestConnectivity(
+      serverName,
+      cfg,
+      isSelfApiConfig(cfg) ? {} : await this.resolveCredentials(cfg.headers, 'headers', serverName, 'API server'),
+    );
+    this.restServers.set(serverName, compileRestServer(serverName, cfg, connectivity));
+    const infos = buildRestToolInfos(serverName, cfg, connectivity.label);
+    this.tools.push(...infos);
+    console.log(`🔌 [API] "${serverName}" declared — ${infos.length} synthesized tools (base: ${connectivity.label})`);
+    return { server: serverName, channel: 'api', status: 'connected', toolCount: infos.length };
+  }
+
+  private async connectMcpServer(serverName: string, cfg: McpServerConfig, timeoutMs: number): Promise<ConnectionAttempt> {
+    const client = new Client({ name: 'ant-universal', version: '1.0.0' });
+    let transport;
+    if (cfg.transport === 'stdio') {
+      // A stdio MCP server is arbitrary code execution. The SDK spawns it
+      // internally with no uid/gid option, so — fail closed in cloud unless a
+      // distinct child UID is configured (H-014), then re-exec under setpriv
+      // so the child actually drops off the service UID (its /proc and the
+      // shared credential store are otherwise readable by a same-UID child).
+      assertUserCodeIsolationOrThrow(`mcp:stdio:${serverName}`);
+      const wrapped = wrapCommandForChildIdentity(cfg.command!, cfg.args ?? []);
+      transport = new StdioClientTransport({
+        command: wrapped.command,
+        args: wrapped.args,
+        // Declared env ONLY (resolved from the encrypted store), plus the
+        // minimum a process needs to execute. Never `...process.env` — that
+        // handed every third-party server the host's full secret set (LLM
+        // provider keys, JWT secret, Redis URL).
+        env: buildStdioChildEnv(await this.resolveCredentials(cfg.env, 'env', serverName)),
+      });
+    } else {
+      transport = new StreamableHTTPClientTransport(new URL(cfg.url!), {
+        requestInit: { headers: await this.resolveCredentials(cfg.headers, 'headers', serverName) },
+      });
+    }
+
+    console.log(`🔌 [MCP] Connecting to server "${serverName}" (${cfg.transport})`);
+    try {
+      await withTimeout(client.connect(transport), timeoutMs, `MCP connect "${serverName}"`);
       this.clients.set(serverName, client);
-
-      const listed = await withTimeout(client.listTools(), CONNECT_TIMEOUT_MS, `MCP tools/list "${serverName}"`);
+      const listed = await withTimeout(client.listTools(), timeoutMs, `MCP tools/list "${serverName}"`);
       for (const tool of listed.tools) {
         this.tools.push({
           name: buildPrefixedName(serverName, tool.name),
@@ -226,8 +286,22 @@ export class McpConnectionManager {
         });
       }
       console.log(`🔌 [MCP] "${serverName}" connected — ${listed.tools.length} tool(s)`);
+      return { server: serverName, channel: 'mcp', status: 'connected', toolCount: listed.tools.length };
+    } catch (e) {
+      // Keep the "client in the map ⇔ its tools are registered" invariant:
+      // a client that connected but failed tools/list is closed and evicted.
+      const opened = this.clients.get(serverName);
+      if (opened) {
+        this.clients.delete(serverName);
+        await opened.close().catch(() => {});
+      }
+      throw e;
     }
-    this.connected = true;
+  }
+
+  /** Every connect attempt of this manager's declared servers, in declaration order. */
+  getConnectionReport(): ConnectionReport {
+    return this.report;
   }
 
   listToolInfos(): McpToolInfo[] {

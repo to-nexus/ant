@@ -5,9 +5,11 @@
  * the assistant `tool_use('clarify')` dangling (no tool_result). The next
  * turn — whatever its content: a card answer, a partial answer, or an
  * unrelated message — must close that call so the provider transcript stays
- * valid. One framing ("User replied:\n…") covers every case; the model infers
- * non-answers from content, exactly as canonical's overrideDirective
- * injection does.
+ * valid. One framing covers every case, and it says so explicitly — the reply
+ * may be an answer, a question, or a new request — so the structural position
+ * (tool_result of the agent's own question) does not coerce the model into
+ * reading every message as the answer; the model addresses what the text
+ * actually says, exactly as canonical's overrideDirective injection does.
  *
  * Detection is STRUCTURAL (tail assistant message ending in a clarify
  * tool_use) — the seal's `awaitingClarify` marker is advisory only, because
@@ -57,7 +59,7 @@ export function buildClarifyToolResultTurn(
         type: 'tool_result',
         tool_use_id: toolUseId,
         tool_name: CLARIFY_TOOL_NAME,
-        content: `User replied:\n${text}`,
+        content: `The user's reply follows — it may answer the question, ask something else, or start a new request; address what it actually says:\n${text}`,
       },
     ],
   };

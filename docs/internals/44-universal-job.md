@@ -560,11 +560,13 @@ apis:
 
 `resolveSelfApiConfig` (`restApi.ts`) resolves the base URL from
 `ANT_API_URL` — the env both spawn sites already inject — plus the `/api`
-mount, and attaches `ANT_SELF_API_TOKEN` when one exists. Both failures are
-definition-independent misconfiguration and therefore loud at connect time
-(`McpConfigError` → `config_invalid`): an absent/unusable `ANT_API_URL`, and
-cloud with no minted token. Local mode legitimately has neither a token nor an
-auth gate. The model-facing tool description says "this Ant server", never the
+mount, and attaches `ANT_SELF_API_TOKEN` when one exists. Both failures —
+an absent/unusable `ANT_API_URL`, and cloud with no minted token — are
+definition-independent misconfiguration surfacing as `McpConfigError` at
+connect time: fatal (`config_invalid`) on the unattended lane, a Capability
+Status fact on the attended lane like every other connect failure (uniform —
+no special cases; the agent tells the operator what is miswired). Local mode
+legitimately has neither a token nor an auth gate. The model-facing tool description says "this Ant server", never the
 resolved origin.
 
 This form exists because a definition must not hard-code an install's origin or
@@ -686,15 +688,44 @@ validation/idempotency/dry-run, take the capability-server escalation path
 - **Failure classification**: `McpConfigError` → `InterruptionReason
   'config_invalid'` at the single `job-runner` boundary — non-infrastructure,
   `canResume:false`, and explicitly **never** `process_crash`. A definition
-  mistake reported as a crash sends the reader to the wrong subsystem.
+  mistake reported as a crash sends the reader to the wrong subsystem. On the
+  attended lane this classification is now reachable only by the residual
+  fatal class (resolver not wired); connect failures degrade instead — see
+  the two-lane rule below.
 - **Write API**: `/api/credentials/mcp` — `GET` returns key names and
   `updatedAt` only (values are write-only), `PUT` upserts, `DELETE` removes.
   Rotation touches the store, never the definition file.
-- Connect is fail-loud at job start (`runner.ts`), 60s connect/call timeouts,
-  tools surfaced as `mcp__{server}__{tool}`. Handlers are registered into the
-  **existing** registry singleton — instance identity is a contract, not an
-  implementation detail (A1: replacing the singleton made every `mcp__*` call
-  resolve to `Unknown tool`).
+- **Connect runs at job start on two lanes** (`runner.ts` decides:
+  `failFast = unattended === true || pipelineRunId != null`), tools surfaced
+  as `mcp__{server}__{tool}`, 60s connect/call timeouts. Handlers are
+  registered into the **existing** registry singleton — instance identity is a
+  contract, not an implementation detail (A1: replacing the singleton made
+  every `mcp__*` call resolve to `Unknown tool`).
+  - **Unattended (fail-fast)**: the legacy fail-loud contract, byte-identical —
+    first failure closes everything, `McpConfigError` → `config_invalid`. A
+    scheduled run with half its tools must fail loud, not half-run.
+  - **Attended (degrade)**: each server connects independently
+    (`McpConnectionManager.connect({failFast:false, knownBad})`); a failure —
+    unregistered credential, unreachable server, 403, timeout, self-api wiring,
+    uniformly with **no special cases** — becomes a `ConnectionAttempt` in the
+    connection report, connected siblings stay open, and the graph runs. The
+    conversational floor is a runtime property: the failure is a FACT the
+    agent sees (the `Capability Status` band in `base.md`) and explains, never
+    a fatal state that mutes it. Loudness is preserved by the chat warning
+    (resolve emits plain markdown — no FE card) plus the band; what changed is
+    fatality. Servers that failed last turn retry with a short timeout
+    (`RETRY_CONNECT_TIMEOUT_MS`, seal field `lastConnectionReport` → the next
+    turn's `knownBad`) so a question turn is not held hostage by a known-dead
+    connection; the report marks them `repeated`.
+  - **`core/customAgents/connectionReport.ts` is the single owner** of the
+    report shape and of every rendering (prompt band rows, chat warning,
+    `[runtime]` failure note). Never add a second renderer or shape.
+  - **Residual fatal class on the attended lane**: the credential resolver not
+    being wired (Ant wiring, not user config) — and any graph crash. Both now
+    persist the user turn plus a bounded `[runtime]` failure note into
+    `session:main` before dying, so the NEXT turn's agent can answer "what
+    happened?" (before this, a pre-graph death left no trace in the agent's
+    memory at all — the user's question was never even recorded).
 - **Result spooling** (`runtime.ts`): a non-error result over
   `MCP_SPOOL_THRESHOLD_BYTES` is written to the artifacts sandbox at
   `mcp-results/{server}/{tool}-{seq}.txt` via `ctx.fileSystem` and only the
@@ -1713,7 +1744,7 @@ Declaration → evidence → gate → bounded bounce → interruption:
   job (7c27129e3).
 
 - **Hooks follow the act, not the label** (`activeStopHooksOf` with turn
-  evidence). Two rules, one reason — a hook was a per-INTENT label, and the
+  evidence). Three rules; the first two share one reason — a hook was a per-INTENT label, and the
   label was decided once per turn by the pin, so the label and the act could
   disagree in both directions. (1) `hooks.arm: on-write` (default `always`):
   a pinned intent's obligations arm only once the turn produced write
@@ -1736,6 +1767,27 @@ Declaration → evidence → gate → bounded bounce → interruption:
   (the builders' `review`) is never adopted, so its report is owed only on a
   pinned turn; its prose says so and points the user at the pin. The prompt band (judged before any tool ran) lists a pinned
   intent's declared hooks whole and says which arm only on a write.
+
+(3) **Inherited turns arm on-write, whatever the declared arm**
+(`activeStopHooksOf(..., {inheritedTurn})`, keyed on
+`turnContext.source === 'inherited'` — all three inheritance rails: clarify,
+approval, stop-hook seal). The pause already proved the contract exists and
+the seal carries it, so a continuation that only answers a question owes
+nothing THIS turn. The contract is deferred, never lost:
+`shouldDeferInheritedContract` (inherited ∧ not plan ∧ not paused ∧ pinned
+hooks exist ∧ no write evidence) makes respond RE-SEAL `awaitingStopHooks` +
+`hookTurnContext` + the carried ledger while the job ends as a normal success
+with one manifest line ("the completion contract is still pending") — without
+that re-seal a question-only continuation would self-clear the pause markers
+and silently lose the contract. An endless Q&A chain defers forever by
+design; an explicit `@intent:` pin always outranks inheritance, so the exit
+is one message away. This is the C-half of the conversational-floor work: the
+B-half is the prompt's `Turn Model` section (rules.md — each message is work,
+a question, or feedback; answering IS a complete turn; the Active Intent
+Instructions header and the checklist band carry matching one-line clauses),
+and the clarify closure (`toolResume.ts`) frames the user's reply as
+"may answer, ask something else, or start a new request" so the tool_result
+position does not coerce every message into being read as the answer.
 
 Exemptions (all pure code): plan turns (plan_complete owns their contract;
 writes are plan/-confined), clarify pauses (deferred — the answer turn

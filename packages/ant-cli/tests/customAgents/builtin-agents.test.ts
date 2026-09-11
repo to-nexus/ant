@@ -372,7 +372,7 @@ describe('shipped agent-builder definition', () => {
     vi.stubEnv('ANT_SERVER_MODE', 'local');
     const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
     const mcp = new McpConnectionManager({}, { resolve: async () => undefined }, resolved.apiServers);
-    await mcp.connect();
+    await mcp.connect({ failFast: true });
     expect(mcp.listToolInfos().map((t) => t.name)).toEqual(['api__ant__get', 'api__ant__request']);
     // Read-exempt vs write-gated, decided per tool name by the approval gate.
     expect(mcp.listToolInfos().map((t) => t.readOnlyHint)).toEqual([true, false]);

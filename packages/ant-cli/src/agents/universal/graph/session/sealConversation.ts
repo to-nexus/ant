@@ -51,13 +51,18 @@ export function buildUniversalErrorSealState<T extends { role: string; content: 
   sessionChannel?: string;
   /** Channels this seal must carry through — state is replaced wholesale. */
   carriedChannels?: Record<string, T[]>;
+  /** This turn's extension-connect attempts — persisted (failures present) as
+   *  `lastConnectionReport`, the next turn's fast-retry set. */
+  connectionReport?: import('../../../../core/customAgents/connectionReport').ConnectionReport;
 }): Record<string, unknown> {
   const channel = args.sessionChannel ?? CONV_KEYS.SESSION_MAIN;
+  const hasFailures = (args.connectionReport ?? []).some((a) => a.status === 'failed');
   return {
     conversations: { ...(args.carriedChannels ?? {}), [channel]: sealUniversalConversation(args.main) },
     conversationChannel: channel,
     customJobRef: args.customJobRef,
     ...(args.restoredClarifyRounds !== undefined && { clarifyRoundsUsed: args.restoredClarifyRounds }),
     ...(args.restoredChecklist && { checklist: args.restoredChecklist }),
+    ...(hasFailures && { lastConnectionReport: args.connectionReport }),
   };
 }

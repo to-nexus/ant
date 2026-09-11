@@ -542,7 +542,13 @@ debugging session.
   everything else is a literal. `validateMcpServers` in `@ant/shared` is the one
   rule set, with three failure shapes (throw / 400 / form-disable).
 - `buildStdioChildEnv()` allowlist for stdio children; `McpConfigError` →
-  `config_invalid`, never `process_crash`.
+  `config_invalid`, never `process_crash`. Connect failures are fatal on the
+  UNATTENDED lane only (pipeline/scheduled — `failFast`); an attended turn
+  DEGRADES per server and runs, with the failure as a fact the agent explains
+  (the `Capability Status` band). `core/customAgents/connectionReport.ts` is
+  the single owner of that report's shape and every rendering — never add a
+  second renderer, and never re-derive the lane anywhere but the runner's
+  `failFast` rule (doc 44).
 - Phase-node blindness applies here too: the universal graph must not learn
   `task.type` or execution tiers — it has neither.
 - **Universal's leftover work is an unsealed TURN, not a task queue.** Resume

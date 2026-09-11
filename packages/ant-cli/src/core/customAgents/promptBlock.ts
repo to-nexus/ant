@@ -126,7 +126,11 @@ export function buildCustomJobSystemBlock(
     const sections = inlined.map(
       (id) => `### ${id} — ${INTENTS_DIR_NAME}/${id}/${INTENT_PROMPT_FILE_NAME}\n\n${promptOf(id)!.trim()}`,
     );
-    parts.push(`## Active Intent Instructions (intents: ${activeIntents.join(', ')})\n\n${sections.join('\n\n')}`);
+    parts.push(
+      `## Active Intent Instructions (intents: ${activeIntents.join(', ')})\n\n` +
+      `These instructions govern how to perform this intent's work. If the user's message is a question or feedback rather than a request to do or continue that work, answer it directly first.\n\n` +
+      sections.join('\n\n'),
+    );
   }
 
   const inlinedSet = new Set(inlined);

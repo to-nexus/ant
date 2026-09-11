@@ -27,6 +27,11 @@ import { parseSealedHookLedger, type StopHookCheck, type StopHookLedger } from '
 import { carriedSealChannels, universalConversationChannel } from '../../../core/customAgents/universalConversation';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
+import {
+  buildRuntimeFailureNote,
+  failedServerNamesOf,
+  type ConnectionReport,
+} from '../../../core/customAgents/connectionReport';
 import { buildUniversalRegistry, setUniversalMcp } from './runtime';
 import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../composition/gracefulShutdown';
 
@@ -105,6 +110,9 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let sealedAwaitingStopHooks = false;
   let sealedApprovalToolUseId: string | undefined;
   let restoredApprovalContext: InheritedTurnContext | undefined;
+  // Servers that failed last turn — retried with a short timeout so a question
+  // turn is not held hostage by a known-dead connection (fast-retry lane).
+  let knownBadServers: ReadonlySet<string> = new Set<string>();
   // The stored channel for this turn; the graph works on session:main in
   // memory and the seal maps back (nodes stay channel-blind).
   const sessionChannel = universalConversationChannel(params.pipelineRunId);
@@ -136,6 +144,9 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         if (sessionState.awaitingApproval === true && typeof sessionState.approvalToolUseId === 'string') {
           sealedApprovalToolUseId = sessionState.approvalToolUseId;
           restoredApprovalContext = parseSealedTurnContext(sessionState.approvalTurnContext);
+        }
+        if (Array.isArray(sessionState.lastConnectionReport)) {
+          knownBadServers = new Set(failedServerNamesOf(sessionState.lastConnectionReport));
         }
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns (${sessionChannel})`);
       }
@@ -226,29 +237,66 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   const adoptedHookLedger = dangling || danglingApproval || sealedAwaitingStopHooks ? restoredHookLedger : undefined;
   conversations[CONV_KEYS.SESSION_MAIN] = main;
 
-  // ── MCP connect (fail-loud: the definition declared these servers).
-  // Every connect failure — unregistered credential key, unreachable server,
-  // timeout, handshake error — crosses this single boundary as McpConfigError
-  // so job-runner classifies it as config_invalid, never process_crash.
+  // ── Turn seal for paths that die before respond runs. `main` already
+  // carries this turn's user message, so persisting it is what keeps the turn
+  // in the agent's memory; `connectionReport` rides along for the next turn's
+  // fast-retry set. (Full docs on the respond-vs-runner seal split below.)
+  let connectionReport: ConnectionReport = [];
+  const sealTurnState = () => buildUniversalErrorSealState({
+    main,
+    customJobRef: `${resolved.agentId}/${resolved.jobId}`,
+    restoredClarifyRounds,
+    restoredChecklist,
+    sessionChannel,
+    carriedChannels,
+    connectionReport,
+  });
+  // The conversational floor is a runtime property: even a turn that dies
+  // before the agent runs must leave the user's message AND the failure fact
+  // in session:main, so the NEXT turn's agent can answer "what happened?".
+  const persistFatalTurn = async (error: unknown) => {
+    main.push(buildRuntimeFailureNote(error) as ConversationMessage);
+    if (!params.deps.session) return;
+    try {
+      await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
+        state: sealTurnState(),
+      });
+    } catch { /* best-effort — the thrown error stays the loud signal */ }
+  };
+
+  // ── Extension connect — two lanes (doc 44):
+  //  - attended (interactive turn): per-server DEGRADE. A connect failure is a
+  //    fact in the connection report — the agent runs without that server's
+  //    tools, sees the Capability Status band, and can explain/guide the fix.
+  //  - unattended (pipeline/scheduled): fail-loud, byte-identical legacy — a
+  //    half-capable scheduled run must fail as McpConfigError → config_invalid.
   let mcp: McpConnectionManager | null = null;
   if (Object.keys(resolved.mcpServers).length > 0 || Object.keys(resolved.apiServers).length > 0) {
+    const failFast = params.unattended === true || params.pipelineRunId != null;
     const resolver = params.deps.mcpCredentialResolver;
     if (!resolver) {
-      throw new McpConfigError(
+      // Ant wiring, not user config — always fatal, but leave the memory note.
+      const err = new McpConfigError(
         `Definition ${resolved.agentId}/${resolved.jobId} declares mcp.servers/apis but no credential resolver was wired`,
       );
+      await persistFatalTurn(err);
+      throw err;
     }
     mcp = new McpConnectionManager(resolved.mcpServers, resolver, resolved.apiServers);
     try {
-      await mcp.connect();
+      await mcp.connect({ failFast, knownBad: knownBadServers });
     } catch (e) {
       await mcp.close().catch(() => {});
-      if (isMcpConfigError(e)) throw e;
-      throw new McpConfigError(
-        `MCP server connect failed: ${e instanceof Error ? e.message : String(e)}`,
-        { cause: e },
-      );
+      const err = isMcpConfigError(e)
+        ? e
+        : new McpConfigError(
+            `MCP server connect failed: ${e instanceof Error ? e.message : String(e)}`,
+            { cause: e },
+          );
+      await persistFatalTurn(err);
+      throw err;
     }
+    connectionReport = mcp.getConnectionReport();
   }
   setUniversalMcp(mcp);
   buildUniversalRegistry(mcp);
@@ -290,6 +338,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     approvalGrantTool: params.approvalGrantTool,
     sessionChannel,
     carriedChannels,
+    connectionReport: connectionReport.length > 0 ? connectionReport : undefined,
   });
   if (restoredTokenUsage) (initialState as any).tokenUsage = restoredTokenUsage;
   if (restoredTokenUsageByModel) (initialState as any).tokenUsageByModel = restoredTokenUsageByModel;
@@ -297,27 +346,18 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   const chatAPI = getChatAPIClient();
   let finalState: UniversalGraphState;
 
-  /**
-   * The turn's own state, sealed as it stood when the graph started.
-   *
-   * `main` already carries the interrupted user turn (the runner pushed it
-   * above, stamped with this jobId), so persisting it is what makes the turn
-   * resumable: the resume route re-dispatches the recovered directive, and the
-   * runner's turn admission sees the stamp and does NOT append it twice.
-   *
-   * The IN-GRAPH conversation is deliberately not reachable here: `invokeGraph`
-   * uses `.invoke()`, so intermediate states are unobservable, and a mutable
-   * side-channel written from phase nodes would teach the universal graph
-   * about its own persistence. The pre-graph snapshot is the honest part.
-   */
-  const sealTurnState = () => buildUniversalErrorSealState({
-    main,
-    customJobRef: `${resolved.agentId}/${resolved.jobId}`,
-    restoredClarifyRounds,
-    restoredChecklist,
-    sessionChannel,
-    carriedChannels,
-  });
+  // The turn's own state, sealed as it stood when the graph started — defined
+  // above the connect block (it serves the fatal paths too).
+  //
+  // `main` already carries the interrupted user turn (the runner pushed it
+  // above, stamped with this jobId), so persisting it is what makes the turn
+  // resumable: the resume route re-dispatches the recovered directive, and the
+  // runner's turn admission sees the stamp and does NOT append it twice.
+  //
+  // The IN-GRAPH conversation is deliberately not reachable here: `invokeGraph`
+  // uses `.invoke()`, so intermediate states are unobservable, and a mutable
+  // side-channel written from phase nodes would teach the universal graph
+  // about its own persistence. The pre-graph snapshot is the honest part.
 
   // Graceful-shutdown seal. The registry takes anything shaped like
   // `{ handleInterruption(reason) }` — the task orchestrator is just its usual
@@ -359,11 +399,13 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
       console.warn('⚠️ [Universal] Cleanup failed:', cleanupError);
     }
 
-    // Best-effort session save so the user turn + partial rounds survive.
+    // Best-effort session save so the user turn + partial rounds + the failure
+    // fact survive into the agent's memory (the next turn can explain it).
     if (params.deps.session) {
       try {
         // NOTE: this save can never contain a dangling clarify tool_use —
         // `main` is the pre-graph history; only respond's seal persists one.
+        main.push(buildRuntimeFailureNote(error) as ConversationMessage);
         await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
           state: sealTurnState(),
         });

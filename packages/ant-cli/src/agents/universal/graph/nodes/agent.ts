@@ -36,6 +36,7 @@ import { transformAndStrip } from '../../../../core/streaming/OutputTagRegistry'
 import { ToolFileStreamer } from '../../../../core/streaming/ToolFileStreamer';
 import { TEMPLATE_PATHS } from '../../../../core/prompt/builder/templatePaths';
 import { buildCustomJobSystemBlock, DEFINITION_MOUNT_PREFIX } from '../../../../core/customAgents/promptBlock';
+import { formatCapabilityStatusLines, hasConnectionFailures } from '../../../../core/customAgents/connectionReport';
 import { getToolsByNames } from '../../../common/tool/toolSchemas';
 import { ToolName } from '../../../common/tool/toolCatalog';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../common/subagent';
@@ -86,7 +87,11 @@ async function buildSystemPrompt(
   const turnStopHooks =
     state.turnContext?.planTurn === true
       ? []
-      : formatStopHookContractLines(activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? []));
+      : formatStopHookContractLines(
+          activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? [], undefined, {
+            inheritedTurn: state.turnContext?.source === 'inherited',
+          }),
+        );
   // Declared decision vocabulary of the pinned intent (≤1 by contract) — the
   // agent must end its final reply with one of these as a <verdict> tag; the
   // seal lifts it and pipeline verdict edges route on it.
@@ -104,6 +109,11 @@ async function buildSystemPrompt(
       artifactsOverview: state.artifactsOverview || '(not scanned)',
       hasMcpServers: Object.keys(resolved.mcpServers).length > 0,
       hasApiServers: Object.keys(resolved.apiServers).length > 0,
+      // Capability Status band — attended-lane connect failures as FACTS the
+      // agent can explain (the conversational floor is a runtime property).
+      capabilityStatus: hasConnectionFailures(state.connectionReport)
+        ? formatCapabilityStatusLines(state.connectionReport ?? [])
+        : undefined,
       definitionMount: DEFINITION_MOUNT_PREFIX,
       // @plan turn axis: per-turn plan-mode request — writes outside plan/
       // are gated in the tool node while this is set.
@@ -502,7 +512,9 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
         actions: state._turnToolActions ?? [],
         ledger: state.restoredHookLedger,
       };
-      const activeHooks = activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? [], evidence);
+      const activeHooks = activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? [], evidence, {
+        inheritedTurn: state.turnContext?.source === 'inherited',
+      });
       if (activeHooks.length > 0) {
         const rawChecks = checkStopHooks(activeHooks, evidence);
         const fileSystem = state.deps?.fileSystem;

@@ -31,6 +31,7 @@ import type { UniversalGraphState, UniversalTurnContext } from '../state';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import { formatTurnContextForChat } from '../../../../core/customAgents/turnContextChat';
+import { formatConnectionWarningForChat } from '../../../../core/customAgents/connectionReport';
 import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
 
 const OVERVIEW_MAX_ENTRIES = 50;
@@ -143,6 +144,24 @@ async function emitTurnContextCard(
   }
 }
 
+/**
+ * Attended-lane degrade visibility: the connect failures the runner recorded
+ * are announced in chat as plain markdown (no FE card type). Loudness is
+ * preserved — what changed is fatality. Non-blocking like the card above.
+ */
+async function emitConnectionWarning(state: UniversalGraphState): Promise<void> {
+  try {
+    const text = formatConnectionWarningForChat(state.connectionReport, state.language);
+    if (!text) return;
+    const chatAPI = getChatAPIClient();
+    await chatAPI.startMessage();
+    await chatAPI.sendLLMEvent({ type: 'text', text });
+    await chatAPI.finalizeMessage();
+  } catch (e) {
+    console.warn('⚠️ [Universal:Resolve] Connection warning emit failed:', e instanceof Error ? e.message : String(e));
+  }
+}
+
 async function resolveCommon(state: UniversalGraphState): Promise<Partial<UniversalGraphState>> {
   const resolved = requireActiveCustomJob();
   console.log(`🧭 [Universal:Resolve] ${resolved.agentId}/${resolved.jobId} (scope: ${resolved.scope})`);
@@ -151,6 +170,7 @@ async function resolveCommon(state: UniversalGraphState): Promise<Partial<Univer
   const planDocs = await listPlanDocs(state, `plan/${resolved.agentId}/${resolved.jobId}`);
   const turnContext = buildTurnContext(state);
   await emitTurnContextCard(state, resolved, turnContext);
+  await emitConnectionWarning(state);
   return { artifactsOverview, planDocs, turnContext };
 }
 

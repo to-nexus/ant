@@ -39,6 +39,13 @@ import {
 } from '../../src/agents/universal/graph/runtime';
 import { ToolResultManager } from '../../src/core/utils/toolResultManager';
 import { TokenBudgetManager } from '../../src/core/utils/tokenBudget';
+import {
+  buildRuntimeFailureNote,
+  failedServerNamesOf,
+  formatCapabilityStatusLines,
+  formatConnectionWarningForChat,
+} from '../../src/core/customAgents/connectionReport';
+import { buildUniversalErrorSealState } from '../../src/agents/universal/graph/session/sealConversation';
 
 const READ_TOOL = 'mcp__ops-db__list_incidents';
 const WRITE_TOOL = 'mcp__ops-db__push';
@@ -416,12 +423,14 @@ describe('validateMcpServers — MCP env key denylist (H-014)', () => {
 });
 
 /**
- * A16 credential resolution — store-only, never process.env. The connect()
- * boundary is where an unregistered key must fail loud (typed McpConfigError →
- * `config_invalid` classification), and where a definition naming one of Ant's
- * own env vars must resolve to a store MISS rather than the host secret.
+ * A16 credential resolution — store-only, never process.env — across the TWO
+ * connect lanes. Unattended (`failFast: true`) keeps the legacy fail-loud
+ * contract: the first failure rejects with a typed McpConfigError →
+ * `config_invalid`. Attended (`failFast: false`) degrades per server: the same
+ * failure becomes a `failed` attempt in the connection report (the fact the
+ * agent explains), and the host secret still never leaks either way.
  */
-describe('universal MCP runtime — credential resolution is store-only', () => {
+describe('universal MCP runtime — credential resolution is store-only (two lanes)', () => {
   const stubResolver = (entries: Record<string, string>): McpCredentialResolver => ({
     resolve: async (key) => entries[key],
   });
@@ -438,9 +447,9 @@ describe('universal MCP runtime — credential resolution is store-only', () => 
   it.each([
     ['stdio env', { s: { transport: 'stdio' as const, command: 'npx', env: { TOKEN: '${secret:UNREGISTERED_KEY}' } } }],
     ['http headers', { s: { transport: 'http' as const, url: 'http://localhost:9', headers: { Authorization: '${secret:UNREGISTERED_KEY}' } } }],
-  ])('an unregistered %s reference rejects with a typed McpConfigError before any connect', async (_label, servers) => {
+  ])('fail-fast: an unregistered %s reference rejects with a typed McpConfigError before any connect', async (_label, servers) => {
     const mcp = new McpConnectionManager(servers, stubResolver({}));
-    const err = await mcp.connect().then(
+    const err = await mcp.connect({ failFast: true }).then(
       () => null,
       (e) => e,
     );
@@ -448,29 +457,142 @@ describe('universal MCP runtime — credential resolution is store-only', () => 
     expect(String(err.message)).toMatch(/not registered/);
   });
 
-  it("a definition referencing one of Ant's own env vars gets a store miss, not the host secret", async () => {
-    // ANTHROPIC_API_KEY is set on the host (beforeEach). Store-only resolution
-    // means the exfiltration attempt dies as an unregistered-key config error.
-    const mcp = new McpConnectionManager(
-      { s: { transport: 'http', url: 'http://localhost:9', headers: { X: '${secret:ANTHROPIC_API_KEY}' } } },
-      stubResolver({}),
-    );
-    await expect(mcp.connect()).rejects.toMatchObject({ isMcpConfigError: true });
+  it.each([
+    ['stdio env', { s: { transport: 'stdio' as const, command: 'npx', env: { TOKEN: '${secret:UNREGISTERED_KEY}' } } }],
+    ['http headers', { s: { transport: 'http' as const, url: 'http://localhost:9', headers: { Authorization: '${secret:UNREGISTERED_KEY}' } } }],
+  ])('attended: an unregistered %s reference degrades to a config-kind report fact', async (_label, servers) => {
+    const mcp = new McpConnectionManager(servers, stubResolver({}));
+    await mcp.connect({ failFast: false });
+    expect(mcp.getConnectionReport()).toEqual([
+      expect.objectContaining({ server: 's', channel: 'mcp', status: 'failed', errorKind: 'config' }),
+    ]);
+    expect(mcp.getConnectionReport()[0].error).toMatch(/not registered/);
+    expect(mcp.listToolInfos()).toEqual([]);
   });
+
+  it.each([[true], [false]] as const)(
+    "a definition referencing one of Ant's own env vars gets a store miss, not the host secret (failFast: %s)",
+    async (failFast) => {
+      // ANTHROPIC_API_KEY is set on the host (beforeEach). Store-only resolution
+      // means the exfiltration attempt dies as an unregistered-key config error
+      // on both lanes — and the report never carries the host value.
+      const mcp = new McpConnectionManager(
+        { s: { transport: 'http', url: 'http://localhost:9', headers: { X: '${secret:ANTHROPIC_API_KEY}' } } },
+        stubResolver({}),
+      );
+      if (failFast) {
+        await expect(mcp.connect({ failFast })).rejects.toMatchObject({ isMcpConfigError: true });
+      } else {
+        await mcp.connect({ failFast });
+        const [attempt] = mcp.getConnectionReport();
+        expect(attempt.status).toBe('failed');
+        expect(attempt.errorKind).toBe('config');
+        expect(attempt.error).not.toContain('sk-host-secret');
+      }
+    },
+  );
 
   it('a plain-text value passes through without touching the store — only ${secret:…} resolves', async () => {
     // Header value is NOT a reference, so credential resolution must pass it
     // verbatim and proceed to the (unreachable) connect — the failure is a
-    // network error, never a typed McpConfigError.
-    const mcp = new McpConnectionManager(
-      { s: { transport: 'http', url: 'http://127.0.0.1:9', headers: { 'X-Workspace-Id': 'ws-abc' } } },
-      stubResolver({}),
-    );
-    const err = await mcp.connect().then(
+    // network error, never a typed McpConfigError; the attended lane records
+    // it as a connect-kind fact.
+    const servers = { s: { transport: 'http' as const, url: 'http://127.0.0.1:9', headers: { 'X-Workspace-Id': 'ws-abc' } } };
+    const fatal = await new McpConnectionManager(servers, stubResolver({})).connect({ failFast: true }).then(
       () => null,
       (e) => e,
     );
-    expect(err).not.toBeNull();
-    expect(isMcpConfigError(err)).toBe(false);
+    expect(fatal).not.toBeNull();
+    expect(isMcpConfigError(fatal)).toBe(false);
+
+    const mcp = new McpConnectionManager(servers, stubResolver({}));
+    await mcp.connect({ failFast: false });
+    expect(mcp.getConnectionReport()).toEqual([
+      expect.objectContaining({ server: 's', status: 'failed', errorKind: 'connect' }),
+    ]);
+  });
+
+  it('attended: a failing MCP server does not take a connected sibling down — its tools survive', async () => {
+    // A declared REST API compiles with no network I/O, so it stands in for
+    // the "connected sibling"; the MCP server on a dead port fails.
+    const mcp = new McpConnectionManager(
+      { bad: { transport: 'http', url: 'http://127.0.0.1:9' } },
+      stubResolver({}),
+      { good: { baseUrl: 'http://127.0.0.1:9', headers: { 'X-K': 'v' } } as any },
+    );
+    await mcp.connect({ failFast: false });
+    const report = mcp.getConnectionReport();
+    expect(report).toEqual([
+      expect.objectContaining({ server: 'good', channel: 'api', status: 'connected', toolCount: 2 }),
+      expect.objectContaining({ server: 'bad', channel: 'mcp', status: 'failed' }),
+    ]);
+    expect(mcp.listToolInfos().map((t) => t.name).sort()).toEqual(['api__good__get', 'api__good__request']);
+  });
+
+  it('attended: a server named in knownBad reports repeated: true when it fails again', async () => {
+    const mcp = new McpConnectionManager(
+      { s: { transport: 'http', url: 'http://127.0.0.1:9' } },
+      stubResolver({}),
+    );
+    await mcp.connect({ failFast: false, knownBad: new Set(['s']) });
+    expect(mcp.getConnectionReport()[0]).toMatchObject({ status: 'failed', repeated: true });
+  });
+});
+
+/**
+ * Connection report — single owner of the degrade fact and its renderings
+ * (prompt band, chat warning, runtime failure note, fast-retry set). Gates
+ * only: presence/absence and structural content, never pinned prose.
+ */
+describe('connectionReport — renderers and the fast-retry set', () => {
+  const failed = {
+    server: 'jira', channel: 'mcp' as const, status: 'failed' as const,
+    error: 'credential key "JIRA_TOKEN" is not registered', errorKind: 'config' as const,
+  };
+  const ok = { server: 'ant', channel: 'api' as const, status: 'connected' as const, toolCount: 2 };
+
+  it('failedServerNamesOf: failures only — the next turn retries exactly these fast', () => {
+    expect(failedServerNamesOf([ok, failed])).toEqual(['jira']);
+    expect(failedServerNamesOf([ok])).toEqual([]);
+    expect(failedServerNamesOf(undefined)).toEqual([]);
+  });
+
+  it('capability-status lines: head count + one row per failure, naming server and error; empty without failures', () => {
+    const lines = formatCapabilityStatusLines([ok, failed]);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('1 of 2');
+    expect(lines[1]).toContain('jira');
+    expect(lines[1]).toContain('JIRA_TOKEN');
+    expect(formatCapabilityStatusLines([ok])).toEqual([]);
+  });
+
+  it('repeated failure is marked on the row (fast-retry visibility)', () => {
+    const lines = formatCapabilityStatusLines([{ ...failed, repeated: true }]);
+    expect(lines[1]).toMatch(/again/);
+  });
+
+  it('chat warning: null without failures; names each failed server with its error when present', () => {
+    expect(formatConnectionWarningForChat([ok], 'en')).toBeNull();
+    expect(formatConnectionWarningForChat(undefined, 'ko')).toBeNull();
+    const text = formatConnectionWarningForChat([ok, failed], 'ko');
+    expect(text).toContain('jira');
+    expect(text).toContain('JIRA_TOKEN');
+  });
+
+  it('runtime failure note: user-role, [runtime]-prefixed, carries the bounded error message', () => {
+    const note = buildRuntimeFailureNote(new Error('MCP server connect failed: 403 access blocked'));
+    expect(note.role).toBe('user');
+    expect(note.content).toMatch(/^\[runtime\]/);
+    expect(note.content).toContain('403 access blocked');
+    const long = buildRuntimeFailureNote(new Error('x'.repeat(5000)));
+    expect(long.content.length).toBeLessThan(2000);
+  });
+
+  it('error-path seal carries lastConnectionReport only when failures exist (self-clear on healthy turns)', () => {
+    const base = { main: [], customJobRef: 'a/j' };
+    const withFailures = buildUniversalErrorSealState({ ...base, connectionReport: [ok, failed] });
+    expect(withFailures.lastConnectionReport).toEqual([ok, failed]);
+    const healthy = buildUniversalErrorSealState({ ...base, connectionReport: [ok] });
+    expect(healthy).not.toHaveProperty('lastConnectionReport');
   });
 });
