@@ -43,9 +43,12 @@ import {
 } from './paths';
 
 export class PipelineValidationError extends Error {
-  constructor(message: string, public readonly pipelineId?: string) {
+  /** Every broken rule when the source was a full validation pass; `[message]` otherwise. */
+  public readonly errors: string[];
+  constructor(message: string, public readonly pipelineId?: string, errors?: string[]) {
     super(message);
     this.name = 'PipelineValidationError';
+    this.errors = errors && errors.length > 0 ? errors : [message];
   }
 }
 
@@ -127,7 +130,9 @@ export function parsePipelineYaml(text: string, pipelineId?: string): PipelineDe
   }
   const errors = validatePipelineDefServer(raw);
   if (errors.length > 0) {
-    throw new PipelineValidationError(errors[0], pipelineId);
+    // The whole list, as `POST /` answers it: an author fixing one rule per
+    // round trip is the guessing loop the builder prose promises against.
+    throw new PipelineValidationError(errors[0], pipelineId, errors);
   }
   return raw as PipelineDef;
 }

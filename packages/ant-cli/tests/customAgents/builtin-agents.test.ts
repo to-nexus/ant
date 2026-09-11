@@ -96,6 +96,11 @@ describe('shipped builtin definitions — smoke', () => {
       expect((cfg as unknown as Record<string, unknown>).headers).toBeUndefined();
     }
 
+    // H9/H10 are advisories at load and `valid: false` at save — a shipped
+    // definition carries none (a review prompt that stops naming its
+    // `review-report/` directory, or prose naming a sibling intent id, fails here).
+    expect(resolved.advisories ?? []).toEqual([]);
+
     // Every intent that advertises a prompt carries a preloaded non-blank body.
     for (const intent of resolved.intents) {
       if (intent.hasPrompt) {
@@ -266,16 +271,46 @@ describe('shipped assistant definition', () => {
 describe('shipped agent-builder definition', () => {
   it('agent-builder/author exposes the authoring catalog — every intent carries its own prompt', () => {
     const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
-    // ONE intent. `review` was a hookless twin of build that existed only
-    // because build's contract was owed unconditionally — a pinned build turn
-    // that merely answered had to exit through clarify. `arm: on-write` made
-    // that twin unnecessary: the same intent explains, audits, or edits, and
-    // only the edit is a contract. Read-only is the `@plan` turn's job, not an
-    // intent's.
-    expect(resolved.intents.map((i) => i.id)).toEqual(['build']);
+    // TWO intents, each with its own act. The first `review` was a hookless
+    // twin of build (prose saying "do not write", nothing backing it) that
+    // existed only because build's contract was owed unconditionally;
+    // `arm: on-write` removed that reason and the twin went. This `review` is
+    // not that: its act is the traceability report (material → definition,
+    // unit by unit), contracted by its own artifact hook. Read-only with no
+    // deliverable is still the `@plan` turn's job, never an intent's.
+    expect(resolved.intents.map((i) => i.id)).toEqual(['build', 'review']);
     for (const intent of resolved.intents) {
       expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
       expect(intent.infer).not.toContain('#');
+    }
+  });
+
+  // The review's deliverable IS the record — default arm (`always`, dropped on
+  // normalization), so a pinned review turn that wrote no report is bounced,
+  // and clarify (an input missing) stays the one sanctioned exit. Structural
+  // tokens only: the report path scheme, the mechanically-diffed first column,
+  // the invariant line and the two vocabularies a later turn finds rows by.
+  it('review contracts its report and names the trace contract a script can diff', () => {
+    const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
+    const review = resolved.intents.find((i) => i.id === 'review');
+    expect(review?.hooks).toEqual({ stop: [{ artifact: 'review-report/*.md' }] });
+    expect(review?.clarify).toBeUndefined();
+    const prompt = resolved.intentPrompts.review!;
+    expect(prompt).toContain('review-report/{agentId}.md');
+    expect(prompt).toContain('review-report/{agentId}-{mnemonic}.md');
+    expect(prompt).toContain('| material path |');
+    expect(prompt).toContain('files without a row');
+    for (const token of [
+      'verdict: carried | merged→{id} | split→{ids} | changed | dropped | retired-in-material | stub-in-material',
+      'claim: claimed | not-claimed | misclaimed',
+      '## Trace',
+      '## Reverse trace',
+      '## Authoring report claims',
+      '## Form coverage',
+      '## Findings',
+      '## Judgment calls',
+    ]) {
+      expect(prompt).toContain(token);
     }
   });
 
@@ -426,11 +461,37 @@ describe('shipped agent-builder definition', () => {
 describe('shipped pipeline-builder definition', () => {
   it('pipeline-builder/author exposes the authoring catalog — every intent carries its own prompt', () => {
     const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
-    // ONE intent — same reasoning as agent-builder above.
-    expect(resolved.intents.map((i) => i.id)).toEqual(['build']);
+    // TWO intents — same reasoning as agent-builder above.
+    expect(resolved.intents.map((i) => i.id)).toEqual(['build', 'review']);
     for (const intent of resolved.intents) {
       expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
       expect(intent.infer).not.toContain('#');
+    }
+  });
+
+  it('review contracts its report under a suffix that keeps the shared directory collision-free', () => {
+    const resolved = loadCustomJob(builtinRoots, 'pipeline-builder', 'author');
+    const review = resolved.intents.find((i) => i.id === 'review');
+    expect(review?.hooks).toEqual({ stop: [{ artifact: 'review-report/*.md' }] });
+    expect(review?.clarify).toBeUndefined();
+    const prompt = resolved.intentPrompts.review!;
+    // Both builders write into `review-report/`; an agent and a pipeline may
+    // share an id, so the pipeline review carries a suffix.
+    expect(prompt).toContain('review-report/{pipelineId}-pipeline.md');
+    expect(prompt).toContain('review-report/{pipelineId}-pipeline-{mnemonic}.md');
+    expect(prompt).toContain('| material path |');
+    expect(prompt).toContain('files without a row');
+    for (const token of [
+      'verdict: carried | merged→{stepId} | split→{stepIds} | changed | dropped | retired-in-material | no-cadence-claim',
+      'claim: claimed | not-claimed | misclaimed',
+      'destination: trigger | {pipelineId}/{stepId} | gate:{stepId} | relay | boundary',
+      '## Trace',
+      '## Reverse trace',
+      '## Authoring report claims',
+      '## Findings',
+      '## Judgment calls',
+    ]) {
+      expect(prompt).toContain(token);
     }
   });
 

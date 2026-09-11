@@ -2,8 +2,10 @@
 
 Read this when the turn asks ABOUT a pipeline rather than to change it —
 explain what it does and when it fires, check a definition against the agents
-it runs and the material it automates, or diagnose why a draft will not save.
-It is the build contract applied after the fact.
+it runs, or diagnose why a draft will not save — and on every review turn,
+where it is the definition-internal half of the review (the other half, the
+material's cadence traced claim by claim, is the review intent's own
+procedure). It is the authoring contract applied after the fact.
 
 **Read the definition, its agents, its report, and its runs.**
 
@@ -132,9 +134,10 @@ step, and say which:
 **Report.** Two sections, kept apart: findings (a contract mechanism unmet, a
 step that cannot work as written, a mismatch with the material) and judgment
 calls (a defensible choice whose cost is worth naming). Never conclude that a
-definition is compliant while a mechanism above is unmet — count it. Findings
-are the answer; write nothing: a turn that only reads and answers owes nothing
-under the build contract, and a file written now arms it — the save is then
-owed too. When the user wants a durable audit or a fix plan, that is a `@plan`
-turn: findings and the proposed step edits land under `plan/`, and the plan
-card carries them into the build turn that applies them.
+definition is compliant while a mechanism above is unmet — count it. On a
+question turn, findings are the answer; write nothing: a turn that only reads
+and answers owes nothing under the authoring contract, and a file written now
+arms it — the save is then owed too. A record that outlives the chat is the
+review intent's report under `review-report/` (pin that intent); a fix plan is
+a `@plan` turn, whose findings and proposed step edits land under `plan/` and
+ride the plan card into the authoring turn that applies them.

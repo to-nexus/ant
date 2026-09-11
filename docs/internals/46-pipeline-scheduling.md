@@ -980,9 +980,14 @@ route (agents resource GET-only — the lane guard in
 `tests/customAgents/builtin-agents.test.ts` pins both builtins' halves).
 Everything such a job writes lands as a disabled draft and stays immutable
 once enabled, so the availability machine (§1) is what makes machine authoring
-safe: the job drafts, a person publishes and activates. There is no YAML
-import route and none is needed — the API takes `{ id, def }` as JSON, and the
-agent composes `def` directly.
+safe: the job drafts, a person publishes and activates. The API takes
+`{ id, def }` as JSON and the agent composes `def` directly; the one YAML lane,
+`POST /definitions/pipelines/import` (`{ yaml, id?, overwrite? }`, the Pipelines
+rail's upload), is a PERSON's route — the self-API pin refuses it, exactly as it
+refuses `/definitions/agents/import`. It exists for definitions authored
+outside the server (the builder handoff in `docs/guides/builder-handoff/`),
+parses through the same `parsePipelineYaml` → `validatePipelineDefServer`
+funnel, and answers the full `errors[]` on 400 like `POST /`.
 
 ---
 
@@ -1112,7 +1117,11 @@ however many pipelines the flow splits into — the split and its reasons are
 readable only whole), eight sections: flow, seams, relays, substitutes,
 **intent changes this flow needs**, outcome coverage, run entry, and what was
 left to a person. The fifth is the load-bearing one: a limitation of the AGENT reaches the lane that
-can fix it only through that list. Six loop rounds in 2026-09 produced the
+can fix it only through that list. The pipeline builder's `review` intent is
+the report's one reader: it verifies all eight sections against the saved
+definitions and the material's cadence claims (Outcome coverage by
+simulation) and writes `review-report/{pipelineId}-pipeline.md` — a
+deliverable of its own, never an input to any gate. Six loop rounds in 2026-09 produced the
 motivating case three times — the deciding intent's `outcomes`
 (adverse/standard) cannot express the standard-form-contract case that needs
 seven days AND individual notice, so routing on the verdict drops it and not

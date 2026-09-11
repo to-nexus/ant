@@ -598,22 +598,38 @@ authoring therefore goes through the same validated write funnel as the
 settings UI (`PUT /definitions/agents/:agentId/file` → `gateDefinitionSave` →
 `loadCustomJob`), and needs no new write plane.
 
-Both builders (`agent-builder`, `pipeline-builder`) carry ONE intent, `build`,
-with `hooks.arm: on-write`. They used to carry a second, `review`: a hookless,
-`clarify: false` twin whose only distinction was prose saying "do not write" —
-nothing in the tool policy backed it (tools and API allow lists are job-wide;
-an intent's frontmatter accepts `clarify` and `outcomes` only), the one intent
-told to "wait for the user to accept" was the one that could not ask, and its
-criterion ("inspecting without changing") named an outcome, not an arriving
-situation, so "validate and fix" matched both. It existed because build's
-contract was owed unconditionally, and a pinned build turn that merely
-answered had to exit through clarify. `arm: on-write` removed that reason:
-one intent explains, audits or edits, and only the edit arms the contract.
-The audit checklist that was `review/prompt.md` is `on-demand/audit.md`, read
-when a turn asks about a definition. Read-only is the `@plan` turn's job — a
-mode orthogonal to every request, machine-enforced (plan/-confined writes,
-API and execution refused) and with its own acceptance affordance
-(`plan_complete`) — never an intent's.
+Both builders (`agent-builder`, `pipeline-builder`) carry TWO intents in
+their one job. `build` (`hooks.arm: on-write`) authors or changes a definition
+and owes the definition write plus its report; a build turn that only answers
+writes nothing and owes nothing. `review` (default arm) judges a finished
+definition against the material it was authored from and against the build
+contract, and owes exactly one artifact: `review-report/{agentId}.md` (the
+pipeline builder: `review-report/{pipelineId}-pipeline.md`) — a per-unit
+trace of the material (carried / merged / split / changed / dropped /
+retired-in-material), the reverse trace, the build report's claims verified,
+form coverage, findings. Its first column is the material path, so
+`pnpm --filter @ant/cli definition check-review` can diff the table against
+the material directory.
+
+This is not the twin that was deleted (4bee45820). That `review` was
+hookless and `clarify: false`, distinguished from build only by prose saying
+"do not write" — nothing in the tool policy backed it, the one intent told to
+"wait for the user to accept" could not ask, and its criterion named an
+outcome ("inspecting without changing"), not an arriving situation. It
+existed only because build's contract was owed unconditionally; `arm:
+on-write` removed that reason. The current `review` has an act of its own
+(the report) and a hook that contracts it; what stays forbidden is a
+read-only intent with NO deliverable — that is the `@plan` turn's job, a mode
+orthogonal to every request, machine-enforced (plan/-confined writes, API and
+execution refused) with its own acceptance affordance (`plan_complete`). The
+definition-internal checklist that was the old `review/prompt.md` is
+`on-demand/audit.md`: read on a build turn that asks about a definition, and
+by every review turn as its definition-internal half. Two costs are
+accepted: an artifact-only hook is never adopted, so an unpinned "review
+this" turn owes no report (the Actions chip or `@intent:review` is the
+contracted path); and a review in the build's own session sees the author's
+reasoning and the already-read manifest — the independent review is the same
+intent run by an external agent from `docs/guides/builder-handoff/`.
 
 Out of scope by design: session-login dances, request signing (HMAC), OAuth —
 a `${secret:KEY}` resolves into declared headers only, never into a request
@@ -1240,12 +1256,13 @@ authored as its own pipeline, manual-fired until the seam is automated
 (`runCompleted` after), reversibly — refined 2026-09-10 into doc 46's
 two-question seam table (what the next step needs; whether the person present
 holds it or a third party/date produces it), which also separates relays from
-seams. The agent builder's review intent gains
-its missing audit lane: read the build instructions (not inlined on review
-turns), audit the definition against them, and check the manifest against
-the definition (entry coverage, `status:` vs declared connections, the
-interface/wiring self-contradiction) — saying so, instead of guessing, when
-the manifest lives in another project.
+seams. The manifest's claims have a reader after all — not the scheduler,
+but the agent builder's `review` intent, whose report carries a "claims"
+section verifying each Mapping-as-built row, Hook-decisions line and
+Deliverable-contracts line against the definition and the material (entry
+coverage, `status:` vs declared connections, the interface/wiring
+self-contradiction) — saying so, instead of guessing, when the manifest lives
+in another project.
 
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
@@ -1697,8 +1714,10 @@ Declaration → evidence → gate → bounded bounce → interruption:
   a mutating builtin, any `mcp__` call). This is what lets ONE builder intent
   cover greenfield, refactor, audit and plain questions: before it, a pinned
   `build` turn that only answered had to exit through clarify because "PUT
-  AND report" was owed unconditionally — which is why `review` existed as a
-  hookless twin. Writing a draft into artifacts INSTEAD of saving still arms
+  AND report" was owed unconditionally — which is why the first `review`
+  existed as a hookless twin (the current `review` is a deliverable intent
+  with its own `artifact:` hook and the default arm; see the builder
+  paragraph above). Writing a draft into artifacts INSTEAD of saving still arms
   the contract, so the save is still owed (the staged-draft failure the build
   prose warns about stays caught). (2) Adoption: an UNPINNED intent's hooks
   are owed when one of its `action:` hooks was observed this turn — the write
@@ -1706,7 +1725,9 @@ Declaration → evidence → gate → bounded bounce → interruption:
   `general` turn (the common "add an intent to my agent" with no pin) owed no
   report at all; `hooks.yaml`'s own comment admitted the contract held for
   "pinned/inherited build turns" only. Adopted checks are marked in the gate
-  message. The prompt band (judged before any tool ran) lists a pinned
+  message. Adoption keys on `action:` hooks only — an artifact-only intent
+  (the builders' `review`) is never adopted, so its report is owed only on a
+  pinned turn; its prose says so and points the user at the pin. The prompt band (judged before any tool ran) lists a pinned
   intent's declared hooks whole and says which arm only on a write.
 
 Exemptions (all pure code): plan turns (plan_complete owns their contract;

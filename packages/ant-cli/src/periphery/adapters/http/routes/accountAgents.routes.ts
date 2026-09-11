@@ -34,6 +34,7 @@ import {
   type CustomAgentScopeRoot,
 } from '../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../core/customAgents/types';
+import { validateDefinitionSave } from '../../../../core/customAgents/definitionGate';
 import { buildCustomJobSystemBlock } from '../../../../core/customAgents/promptBlock';
 import { moveUniversalAgentData, moveUniversalJobData } from '../../../../core/customAgents/universalContainer';
 import { MUTATING_BUILTIN_TOOLS, UNIVERSAL_BUILTIN_TOOLS } from '../../../../core/customAgents/universalToolPolicy';
@@ -601,7 +602,11 @@ export function createAccountAgentRoutes(deps: AccountAgentsRoutesDeps): Router 
         else skipped.push({ path: withAgent, reason: written.reason });
       }
       logger.info(`Custom agent imported: ${agentId} (${uploaded.length} files, ${skipped.length} skipped)`, { component: 'AccountAgents' });
-      res.status(201).json({ success: true, agentId, uploaded, skipped });
+      // The bytes landed unvalidated (this lane is a person's, never a job's);
+      // the dry-run verdict rides the response so the client can say what the
+      // `PUT /file` funnel would have said — warn, never roll back, like PUT.
+      const validation = validateDefinitionSave(scopeRoots, agentDir, agentId, 'agent.yaml');
+      res.status(201).json({ success: true, agentId, uploaded, skipped, validation });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }

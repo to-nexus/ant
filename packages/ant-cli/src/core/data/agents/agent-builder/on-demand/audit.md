@@ -2,8 +2,10 @@
 
 Read this when the turn asks ABOUT a definition rather than to change it —
 explain how an agent is put together, check whether a job is valid, diagnose
-why it behaves as it does, or judge it against the build contract. It is the
-same standard the build turn sweeps before each save, applied after the fact.
+why it behaves as it does — and on every review turn, where it is the
+definition-internal half of the review (the other half, the material traced
+unit by unit, is the review intent's own procedure). It is the same standard
+the authoring turn sweeps before each save, applied after the fact.
 
 **Read the definition and sweep its prose.**
 
@@ -25,12 +27,13 @@ same standard the build turn sweeps before each save, applied after the fact.
   is itself the tell.
 **Report findings, not edits — the standard is the build contract.**
 
-- Findings are the answer; write nothing. A turn that only reads and answers
-  owes nothing under the build contract, and a file written now — a findings
-  document, a "fixed" draft — arms it: the save is then owed too. When the
-  user wants a durable audit or a fix plan, that is a `@plan` turn: findings
-  and the proposed edits land under `plan/`, and the plan card carries them
-  into the build turn that applies them.
+- On a question turn, findings are the answer; write nothing. A turn that only
+  reads and answers owes nothing under the authoring contract, and a file
+  written now — a "fixed" draft — arms it: the save is then owed too. A record
+  that outlives the chat is the review intent's report under `review-report/`
+  (pin that intent); a fix plan is a `@plan` turn, whose findings and proposed
+  edits land under `plan/` and ride the plan card into the authoring turn that
+  applies them.
 - When a job fails to validate, give the rule it broke and the file that broke
   it, then the smallest fix that satisfies it.
 - When behaviour is the question, trace it to its source: which prose is always
@@ -97,39 +100,6 @@ same standard the build turn sweeps before each save, applied after the fact.
   - connection status stated as prose;
   - a sentence directing the running agent to a counterpart the job
     declares no connection for.
-**Check the partition against the material.**
-
-- When the material the definition was authored from is still on the plane,
-  read it and check the partition against it — walk the material's work
-  units, not its section headings (one section usually holds several), and
-  reject "that step is performed by a person" as the reason one is absent:
-  it is true of nearly every step in a procedure, including the ones the
-  intents you just passed do serve, whose deliverable is the request the
-  human step consumes. The findings: a unit with its own trigger and its
-  own output that no intent performs — missing from BOTH columns of the
-  report's mapping, and showing from inside the definition as job prose
-  carrying a rule for work no intent performs; a question the material's own
-  form answers in every source file that no authored intent carries, which
-  the unit count cannot show because every unit is present — read the
-  material's headings, not only its units; an intent whose deliverable
-  describes the work instead of being the work product; an `infer.md` that
-  lists alternative tasks instead of naming one arriving situation —
-  several intents under one name, where the merge clause is not the
-  exemption it looks like (deliverables that each wait on a different
-  predecessor are separate triggers however single the stage sounds, and
-  the build rules' chaining arbiter decides). Two tells, and neither is a
-  matter of degree: `prompt.md` carries N numbered sub-procedures with
-  their own inputs and outputs, and the definition's OWN back-calculated
-  schedule puts those units on days no single run can span. Report it as
-  structural, not as wording. Also findings: pieces the material marks as
-  no longer in force that were carried in anyway — and the same marker read
-  the other way, because it governs this sweep's own output too: a piece the
-  material itself sets aside, in its own text or by where the collection
-  files it, is not missing when the definition leaves it out, and reporting
-  it as a gap is a finding the author can refute from the source you read.
-  The report's mapping
-  claim — what merged, what split, what was dropped — is a claim to verify
-  against that material, not a finding to accept.
 **Check hook coverage.**
 
 - Check hook coverage. An intent that produces nothing at all — no file, no

@@ -10,6 +10,7 @@ import {
   collectPipelineCatalogAdvisories,
   collectPipelineDefAdvisories,
   validatePipelineCatalogBinding,
+  type PipelineCatalogAgent,
   type PipelineDef,
 } from '@ant/shared';
 import { discoverAgents } from '../customAgents/CustomAgentLoader';
@@ -25,7 +26,15 @@ export function validatePipelineCatalogServer(def: PipelineDef, tenant: CustomAg
  * rides the save response only, the enable gate must not consume it).
  */
 export function collectPipelineSaveWarnings(def: PipelineDef, tenant: CustomAgentTenantContext): string[] {
-  const agents = discoverAgents(deriveCustomAgentScopeRootsForTenant(tenant));
+  return collectPipelineSaveWarningsForCatalog(def, discoverAgents(deriveCustomAgentScopeRootsForTenant(tenant)));
+}
+
+/**
+ * The same three collectors over an already-resolved catalog — what the
+ * offline `definition validate-pipeline` CLI runs against folders on disk, so
+ * a draft authored outside the server hears exactly the save funnel's words.
+ */
+export function collectPipelineSaveWarningsForCatalog(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
   return [
     ...validatePipelineCatalogBinding(def, agents),
     ...collectPipelineDefAdvisories(def),

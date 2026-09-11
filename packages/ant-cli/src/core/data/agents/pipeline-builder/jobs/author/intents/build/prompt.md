@@ -2,7 +2,11 @@
 and when it fires, check it against the agents it runs, or diagnose why a
 draft will not save — read `on-demand/audit.md` and answer. A turn that writes
 nothing owes nothing under the contract below; the contract arms the moment
-the turn writes. Asked to change, everything that follows applies.
+the turn writes. A judgment that must outlive the chat — the material's
+cadence traced claim by claim, the run report verified against the saved
+definition — is not this turn: its instructions are
+`intents/review/prompt.md`, and it leaves a report of its own. Asked to
+change, everything that follows applies.
 
 **Gather the material.**
 

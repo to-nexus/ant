@@ -21,13 +21,15 @@ import {
 import { FILE_READ_MAX_BYTES } from '../../services/ProjectService/FileOperationService';
 import {
   buildDefinitionTree,
-  definitionWhitelistGuidance,
   findWritableAgent,
-  gateDefinitionSave,
   resolveDefinitionPath,
-  validateDefinitionSave,
   writeDefinitionUpload,
 } from '../helpers/customAgentHandlers';
+import {
+  definitionWhitelistGuidance,
+  gateDefinitionSave,
+  validateDefinitionSave,
+} from '../../../../../core/customAgents/definitionGate';
 import { canEditOrgResource } from '../helpers/orgAclStore';
 import { extractUserContext } from '../helpers/userContext';
 import { sendErrorResponse } from '../helpers/errorResponse';
@@ -355,7 +357,15 @@ export function registerDefinitionFileRoutes(
         if (written.ok) uploaded.push(rel);
         else skipped.push({ path: rel, reason: written.reason });
       }
-      res.json({ success: true, uploaded, skipped });
+      // Same post-write dry run as PUT /file, narrowed to the replaced job when
+      // the directory unit names one (`jobs/{jobId}/...`), agent-wide otherwise.
+      const validation = validateDefinitionSave(
+        scopeRootsFor(req),
+        found.agentDir,
+        req.params.agentId,
+        replaceDir ? `${replaceDir}/job.yaml` : 'agent.yaml',
+      );
+      res.json({ success: true, uploaded, skipped, validation });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }

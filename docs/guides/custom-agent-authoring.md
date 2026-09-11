@@ -8,8 +8,17 @@ directory to a running chat. Concepts:
 
 Ant ships **`agent-builder`**, a read-only builtin whose one job (`author`)
 does what this guide describes: describe the agent you want, paste in whatever
-context it should work from, and it creates or edits the definition in your
-personal scope, then validates the job before reporting.
+context it should work from, and its `build` intent creates or edits the
+definition in your personal scope, then validates the job before reporting.
+Its `review` intent judges a finished definition against the material it was
+authored from — unit by unit, both directions — and leaves
+`review-report/{agentId}.md` in the project's artifacts.
+
+Prefer a frontier model in a coding agent on your own machine? The builders'
+shipped prose is the contract, and [builder-handoff/](builder-handoff/) maps
+it to a working tree so any agent produces the same deliverables and brings
+them in through the upload lanes; `pnpm --filter @ant/cli definition` runs
+the server's validators offline.
 
 It works through the same account-agents API the settings screen uses, so
 everything below still applies — the rules, the whitelist, and the validation
@@ -336,8 +345,11 @@ directory:
 <!-- jobs/{jobId}/intents/incident/infer.md -->
 ---
 # comments in this fence are the authoring-guidance channel — they never
-# reach the prompt. One optional key is allowed:
+# reach the prompt. Two optional keys are allowed:
 clarify: false
+# outcomes: [adverse, standard]   # 2-5 kebab-case ids — a judgment intent's
+#                                 # verdict vocabulary; pipelines route on
+#                                 # `verdict:<outcome>` edges
 ---
 Reporting, investigating, or following up on a service incident.
 ```
@@ -346,7 +358,12 @@ The body below the fence is the **inference criterion** — required, ≤1000
 chars, rendered verbatim into the agent's Intent Catalog on every turn. Write
 it as a trigger condition ("when does this apply"), not as a summary. The
 optional sibling `prompt.md` carries the situation's instructions; the
-optional `hooks.yaml` (§4.7) its completion contract. Anything else in the
+optional `hooks.yaml` (§4.7) its completion contract. `outcomes` names the
+conclusions a judging intent can reach (an id that means "could not start" is
+refused at save — that is the clarify exit, not a verdict); the bounds and
+the routing contract live in the builtin's own format doc,
+`packages/ant-cli/src/core/data/agents/agent-builder/on-demand/definition-format.md`,
+which is executed against the validators in CI. Anything else in the
 intent directory fails loud (a typo'd `hook.yaml` must not silently disarm a
 contract), as do the retired shapes: a per-intent `intent.yaml`, a job-level
 `injections/` directory (even empty), a single-file `jobs/{jobId}/
@@ -392,9 +409,14 @@ then pause the job resumably.
 ```yaml
 # jobs/{jobId}/intents/incident/hooks.yaml
 hooks:
+  # arm: on-write   # optional; default `always`. `on-write` arms the contract
+  #                 # only once the turn wrote anything — for an intent that
+  #                 # also answers questions. A deliverable intent keeps `always`.
   stop:
     - artifact: reports/*-incident.md      # a real file write this turn must match this glob
     - action: mcp__ops-api__create_incident # this tool must have been successfully called
+    # - action: api__ops__request POST|PUT /tickets**   # an api__ action may be narrowed
+    #                                                    # to METHOD(s) + path glob
 ```
 
 - `artifact` globs address the job's artifact root: `*` matches within one
@@ -412,8 +434,11 @@ hooks:
   Keep them stable and specific.
 - Deleting `hooks.yaml` (or emptying the list in the settings UI) removes the
   contract; a job without hooks simply ends the turn when the agent stops.
-  Hooks arm only on pinned/inherited turns — unpinned (`general`) turns are
-  never gated.
+  Hooks arm on pinned/inherited turns; an unpinned (`general`) turn ADOPTS an
+  intent's contract only when it performed one of that intent's `action:`
+  hooks — an artifact-only intent is never adopted. The full grammar (`arm`,
+  narrowed `action:` forms, the glob rules) is the builtin's format doc,
+  `packages/ant-cli/src/core/data/agents/agent-builder/on-demand/definition-format.md`.
 
 ## 4.8 Deliverable contracts — outputs another step will consume
 
@@ -474,6 +499,14 @@ Patterns that keep unattended pipelines from failing on normal days:
   settings screen's "Composed prompt" card renders it per intent selection.
   (The preview is an authoring aid and accepts several ids to compare
   blocks; an actual run still binds at most one intent.)
+- Offline, with no server: `pnpm --filter @ant/cli definition validate-agent
+  <agentDir>` runs the same gate per file and the same loader dry run per
+  job (`validate-pipeline`, `preview-fires` and `check-review` cover the
+  pipeline and review deliverables — see
+  [builder-handoff/README.md](builder-handoff/README.md)).
+- A folder import (Agent Settings → upload) writes the files first and then
+  answers the same loader verdict as `validation` — the screen reports it, so
+  an imported definition that does not load is never silent.
 - A broken definition also fails loudly with HTTP 400 when a job is started —
   never silently inside the worker.
 - In the UI: open a workspace project and pick the agent and job with the

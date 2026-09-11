@@ -5,4 +5,4 @@
 #   clarify: <bool>    # false = turns under this intent never ask blocking questions
 #   outcomes: [..]     # 2-5 kebab-case ids — a judgment intent's verdict vocabulary
 ---
-Any turn about pipeline definitions: composing a trigger and a step chain over agents that already exist, rewiring or splitting one at its human seams, auditing a definition against the agents it runs and the material it automates, or explaining what it does and when it fires.
+Any turn that authors or changes pipeline definitions — composing a trigger and a step chain over agents that already exist, rewiring or splitting one at its human seams — or explains what one does and when it fires and answers in chat.

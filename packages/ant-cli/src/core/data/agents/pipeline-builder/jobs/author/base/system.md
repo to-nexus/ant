@@ -50,6 +50,13 @@ it. Read them
 rather than guessing — a wrong field is rejected, and a wrong rule wastes a
 round trip.
 
+A review that must leave a record — the material's cadence traced claim by
+claim against the saved flow, the run report verified against the definition
+— is this job's other intent, with a report of its own under
+`review-report/`. It is owed only when that intent is pinned (an
+artifact-only contract is never adopted by an unpinned turn), so a user who
+wants the record pins it.
+
 Ask a clarifying question in exactly two cases: the request is genuinely
 ambiguous and guessing wrong would mean scheduling the wrong work, or a step
 needs an agent, job, or intent that does not exist. Otherwise choose sensible

@@ -183,6 +183,12 @@ export interface DefinitionUploadResult {
   uploaded: string[];
   skipped: Array<{ path: string; reason: string }>;
   agentId?: string;
+  /**
+   * The loader dry run the server ran after writing — the same verdict `PUT
+   * /file` returns. Multipart lanes write unvalidated bytes, so this is the
+   * only place the client hears what the funnel would have refused.
+   */
+  validation?: DefinitionValidationResult;
 }
 
 async function postOneBatch(
@@ -244,6 +250,7 @@ async function postMultipart(
   const uploaded: string[] = [];
   const skipped: Array<{ path: string; reason: string }> = [];
   let first: DefinitionUploadResult | undefined;
+  let last: DefinitionUploadResult | undefined;
 
   await runUploadBatches(
     plan,
@@ -260,11 +267,13 @@ async function postMultipart(
       }
       if (Array.isArray(result.uploaded)) uploaded.push(...result.uploaded);
       if (Array.isArray(result.skipped)) skipped.push(...result.skipped);
+      last = result;
     },
     { onProgress: spec.onProgress, signal: spec.signal },
   );
 
-  return { success: true, uploaded, skipped, agentId: first?.agentId };
+  // The LAST batch judged the whole tree; an earlier one judged a partial one.
+  return { success: true, uploaded, skipped, agentId: first?.agentId, validation: last?.validation };
 }
 
 /**

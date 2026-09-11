@@ -78,7 +78,9 @@ authority — never compute fire times yourself.
 ## Routes you will not reach
 
 `enable`, `disable`, `activate`, `deactivate`, `run-now`, `promote`,
-`editors`, `approvals`, `runs`, and `download` refuse this job's token.
+`editors`, `approvals`, `runs`, `download`, and `import` refuse this job's
+token — `import` replaces a definition from uploaded file bytes, which is a
+person's lane; a job drafts through `POST /definitions/pipelines`.
 Publishing a draft, binding it to a project, firing a run, sharing, and
 resolving approvals are a person's decisions in the Pipelines tab. Run history
 is readable there, and — for a pipeline bound to this project — under the

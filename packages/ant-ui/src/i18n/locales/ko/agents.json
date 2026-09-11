@@ -277,6 +277,8 @@
     "uploadedWithOverwrite": "{{count}}개 파일 업로드 완료 ({{overwrites}}개 덮어씀)",
     "replacedDir": "{{dir}} 교체 완료 ({{count}}개 파일)",
     "agentImported": "에이전트 \"{{id}}\" 업로드 완료 ({{count}}개 파일)",
-    "agentReplaced": "에이전트 \"{{id}}\" 덮어쓰기 완료 ({{count}}개 파일)"
+    "agentReplaced": "에이전트 \"{{id}}\" 덮어쓰기 완료 ({{count}}개 파일)",
+    "invalid": "업로드는 됐지만 정의가 깨끗하게 로드되지 않습니다 ({{count}}건): ",
+    "invalidNote": "(검증 오류 {{count}}건)"
   }
 }

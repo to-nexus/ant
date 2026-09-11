@@ -27,7 +27,7 @@ import {
 import {
   gateDefinitionSave,
   DEFINITION_FILE_MAX_BYTES,
-} from '../../src/periphery/adapters/http/routes/helpers/customAgentHandlers';
+} from '../../src/core/customAgents/definitionGate';
 
 let tmpRoot: string;
 

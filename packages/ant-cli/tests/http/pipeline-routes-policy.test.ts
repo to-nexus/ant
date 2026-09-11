@@ -672,10 +672,16 @@ describe('folder import (upload)', () => {
     expect(fs.readFileSync(path.join(userDir, '.ant/pipelines/digest/pipeline.yaml'), 'utf-8')).toContain('Digest');
   });
 
-  it('an invalid definition answers 400 invalid-pipeline-def, never a 500', async () => {
+  it('an invalid definition answers 400 invalid-pipeline-def with EVERY broken rule, like POST /', async () => {
     const res = await importYaml({ yaml: 'version: 1\n' });
     expect(res.status).toBe(400);
-    expect((await res.json()).code).toBe('invalid-pipeline-def');
+    const body = await res.json();
+    expect(body.code).toBe('invalid-pipeline-def');
+    // The builder prose promises `errors[]` naming every rule; one rule per
+    // round trip is the guessing loop it exists to prevent.
+    expect(Array.isArray(body.errors)).toBe(true);
+    expect(body.errors.length).toBeGreaterThan(1);
+    expect(body.errors[0]).toBe(body.error);
   });
 
   it('unparseable yaml is the same typed refusal, not a crash', async () => {

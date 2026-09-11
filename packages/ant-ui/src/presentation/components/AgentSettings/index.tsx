@@ -17,6 +17,7 @@ import {
   renameDefinitionFile,
   uploadDefinitionFiles,
   validateAccountAgentJob,
+  type DefinitionValidationResult,
 } from '@/infrastructure/http/api/accountAgents';
 import type { CustomAgentDefinitionFileNode, FileNode } from '@ant/shared';
 import { isValidCustomId } from '@ant/shared';
@@ -321,6 +322,29 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     [t, showError],
   );
 
+  /** Appended to a completion line; '' when the imported tree loads clean. */
+  const validationNote = useCallback(
+    (validation?: DefinitionValidationResult) =>
+      !validation || validation.valid
+        ? ''
+        : ' ' + t('import.invalidNote', '({{count}} validation error(s))', { count: validation.errors.length }),
+    [t],
+  );
+
+  /** The loader's own words — what `PUT /file` would have refused, now that the bytes are on disk. */
+  const reportValidation = useCallback(
+    (validation?: DefinitionValidationResult) => {
+      if (!validation || validation.valid) return;
+      showError(
+        t('import.invalid', 'Uploaded, but the definition does not load cleanly ({{count}} error(s)): ', {
+          count: validation.errors.length,
+        }) + validation.errors.join(' · '),
+        { title: t('common:error.title', 'Error') },
+      );
+    },
+    [t, showError],
+  );
+
   /** Post-upload convergence: tree, agent list, and the job's load-validity pill. */
   const afterDefinitionWrite = useCallback(
     async (agentId: string) => {
@@ -368,10 +392,12 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
                   overwrites,
                 })
               : t('import.uploaded', '{{count}} file(s) uploaded', { count: result.uploaded.length })) +
-              skippedNote(result.skipped),
-            result.skipped.length > 0 ? 'warning' : 'success',
+              skippedNote(result.skipped) +
+              validationNote(result.validation),
+            result.skipped.length > 0 || validationNote(result.validation) ? 'warning' : 'success',
           );
           reportSkipped(result.skipped);
+          reportValidation(result.validation);
         } catch (e) {
           upload.fail();
           upload.showNotice(
@@ -384,7 +410,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
         }
       })();
     },
-    [upload, reportSkipped, skippedNote, afterDefinitionWrite, t],
+    [upload, reportSkipped, skippedNote, reportValidation, validationNote, afterDefinitionWrite, t],
   );
 
   // Copies are off here: `infer (1).md` is outside the definition whitelist, so
@@ -441,10 +467,11 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
         t('import.replacedDir', '{{dir}} replaced ({{count}} file(s))', {
           dir: dest,
           count: result.uploaded.length,
-        }) + skippedNote(result.skipped),
-        result.skipped.length > 0 ? 'warning' : 'success',
+        }) + skippedNote(result.skipped) + validationNote(result.validation),
+        result.skipped.length > 0 || validationNote(result.validation) ? 'warning' : 'success',
       );
       reportSkipped(result.skipped);
+      reportValidation(result.validation);
     });
 
   const handleUploadUnitFolder = async (
@@ -551,10 +578,11 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           : t('import.agentImported', 'Agent "{{id}}" imported ({{count}} file(s))', {
               id: result.agentId ?? '',
               count: result.uploaded.length,
-            })) + skippedNote(result.skipped),
-        result.skipped.length > 0 ? 'warning' : 'success',
+            })) + skippedNote(result.skipped) + validationNote(result.validation),
+        result.skipped.length > 0 || validationNote(result.validation) ? 'warning' : 'success',
       );
       reportSkipped(result.skipped);
+      reportValidation(result.validation);
     });
 
   /**

@@ -925,6 +925,31 @@ describe('folder import', () => {
     ]);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/base/system.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/intents.yaml'))).toBe(false);
+    // The lane writes unvalidated bytes; the verdict the PUT funnel would have
+    // given rides the response instead of being lost.
+    expect(body.validation).toEqual({ valid: true, errors: [] });
+  });
+
+  it('import answers the loader verdict — files stay on disk, validation says what PUT would have refused', async () => {
+    const form = new FormData();
+    form.append('files', new Blob(['id: hooked\nname: Hooked\n']), 'agent.yaml');
+    form.append('relativePaths', 'hooked/agent.yaml');
+    form.append('files', new Blob(['Role.\n']), 'role.md');
+    form.append('relativePaths', 'hooked/base/role.md');
+    form.append('files', new Blob(['id: run\nname: Run\ntools:\n  builtin:\n    - read_file\n']), 'job.yaml');
+    form.append('relativePaths', 'hooked/jobs/run/job.yaml');
+    form.append('files', new Blob(['---\n---\nWhen asked.\n']), 'infer.md');
+    form.append('relativePaths', 'hooked/jobs/run/intents/go/infer.md');
+    form.append('files', new Blob(['Write report/x.md\n']), 'prompt.md');
+    form.append('relativePaths', 'hooked/jobs/run/intents/go/prompt.md');
+    form.append('files', new Blob(['hooks:\n  stop:\n    - artifact: report/*.md\n']), 'hooks.yaml');
+    form.append('relativePaths', 'hooked/jobs/run/intents/go/hooks.yaml');
+    const res = await fetch(`${baseUrl}/api/definitions/agents/import`, { method: 'POST', body: form });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/hooked/jobs/run/intents/go/hooks.yaml'))).toBe(true);
+    expect(body.validation.valid).toBe(false);
+    expect(body.validation.errors.some((e: string) => e.includes('grants no artifact-write tool'))).toBe(true);
   });
 
   it('same-id import → 409; with overwrite → REPLACE (stale definition files gone)', async () => {

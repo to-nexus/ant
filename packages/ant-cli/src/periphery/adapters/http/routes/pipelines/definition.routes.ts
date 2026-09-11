@@ -113,7 +113,7 @@ export function registerDefinitionRoutes(router: Router, ctx: PipelinesRouteCont
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
-        res.status(400).json({ error: error.message, code: 'invalid-pipeline-def' });
+        res.status(400).json({ error: error.message, errors: error.errors, code: 'invalid-pipeline-def' });
         return;
       }
       sendErrorResponse(res, 500, error, 'PipelinesUpdate');

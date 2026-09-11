@@ -1,8 +1,11 @@
 **Asked about a definition rather than to change it** — to explain how it is
-put together, check whether a job validates, or audit it — read
-`on-demand/audit.md` and answer. A turn that writes nothing owes nothing under
-the contract below; the contract arms the moment the turn writes. Asked to
-change, everything that follows applies.
+put together, check whether a job validates, or answer a quick question about
+it — read `on-demand/audit.md` and answer. A turn that writes nothing owes
+nothing under the contract below; the contract arms the moment the turn
+writes. A judgment that must outlive the chat — the material traced unit by
+unit, the dependency report's claims verified — is not this turn: its
+instructions are `intents/review/prompt.md`, and it leaves a report of its
+own. Asked to change, everything that follows applies.
 
 **Design the partition.**
 
@@ -655,7 +658,7 @@ contract — the third omitted only when done is not observable.**
       or an MCP server on a host inside. A zone constraint is a deployment
       decision, never a dead end. Reaching the zone is not being admitted
       by the service: when the host restricts its callers — a source
-      allowlist, a firewall rule, a security review — name the address to
+      allowlist, a firewall rule, a security sign-off — name the address to
       be admitted under each path (the in-zone server, or the gateway or
       relay egress) and who grants that admission, so the action item is a
       ticket someone can file}

@@ -1,0 +1,9 @@
+# Turn completion contract for review turns. The review's act is its report:
+# a pinned review turn is not done until review-report/*.md was written. The
+# sanctioned no-op exit is clarify (an input is missing) — the gate exempts
+# it. Default arm (always) on purpose: this intent exists to leave a record,
+# never only to answer — a question answered in chat is the authoring
+# intent's turn, which owes nothing while it writes nothing.
+hooks:
+  stop:
+    - artifact: review-report/*.md

@@ -561,7 +561,12 @@ debugging session.
   unpinned (`general`) turn that performs an intent's `action:` hook ADOPTS
   that intent's contract. Never author a hookless "read-only" twin intent to get
   a turn that does not owe a write — read-only is the `@plan` turn, which is
-  machine-enforced; a prose "do not write" is not.
+  machine-enforced; a prose "do not write" is not. A review that LEAVES a
+  record is not that twin: the builders' `review` intent owes
+  `review-report/*.md` through an `artifact:` hook with the default arm, and
+  its offline twin for an external agent is `docs/guides/builder-handoff/`
+  (channel deltas only — the shipped prose stays the one contract, guarded by
+  `tests/policy/builder-handoff-binding.test.ts`).
 
 ```bash
 rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0

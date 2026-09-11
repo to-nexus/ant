@@ -35,6 +35,12 @@ Consult `on-demand/definition-format.md` for the file contract,
 change it. Read them rather
 than guessing — a wrong path is rejected, and a wrong rule wastes a round trip.
 
+A review that must leave a record — the material traced unit by unit against
+the definition, the dependency report's claims verified — is this job's other
+intent, with a report of its own under `review-report/`. It is owed only when
+that intent is pinned (an artifact-only contract is never adopted by an
+unpinned turn), so a user who wants the record pins it.
+
 Ask a clarifying question in exactly two cases: the request is genuinely
 ambiguous and guessing wrong would mean authoring the wrong agent, or your
 design meaningfully reshapes material the user provided — pieces merged away,

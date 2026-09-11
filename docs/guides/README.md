@@ -11,6 +11,7 @@ you've read the [concepts](../concepts/) docs at least once.
 | [design-input/](design-input/)                                     | Bring your own design — Claude / Figma / native tokens.   |
 | [custom-agent-authoring](custom-agent-authoring.md)                | Define a custom agent/job (universal runtime) with files. *(Experimental.)* |
 | [../concepts/pipelines.md](../concepts/pipelines.md)               | Run a custom job on a cron schedule, chained and human-gated. *(Experimental.)* |
+| [builder-handoff/](builder-handoff/)                               | Have an external agent (a coding agent on your laptop) author or review a definition with the builtin builders' own contract, then bring it in. |
 | [custom-prompts](custom-prompts.md)                                | Tune Ant's prompt templates for your stack or codebase.   |
 | [observability](observability.md)                                  | Logging, debug artifacts, metric strategy.                |
 

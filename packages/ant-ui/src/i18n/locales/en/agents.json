@@ -277,6 +277,8 @@
     "uploadedWithOverwrite": "{{count}} file(s) uploaded ({{overwrites}} overwritten)",
     "replacedDir": "{{dir}} replaced ({{count}} file(s))",
     "agentImported": "Agent \"{{id}}\" imported ({{count}} file(s))",
-    "agentReplaced": "Agent \"{{id}}\" replaced ({{count}} file(s))"
+    "agentReplaced": "Agent \"{{id}}\" replaced ({{count}} file(s))",
+    "invalid": "Uploaded, but the definition does not load cleanly ({{count}} error(s)): ",
+    "invalidNote": "({{count}} validation error(s))"
   }
 }

@@ -5,4 +5,4 @@
 #   clarify: <bool>    # false = turns under this intent never ask blocking questions
 #   outcomes: [..]     # 2-5 kebab-case ids — a judgment intent's verdict vocabulary
 ---
-Any turn that authors or changes agent definitions — turning a body of material into one or more complete agents, changing a definition's prose, tools, connections, or structure — or explains how one is put together and answers in chat.
+A saved pipeline definition is to be judged rather than changed — against the agents its steps run, against the material whose cadence it automates when that is in hand, against the authoring contract always — and the verdict must outlive the chat as a report.

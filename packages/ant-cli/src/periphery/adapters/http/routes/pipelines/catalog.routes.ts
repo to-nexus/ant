@@ -182,7 +182,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
-        res.status(400).json({ error: error.message, code: 'invalid-pipeline-def' });
+        res.status(400).json({ error: error.message, errors: error.errors, code: 'invalid-pipeline-def' });
         return;
       }
       sendErrorResponse(res, 500, error, 'PipelinesCreate');
@@ -256,7 +256,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
-        res.status(400).json({ error: error.message, code: 'invalid-pipeline-def' });
+        res.status(400).json({ error: error.message, errors: error.errors, code: 'invalid-pipeline-def' });
         return;
       }
       sendErrorResponse(res, 500, error, 'PipelinesImport');
