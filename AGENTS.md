@@ -565,7 +565,12 @@ debugging session.
   once the turn writes anything (a draft in artifacts included), so a turn that
   only reads ends clean; a deliverable intent keeps the default `always`. An
   unpinned (`general`) turn that performs an intent's `action:` hook ADOPTS
-  that intent's contract. Never author a hookless "read-only" twin intent to get
+  that intent's contract. On a pinned deliverable turn the agent's
+  `<contract-deferred>reason</contract-deferred>` is the ONE machine-readable
+  "this turn owes nothing / cannot deliver" (honored only attended + no write
+  evidence), and an unmet contract ESCALATES (`universal_stop_hook_unmet`) on
+  the unattended lane only — attended carries it in the seal to the next
+  message (doc 44 hooks rule 4). Never author a hookless "read-only" twin intent to get
   a turn that does not owe a write — read-only is the `@plan` turn, which is
   machine-enforced; a prose "do not write" is not. A review that LEAVES a
   record is not that twin: the builders' `review` intent owes

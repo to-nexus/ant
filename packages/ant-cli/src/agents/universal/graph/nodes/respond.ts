@@ -19,7 +19,9 @@ import {
   activeStopHooksOf,
   buildStopHookLedger,
   checkStopHooks,
+  formatContractCarriedLine,
   formatStopHookManifest,
+  parseContractDeferral,
   shouldDeferInheritedContract,
   verifyChecksOnDisk,
   type StopHookCheck,
@@ -160,6 +162,18 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   // inbox. Clarify was exempt from the start; the manifest below already
   // exempted both.
   const hooksUnmet = state._clarifyPause || state._approvalPause ? [] : hookChecks.filter((c) => !c.met);
+  // Escalation is a LANE property (the runner's one derivation): an unmet
+  // contract pauses an unattended step (nobody is there to hand the work
+  // back to) and is CARRIED for an attended user — the seal below keeps
+  // `awaitingStopHooks` either way, so the next message re-demands it.
+  const escalatesUnmet = state._unattended === true;
+
+  // The FINAL assistant reply — the `<verdict>` and `<contract-deferred>`
+  // lifts both read it (last declaration wins).
+  const mainConv = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
+  const finalAssistant = [...mainConv].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
+  const finalAssistantText = typeof finalAssistant?.content === 'string' ? finalAssistant.content : undefined;
+  const declaredDeferral = hooksUnmet.length > 0 && !escalatesUnmet ? parseContractDeferral(finalAssistantText) : null;
 
   // Inherited answer-only turn under a pending contract — DEFER, never lose:
   // the seal below keeps `awaitingStopHooks` alive (context + ledger carried
@@ -179,13 +193,12 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   //    an author's glob typo is visible).
   const hookManifest =
     !state._clarifyPause && !state._approvalPause && hookChecks.length > 0
-      ? formatStopHookManifest(hookChecks, state.language)
+      ? formatStopHookManifest(hookChecks, state.language, {
+          escalates: escalatesUnmet,
+          deferralReason: declaredDeferral?.reason,
+        })
       : null;
-  const deferNote = deferInherited
-    ? state.language === 'ko'
-      ? '⏸️ 완료 계약은 보류 중입니다 — 작업을 재개하는 턴에서 이어집니다.'
-      : '⏸️ The completion contract is still pending — it resumes with the turn that resumes the work.'
-    : null;
+  const deferNote = deferInherited ? formatContractCarriedLine(state.language) : null;
   if (writes.length > 0 || hookManifest || deferNote) {
     const writesManifest =
       writes.length > 0
@@ -216,10 +229,8 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
       // makes outcome-declaring intents emit it, and consumers (the pipeline
       // coordinator) validate the value against the declared vocabulary.
       // Omitted on non-verdict seals, so a stale verdict self-clears.
-      const mainConv = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
-      const finalAssistant = [...mainConv].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
-      const verdictMatches = typeof finalAssistant?.content === 'string'
-        ? [...finalAssistant.content.matchAll(/<verdict>\s*([a-z0-9-]+)\s*<\/verdict>/g)]
+      const verdictMatches = finalAssistantText
+        ? [...finalAssistantText.matchAll(/<verdict>\s*([a-z0-9-]+)\s*<\/verdict>/g)]
         : [];
       const verdict = verdictMatches.length > 0 ? verdictMatches[verdictMatches.length - 1][1] : undefined;
       // The stored channel is run-scoped under a pipeline (F22) while the
@@ -332,6 +343,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   }
 
   // Respond's recomputed verdict is what the runner surfaces (the agent
-  // node's flag was pre-disk-recheck).
-  return { _hooksUnmet: hooksUnmet.length > 0 ? hooksUnmet : undefined };
+  // node's flag was pre-disk-recheck) — and only the unattended lane
+  // surfaces it: attended keeps the contract in the seal and ends clean.
+  return { _hooksUnmet: hooksUnmet.length > 0 && escalatesUnmet ? hooksUnmet : undefined };
 }

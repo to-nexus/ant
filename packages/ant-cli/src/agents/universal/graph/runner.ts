@@ -270,9 +270,12 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   //    tools, sees the Capability Status band, and can explain/guide the fix.
   //  - unattended (pipeline/scheduled): fail-loud, byte-identical legacy — a
   //    half-capable scheduled run must fail as McpConfigError → config_invalid.
+  // The ONE lane derivation (doc 44): connect fail-fast, the approval HITL
+  // rail, and the stop-hook escalation all read this same verdict.
+  const unattendedLane = params.unattended === true || params.pipelineRunId != null;
   let mcp: McpConnectionManager | null = null;
   if (Object.keys(resolved.mcpServers).length > 0 || Object.keys(resolved.apiServers).length > 0) {
-    const failFast = params.unattended === true || params.pipelineRunId != null;
+    const failFast = unattendedLane;
     const resolver = params.deps.mcpCredentialResolver;
     if (!resolver) {
       // Ant wiring, not user config — always fatal, but leave the memory note.
@@ -334,7 +337,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     planRequested: params.planRequested,
     inheritedTurnContext,
     restoredHookLedger: adoptedHookLedger,
-    unattended: params.unattended,
+    unattended: unattendedLane,
     approvalGrantTool: params.approvalGrantTool,
     sessionChannel,
     carriedChannels,

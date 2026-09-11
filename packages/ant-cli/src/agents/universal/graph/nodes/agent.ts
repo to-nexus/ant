@@ -54,6 +54,8 @@ import {
   UNIVERSAL_TRUNCATION_CONTINUE_BUDGET,
   activeStopHooksOf,
   buildStopHookGateMessage,
+  isDeclaredDeferralHonored,
+  parseContractDeferral,
   checkStopHooks,
   formatStopHookContractLines,
   verifyChecksOnDisk,
@@ -523,7 +525,20 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
           : rawChecks;
         const unmet = checks.filter((c) => !c.met);
         const bounces = state.hookBounceRounds ?? 0;
-        if (unmet.length > 0 && bounces < UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET) {
+        // The agent's declared exit (a question turn, or a contract it cannot
+        // meet) is honored on the attended lane when the turn acted on nothing.
+        const declaredDeferral = isDeclaredDeferralHonored({
+          declaration: parseContractDeferral(responseText),
+          unattended: state._unattended === true,
+          evidence,
+        });
+        // A bounce that produced no new tool activity has already been answered
+        // — the same state yields the same refusal, so a second one only repeats.
+        const evidenceSize = evidence.writes.length + evidence.actions.length;
+        const bounceProductive = bounces === 0 || state.hookBounceEvidenceMark !== evidenceSize;
+        if (unmet.length > 0 && declaredDeferral) {
+          console.log(`⏸️ [Universal:Agent] Stop hooks unmet (${unmet.length}/${checks.length}) — contract deferred by declaration`);
+        } else if (unmet.length > 0 && bounceProductive && bounces < UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET) {
           // Bounce (join-redo shape): re-enter the agent with the ✓/✗ gate
           // message — no finalize, the turn-scoped pipeline continues (A14).
           console.log(`🎯 [Universal:Agent] Stop hooks unmet (${unmet.length}/${checks.length}) — bounce ${bounces + 1}/${UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET}`);
@@ -543,6 +558,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
             _subagentJoinRedo: false,
             _truncationRedo: false,
             hookBounceRounds: bounces + 1,
+            hookBounceEvidenceMark: evidenceSize,
             tokenUsage: state.tokenUsage,
             // The per-model twin MUST ride along: LangGraph rebuilds the node's
             // state from the channels each hop, and `accumulateTokenUsage`
@@ -551,11 +567,11 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
             tokenUsageByModel: state.tokenUsageByModel,
             ...checklistPatch,
           };
-        }
-        if (unmet.length > 0) {
-          // Budget spent — proceed to respond, which recomputes and seals
-          // the resumable pause (honest report over a phantom success).
-          console.warn(`⚠️ [Universal:Agent] Stop hooks still unmet after ${bounces} bounce(s) — pausing`);
+        } else if (unmet.length > 0) {
+          // Budget spent (or a bounce bought nothing) — proceed to respond, which
+          // recomputes and, per lane, seals the resumable pause or carries the
+          // contract (honest report over a phantom success).
+          console.warn(`⚠️ [Universal:Agent] Stop hooks still unmet after ${bounces} bounce(s) — handing to respond`);
           hooksUnmetPatch = { _hooksUnmet: unmet };
         }
       }

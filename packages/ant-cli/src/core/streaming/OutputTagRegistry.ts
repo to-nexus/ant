@@ -46,6 +46,7 @@ import { extractPlanText } from '../../agents/common/graph/nodes/plan/extractPla
 import { parseClarifyTags } from '../../agents/common/clarify/tags';
 import { parseExecutionTierTag } from '../executionTier/parseExecutionTierTag';
 import { parseChecklistTag } from '../customAgents/universalChecklist';
+import { parseContractDeferral } from '../customAgents/stopHooks';
 import {
   transformDone,
   transformVerdict,
@@ -603,6 +604,20 @@ register({
   transform: transformVerdict,
   promptContract:
     'When the active intent declares an outcomes vocabulary, end the turn\'s FINAL reply with exactly one `<verdict>one-of-the-declared-outcomes</verdict>` naming your conclusion — downstream automation (pipeline verdict edges) routes on it.',
+});
+
+register({
+  name: 'contract-deferred',
+  pattern: /<contract-deferred>\s*([\s\S]*?)\s*<\/contract-deferred>/i,
+  axis: {
+    intent: 'control',
+    processing: ['consumed-suppressed', 'post-stream'],
+    persistence: ['sealed-state'],
+    blocking: 'non-blocking',
+  },
+  extract: (text) => parseContractDeferral(text)?.reason,
+  promptContract:
+    'Under an armed Turn Completion Contract, when the turn owes nothing (the message was a question) or the contract cannot be met (missing input, blocked tool), emit `<contract-deferred>one-line reason</contract-deferred>` instead of claiming completion. Never rendered to chat; the runtime carries the contract to the next message and prints the reason. Not a way to skip work you were asked to do — a turn that wrote anything owes its contract regardless.',
 });
 
 register({

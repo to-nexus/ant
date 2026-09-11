@@ -83,6 +83,7 @@ marker and never the round's answer. Guard:
 | `<techTier>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
 | `<tasks>` | metadata | stream-action (`task_added`) | kanban | non-blocking | decompose |
 | `<checklist>` | metadata | consumed-suppressed + post-stream | sealed-state + kanban | non-blocking | universal agent (never rendered to chat — feeds the Checklist board; parse SSOT `core/customAgents/universalChecklist.ts`) |
+| `<contract-deferred>` | control | consumed-suppressed + post-stream | sealed-state | non-blocking | universal agent under an armed Turn Completion Contract (the declared exit from a stop-hook contract; parse SSOT `core/customAgents/stopHooks.ts::parseContractDeferral`; respond prints the reason on the carried-contract line — doc 44 hooks rule 4) |
 | `<references>` | metadata | consumed-formatted | chat-line | non-blocking | decompose / learn |
 | `<detect>` | metadata | consumed-formatted | chat-line | non-blocking | detect / decompose-final |
 | `<learn_command>` | metadata | consumed-formatted | chat-line | non-blocking | learn |

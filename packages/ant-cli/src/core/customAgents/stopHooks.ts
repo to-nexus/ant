@@ -5,7 +5,10 @@
  * name, all must hold — AND). The turn's ONLY stop point (the agent node
  * emitting zero tool calls) becomes a deterministic gate: unmet hooks bounce
  * the agent a bounded number of times; once the budget is spent the turn
- * ends as a resumable pause (`universal_stop_hook_unmet`).
+ * ends as a resumable pause (`universal_stop_hook_unmet`) on the UNATTENDED
+ * lane, and as a normal success that CARRIES the contract to the next message
+ * on the attended lane — a pending obligation is information for a present
+ * user, a failure for an absent one.
  *
  * Verdicts come from runtime-observed evidence ONLY — real file writes
  * (`_turnToolWrites`, tool side-effects) and successful tool calls
@@ -276,6 +279,56 @@ export function shouldDeferInheritedContract(args: {
   return args.catalog.some((intent) => active.has(intent.id) && (intent.hooks?.stop?.length ?? 0) > 0);
 }
 
+/** Longest reason a `<contract-deferred>` declaration carries into chat and the seal. */
+export const CONTRACT_DEFERRAL_REASON_MAX = 300;
+
+const CONTRACT_DEFERRED_PATTERN = /<contract-deferred>\s*([\s\S]*?)\s*<\/contract-deferred>/gi;
+
+/**
+ * The agent's declared exit from an armed contract — the machine form of the
+ * gate's "state explicitly why you cannot". The LAST declaration in the reply
+ * wins (the `<verdict>` lift convention); an empty body is a slip, not a
+ * declaration. Pure text parse: whether the declaration is HONORED is the
+ * gate's decision (`isDeclaredDeferralHonored`), never this function's.
+ */
+export function parseContractDeferral(text: string | undefined): { reason: string } | null {
+  if (!text) return null;
+  const matches = [...text.matchAll(CONTRACT_DEFERRED_PATTERN)];
+  if (matches.length === 0) return null;
+  const reason = matches[matches.length - 1][1].replace(/\s+/g, ' ').trim();
+  if (reason.length === 0) return null;
+  return { reason: reason.length > CONTRACT_DEFERRAL_REASON_MAX ? `${reason.slice(0, CONTRACT_DEFERRAL_REASON_MAX)}…` : reason };
+}
+
+/**
+ * A declared deferral is honored only on the ATTENDED lane and only when the
+ * turn acted on nothing: a write-shaped call means the turn did the intent's
+ * work and owes its contract whatever it says (the staged-draft catch), and an
+ * unattended step has nobody to hand the work back to — it must deliver or
+ * fail loud (`HOOK_UNMET_RETRY` already tells it to ask through clarify).
+ */
+export function isDeclaredDeferralHonored(args: {
+  declaration: { reason: string } | null;
+  unattended: boolean;
+  evidence: Pick<StopHookEvidence, 'writes' | 'actions'>;
+}): boolean {
+  return args.declaration !== null && !args.unattended && !turnHasWriteEvidence(args.evidence);
+}
+
+/**
+ * The one sentence for "the contract is still owed and rides to the next
+ * message" — shared by the inherited deferral note and the attended unmet
+ * manifest so the same fact never has two wordings. `reason` is the agent's
+ * declared cause, when it gave one.
+ */
+export function formatContractCarriedLine(language: 'ko' | 'en', reason?: string): string {
+  const head =
+    language === 'ko'
+      ? '⏸️ 완료 계약은 아직 남아 있습니다 — 작업을 이어가는 다음 메시지에서 다시 요구됩니다.'
+      : '⏸️ The completion contract is still pending — it is re-demanded by the next message that resumes the work.';
+  return reason ? `${head}\n- ${language === 'ko' ? '사유' : 'reason'}: ${reason}` : head;
+}
+
 /** Stable ledger key: `<intentId>#artifact:<glob>` | `<intentId>#action:<tool>`. */
 export function hookKeyOf(h: ActiveStopHook): string {
   return 'artifact' in h.hook
@@ -395,18 +448,25 @@ export function buildStopHookGateMessage(
     `[stop-hook] This turn's completion contract is not met yet ` +
     `(verified from actual tool results, attempt ${attempt}/${budget + 1}):\n` +
     `${checkLines(checks)}\n` +
-    `Satisfy the unmet hooks with real tool calls now, or state explicitly why you cannot — ` +
-    `do NOT claim completion. (This instruction binds THIS turn only.)`
+    `Satisfy the unmet hooks with real tool calls now. If this turn owes nothing (the message was a question) ` +
+    `or the contract cannot be met (missing input, blocked tool), say so with ` +
+    `<contract-deferred>one-line reason</contract-deferred> instead — do NOT claim completion. ` +
+    `(This instruction binds THIS turn only.)`
   );
 }
 
 /**
  * Chat manifest lines for respond. Returns null when no hooks are active.
  * Unmet patterns are printed verbatim so an author's typo is visible.
+ *
+ * An unmet contract reads differently per lane: unattended pauses the job
+ * (the runner publishes the interruption), attended carries it to the next
+ * message (`formatContractCarriedLine`, with the agent's declared reason).
  */
 export function formatStopHookManifest(
   checks: readonly StopHookCheck[],
   language: 'ko' | 'en',
+  opts?: { escalates?: boolean; deferralReason?: string },
 ): string | null {
   if (checks.length === 0) return null;
   const unmet = checks.filter((c) => !c.met);
@@ -414,9 +474,11 @@ export function formatStopHookManifest(
     return language === 'ko' ? `🎯 **Stop hooks 충족**` : `🎯 **Stop hooks met**`;
   }
   const head =
-    language === 'ko'
-      ? `⚠️ **이번 턴의 stop hook이 충족되지 않았습니다** — 작업이 일시중지됩니다. 재개하면 남은 훅만 다시 요구됩니다.`
-      : `⚠️ **This turn's stop hooks were not met** — the job pauses. Resuming re-demands only the remaining hooks.`;
+    opts?.escalates !== false
+      ? language === 'ko'
+        ? `⚠️ **이번 턴의 stop hook이 충족되지 않았습니다** — 작업이 일시중지됩니다. 재개하면 남은 훅만 다시 요구됩니다.`
+        : `⚠️ **This turn's stop hooks were not met** — the job pauses. Resuming re-demands only the remaining hooks.`
+      : formatContractCarriedLine(language, opts.deferralReason);
   return `${head}\n${checkLines(checks)}`;
 }
 

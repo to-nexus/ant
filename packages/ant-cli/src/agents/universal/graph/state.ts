@@ -139,6 +139,12 @@ export interface UniversalGraphState extends ResolvableState {
   _turnToolActions: string[];
   /** Stop-hook forced re-entries spent this turn (budget: stopHooks.ts). */
   hookBounceRounds?: number;
+  /**
+   * Evidence size (writes + actions) at the last bounce — a second bounce
+   * is spent only if the agent produced new tool activity since; the same
+   * state yields the same refusal, so re-asking would only repeat it.
+   */
+  hookBounceEvidenceMark?: number;
   /** Stop-hook bounce redo flag — routeAfterAgent reads it (join-redo shape). */
   _hookRedo?: boolean;
   /** Output-cap continuations spent this turn (bounded redo). */
@@ -250,6 +256,7 @@ export const UniversalAnnotation = Annotation.Root({
   _turnToolWrites: Annotation<string[]>,
   _turnToolActions: Annotation<string[]>,
   hookBounceRounds: Annotation<number | undefined>,
+  hookBounceEvidenceMark: Annotation<number | undefined>,
   _hookRedo: Annotation<boolean | undefined>,
   truncationRounds: Annotation<number | undefined>,
   _truncationRedo: Annotation<boolean | undefined>,

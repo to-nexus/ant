@@ -123,6 +123,8 @@ describe('PromptBuilder inertSystemAppend gate', () => {
       vars: baseVars,
     });
     expect(offResult.user).not.toContain('Turn Completion Contract');
+    // The declared exit is advertised ONLY inside the band — no contract, no surface to abuse.
+    expect(offResult.user).not.toContain('<contract-deferred>');
 
     const onResult = await builder.build({
       templates: TEMPLATE_PATHS.universalAgent,
@@ -137,6 +139,7 @@ describe('PromptBuilder inertSystemAppend gate', () => {
     expect(onResult.user).toContain('Turn Completion Contract');
     expect(onResult.user).toContain('reports/*-weekly.md');
     expect(onResult.user).toContain('mcp__ops-api__create_incident');
+    expect(onResult.user).toContain('<contract-deferred>');
   });
 
   it('capabilityStatus gate: off → no Capability Status band; on → band with the failure rows', async () => {

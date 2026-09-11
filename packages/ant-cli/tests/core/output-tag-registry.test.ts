@@ -281,6 +281,7 @@ describe('OutputTagRegistry — derived suppression patterns', () => {
     expect(shapeOf('eval')?.requiresClose).toBe(false);
     // Bodied entries.
     expect(shapeOf('checklist')?.requiresClose).toBe(true);
+    expect(shapeOf('contract-deferred')?.requiresClose).toBe(true);
     expect(shapeOf('analysis')?.requiresClose).toBe(true);
   });
 

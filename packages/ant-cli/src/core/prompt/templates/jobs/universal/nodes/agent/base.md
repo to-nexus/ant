@@ -78,13 +78,13 @@ The user toggled plan mode for THIS turn. Your job this turn is to produce or up
 {{#if turnStopHooks}}
 ## 🎯 Turn Completion Contract
 
-This turn is complete ONLY when every item below holds. The runtime verifies each from actual tool results at the turn's end — never from your statements — and re-prompts you until they hold; once the retry budget is spent, the turn ends paused as unmet:
+This turn is complete ONLY when every item below holds. The runtime verifies each from actual tool results at the turn's end — never from your statements — and re-prompts you until they hold; once the retry budget is spent, the turn ends with the contract recorded as unmet:
 
 {{#each turnStopHooks}}
 - {{this}}
 {{/each}}
 
-If an item cannot be satisfied, state the reason explicitly instead of stopping silently — do NOT claim completion.
+If this turn owes nothing (the message was a question, not a request to do this work) or an item cannot be satisfied (missing input, blocked tool, contradictory request), end the reply with `<contract-deferred>one-line reason</contract-deferred>` — the runtime carries the contract to the next message. Never claim completion, and never use the tag to skip work you were asked to do: a turn that wrote anything owes its contract regardless.
 {{/if}}
 
 {{#if turnOutcomes}}

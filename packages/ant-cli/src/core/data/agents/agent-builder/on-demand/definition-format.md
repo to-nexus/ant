@@ -218,7 +218,11 @@ covers both changing a thing and being asked about it: the entries arm only
 once the turn performs a write-shaped call (an artifact write, `api__*__request`,
 `run_command`, `http_request`, any `mcp__` call), so a turn that only reads and
 answers owes nothing, while a turn that wrote even a draft owes the whole
-contract. Hooks also follow the act on UNPINNED turns: when a turn nobody
+contract. Do NOT switch a deliverable intent to `on-write` just so users can
+ask it questions — the runtime already lets an interactive turn answer and
+carry the contract to the next message; `always` is what makes an
+unattended (pipeline) run of that intent fail loud when the artifact is
+missing. Hooks also follow the act on UNPINNED turns: when a turn nobody
 pinned performs an intent's `action:` hook, that intent's contract is adopted
 for the turn — a definition write on a `general` turn owes the same report a
 pinned one does.

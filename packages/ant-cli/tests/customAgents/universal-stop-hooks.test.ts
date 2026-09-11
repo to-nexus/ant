@@ -18,12 +18,16 @@ import {
   buildStopHookLedger,
   checkStopHooks,
   UNIVERSAL_TRUNCATION_CONTINUE_BUDGET,
+  formatContractCarriedLine,
   formatStopHookContractLines,
   formatStopHookManifest,
   hookKeyOf,
+  isDeclaredDeferralHonored,
   normalizeArtifactPath,
+  parseContractDeferral,
   parseSealedHookLedger,
   shouldDeferInheritedContract,
+  CONTRACT_DEFERRAL_REASON_MAX,
   verifyChecksOnDisk,
   type ActiveStopHook,
 } from '../../src/core/customAgents/stopHooks';
@@ -414,6 +418,70 @@ describe('gate message and manifest', () => {
     expect(lines[0]).toContain('`reports/*.md`');
     expect(lines[1]).toContain('[escalate]');
     expect(lines[1]).toContain('successfully called');
+  });
+});
+
+// The pinned lane's floor (doc 44 hooks rule 4): the agent's declaration is
+// the one machine-readable "this turn owes nothing / cannot deliver", honored
+// only where a user is present and the turn acted on nothing.
+describe('parseContractDeferral — the declared exit', () => {
+  it.each([
+    ['absent → null', 'Here is the answer.', null],
+    ['present → trimmed reason', 'Answer.\n<contract-deferred> prerequisites missing </contract-deferred>', 'prerequisites missing'],
+    ['empty body is a slip, not a declaration', '<contract-deferred>  </contract-deferred>', null],
+    ['last declaration wins (the <verdict> lift convention)', '<contract-deferred>a</contract-deferred> … <contract-deferred>b</contract-deferred>', 'b'],
+    ['case-insensitive, whitespace folded', '<Contract-Deferred>no\n  input</Contract-Deferred>', 'no input'],
+    ['undefined text → null', undefined, null],
+  ] as const)('%s', (_label, text, expected) => {
+    expect(parseContractDeferral(text)?.reason ?? null).toBe(expected);
+  });
+
+  it('caps the reason so a runaway declaration cannot flood the seal or the chat line', () => {
+    const parsed = parseContractDeferral(`<contract-deferred>${'x'.repeat(CONTRACT_DEFERRAL_REASON_MAX + 50)}</contract-deferred>`)!;
+    expect(parsed.reason.length).toBe(CONTRACT_DEFERRAL_REASON_MAX + 1);
+    expect(parsed.reason.endsWith('…')).toBe(true);
+  });
+});
+
+describe('isDeclaredDeferralHonored — lane × evidence truth table', () => {
+  const declared = { reason: 'question turn' };
+  const noWrite = { writes: [], actions: ['read_file', 'search_files'] };
+  const wrote = { writes: ['terms/a/draft.md'], actions: ['create_file'] };
+
+  it.each([
+    ['attended · declared · no write → honored', { declaration: declared, unattended: false, evidence: noWrite }, true],
+    ['attended · declared · wrote (staged draft) → NOT honored — the act owes the contract', { declaration: declared, unattended: false, evidence: wrote }, false],
+    ['attended · no declaration → not honored (the bounce/lane rule decides)', { declaration: null, unattended: false, evidence: noWrite }, false],
+    ['unattended · declared · no write → NOT honored — a scheduled step must deliver or fail loud', { declaration: declared, unattended: true, evidence: noWrite }, false],
+    ['a read-only mcp call counts as write-shaped evidence (conservative) → not honored', { declaration: declared, unattended: false, evidence: { writes: [], actions: ['mcp__jira__search'] } }, false],
+  ] as const)('%s', (_label, args, expected) => {
+    expect(isDeclaredDeferralHonored(args as any)).toBe(expected);
+  });
+});
+
+describe('unmet manifest per lane — pause vs carried, one wording for "carried"', () => {
+  const unmet = checkStopHooks([hook({ artifact: 'terms/*/schedule.md' }, 'deliver')], { writes: [], actions: [] });
+
+  it('unattended (default) → the pause head; attended → the carried line', () => {
+    const paused = formatStopHookManifest(unmet, 'en')!;
+    const carried = formatStopHookManifest(unmet, 'en', { escalates: false })!;
+    expect(paused).not.toBe(carried);
+    expect(carried.startsWith(formatContractCarriedLine('en'))).toBe(true);
+    // Both still list the unmet pattern verbatim (the author's glob stays visible).
+    expect(paused).toContain('`terms/*/schedule.md`');
+    expect(carried).toContain('`terms/*/schedule.md`');
+  });
+
+  it('the declared reason rides the carried line only', () => {
+    const withReason = formatStopHookManifest(unmet, 'ko', { escalates: false, deferralReason: '선행 산출물 부재' })!;
+    expect(withReason).toContain('선행 산출물 부재');
+    expect(formatStopHookManifest(unmet, 'ko', { escalates: true, deferralReason: '선행 산출물 부재' })!).not.toContain('선행 산출물 부재');
+    expect(formatContractCarriedLine('ko', 'r')).toContain('r');
+    expect(formatContractCarriedLine('ko')).not.toContain('사유');
+  });
+
+  it('the [stop-hook] gate message names the declared exit', () => {
+    expect(buildStopHookGateMessage(unmet, 1, UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET)).toContain('<contract-deferred>');
   });
 });
 

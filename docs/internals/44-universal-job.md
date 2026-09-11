@@ -1789,6 +1789,39 @@ and the clarify closure (`toolResume.ts`) frames the user's reply as
 "may answer, ask something else, or start a new request" so the tool_result
 position does not coerce every message into being read as the answer.
 
+(4) **The pinned lane's floor is the agent's declaration + the escalation
+lane** (`green-heading-drape`: a pinned deliverable intent, `arm: always`,
+`clarify: false`, and the message was a question — the agent answered
+correctly, was bounced twice, and the job ended paused with the cancelled
+card). Rules (1)–(3) never reach a FIRST pinned turn, and there the runtime
+cannot tell a question from a work request without the per-turn classifier
+doc 44 forbids — the only observer is the agent inside the turn, and the gate
+already asked it ("state explicitly why you cannot") but read only tool
+evidence. Two rules, one owner each:
+- `<contract-deferred>reason</contract-deferred>` (`OutputTagRegistry`,
+  consumed-suppressed; parse SSOT `parseContractDeferral` in `stopHooks.ts`)
+  is the machine form of that statement. `isDeclaredDeferralHonored` accepts
+  it only on the attended lane and only when the turn produced no write
+  evidence — a turn that acted owes its contract whatever it says (the
+  staged-draft catch), an unattended step has nobody to hand the work back
+  to. Honored → no bounce; the turn ends clean and respond prints the reason
+  on the carried line. The tag is advertised only inside the Turn Completion
+  Contract band and the `[stop-hook]` gate message, so a `general` turn has
+  no surface to abuse.
+- **Escalation is a lane property.** respond surfaces `_hooksUnmet` (→
+  `universal_stop_hook_unmet`, `status: paused`, the cancelled card, the
+  pipeline `HOOK_UNMET_RETRY`) on the unattended lane ONLY, read off the
+  runner's single `unattendedLane` derivation. Attended keeps the identical
+  seal (`awaitingStopHooks` + `hookTurnContext` + `hookLedger`,
+  `lastTurnHooks`) and ends as a normal success whose manifest head is
+  `formatContractCarriedLine` — the same sentence rule (3)'s deferral note
+  uses, so "the contract rides to the next message" has one wording. For a
+  present user a pending obligation is information; for an absent one it is
+  a failure. The bounce pressure is unchanged on both lanes, with one
+  refinement: a second bounce is spent only if the first produced new tool
+  activity (`hookBounceEvidenceMark`) — the same state yields the same
+  refusal, and re-asking only repeated the answer three times in one message.
+
 Exemptions (all pure code): plan turns (plan_complete owns their contract;
 writes are plan/-confined), clarify pauses (deferred — the answer turn
 re-gates via inheritance), `general` (reserved, cannot declare hooks — it
