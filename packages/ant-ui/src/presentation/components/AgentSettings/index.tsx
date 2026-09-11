@@ -21,8 +21,11 @@ import {
 import type { CustomAgentDefinitionFileNode, FileNode } from '@ant/shared';
 import { isValidCustomId } from '@ant/shared';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
+import { ApiError } from '@/infrastructure/http/api/client';
 import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
-import { fileListToEntries, partialUploadMessage } from '@/shared/utils/upload-utils';
+import { useUploadStatus } from '@/application/hooks/ui/useUploadStatus';
+import { UploadStatusCard } from '@/presentation/components/common/UploadStatusCard';
+import { findConflicts, partialUploadMessage } from '@/shared/utils/upload-utils';
 import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { entriesUnder, findDefinitionNode, hasEntry, pickedFolderName } from './definitionUpload';
@@ -112,6 +115,14 @@ function intentDirsUnder(tree: CustomAgentDefinitionFileNode[], jobId: string | 
 export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const { t } = useTranslation('agents');
   const { showError } = useAlertModalContext();
+  /**
+   * Rail-level feedback surface.
+   *
+   * The detail pane's error strip only renders once a node is selected, so a
+   * toolbar upload used to finish — or 409, or refuse the folder name — with
+   * nothing visible anywhere. Anything the RAIL starts reports here instead.
+   */
+  const upload = useUploadStatus();
   const agents = useStore((s) => s.accountAgents);
   const accountAgentsError = useStore((s) => s.accountAgentsError);
   const selection = useStore((s) => s.agentSettingsSelection);
@@ -251,6 +262,27 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     [],
   );
 
+  /**
+   * `wrap` for RAIL actions: the detail strip may not be mounted, so a refusal
+   * goes to the upload card's notice line instead of into a hidden pane.
+   */
+  const railRun = useCallback(
+    async (fn: () => Promise<void>) => {
+      try {
+        await fn();
+      } catch (e) {
+        // A cancel is the user's decision, but it is not nothing: a folder
+        // replace that stopped between batches left a partial set on disk.
+        if ((e as DOMException)?.name === 'AbortError') {
+          upload.showNotice(t('artifacts:upload.cancelled', 'Upload cancelled'));
+          return;
+        }
+        upload.showNotice(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [upload, t],
+  );
+
   // ── tree handlers (create + upload only) ───────────────────────────────────
 
   const handleCreateAgent = (id: string, name: string) =>
@@ -267,15 +299,26 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       selectAgentSettingsNode(agentId, id);
     });
 
+  /** Appended to a completion line; '' when nothing was skipped. */
+  const skippedNote = useCallback(
+    (skipped: Array<{ path: string; reason: string }>) =>
+      skipped.length === 0
+        ? ''
+        : ' ' + t('import.skippedNote', '({{count}} file(s) skipped)', { count: skipped.length }),
+    [t],
+  );
+
+  /** The refusal reasons themselves — too long for the card, so they go to the alert. */
   const reportSkipped = useCallback(
     (skipped: Array<{ path: string; reason: string }>) => {
       if (skipped.length === 0) return;
-      setError(
+      showError(
         t('import.skipped', 'Imported with {{count}} skipped file(s): ', { count: skipped.length }) +
           skipped.map((s) => `${s.path} (${s.reason})`).join(', '),
+        { title: t('common:error.title', 'Error') },
       );
     },
-    [t],
+    [t, showError],
   );
 
   /** Post-upload convergence: tree, agent list, and the job's load-validity pill. */
@@ -294,17 +337,54 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
 
   // ── uploads (file view: loose files · structure view: unit folders) ─────────
 
+  /** dirPath-relative entries → definition paths, the upload API's own units. */
+  const rootEntries = (dirPath: string, entries: UploadFileEntry[]): UploadFileEntry[] =>
+    dirPath
+      ? entries.map((e) => ({ file: e.file, relativePath: `${dirPath}/${e.relativePath}` }))
+      : entries;
+
   const doUploadFiles = useCallback(
-    (_dirPath: string, entries: UploadFileEntry[], ctx?: { agentId?: string }) => {
+    (dirPath: string, entries: UploadFileEntry[], ctx?: { agentId?: string; overwrites?: number }) => {
       const agentId = ctx?.agentId;
       if (!agentId) return;
-      void wrap(async () => {
-        const result = await uploadDefinitionFiles(agentId, entries);
-        reportSkipped(result.skipped);
-        await afterDefinitionWrite(agentId);
-      });
+      void (async () => {
+        const signal = upload.begin(entries.length, dirPath);
+        try {
+          // Entries travel RELATIVE to `dirPath` — that is the identity the
+          // conflict check compares against — and are re-rooted here, at the
+          // one place that talks to the definition-path API. Carrying full
+          // paths earlier is what silently disarmed the overwrite prompt for
+          // every directory below the agent root.
+          const result = await uploadDefinitionFiles(agentId, rootEntries(dirPath, entries), {
+            onProgress: upload.progress,
+            signal,
+          });
+          await afterDefinitionWrite(agentId);
+          const overwrites = ctx?.overwrites ?? 0;
+          upload.finish(
+            (overwrites > 0
+              ? t('import.uploadedWithOverwrite', '{{count}} file(s) uploaded ({{overwrites}} overwritten)', {
+                  count: result.uploaded.length,
+                  overwrites,
+                })
+              : t('import.uploaded', '{{count}} file(s) uploaded', { count: result.uploaded.length })) +
+              skippedNote(result.skipped),
+            result.skipped.length > 0 ? 'warning' : 'success',
+          );
+          reportSkipped(result.skipped);
+        } catch (e) {
+          upload.fail();
+          upload.showNotice(
+            (e as DOMException)?.name === 'AbortError'
+              ? t('artifacts:upload.cancelled', 'Upload cancelled')
+              : e instanceof Error
+                ? e.message
+                : String(e),
+          );
+        }
+      })();
     },
-    [wrap, reportSkipped, afterDefinitionWrite],
+    [upload, reportSkipped, skippedNote, afterDefinitionWrite, t],
   );
 
   // Copies are off here: `infer (1).md` is outside the definition whitelist, so
@@ -312,19 +392,22 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const { requestUpload, modalProps: conflictModalProps } = useUploadConflicts<{
     tree?: FileNode[] | null;
     agentId?: string;
+    overwrites?: number;
   }>({ upload: doUploadFiles, allowCopy: false });
 
-  const handleUploadFiles = (agentId: string, files: FileList, dirPath: string) =>
-    wrap(async () => {
+  const handleUploadFiles = (agentId: string, entries: UploadFileEntry[], dirPath: string) =>
+    railRun(async () => {
       // Re-read rather than `ensure`: the overwrite prompt is only as honest as
       // the tree it compares against.
       await loadDefinitionTree(agentId);
       const tree = (useStore.getState().definitionTrees[agentId]?.tree ?? []) as unknown as FileNode[];
-      requestUpload(
-        dirPath,
-        Array.from(files).map((f) => ({ file: f, relativePath: dirPath ? `${dirPath}/${f.name}` : f.name })),
-        { tree, agentId },
-      );
+      requestUpload(dirPath, entries, {
+        tree,
+        agentId,
+        // `allowCopy` is off on this lane, so a conflict the user resolves is
+        // always an overwrite — this count is exactly what they agreed to replace.
+        overwrites: findConflicts(tree, dirPath, entries).length,
+      });
     });
 
   /** job / intent FOLDER upload — same-id lands on the replace confirm below. */
@@ -336,36 +419,51 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   } | null>(null);
 
   const uploadUnitFolder = (agentId: string, dest: string, entries: UploadFileEntry[]) =>
-    wrap(async () => {
+    railRun(async () => {
+      const signal = upload.begin(entries.length, dest);
+      let result;
       try {
-        const result = await uploadDefinitionFiles(agentId, entries, { replaceDir: dest });
-        reportSkipped(result.skipped);
+        result = await uploadDefinitionFiles(agentId, entries, {
+          replaceDir: dest,
+          onProgress: upload.progress,
+          signal,
+        });
       } catch (e) {
         // Batch 1 already replaced the directory, so what is on disk now is a
-        // partial set. Say so — and still refresh, since those files are real.
+        // partial set — true of a cancel just as much as a failure. Say so,
+        // and still refresh, since those files are real.
+        upload.fail();
         await afterDefinitionWrite(agentId);
         throw partialUploadMessage(e, t, { dir: dest, destructive: true });
       }
       await afterDefinitionWrite(agentId);
+      upload.finish(
+        t('import.replacedDir', '{{dir}} replaced ({{count}} file(s))', {
+          dir: dest,
+          count: result.uploaded.length,
+        }) + skippedNote(result.skipped),
+        result.skipped.length > 0 ? 'warning' : 'success',
+      );
+      reportSkipped(result.skipped);
     });
 
   const handleUploadUnitFolder = async (
     unit: 'job' | 'intent',
     agentId: string,
     jobId: string | undefined,
-    files: FileList,
+    picks: UploadFileEntry[],
   ) => {
-    const picked = pickedFolderName(files);
+    const picked = pickedFolderName(picks);
     if (!picked || !isValidCustomId(picked)) {
-      setError(t('import.badFolderName', 'Upload exactly one folder whose name is the id ([a-z0-9-]).'));
+      upload.showNotice(t('import.badFolderName', 'Upload exactly one folder whose name is the id ([a-z0-9-]).'));
       return;
     }
     if (unit === 'intent' && !jobId) return;
     const dest = unit === 'job' ? `jobs/${picked}` : `jobs/${jobId}/intents/${picked}`;
-    const entries = entriesUnder(files, dest);
+    const entries = entriesUnder(picks, dest);
     const required = unit === 'job' ? `${dest}/job.yaml` : `${dest}/infer.md`;
     if (!hasEntry(entries, required)) {
-      setError(
+      upload.showNotice(
         unit === 'job'
           ? t('import.missingJobYaml', 'The job folder must contain job.yaml at its root.')
           : t('import.missingInferMd', 'The intent folder must contain infer.md at its root.'),
@@ -412,29 +510,62 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const [pendingImport, setPendingImport] = useState<{ entries: UploadFileEntry[]; agentId: string } | null>(null);
 
   const importFolder = (entries: UploadFileEntry[], overwrite?: boolean) =>
-    wrap(async () => {
+    railRun(async () => {
+      const signal = upload.begin(entries.length, '');
       let result;
       try {
-        result = await importAgentFolder(entries, overwrite ? { overwrite: true } : undefined);
+        result = await importAgentFolder(entries, {
+          ...(overwrite ? { overwrite: true } : {}),
+          onProgress: upload.progress,
+          signal,
+        });
       } catch (e) {
+        upload.fail();
+        // The server owns the collision verdict: the local list this screen
+        // pre-checks against can be stale, and when it was, the 409 used to
+        // land on an error strip nobody could see instead of re-asking.
+        if (e instanceof ApiError && e.code === 'agent-exists') {
+          const picked = pickedFolderName(entries);
+          if (picked && !overwrite) {
+            setPendingImport({ entries, agentId: picked });
+            return;
+          }
+          upload.showNotice(e.message);
+          return;
+        }
         // The agent exists (batch 1 created it) but its files are incomplete.
         await afterMutation();
         throw partialUploadMessage(e, t, { destructive: !!overwrite });
       }
       await afterMutation();
-      reportSkipped(result.skipped);
       if (result.agentId) {
         selectAgentSettingsNode(result.agentId);
         await loadDefinitionTree(result.agentId);
       }
+      upload.finish(
+        (overwrite
+          ? t('import.agentReplaced', 'Agent "{{id}}" replaced ({{count}} file(s))', {
+              id: result.agentId ?? '',
+              count: result.uploaded.length,
+            })
+          : t('import.agentImported', 'Agent "{{id}}" imported ({{count}} file(s))', {
+              id: result.agentId ?? '',
+              count: result.uploaded.length,
+            })) + skippedNote(result.skipped),
+        result.skipped.length > 0 ? 'warning' : 'success',
+      );
+      reportSkipped(result.skipped);
     });
 
-  const handleImportFolder = async (files: FileList) => {
-    const entries = fileListToEntries(files);
-    const picked = pickedFolderName(files);
+  /**
+   * The local list is a round-trip saver, not the authority: a miss falls
+   * through to the server, whose 409 re-opens this same prompt.
+   */
+  const handleImportFolder = async (entries: UploadFileEntry[]) => {
+    const picked = pickedFolderName(entries);
     const existing = picked ? agents.find((a) => a.id === picked) : undefined;
     if (existing && existing.scope !== 'user') {
-      setError(
+      upload.showNotice(
         t('import.conflictReadonly', 'Agent id "{{id}}" is taken by a read-only agent — rename the folder.', {
           id: picked,
         }),
@@ -762,6 +893,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onCreateFile={handleCreateDefinitionFile}
           onCreateDir={handleCreateDefinitionDir}
           onDownloadAgent={handleDownloadAgent}
+          onDropRefused={upload.showNotice}
           isTeamActive={isTeamActive}
           loadError={accountAgentsError}
           onRetryLoad={() => void loadAccountAgents()}
@@ -943,6 +1075,14 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           </span>
         </div>
       )}
+
+      <UploadStatusCard
+        status={upload.status}
+        notice={upload.notice}
+        onCancel={upload.cancel}
+        onDismiss={upload.dismiss}
+        onDismissNotice={upload.dismissNotice}
+      />
 
       <UploadConflictModal {...conflictModalProps} />
 

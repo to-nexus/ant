@@ -227,6 +227,16 @@ export function validatePipelineAvailability(raw: unknown): string[] {
  * shared with; it is authorship metadata, not definition, and it is re-written
  * from the caller's own identity whenever a definition is saved.
  */
+/**
+ * Byte budget for an UPLOADED `pipeline.yaml`.
+ *
+ * The import route carries file text in a JSON body, so it owns a field cap of
+ * its own — an authenticated route is not a budgeted one. Sized far above any
+ * definition the editor can produce (`maxStepsPerPipeline` is 20) and far below
+ * anything that would cost the process real memory to parse.
+ */
+export const PIPELINE_YAML_MAX_BYTES = 128 * 1024;
+
 export const PIPELINE_EXPORT_FILE_NAMES: readonly string[] = [
   PIPELINE_FILE_NAME,
   PIPELINE_AVAILABILITY_FILE_NAME,

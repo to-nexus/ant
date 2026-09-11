@@ -20,7 +20,7 @@ import http from 'node:http';
 import express from 'express';
 import { createPipelinesRoutes } from '../../src/periphery/adapters/http/routes/pipelines.routes';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
-import { MEMBERSHIP_REQUIRED, DIRECTIVE_MAX_CHARS, type OrgMembershipRole } from '@ant/shared';
+import { MEMBERSHIP_REQUIRED, DIRECTIVE_MAX_CHARS, PIPELINE_YAML_MAX_BYTES, type OrgMembershipRole } from '@ant/shared';
 import { zipEntryNames } from './helpers/zipEntries';
 
 let wsRoot: string;
@@ -118,7 +118,10 @@ beforeAll(async () => {
   };
 
   const app = express();
-  app.use(express.json());
+  // Mirrors the AUTHENTICATED plane's parser (`ServerConfigurator`, 50mb). The
+  // default 100kb would answer before any route's own field cap, so a cap test
+  // would be asserting the parser rather than the route.
+  app.use(express.json({ limit: '50mb' }));
   app.use(
     '/api/definitions/pipelines',
     createPipelinesRoutes({
@@ -615,6 +618,87 @@ describe('folder download (export)', () => {
   it('unknown pipeline → 404; traversal id → 400', async () => {
     expect((await api('/nope/download')).status).toBe(404);
     expect((await api(`/${encodeURIComponent('../../etc')}/download`)).status).toBe(400);
+  });
+});
+
+describe('folder import (upload)', () => {
+  const YAML = (name = 'Digest') =>
+    `version: 2\nname: ${name}\non:\n  schedule:\n    cron: '0 9 * * 1'\n    tz: Asia/Seoul\nsteps:\n  - id: collect\n    customJobRef: research/collect\n    directive: Collect sources\n`;
+
+  const importYaml = (body: Record<string, unknown>) =>
+    api('/import', { method: 'POST', body: JSON.stringify(body) });
+
+  it('a new id lands as a DISABLED draft, exactly as POST / does', async () => {
+    const res = await importYaml({ yaml: YAML(), id: 'digest' });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: 'digest', created: true });
+    expect(JSON.parse(fs.readFileSync(path.join(userDir, '.ant/pipelines/digest/availability.json'), 'utf-8')).enabled).toBe(false);
+    expect(fs.existsSync(path.join(userDir, '.ant/pipelines/digest/owner.json'))).toBe(true);
+  });
+
+  it('with no id the server slugs def.name — a bare pipeline.yaml needs no folder', async () => {
+    const res = await importYaml({ yaml: YAML('Weekly Digest') });
+    expect(res.status).toBe(201);
+    expect((await res.json()).id).toBe('weekly-digest');
+  });
+
+  it('an existing id answers 409 pipeline-exists and names the id the CLIENT must prompt about', async () => {
+    await createPipeline();
+    const res = await importYaml({ yaml: YAML('Renamed'), id: 'digest' });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('pipeline-exists');
+    expect(body.conflictId).toBe('digest');
+    // Nothing was written: the refusal is not a half-replace.
+    expect(fs.readFileSync(path.join(userDir, '.ant/pipelines/digest/pipeline.yaml'), 'utf-8')).toContain('Digest');
+  });
+
+  it('overwrite replaces the definition in place and keeps the availability sidecar', async () => {
+    await createPipeline();
+    const res = await importYaml({ yaml: YAML('Renamed'), id: 'digest', overwrite: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: 'digest', created: false });
+    expect(fs.readFileSync(path.join(userDir, '.ant/pipelines/digest/pipeline.yaml'), 'utf-8')).toContain('Renamed');
+    expect(fs.existsSync(path.join(userDir, '.ant/pipelines/digest/availability.json'))).toBe(true);
+  });
+
+  it('overwrite obeys the availability machine — an ENABLED pipeline refuses, like PUT', async () => {
+    await createPipeline();
+    await enable();
+    const res = await importYaml({ yaml: YAML('Renamed'), id: 'digest', overwrite: true });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('pipeline-enabled');
+    expect(fs.readFileSync(path.join(userDir, '.ant/pipelines/digest/pipeline.yaml'), 'utf-8')).toContain('Digest');
+  });
+
+  it('an invalid definition answers 400 invalid-pipeline-def, never a 500', async () => {
+    const res = await importYaml({ yaml: 'version: 1\n' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('invalid-pipeline-def');
+  });
+
+  it('unparseable yaml is the same typed refusal, not a crash', async () => {
+    const res = await importYaml({ yaml: 'steps: [unclosed\n' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('invalid-pipeline-def');
+  });
+
+  it('the route carries its own field cap — over-budget yaml is a typed 413', async () => {
+    const padded = YAML() + '# ' + 'x'.repeat(PIPELINE_YAML_MAX_BYTES);
+    const res = await importYaml({ yaml: padded, id: 'digest' });
+    expect(res.status).toBe(413);
+    expect((await res.json()).code).toBe('PIPELINE_YAML_TOO_LARGE');
+  });
+
+  it('an empty body is a 400, not an empty definition', async () => {
+    expect((await importYaml({ yaml: '' })).status).toBe(400);
+  });
+
+  it('import is registered as a LITERAL — it never resolves as a pipeline id', async () => {
+    await importYaml({ yaml: YAML(), id: 'digest' });
+    // `/import` did not create a pipeline called "import".
+    expect(fs.existsSync(path.join(userDir, '.ant/pipelines/import'))).toBe(false);
   });
 });
 

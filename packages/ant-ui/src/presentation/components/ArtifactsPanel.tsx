@@ -1,8 +1,6 @@
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, X, Check, AlertCircle } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import {
   createFile,
@@ -15,13 +13,14 @@ import {
   fetchTransferRequests,
 } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
-import { cn } from '@/shared/utils/design-system';
 import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
 import { useSendToTransfer } from '@/application/hooks/ui/useSendToTransfer';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
+import { UploadStatusCard } from '@/presentation/components/common/UploadStatusCard';
 import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
+import { useUploadStatus } from '@/application/hooks/ui/useUploadStatus';
 import {
   UI_PANEL_TOP_LEVEL_DIRS,
   UPLOAD_FILE_MAX_BYTES,
@@ -78,15 +77,9 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // Hide button labels when explorer is narrow
   const isNarrow = explorerWidth < 260;
 
-  // Drop error notification (shown in the same bottom-center area as upload progress)
-  const [dropError, setDropError] = useState<string | null>(null);
-  const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showDropError = useCallback((message: string) => {
-    if (dropErrorTimerRef.current) clearTimeout(dropErrorTimerRef.current);
-    setDropError(message);
-    dropErrorTimerRef.current = setTimeout(() => setDropError(null), 3000);
-  }, []);
+  // Upload progress card + the short-lived refusal line share one owner.
+  const upload = useUploadStatus();
+  const showDropError = upload.showNotice;
 
   // Figma config state — from Zustand store
   const figmaPopulated = useStore((state) => state.figmaPopulated);
@@ -273,41 +266,17 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     window.open(url, '_blank');
   };
 
-  // ── Upload state (progress + cancel) ─────────────────────────────
-  const [uploadState, setUploadState] = useState<{
-    loaded: number;
-    total: number;
-    fileCount: number;
-    targetDir: string;
-    completed?: boolean;
-  } | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const dismissUpload = useCallback(() => {
-    if (lingerTimerRef.current) {
-      clearTimeout(lingerTimerRef.current);
-      lingerTimerRef.current = null;
-    }
-    setUploadState(null);
-  }, []);
-
   const doUpload = useCallback(
     async (dirPath: string, files: UploadFileEntry[]) => {
       if (notifyArtifactMutationBlocked()) return;
       if (!selectedProject || !selectedFeature) return;
 
-      const count = files.length;
-      const controller = new AbortController();
-      abortRef.current = controller;
-      dismissUpload();
-      setUploadState({ loaded: 0, total: 0, fileCount: count, targetDir: dirPath });
+      const signal = upload.begin(files.length, dirPath);
 
       try {
         const { oversized } = await uploadFiles(selectedProject, selectedFeature, dirPath, files, {
-          onProgress: (loaded, total) =>
-            setUploadState((prev) => (prev ? { ...prev, loaded, total } : prev)),
-          signal: controller.signal,
+          onProgress: upload.progress,
+          signal,
         });
         await refreshFileTree();
         // Past the per-file cap, so never sent — named rather than dropped.
@@ -317,8 +286,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
             { title: t('common:error.title') },
           );
         }
-        setUploadState((prev) => (prev ? { ...prev, loaded: prev.total, completed: true } : prev));
-        lingerTimerRef.current = setTimeout(dismissUpload, 3000);
+        upload.finish(undefined, oversized.length > 0 ? 'warning' : 'success');
       } catch (error) {
         if ((error as DOMException)?.name === 'AbortError') {
           console.log('[Upload] Cancelled by user');
@@ -341,9 +309,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           console.error('Failed to upload files:', error);
           showError(t('error.uploadFailed'), { title: t('common:error.title') });
         }
-        setUploadState(null);
-      } finally {
-        abortRef.current = null;
+        upload.fail();
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -353,7 +319,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       refreshFileTree,
       showError,
       t,
-      dismissUpload,
+      upload,
       notifyArtifactMutationBlocked,
     ],
   );
@@ -370,14 +336,6 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     },
     [checkConflictsAndUpload],
   );
-
-  const handleCancelUpload = useCallback(() => {
-    if (uploadState?.completed) {
-      dismissUpload();
-    } else {
-      abortRef.current?.abort();
-    }
-  }, [uploadState?.completed, dismissUpload]);
 
   const prunedFileTree = useMemo(
     () => {
@@ -541,108 +499,13 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       {/* Upload conflict modal */}
       <UploadConflictModal {...conflictModalProps} />
 
-      {/* Bottom-center portal: upload progress OR drop error */}
-      {(uploadState || dropError) &&
-        createPortal(
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-80 flex flex-col gap-2">
-            {uploadState && (
-              <div
-                className={cn(
-                  'rounded-xl border shadow-lg p-3 space-y-2 cursor-pointer transition-colors',
-                  uploadState.completed
-                    ? 'border-[color:var(--status-done-fg)] bg-[color:var(--bg-surface)]'
-                    : 'border-[color:var(--violet-500)] bg-[color:var(--bg-surface)]',
-                )}
-                onClick={uploadState.completed ? dismissUpload : undefined}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={cn(
-                      'flex items-center gap-2 text-xs font-medium truncate',
-                      uploadState.completed
-                        ? 'text-[color:var(--status-done-fg)]'
-                        : 'text-[color:var(--violet-700)]',
-                    )}
-                  >
-                    {uploadState.completed ? (
-                      <Check className="w-3.5 h-3.5 flex-shrink-0" />
-                    ) : (
-                      <Upload className="w-3.5 h-3.5 flex-shrink-0" />
-                    )}
-                    {uploadState.completed
-                      ? t('upload.complete', { count: uploadState.fileCount })
-                      : t('upload.uploading', {
-                          count: uploadState.fileCount,
-                          dir: uploadState.targetDir,
-                        })}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCancelUpload();
-                    }}
-                    className="flex-shrink-0 ml-2 p-1 rounded-md hover:bg-[color:var(--bg-active)] text-[color:var(--text-4)] hover:text-[color:var(--text-3)] transition-colors"
-                    title={uploadState.completed ? t('upload.dismiss') : t('upload.cancel')}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div
-                  className="w-full h-2 rounded-full overflow-hidden"
-                  style={{
-                    background: uploadState.completed
-                      ? 'oklch(from var(--status-done-fg) l c h / 0.15)'
-                      : 'var(--violet-100)',
-                  }}
-                >
-                  <div
-                    className="h-full rounded-full transition-[width] duration-200"
-                    style={{
-                      width:
-                        uploadState.total > 0
-                          ? `${Math.round((uploadState.loaded / uploadState.total) * 100)}%`
-                          : '0%',
-                      background: uploadState.completed
-                        ? 'var(--status-done-fg)'
-                        : 'var(--violet-500)',
-                    }}
-                  />
-                </div>
-                {uploadState.total > 0 && !uploadState.completed && (
-                  <div className="text-[10px] text-[color:var(--violet-500)] text-right font-medium">
-                    {Math.round((uploadState.loaded / uploadState.total) * 100)}%
-                  </div>
-                )}
-              </div>
-            )}
-            {dropError && (
-              <div
-                className="relative rounded-xl border bg-[color:var(--bg-surface)] shadow-lg p-3 cursor-pointer transition-colors overflow-hidden"
-                style={{ borderColor: 'var(--status-error-fg)' }}
-                onClick={() => setDropError(null)}
-              >
-                <span className="flex items-center gap-2 text-xs font-medium text-[color:var(--status-error-fg)]">
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                  {dropError}
-                </span>
-                <div
-                  className="absolute bottom-0 left-0 right-0 h-0.5"
-                  style={{ background: 'oklch(from var(--status-error-fg) l c h / 0.15)' }}
-                >
-                  <div
-                    className="h-full"
-                    style={{
-                      background: 'var(--status-error-fg)',
-                      animation: 'shrink-progress 3000ms linear forwards',
-                    }}
-                  />
-                </div>
-                <style>{`@keyframes shrink-progress{from{width:100%}to{width:0%}}`}</style>
-              </div>
-            )}
-          </div>,
-          document.body,
-        )}
+      <UploadStatusCard
+        status={upload.status}
+        notice={upload.notice}
+        onCancel={upload.cancel}
+        onDismiss={upload.dismiss}
+        onDismissNotice={upload.dismissNotice}
+      />
     </div>
   );
 }

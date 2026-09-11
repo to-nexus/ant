@@ -76,7 +76,7 @@ const SELF_API_FAMILY_PREFIX = '/definitions';
  * this by registration order; this guard matches independently, so the
  * exclusion has to be explicit.
  */
-const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projects', 'approvals', 'runs', 'activations']);
+const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projects', 'approvals', 'runs', 'activations', 'import']);
 
 /**
  * The pipeline routes a definition-authoring job may reach, as METHOD + the
@@ -94,6 +94,9 @@ const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projec
  *   runs/**                     operational history; a job's own run log is
  *                               already grafted read-only into its plane
  *   download                    bulk export; `GET /pipelines/:id` carries the def
+ *   import                      replaces a definition wholesale from uploaded
+ *                               bytes — the `/definitions/agents/import` twin,
+ *                               refused there too; a job drafts via `POST /`
  */
 const PIPELINE_ALLOWED_ROUTES: ReadonlyArray<{ method: string; tail: readonly string[] }> = [
   { method: 'GET', tail: [] },

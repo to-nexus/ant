@@ -71,6 +71,7 @@ function NodeRow({
         <button
           type="button"
           data-def-path={node.path}
+          {...(isDir ? { 'data-def-dir': '' } : {})}
           onClick={() => {
             if (isDir) {
               onToggle(node.path);

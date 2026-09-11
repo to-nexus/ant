@@ -19,9 +19,12 @@
     "expand": "Expand",
     "menu": {
       "pipelineActions": "Pipeline actions",
-      "downloadFolder": "Download folder"
+      "downloadFolder": "Download folder",
+      "uploadFile": "Upload pipeline.yaml…",
+      "uploadFolder": "Upload pipeline folder…"
     },
-    "unsaved": "Unsaved"
+    "unsaved": "Unsaved",
+    "upload": "Upload pipeline definition"
   },
   "views": {
     "wiring": "Design",
@@ -410,5 +413,17 @@
     "edgeFailure": "on failure",
     "edgeAlways": "always",
     "edgeVerdict": "on verdict"
+  },
+  "import": {
+    "created": "Pipeline \"{{id}}\" imported",
+    "replaced": "Pipeline \"{{id}}\" replaced",
+    "ignored": "({{count}} file(s) ignored — not part of a pipeline definition)",
+    "noYaml": "No pipeline.yaml in the upload — a pipeline definition is that one file.",
+    "ambiguous": "Upload exactly one pipeline folder, or one pipeline.yaml.",
+    "badFolderName": "The folder name is the pipeline id — use [a-z0-9-] only.",
+    "unreadable": "Could not read the uploaded file.",
+    "readonlyTarget": "That pipeline is read-only — drop on the rail to import a copy.",
+    "replaceTitle": "Pipeline already exists",
+    "replaceMessage": "A pipeline with this id already exists. Overwriting REPLACES its definition; activations and run history are left untouched."
   }
 }

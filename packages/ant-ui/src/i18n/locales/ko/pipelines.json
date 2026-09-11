@@ -19,9 +19,12 @@
     "expand": "펼치기",
     "menu": {
       "pipelineActions": "파이프라인 작업",
-      "downloadFolder": "폴더 다운로드"
+      "downloadFolder": "폴더 다운로드",
+      "uploadFile": "pipeline.yaml 업로드…",
+      "uploadFolder": "파이프라인 폴더 업로드…"
     },
-    "unsaved": "저장 전"
+    "unsaved": "저장 전",
+    "upload": "파이프라인 정의 업로드"
   },
   "views": {
     "wiring": "설계",
@@ -410,5 +413,17 @@
     "edgeFailure": "실패 시",
     "edgeAlways": "항상",
     "edgeVerdict": "판정 분기"
+  },
+  "import": {
+    "created": "파이프라인 \"{{id}}\" 업로드 완료",
+    "replaced": "파이프라인 \"{{id}}\" 덮어쓰기 완료",
+    "ignored": "({{count}}개 파일 무시됨 — 파이프라인 정의가 아님)",
+    "noYaml": "업로드에 pipeline.yaml이 없습니다 — 파이프라인 정의는 이 파일 하나입니다.",
+    "ambiguous": "파이프라인 폴더 하나, 또는 pipeline.yaml 하나만 올려주세요.",
+    "badFolderName": "폴더 이름이 파이프라인 id입니다 — [a-z0-9-]만 사용하세요.",
+    "unreadable": "업로드한 파일을 읽지 못했습니다.",
+    "readonlyTarget": "읽기 전용 파이프라인입니다 — 레일에 놓으면 사본으로 가져옵니다.",
+    "replaceTitle": "이미 존재하는 파이프라인",
+    "replaceMessage": "같은 id의 파이프라인이 이미 있습니다. 덮어쓰면 정의가 교체되며, 활성화와 실행 이력은 그대로 유지됩니다."
   }
 }

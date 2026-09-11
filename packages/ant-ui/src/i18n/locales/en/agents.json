@@ -39,7 +39,8 @@
     "toggleToHuman": "File view — switch to Structure",
     "filesLoading": "Loading files…",
     "filesEmpty": "No files yet.",
-    "uploadAgentFolder": "Upload agent folder… (must contain agent.yaml)"
+    "uploadAgentFolder": "Upload agent folder… (must contain agent.yaml)",
+    "dropReadonly": "That agent is read-only."
   },
   "detail": {
     "selectAgent": "Select an agent, job, or intent on the left",
@@ -270,6 +271,12 @@
     "replaceAgentTitle": "Agent already exists",
     "replaceAgentMessage": "An agent with this id already exists. Overwriting REPLACES its definition files; past session data is left untouched.",
     "uploadPartialReplace": "{{done}} of {{total}} files were uploaded. The existing folder was already replaced, so it is now incomplete — retry the upload.",
-    "uploadPartial": "{{done}} of {{total}} files were uploaded, then the upload stopped: {{reason}}"
+    "uploadPartial": "{{done}} of {{total}} files were uploaded, then the upload stopped: {{reason}}",
+    "skippedNote": "({{count}} file(s) skipped)",
+    "uploaded": "{{count}} file(s) uploaded",
+    "uploadedWithOverwrite": "{{count}} file(s) uploaded ({{overwrites}} overwritten)",
+    "replacedDir": "{{dir}} replaced ({{count}} file(s))",
+    "agentImported": "Agent \"{{id}}\" imported ({{count}} file(s))",
+    "agentReplaced": "Agent \"{{id}}\" replaced ({{count}} file(s))"
   }
 }

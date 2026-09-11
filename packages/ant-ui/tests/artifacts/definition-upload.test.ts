@@ -34,6 +34,11 @@ const UPLOAD_LIMITS_FIELDS = UPLOAD_MAX_FILES_PER_REQUEST + UPLOAD_MAX_SCALAR_FI
 const UPLOAD_LIMITS_PARTS = UPLOAD_MAX_FILES_PER_REQUEST * 2 + UPLOAD_MAX_SCALAR_FIELDS;
 import type { FileNode } from '@ant/shared';
 
+/** The picker's own path: a FileList becomes entries before any helper sees it. */
+function picked(paths: string[]) {
+  return fileListToEntries(fileList(paths));
+}
+
 function fileList(paths: string[]): FileList {
   const files = paths.map((p) => {
     const file = new File(['x'], p.split('/').pop()!);
@@ -45,7 +50,7 @@ function fileList(paths: string[]): FileList {
 
 describe('definition folder upload mapping', () => {
   it('the picked folder name is the id, and its segment is stripped', () => {
-    const files = fileList(['research/job.yaml', 'research/base/system.md', 'research/intents/a/infer.md']);
+    const files = picked(['research/job.yaml', 'research/base/system.md', 'research/intents/a/infer.md']);
     expect(pickedFolderName(files)).toBe('research');
     expect(entriesUnder(files, 'jobs/research').map((e) => e.relativePath)).toEqual([
       'jobs/research/job.yaml',
@@ -55,14 +60,14 @@ describe('definition folder upload mapping', () => {
   });
 
   it('re-roots under any destination (intent folder into a job)', () => {
-    const files = fileList(['triage/infer.md', 'triage/prompt.md']);
+    const files = picked(['triage/infer.md', 'triage/prompt.md']);
     const entries = entriesUnder(files, 'jobs/weekly/intents/triage');
     expect(hasEntry(entries, 'jobs/weekly/intents/triage/infer.md')).toBe(true);
     expect(hasEntry(entries, 'jobs/weekly/intents/triage/job.yaml')).toBe(false);
   });
 
   it('two top-level folders → no id (the caller must refuse)', () => {
-    expect(pickedFolderName(fileList(['a/agent.yaml', 'b/agent.yaml']))).toBeNull();
+    expect(pickedFolderName(picked(['a/agent.yaml', 'b/agent.yaml']))).toBeNull();
   });
 
   it('finds a directory node by path', () => {
@@ -87,6 +92,33 @@ describe('findConflicts at the tree root', () => {
       'agent.yaml',
     ]);
     expect(findConflicts(tree, '', [{ file: new File([''], 'job.yaml'), relativePath: 'job.yaml' }])).toEqual([]);
+  });
+
+  /**
+   * An entry's path is relative to the TARGET DIRECTORY on every lane. The
+   * agent screen used to pre-root its entries to the definition path before
+   * the check, so nothing ever matched below the root and the overwrite prompt
+   * silently never fired for a nested directory.
+   */
+  it('a definition-rooted path below the root is NOT the identity this check reads', () => {
+    const nested: FileNode[] = [
+      {
+        name: 'jobs',
+        path: 'jobs',
+        type: 'directory',
+        children: [
+          {
+            name: 'weekly',
+            path: 'jobs/weekly',
+            type: 'directory',
+            children: [{ name: 'job.yaml', path: 'jobs/weekly/job.yaml', type: 'file' }],
+          },
+        ],
+      },
+    ];
+    const file = new File([''], 'job.yaml');
+    expect(findConflicts(nested, 'jobs/weekly', [{ file, relativePath: 'job.yaml' }])).toEqual(['job.yaml']);
+    expect(findConflicts(nested, 'jobs/weekly', [{ file, relativePath: 'jobs/weekly/job.yaml' }])).toEqual([]);
   });
 });
 

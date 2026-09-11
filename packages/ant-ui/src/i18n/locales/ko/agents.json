@@ -39,7 +39,8 @@
     "toggleToHuman": "파일 뷰 — 구조 뷰로 전환",
     "filesLoading": "파일 불러오는 중…",
     "filesEmpty": "아직 파일이 없습니다.",
-    "uploadAgentFolder": "에이전트 폴더 업로드… (agent.yaml 포함)"
+    "uploadAgentFolder": "에이전트 폴더 업로드… (agent.yaml 포함)",
+    "dropReadonly": "읽기 전용 에이전트입니다."
   },
   "detail": {
     "selectAgent": "왼쪽에서 에이전트, 잡, 인텐트를 선택하세요",
@@ -270,6 +271,12 @@
     "replaceAgentTitle": "에이전트가 이미 존재합니다",
     "replaceAgentMessage": "같은 id 의 에이전트가 있습니다. 덮어쓰면 정의 파일이 교체됩니다. 과거 세션 데이터는 유지됩니다.",
     "uploadPartialReplace": "{{total}}개 중 {{done}}개가 업로드되었습니다. 기존 폴더가 이미 교체되어 지금은 불완전한 상태입니다 — 업로드를 다시 시도해주세요.",
-    "uploadPartial": "{{total}}개 중 {{done}}개 업로드 후 중단되었습니다: {{reason}}"
+    "uploadPartial": "{{total}}개 중 {{done}}개 업로드 후 중단되었습니다: {{reason}}",
+    "skippedNote": "({{count}}개 파일 건너뜀)",
+    "uploaded": "{{count}}개 파일 업로드 완료",
+    "uploadedWithOverwrite": "{{count}}개 파일 업로드 완료 ({{overwrites}}개 덮어씀)",
+    "replacedDir": "{{dir}} 교체 완료 ({{count}}개 파일)",
+    "agentImported": "에이전트 \"{{id}}\" 업로드 완료 ({{count}}개 파일)",
+    "agentReplaced": "에이전트 \"{{id}}\" 덮어쓰기 완료 ({{count}}개 파일)"
   }
 }

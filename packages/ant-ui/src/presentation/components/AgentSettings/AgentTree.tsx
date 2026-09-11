@@ -56,9 +56,13 @@ import {
   toggleSetMember,
 } from '@/presentation/components/shared/rail';
 import { useFilePicker } from '@/application/hooks/ui/useFilePicker';
+import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
+import { fileListToEntries } from '@/shared/utils/upload-utils';
+import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { STORAGE_KEYS } from '@/domain/store/storage';
 import type { AgentSettingsSelection, DefinitionTreeEntry } from '@/domain/store/slices/agentSettingsSlice';
 import { DefinitionFileTree } from './overview/DefinitionFileTree';
+import { dirOf } from './definitionUpload';
 import { agentIconComponent } from '@/presentation/components/AgentIcon';
 
 type TreeView = 'human' | 'files';
@@ -79,6 +83,14 @@ type Creating =
   | { kind: 'intent'; agentId: string; jobId: string }
   | { kind: 'file'; agentId: string; dirPath: string };
 
+/** Where a drop landed — and therefore which upload lane it means. */
+type DropTarget =
+  | { kind: 'rail'; key: null }
+  | { kind: 'readonly'; key: string }
+  | { kind: 'job'; agentId: string; key: string }
+  | { kind: 'intent'; agentId: string; jobId: string; key: string }
+  | { kind: 'dir'; agentId: string; dirPath: string; key: string };
+
 export interface AgentTreeProps {
   agents: CustomAgentSummary[];
   selection: AgentSettingsSelection;
@@ -86,16 +98,23 @@ export interface AgentTreeProps {
   onCreateAgent: (id: string, name: string) => Promise<void>;
   onCreateJob: (agentId: string, id: string, name: string) => Promise<void>;
   /** Upload loose files into one definition directory (file view). */
-  onUploadFiles: (agentId: string, files: FileList, dirPath: string) => Promise<void>;
-  /** Upload a whole agent folder (both views, toolbar). */
-  onImportFolder: (files: FileList) => Promise<void>;
+  onUploadFiles: (agentId: string, entries: UploadFileEntry[], dirPath: string) => Promise<void>;
+  /** Upload a whole agent folder (both views, toolbar or a rail drop). */
+  onImportFolder: (entries: UploadFileEntry[]) => Promise<void>;
   /** Upload a job / intent FOLDER — the picked folder name is the id. */
-  onUploadUnitFolder: (unit: 'job' | 'intent', agentId: string, jobId: string | undefined, files: FileList) => Promise<void>;
+  onUploadUnitFolder: (
+    unit: 'job' | 'intent',
+    agentId: string,
+    jobId: string | undefined,
+    entries: UploadFileEntry[],
+  ) => Promise<void>;
   onCreateIntent: (agentId: string, jobId: string, intentId: string) => void;
   onCreateFile: (agentId: string, path: string) => Promise<void>;
   onCreateDir: (agentId: string, path: string) => Promise<void>;
   /** Whole-agent folder export (ZIP) — offered in every scope, readonly included. */
   onDownloadAgent: (agentId: string) => Promise<void>;
+  /** A drop this tree cannot accept — reported on the rail's own surface. */
+  onDropRefused: (message: string) => void;
   /** Empty-state copy for the org group depends on whether a team is active. */
   isTeamActive: boolean;
   /** Why the agent list is empty, when it is empty because loading failed. */
@@ -226,6 +245,7 @@ export function AgentTree({
   onCreateFile,
   onCreateDir,
   onDownloadAgent,
+  onDropRefused,
   isTeamActive,
   loadError,
   onRetryLoad,
@@ -265,6 +285,63 @@ export function AgentTree({
     set((prev) => toggleSetMember(prev, key));
   };
 
+  /** `undefined` = not dragging · `null` = the rail itself · otherwise a row key. */
+  const [dropKey, setDropKey] = useState<string | null | undefined>(undefined);
+
+  /**
+   * Where a drop landed, and therefore what it means.
+   *
+   * A row's drop does exactly what that row's upload menu item does — an agent
+   * row takes a job folder, a job row takes an intent folder, a file-view
+   * directory takes loose files — so there is one rule to learn, not two.
+   */
+  const resolveDrop = (el: HTMLElement): DropTarget => {
+    const agentEl = el.closest('[data-drop-agent]');
+    const agentId = agentEl?.getAttribute('data-drop-agent') ?? undefined;
+    if (!agentId) return { kind: 'rail', key: null };
+    if (agentEl!.hasAttribute('data-drop-readonly')) return { kind: 'readonly', key: `agent:${agentId}` };
+
+    const defEl = el.closest('[data-def-path]');
+    if (defEl) {
+      const path = defEl.getAttribute('data-def-path') ?? '';
+      const dirPath = defEl.hasAttribute('data-def-dir') ? path : dirOf(path);
+      return { kind: 'dir', agentId, dirPath, key: `dir:${agentId}:${dirPath}` };
+    }
+    const jobEl = el.closest('[data-drop-job]');
+    const jobId = jobEl?.getAttribute('data-drop-job') ?? undefined;
+    if (jobId) return { kind: 'intent', agentId, jobId, key: `job:${agentId}/${jobId}` };
+    return { kind: 'job', agentId, key: `agent:${agentId}` };
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const target = resolveDrop(e.target as HTMLElement);
+    setDropKey(undefined);
+    if (target.kind === 'readonly') {
+      onDropRefused(t('tree.dropReadonly', 'That agent is read-only.'));
+      return;
+    }
+    const entries = await extractDroppedFiles(e.dataTransfer);
+    if (entries.length === 0) return;
+    switch (target.kind) {
+      case 'rail':
+        void onImportFolder(entries);
+        return;
+      case 'job':
+        void onUploadUnitFolder('job', target.agentId, undefined, entries);
+        return;
+      case 'intent':
+        void onUploadUnitFolder('intent', target.agentId, target.jobId, entries);
+        return;
+      case 'dir':
+        void onUploadFiles(target.agentId, entries, target.dirPath);
+        return;
+    }
+  };
+
+  const dropOutline = (key: string): React.CSSProperties | undefined =>
+    dropKey === key ? { outline: '2px dashed var(--violet-500)', outlineOffset: -2, borderRadius: 6 } : undefined;
+
   // Write items are gated by the PER-AGENT effective readonly (org agents can
   // be editable for their owner/editors). Promotion lives in the detail
   // pane's PromoteZone, not here — the tree only creates and navigates.
@@ -285,7 +362,7 @@ export function AgentTree({
             {
               icon: Upload,
               label: t('tree.menu.uploadJobFolder', 'Upload job folder…'),
-              onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, files), { directory: true }),
+              onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, fileListToEntries(files)), { directory: true }),
             },
           ];
     return writes.length > 0 ? [...writes, 'separator', download] : [download];
@@ -303,7 +380,7 @@ export function AgentTree({
           {
             icon: Upload,
             label: t('tree.menu.uploadIntentFolder', 'Upload intent folder…'),
-            onClick: () => openFilePicker((files) => void onUploadUnitFolder('intent', agent.id, jobId, files), { directory: true }),
+            onClick: () => openFilePicker((files) => void onUploadUnitFolder('intent', agent.id, jobId, fileListToEntries(files)), { directory: true }),
           },
         ];
 
@@ -358,13 +435,13 @@ export function AgentTree({
     items.push({
       icon: Upload,
       label: t('artifacts:actions.upload', 'Upload files'),
-      onClick: () => openFilePicker((files) => void onUploadFiles(agentId, files, dirPath)),
+      onClick: () => openFilePicker((files) => void onUploadFiles(agentId, fileListToEntries(files), dirPath)),
     });
     items.push({
       icon: FolderUp,
       label: t('artifacts:actions.uploadFolder', 'Upload folder'),
       onClick: () =>
-        openFilePicker((files) => void onUploadFiles(agentId, files, dirPath), { directory: true }),
+        openFilePicker((files) => void onUploadFiles(agentId, fileListToEntries(files), dirPath), { directory: true }),
     });
     if (policy.customIdChild) {
       items.push({
@@ -375,7 +452,8 @@ export function AgentTree({
             : t('tree.menu.uploadIntentFolder', 'Upload intent folder…'),
         onClick: () =>
           openFilePicker(
-            (files) => void onUploadUnitFolder(policy.customIdChild!, agentId, dirPath.split('/')[1], files),
+            (files) =>
+              void onUploadUnitFolder(policy.customIdChild!, agentId, dirPath.split('/')[1], fileListToEntries(files)),
             { directory: true },
           ),
       });
@@ -434,7 +512,28 @@ export function AgentTree({
   };
 
   return (
-    <div className="h-full overflow-y-auto p-3 flex flex-col gap-3">
+    <div
+      className="h-full overflow-y-auto p-3 flex flex-col gap-3"
+      style={dropKey === null ? { outline: '2px dashed var(--violet-400)', outlineOffset: -4 } : undefined}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setDropKey(resolveDrop(e.target as HTMLElement).key);
+      }}
+      onDragLeave={(e) => {
+        // Child boundaries fire dragleave constantly; only a real exit clears.
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        if (
+          e.clientX <= rect.left ||
+          e.clientX >= rect.right ||
+          e.clientY <= rect.top ||
+          e.clientY >= rect.bottom
+        ) {
+          setDropKey(undefined);
+        }
+      }}
+      onDrop={(e) => void handleDrop(e)}
+    >
       {filePicker}
       {/* Icon-only toolbar — the labels survive as the accessible names so the
           reclaimed width goes to the tree rows. Upload stays a <label> (it
@@ -454,7 +553,7 @@ export function AgentTree({
             // @ts-expect-error — non-standard folder-upload attribute
             webkitdirectory=""
             onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) void onImportFolder(e.target.files);
+              if (e.target.files && e.target.files.length > 0) void onImportFolder(fileListToEntries(e.target.files));
               e.target.value = '';
             }}
           />
@@ -519,7 +618,12 @@ export function AgentTree({
               const agentCollapsed = collapsedAgents.has(agent.id);
               const agentSelected = selection.agentId === agent.id && !selection.jobId;
               return (
-                <div key={agent.id}>
+                <div
+                  key={agent.id}
+                  data-drop-agent={agent.id}
+                  {...(agent.readonly ? { 'data-drop-readonly': '' } : {})}
+                  style={dropOutline(`agent:${agent.id}`)}
+                >
                   <RailRow
                     icon={agentIconComponent(agent.id)}
                     label={agent.name}
@@ -589,7 +693,11 @@ export function AgentTree({
                         selection.agentId === agent.id && selection.jobId === job.id && !selection.intentId;
                       const intents = job.intents ?? [];
                       return (
-                        <div key={job.id}>
+                        <div
+                          key={job.id}
+                          data-drop-job={job.id}
+                          style={dropOutline(`job:${agent.id}/${job.id}`)}
+                        >
                           <RailRow
                             icon={Briefcase}
                             label={job.name}

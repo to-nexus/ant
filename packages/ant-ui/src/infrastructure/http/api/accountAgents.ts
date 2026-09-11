@@ -216,6 +216,14 @@ interface MultipartBatchSpec {
   /** Path rewrite for batches 2..K (`/import` strips the agent-id segment). */
   restPath?: (relativePath: string, first: DefinitionUploadResult) => string;
   pinFirst?: (entry: UploadFileEntry) => boolean;
+  /**
+   * Batch-granular progress. `authFetch` is `fetch`, which reports no upload
+   * bytes, so a folder advances one batch at a time — coarse, but monotonic and
+   * true, which a permanently-empty bar is not.
+   */
+  onProgress?: (loaded: number, total: number) => void;
+  /** Checked BETWEEN batches — a folder upload is cancellable at that grain. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -237,20 +245,24 @@ async function postMultipart(
   const skipped: Array<{ path: string; reason: string }> = [];
   let first: DefinitionUploadResult | undefined;
 
-  await runUploadBatches(plan, async (batch, ctx) => {
-    let result: DefinitionUploadResult;
-    if (ctx.isFirst) {
-      result = await postOneBatch(url, batch, spec.firstFields);
-      first = result;
-    } else {
-      const rest = spec.restPath
-        ? batch.map((e) => ({ ...e, relativePath: spec.restPath!(e.relativePath, first!) }))
-        : batch;
-      result = await postOneBatch(spec.restUrl ? spec.restUrl(first!) : url, rest);
-    }
-    if (Array.isArray(result.uploaded)) uploaded.push(...result.uploaded);
-    if (Array.isArray(result.skipped)) skipped.push(...result.skipped);
-  });
+  await runUploadBatches(
+    plan,
+    async (batch, ctx) => {
+      let result: DefinitionUploadResult;
+      if (ctx.isFirst) {
+        result = await postOneBatch(url, batch, spec.firstFields);
+        first = result;
+      } else {
+        const rest = spec.restPath
+          ? batch.map((e) => ({ ...e, relativePath: spec.restPath!(e.relativePath, first!) }))
+          : batch;
+        result = await postOneBatch(spec.restUrl ? spec.restUrl(first!) : url, rest);
+      }
+      if (Array.isArray(result.uploaded)) uploaded.push(...result.uploaded);
+      if (Array.isArray(result.skipped)) skipped.push(...result.skipped);
+    },
+    { onProgress: spec.onProgress, signal: spec.signal },
+  );
 
   return { success: true, uploaded, skipped, agentId: first?.agentId };
 }
@@ -287,11 +299,17 @@ export function deleteAgentIcon(agentId: string, name: string): Promise<void> {
 export function uploadDefinitionFiles(
   agentId: string,
   entries: UploadFileEntry[],
-  options?: { replaceDir?: string },
+  options?: {
+    replaceDir?: string;
+    onProgress?: (loaded: number, total: number) => void;
+    signal?: AbortSignal;
+  },
 ): Promise<DefinitionUploadResult> {
   return postMultipart(`${base()}/${encodeURIComponent(agentId)}/files/upload`, entries, {
     // Batch 1 replaces the directory; the rest append into it.
     firstFields: options?.replaceDir ? { replaceDir: options.replaceDir } : undefined,
+    onProgress: options?.onProgress,
+    signal: options?.signal,
   });
 }
 
@@ -315,10 +333,16 @@ export function downloadAgentFolder(agentId: string): Promise<void> {
  */
 export function importAgentFolder(
   entries: UploadFileEntry[],
-  options?: { overwrite?: boolean },
+  options?: {
+    overwrite?: boolean;
+    onProgress?: (loaded: number, total: number) => void;
+    signal?: AbortSignal;
+  },
 ): Promise<DefinitionUploadResult> {
   return postMultipart(`${base()}/import`, entries, {
     firstFields: options?.overwrite ? { overwrite: 'true' } : undefined,
+    onProgress: options?.onProgress,
+    signal: options?.signal,
     // agent.yaml must be in the batch that hits /import, or it answers 400.
     pinFirst: (e) => /(^|\/)agent\.yaml$/.test(e.relativePath),
     restUrl: (first) => `${base()}/${encodeURIComponent(first.agentId ?? '')}/files/upload`,

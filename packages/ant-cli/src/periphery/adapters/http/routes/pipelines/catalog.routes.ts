@@ -21,16 +21,19 @@ import { derivePipelinesRoot, pipelineDir } from '../../../../../core/pipelines/
 import {
   listAccountActivations,
   listPipelines,
+  parsePipelineYaml,
   saveAvailability,
   savePipeline,
   validatePipelineDefServer,
   PipelineValidationError,
 } from '../../../../../core/pipelines/store';
+import { validateBody } from '../../middleware/validateBody';
+import { PipelineImportBodySchema } from '../helpers/pipelineImportSchema';
 import { PIPELINE_OWNER_FILE } from '../../../../../infrastructure/scheduling/PipelineReconciler';
 import { ownerOf, type PipelinesRouteContext } from './context';
 
 export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext): void {
-  const { deps, orgGateFor, ctxOf, scopeRootsOf, actRootOf, findPipelineRoot, publishPipelineEvent, activationView, buildListEntry } = ctx;
+  const { deps, orgGateFor, ctxOf, scopeRootsOf, actRootOf, findPipelineRoot, findWritablePipeline, refuseWhileEnabled, publishPipelineEvent, activationView, buildListEntry } = ctx;
 
   // ── List ────────────────────────────────────────────────────────────
   router.get('/', async (req: Request, res: Response) => {
@@ -74,84 +77,108 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
     }
   });
 
+  /**
+   * Create in the caller's personal root as a DISABLED draft.
+   *
+   * Shared by `POST /` and `POST /import` so the two cannot drift on id
+   * derivation, cross-scope collision, caps, or the availability default.
+   * Answers the response itself — including every refusal — and returns the
+   * created id, or null when it already answered.
+   */
+  async function createPipelineDraft(
+    req: Request,
+    res: Response,
+    def: PipelineDef,
+    suppliedId: string | undefined,
+  ): Promise<{ id: string; entry: PipelineListEntry; catalogWarnings: string[] } | null> {
+    const owner = ownerOf(req);
+    const errors = validatePipelineDefServer(def);
+    if (errors.length > 0) {
+      res.status(400).json({ error: errors[0], errors, code: 'invalid-pipeline-def' });
+      return null;
+    }
+    const scopeRoots = scopeRootsOf(owner);
+    const root = derivePipelinesRoot(ctxOf(owner));
+    // `id` is optional only while `def.name` has something to slug. A name
+    // with no [a-z0-9] run (any non-Latin script — legitimate for a
+    // user-authored definition) slugs to "", which is not an invalid id the
+    // caller sent: it is an id nobody could derive. Saying so, and where the
+    // field belongs, is the difference between one round trip and a guessing
+    // loop — a Korean-named draft cost an LLM author two of six saves.
+    const requestedId = suppliedId ?? toCustomId(def.name);
+    if (!requestedId) {
+      const inQuery = typeof req.query?.id === 'string' && req.query.id.length > 0;
+      res.status(400).json({
+        error:
+          `Cannot derive a pipeline id from name "${def.name}" — it has no [a-z0-9] characters to slug. ` +
+          (inQuery
+            ? 'Send `id` in the request BODY (`{ id, def }`), not the query string.'
+            : 'Send an explicit `id` in the request body (`{ id, def }`).'),
+        code: 'pipeline-id-required',
+      });
+      return null;
+    }
+    if (!isValidCustomId(requestedId)) {
+      res.status(400).json({ error: `Invalid pipeline id: "${requestedId}"`, code: 'invalid-pipeline-id' });
+      return null;
+    }
+    // Cross-scope collision: shadowing an org pipeline is refused, not applied.
+    const collision = findPipelineRoot(scopeRoots, requestedId);
+    if (collision) {
+      res.status(409).json({
+        error:
+          collision.scopeRoot.scope === 'org'
+            ? `Pipeline id "${requestedId}" is taken by an org pipeline — choose another id`
+            : `Pipeline "${requestedId}" already exists`,
+        code: 'pipeline-exists',
+        conflictId: requestedId,
+        scope: collision.scopeRoot.scope,
+      });
+      return null;
+    }
+    const existing = listPipelines(root);
+    if (existing.length >= DEFAULT_PIPELINE_CAPS.maxPipelines) {
+      res.status(400).json({ error: `At most ${DEFAULT_PIPELINE_CAPS.maxPipelines} pipelines per account`, code: 'cap-exceeded' });
+      return null;
+    }
+    await savePipeline(root, requestedId, def);
+    // Authorship sidecar — display/bookkeeping only; the fire identity is the activator's.
+    await fs.promises.writeFile(
+      path.join(pipelineDir(root, requestedId), PIPELINE_OWNER_FILE),
+      JSON.stringify(owner, null, 2),
+      'utf-8',
+    );
+    await saveAvailability(root, requestedId, {
+      enabled: false,
+      changedAt: new Date().toISOString(),
+      changedBy: owner.userId,
+    });
+    await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId: requestedId });
+    const userRoot = scopeRoots.find((r) => r.scope === 'user')!;
+    // Advisory, never blocking: a draft may reference agents not authored
+    // yet. Enable/activate are where the same findings hard-fail.
+    return {
+      id: requestedId,
+      entry: await buildListEntry(owner, null, userRoot, requestedId, def, new Map()),
+      catalogWarnings: collectPipelineSaveWarnings(def, ctxOf(owner)),
+    };
+  }
+
   // ── Create (personal root, DISABLED draft — enable is a separate step) ──
   router.post('/', async (req: Request, res: Response) => {
     try {
-      const owner = ownerOf(req);
       const def = req.body?.def as PipelineDef | undefined;
       if (!def) {
         res.status(400).json({ error: 'body.def (pipeline definition) is required' });
         return;
       }
-      const errors = validatePipelineDefServer(def);
-      if (errors.length > 0) {
-        res.status(400).json({ error: errors[0], errors, code: 'invalid-pipeline-def' });
-        return;
-      }
-      const scopeRoots = scopeRootsOf(owner);
-      const root = derivePipelinesRoot(ctxOf(owner));
-      // `id` is optional only while `def.name` has something to slug. A name
-      // with no [a-z0-9] run (any non-Latin script — legitimate for a
-      // user-authored definition) slugs to "", which is not an invalid id the
-      // caller sent: it is an id nobody could derive. Saying so, and where the
-      // field belongs, is the difference between one round trip and a guessing
-      // loop — a Korean-named draft cost an LLM author two of six saves.
       const suppliedId = typeof req.body?.id === 'string' ? req.body.id : undefined;
-      const requestedId = suppliedId ?? toCustomId(def.name);
-      if (!requestedId) {
-        const inQuery = typeof req.query?.id === 'string' && req.query.id.length > 0;
-        res.status(400).json({
-          error:
-            `Cannot derive a pipeline id from name "${def.name}" — it has no [a-z0-9] characters to slug. ` +
-            (inQuery
-              ? 'Send `id` in the request BODY (`{ id, def }`), not the query string.'
-              : 'Send an explicit `id` in the request body (`{ id, def }`).'),
-          code: 'pipeline-id-required',
-        });
-        return;
-      }
-      if (!isValidCustomId(requestedId)) {
-        res.status(400).json({ error: `Invalid pipeline id: "${requestedId}"`, code: 'invalid-pipeline-id' });
-        return;
-      }
-      // Cross-scope collision: shadowing an org pipeline is refused, not applied.
-      const collision = findPipelineRoot(scopeRoots, requestedId);
-      if (collision) {
-        res.status(409).json({
-          error:
-            collision.scopeRoot.scope === 'org'
-              ? `Pipeline id "${requestedId}" is taken by an org pipeline — choose another id`
-              : `Pipeline "${requestedId}" already exists`,
-          code: 'pipeline-exists',
-        });
-        return;
-      }
-      const existing = listPipelines(root);
-      if (existing.length >= DEFAULT_PIPELINE_CAPS.maxPipelines) {
-        res.status(400).json({ error: `At most ${DEFAULT_PIPELINE_CAPS.maxPipelines} pipelines per account`, code: 'cap-exceeded' });
-        return;
-      }
-      await savePipeline(root, requestedId, def);
-      // Authorship sidecar — display/bookkeeping only; the fire identity is the activator's.
-      await fs.promises.writeFile(
-        path.join(pipelineDir(root, requestedId), PIPELINE_OWNER_FILE),
-        JSON.stringify(owner, null, 2),
-        'utf-8',
-      );
-      await saveAvailability(root, requestedId, {
-        enabled: false,
-        changedAt: new Date().toISOString(),
-        changedBy: owner.userId,
-      });
-      await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId: requestedId });
-      const userRoot = scopeRoots.find((r) => r.scope === 'user')!;
-      // Advisory, never blocking: a draft may reference agents not authored
-      // yet. Enable/activate are where the same findings hard-fail.
-      const catalogWarnings = collectPipelineSaveWarnings(def, ctxOf(owner));
+      const created = await createPipelineDraft(req, res, def, suppliedId);
+      if (!created) return;
       res.status(201).json({
-        id: requestedId,
-        entry: await buildListEntry(owner, null, userRoot, requestedId, def, new Map()),
-        ...(catalogWarnings.length > 0 && { catalogWarnings }),
+        id: created.id,
+        entry: created.entry,
+        ...(created.catalogWarnings.length > 0 && { catalogWarnings: created.catalogWarnings }),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
@@ -159,6 +186,80 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
         return;
       }
       sendErrorResponse(res, 500, error, 'PipelinesCreate');
+    }
+  });
+
+  /**
+   * Import a definition from an uploaded `pipeline.yaml`.
+   *
+   * The payload is the FILE TEXT, not a parsed def: `parsePipelineYaml` is the
+   * one owner of yaml → def, and the write still goes through `savePipeline`,
+   * so import gains no second write funnel and no second parser. Reserved
+   * literal — registered here, ahead of every `/:pipelineId` group.
+   *
+   * A collision answers 409 `pipeline-exists` so the CLIENT prompts; only an
+   * explicit `overwrite` replaces, and only while the pipeline is disabled
+   * (the availability machine owns that, exactly as `PUT /:id` does).
+   */
+  router.post('/import', validateBody(PipelineImportBodySchema), async (req: Request, res: Response) => {
+    try {
+      const owner = ownerOf(req);
+      const { yaml: text, id: suppliedId, overwrite } = req.body as {
+        yaml: string;
+        id?: string;
+        overwrite?: boolean;
+      };
+
+      const def = parsePipelineYaml(text, suppliedId);
+      const targetId = suppliedId ?? toCustomId(def.name);
+      const collision = targetId ? findPipelineRoot(scopeRootsOf(owner), targetId) : null;
+
+      if (!collision) {
+        const created = await createPipelineDraft(req, res, def, suppliedId);
+        if (!created) return;
+        res.status(201).json({
+          id: created.id,
+          entry: created.entry,
+          created: true,
+          ...(created.catalogWarnings.length > 0 && { catalogWarnings: created.catalogWarnings }),
+        });
+        return;
+      }
+
+      if (!overwrite) {
+        res.status(409).json({
+          error:
+            collision.scopeRoot.scope === 'org'
+              ? `Pipeline id "${targetId}" is taken by an org pipeline — rename the folder`
+              : `Pipeline "${targetId}" already exists`,
+          code: 'pipeline-exists',
+          conflictId: targetId,
+          scope: collision.scopeRoot.scope,
+        });
+        return;
+      }
+
+      const found = await findWritablePipeline(res, req, owner, targetId);
+      if (!found) return;
+      // Availability machine: editable only while disabled — an import must
+      // not be a back door around what `PUT /:id` refuses.
+      if (refuseWhileEnabled(res, found.scopeRoot.root, targetId, 'editing')) return;
+      await savePipeline(found.scopeRoot.root, targetId, def);
+      await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId: targetId });
+      const gate = found.scopeRoot.aclGoverned ? await orgGateFor(req)() : null;
+      const catalogWarnings = collectPipelineSaveWarnings(def, ctxOf(owner));
+      res.json({
+        id: targetId,
+        entry: await buildListEntry(owner, gate, found.scopeRoot, targetId, def, new Map()),
+        created: false,
+        ...(catalogWarnings.length > 0 && { catalogWarnings }),
+      });
+    } catch (error) {
+      if (error instanceof PipelineValidationError) {
+        res.status(400).json({ error: error.message, code: 'invalid-pipeline-def' });
+        return;
+      }
+      sendErrorResponse(res, 500, error, 'PipelinesImport');
     }
   });
 }

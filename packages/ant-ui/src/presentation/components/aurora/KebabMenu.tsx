@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
+import { TOOLBAR_ICON_CLASS } from '@/presentation/components/shared/rail/railTokens';
 
 export type KebabMenuItem =
   | {
@@ -30,10 +31,16 @@ export function KebabMenu({
   items,
   ariaLabel,
   className,
+  icon: TriggerIcon = MoreHorizontal,
+  variant = 'row',
 }: {
   items: KebabMenuItem[];
   ariaLabel?: string;
   className?: string;
+  /** Trigger glyph — a rail toolbar entry is an Upload box, not a "⋯". */
+  icon?: React.ElementType;
+  /** Which box the trigger wears: a row's compact ⋯, or the rail toolbar's. */
+  variant?: 'row' | 'toolbar';
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [armedIndex, setArmedIndex] = useState<number | null>(null);
@@ -101,7 +108,9 @@ export function KebabMenu({
         type="button"
         aria-label={ariaLabel}
         className={cn(
-          'inline-flex items-center justify-center h-5 w-5 rounded text-[color:var(--text-3)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-active)]',
+          variant === 'toolbar'
+            ? TOOLBAR_ICON_CLASS
+            : 'inline-flex items-center justify-center h-5 w-5 rounded text-[color:var(--text-3)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-active)]',
           className,
         )}
         onClick={(e) => {
@@ -111,7 +120,7 @@ export function KebabMenu({
           setArmedIndex(null);
         }}
       >
-        <MoreHorizontal className="w-3.5 h-3.5" />
+        <TriggerIcon className="w-3.5 h-3.5" />
       </button>
 
       {isOpen &&

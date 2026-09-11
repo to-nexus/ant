@@ -577,7 +577,16 @@ export function createAccountAgentRoutes(deps: AccountAgentsRoutesDeps): Router 
       // Overwrite is a REPLACE of the definition dir, and only where the caller
       // may write: a readonly (builtin/org) id stays a 409 no matter the flag.
       if (collision && !(overwrite && collision.scopeRoot.root === root.root)) {
-        return res.status(409).json({ error: createCollisionMessage(agentId, collision) });
+        // Typed, because the CLIENT turns this verdict into the overwrite
+        // prompt. Its own pre-check reads a list that can be stale; without a
+        // code to recognise, a stale list turned the prompt into a silent
+        // failure on whatever error surface happened to be mounted.
+        return res.status(409).json({
+          error: createCollisionMessage(agentId, collision),
+          code: 'agent-exists',
+          agentId,
+          writable: collision.scopeRoot.root === root.root,
+        });
       }
 
       const agentDir = path.join(root.root, agentId);

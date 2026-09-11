@@ -107,11 +107,18 @@ export function findPipelineRoot(
   return null;
 }
 
-export function loadPipeline(root: string, pipelineId: string): PipelineDef {
-  const defPath = pipelineDefPath(root, pipelineId);
+/**
+ * `pipeline.yaml` text → validated def. The ONE owner of that parse.
+ *
+ * An uploaded definition arrives as bytes, not as JSON: parsing it on the
+ * client would put a second YAML implementation on the contract, and the two
+ * disagree on YAML 1.1 scalars (`yes`/`no` as booleans), so an import could
+ * silently change what a definition means.
+ */
+export function parsePipelineYaml(text: string, pipelineId?: string): PipelineDef {
   let raw: unknown;
   try {
-    raw = yaml.load(fs.readFileSync(defPath, 'utf-8'));
+    raw = yaml.load(text);
   } catch (e) {
     throw new PipelineValidationError(
       `Cannot read ${PIPELINE_FILE_NAME}: ${e instanceof Error ? e.message : String(e)}`,
@@ -123,6 +130,20 @@ export function loadPipeline(root: string, pipelineId: string): PipelineDef {
     throw new PipelineValidationError(errors[0], pipelineId);
   }
   return raw as PipelineDef;
+}
+
+export function loadPipeline(root: string, pipelineId: string): PipelineDef {
+  const defPath = pipelineDefPath(root, pipelineId);
+  let text: string;
+  try {
+    text = fs.readFileSync(defPath, 'utf-8');
+  } catch (e) {
+    throw new PipelineValidationError(
+      `Cannot read ${PIPELINE_FILE_NAME}: ${e instanceof Error ? e.message : String(e)}`,
+      pipelineId,
+    );
+  }
+  return parsePipelineYaml(text, pipelineId);
 }
 
 export async function savePipeline(root: string, pipelineId: string, def: PipelineDef): Promise<void> {

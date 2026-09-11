@@ -73,6 +73,31 @@ export function updatePipeline(pipelineId: string, def: PipelineDef): Promise<Pi
   return apiPut(`${base()}/${encodeURIComponent(pipelineId)}`, { def });
 }
 
+export interface PipelineImportResult extends PipelineSaveResult {
+  /** false = an existing definition was replaced. */
+  created: boolean;
+}
+
+/**
+ * Import a definition from an uploaded `pipeline.yaml`.
+ *
+ * The FILE TEXT goes over the wire, not a parsed def: the server owns the one
+ * yaml parser, so an import cannot mean something different from what the same
+ * bytes mean when read off disk. A collision answers 409 `pipeline-exists`,
+ * which is what the caller turns into the overwrite prompt.
+ */
+export function importPipelineDefinition(args: {
+  yaml: string;
+  id?: string;
+  overwrite?: boolean;
+}): Promise<PipelineImportResult> {
+  return apiPost(`${base()}/import`, {
+    yaml: args.yaml,
+    ...(args.id ? { id: args.id } : {}),
+    ...(args.overwrite ? { overwrite: true } : {}),
+  });
+}
+
 /** Definition folder export (ZIP) — `pipeline.yaml` + `availability.json`. */
 export function downloadPipelineFolder(pipelineId: string): Promise<void> {
   return downloadAttachment(`${base()}/${encodeURIComponent(pipelineId)}/download`, `${pipelineId}.zip`);

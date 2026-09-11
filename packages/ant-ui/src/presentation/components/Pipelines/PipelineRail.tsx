@@ -12,18 +12,24 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Building2, Boxes, Code2, FolderDown, Plus, Unlink, User, Waypoints } from 'lucide-react';
+import { AlertTriangle, Building2, Boxes, Code2, FileUp, FolderDown, FolderUp, Plus, Unlink, Upload, User, Waypoints } from 'lucide-react';
 import type { PipelineActivationView, PipelineListEntry, PipelineScope } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { downloadPipelineFolder } from '@/infrastructure/http/api/pipelines';
+import { useFilePicker } from '@/application/hooks/ui/useFilePicker';
+import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
+import { fileListToEntries } from '@/shared/utils/upload-utils';
+import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
+import { UploadStatusCard } from '@/presentation/components/common/UploadStatusCard';
 import { Badge, Button, KebabMenu } from '../aurora';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { RailGroup, RailIconSwitch, RailRow, RailToolbarButton, toggleSetMember } from '../shared/rail';
 import { ApprovalInbox } from './ApprovalInbox';
 import { relativeFromNow } from './CronBuilder';
 import { usePipelineDiscardGuard } from './usePipelineDiscardGuard';
+import { usePipelineImport } from './usePipelineImport';
 import type { PipelineSpace } from './index';
 
 const SCOPE_ORDER: PipelineScope[] = ['user', 'org'];
@@ -56,6 +62,14 @@ export function PipelineRail({
   // Collapse state is per-scope and unpersisted (AgentTree doctrine).
   const [collapsed, setCollapsed] = useState<Set<PipelineScope>>(new Set());
 
+  const [filePicker, openFilePicker] = useFilePicker();
+  const { upload, submitEntries, pendingOverwrite, resolveOverwrite } = usePipelineImport();
+  /** `undefined` = not dragging · `null` = the rail itself · id = that row. */
+  const [dropTarget, setDropTarget] = useState<string | null | undefined>(undefined);
+
+  const startImport = (entries: ReturnType<typeof fileListToEntries>, targetId?: string) =>
+    guard(() => void submitEntries(entries, targetId));
+
   const codespace = space === 'codespace';
   const compact = railWidth < 250;
 
@@ -87,9 +101,67 @@ export function PipelineRail({
             {t('space.codespaceRail', 'Pipelines are Workspace-only for now.')}
           </div>
         ) : (
-          <div className="p-3 flex flex-col gap-3">
+          <div
+            className="p-3 flex flex-col gap-3"
+            style={
+              dropTarget === null
+                ? { outline: '2px dashed var(--violet-400)', outlineOffset: -4, borderRadius: 8 }
+                : undefined
+            }
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              const row = (e.target as HTMLElement).closest('[data-drop-pipeline]');
+              setDropTarget(row?.getAttribute('data-drop-pipeline') ?? null);
+            }}
+            onDragLeave={(e) => {
+              // Only when the pointer actually left the rail — child boundaries
+              // fire dragleave constantly and would strobe the highlight.
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              if (
+                e.clientX <= rect.left ||
+                e.clientX >= rect.right ||
+                e.clientY <= rect.top ||
+                e.clientY >= rect.bottom
+              ) {
+                setDropTarget(undefined);
+              }
+            }}
+            onDrop={async (e) => {
+              e.preventDefault();
+              const row = (e.target as HTMLElement).closest('[data-drop-pipeline]');
+              setDropTarget(undefined);
+              if (row?.hasAttribute('data-drop-readonly')) {
+                upload.showNotice(t('import.readonlyTarget', 'That pipeline is read-only — drop on the rail to import a copy.'));
+                return;
+              }
+              const entries = await extractDroppedFiles(e.dataTransfer);
+              if (entries.length === 0) return;
+              startImport(entries, row?.getAttribute('data-drop-pipeline') ?? undefined);
+            }}
+          >
             <div className="flex items-center gap-1">
+              {filePicker}
               <RailToolbarButton icon={Plus} label={t('rail.new', 'New pipeline')} onClick={() => guard(() => newPipelineDraft())} />
+              <KebabMenu
+                icon={Upload}
+                variant="toolbar"
+                ariaLabel={t('rail.upload', 'Upload pipeline definition')}
+                items={[
+                  {
+                    icon: FileUp,
+                    label: t('rail.menu.uploadFile', 'Upload pipeline.yaml…'),
+                    onClick: () =>
+                      openFilePicker((files) => startImport(fileListToEntries(files)), { accept: '.yaml,.yml' }),
+                  },
+                  {
+                    icon: FolderUp,
+                    label: t('rail.menu.uploadFolder', 'Upload pipeline folder…'),
+                    onClick: () =>
+                      openFilePicker((files) => startImport(fileListToEntries(files)), { directory: true }),
+                  },
+                ]}
+              />
             </div>
             <ApprovalInbox />
             {groups.map(({ scope, entries, invalid: invalidRows }) => {
@@ -131,13 +203,23 @@ export function PipelineRail({
                     />
                   )}
                   {entries.map((p) => (
-                    <PipelineRow
+                    <div
                       key={p.id}
-                      entry={p}
-                      active={selectedId === p.id}
-                      onSelect={() => guard(() => void selectPipeline(p.id))}
-                      onDownload={() => void download(p.id)}
-                    />
+                      data-drop-pipeline={p.id}
+                      {...(p.readonly ? { 'data-drop-readonly': '' } : {})}
+                      style={
+                        dropTarget === p.id
+                          ? { outline: '2px dashed var(--violet-500)', outlineOffset: -2, borderRadius: 6 }
+                          : undefined
+                      }
+                    >
+                      <PipelineRow
+                        entry={p}
+                        active={selectedId === p.id}
+                        onSelect={() => guard(() => void selectPipeline(p.id))}
+                        onDownload={() => void download(p.id)}
+                      />
+                    </div>
                   ))}
                   {invalidRows.map((entry) => (
                     <div
@@ -173,6 +255,28 @@ export function PipelineRail({
           </span>
         )}
       </div>
+
+      <UploadStatusCard
+        status={upload.status}
+        notice={upload.notice}
+        // One small JSON request — there are no batches to stop between, so the
+        // X means dismiss rather than pretending to abort something.
+        onCancel={upload.dismiss}
+        onDismiss={upload.dismiss}
+        onDismissNotice={upload.dismissNotice}
+      />
+      <UploadConflictModal
+        isOpen={pendingOverwrite != null}
+        conflictingFiles={pendingOverwrite ? [pendingOverwrite.id] : []}
+        allowCopy={false}
+        title={t('import.replaceTitle', 'Pipeline already exists')}
+        message={t(
+          'import.replaceMessage',
+          'A pipeline with this id already exists. Overwriting REPLACES its definition; activations and run history are left untouched.',
+        )}
+        onClose={() => void resolveOverwrite(false)}
+        onResolve={(resolution) => void resolveOverwrite(resolution !== 'cancel')}
+      />
     </div>
   );
 }

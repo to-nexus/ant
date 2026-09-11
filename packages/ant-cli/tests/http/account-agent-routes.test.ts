@@ -1493,6 +1493,13 @@ describe('self-api scope pin', () => {
     ['GET', '/api/definitions/pipelines/weekly-report/runs'],
     // Granting approval rights is the activator's decision, never a job's.
     ['PUT', '/api/definitions/pipelines/activations/proj-a/approvers'],
+    // Wholesale replacement from uploaded bytes — the `/agents/import` twin,
+    // refused there too. A job drafts through `POST /`.
+    ['POST', '/api/definitions/pipelines/import'],
+    // `import` is a reserved LITERAL: the `:id` shapes must not swallow it.
+    ['GET', '/api/definitions/pipelines/import'],
+    ['PUT', '/api/definitions/pipelines/import'],
+    ['DELETE', '/api/definitions/pipelines/import'],
     // Right shape, wrong method.
     ['POST', '/api/definitions/pipelines/weekly-report'],
     ['PUT', '/api/definitions/pipelines'],
