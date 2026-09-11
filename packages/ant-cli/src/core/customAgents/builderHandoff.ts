@@ -49,7 +49,11 @@ export interface HandoffRoots {
   agentsRoot: string;
   /** The monorepo `docs/` directory. */
   docsRoot: string;
-  /** The monorepo `examples/` directory — omitted when absent (the runtime image ships docs only). */
+  /**
+   * The monorepo `examples/` directory, inlined as Part 3. Both images ship it
+   * next to `docs/`; when a build omits it the bundle drops Part 3 AND the
+   * sentence promising it — a promise must never outrun the content.
+   */
   examplesRoot?: string;
 }
 
@@ -112,6 +116,8 @@ export function composeBuilderHandoff(spec: BuilderHandoffSpec, roots: HandoffRo
   const delta = fs.readFileSync(docPath, 'utf-8').trimEnd();
   const readList = handoffReadList(spec, roots.agentsRoot);
 
+  const examplesRoot = roots.examplesRoot && fs.existsSync(roots.examplesRoot) ? roots.examplesRoot : undefined;
+
   const parts: string[] = [];
   parts.push(
     `<!-- Generated ${now.toISOString()} by composeBuilderHandoff — do not edit. Sources: ` +
@@ -119,14 +125,18 @@ export function composeBuilderHandoff(spec: BuilderHandoffSpec, roots: HandoffRo
     '',
     `# Handoff bundle — ${spec.agentId} / ${spec.jobId} / ${spec.intentId}`,
     '',
-    'This file is self-contained. **Part 1** is the handoff: what to produce, where, and how',
-    'each runtime instruction translates offline. **Part 2** inlines every contract file the',
-    'handoff tells you to read, in reading order — the same bytes a clone would give you.',
-    '**Part 3** is a worked example that already passes the validators.',
+    '**This file is everything you need.** There is nothing to clone, install or fetch.',
+    '**Part 1** is the handoff: what to produce, where, and how each runtime instruction',
+    'translates offline. **Part 2** inlines every contract file Part 1 tells you to read, in',
+    'that same order — those are the bytes, and a path Part 1 quotes is the heading to find',
+    'here.' + (examplesRoot ? ' **Part 3** is a worked example that passes the validators as committed.' : ''),
     '',
-    'You need no clone of the Ant repository. If you have one at the same version, prefer',
-    'the files at their paths and the `pnpm --filter @ant/cli definition` validator; without',
-    'one, the import into Ant is the validator — its response carries the loader verdict.',
+    'A clone of the Ant repository at the same version adds the offline validators',
+    '(`pnpm --filter @ant/cli definition …`) and nothing else — speed, not capability. With',
+    'no clone, the import back into Ant is the validator: its response carries the loader',
+    'verdict, and those lines are the findings to fix. Every instruction in Part 1 is',
+    'executable from this file alone; if one appears not to be, that is a bug in the handoff,',
+    'not work for you to improvise around — say so in your report.',
     '',
     '**Working directory.** Work in the directory the person names. When none is named,',
     'create a fresh folder OUTSIDE any Ant clone (never inside `packages/`, `docs/` or the',
@@ -134,14 +144,20 @@ export function composeBuilderHandoff(spec: BuilderHandoffSpec, roots: HandoffRo
     'prescribed beyond the two or three names the handoff says bind; keep what you were',
     'given apart from what you produce, and say where you put things when you report.',
     '',
+    '**For the person running this.** Everything the agent needs comes out of Ant through',
+    'the UI: an existing agent definition from Agent Settings → its ⋯ → Download folder, a',
+    'pipeline from the Pipelines rail → download, earlier reports from the project\'s',
+    'Artifacts panel, and the material from wherever your team keeps it. The deliverables go',
+    'back the same way — the handoff\'s "Bring it in" section names the target for each.',
+    '',
     '# Part 1 — Handoff',
     '',
     delta,
     '',
     '# Part 2 — Contract files, in reading order',
     '',
-    'Each file below is the shipped source, verbatim. Where Part 1 says "read',
-    '`packages/ant-cli/src/core/data/agents/…`", this is that file.',
+    'Each file below is the shipped source, verbatim. Where Part 1 says to read',
+    '`packages/ant-cli/src/core/data/agents/…`, this is that file — you hold it already.',
     '',
   );
   for (const rel of readList) {
@@ -149,11 +165,11 @@ export function composeBuilderHandoff(spec: BuilderHandoffSpec, roots: HandoffRo
     parts.push(renderFile(rel, fs.readFileSync(abs, 'utf-8')));
   }
 
-  if (roots.examplesRoot && fs.existsSync(roots.examplesRoot)) {
+  if (examplesRoot) {
     parts.push('', '# Part 3 — Worked example', '', 'A definition and a pipeline that pass `validate-agent` and `validate-pipeline` as committed.', '');
     for (const tree of EXAMPLE_TREES) {
-      for (const abs of listFiles(path.join(roots.examplesRoot, tree))) {
-        const rel = `examples/${path.relative(roots.examplesRoot, abs).split(path.sep).join('/')}`;
+      for (const abs of listFiles(path.join(examplesRoot, tree))) {
+        const rel = `examples/${path.relative(examplesRoot, abs).split(path.sep).join('/')}`;
         parts.push(renderFile(rel, fs.readFileSync(abs, 'utf-8')));
       }
     }

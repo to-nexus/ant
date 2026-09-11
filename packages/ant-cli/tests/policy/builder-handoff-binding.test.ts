@@ -50,6 +50,28 @@ const SECTIONS = [
 const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8');
 const backticked = (text: string) => [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
 
+/**
+ * A quoted repo path the reader is expected to OPEN: one segment past the
+ * prefix, no trailing slash (a directory mention is prose, not a read) and no
+ * placeholder or glob (those name families).
+ */
+const openablePaths = (text: string) =>
+  backticked(text).filter((t) => /^(packages|docs|examples)\/[^/]/.test(t) && !t.endsWith('/') && !/[{*]/.test(t));
+
+/** What a bundle actually carries — the `## FILE:` headings the composer emits. */
+const bundleCarries = (bundle: string) =>
+  [...bundle.matchAll(/^## FILE: `([^`\n]+)`$/gm)].map((m) => m[1]);
+
+/**
+ * The units a co-occurrence rule reads: a table row is one line, everything
+ * else is a blank-line-separated block, so a wrapped bullet is judged whole.
+ */
+function blocksOf(text: string): string[] {
+  return text
+    .split(/\n\s*\n/)
+    .flatMap((block) => (block.trimStart().startsWith('|') ? block.split('\n') : [block]));
+}
+
 function listFiles(relDir: string): string[] {
   const abs = path.join(REPO_ROOT, relDir);
   if (!fs.existsSync(abs)) return [];
@@ -152,6 +174,16 @@ describe('builder handoff binding', () => {
       }
     });
 
+    // Part 2 emits the files in `handoffReadList` order, and a bundle reader
+    // walks it top to bottom — so "Read, in this order" is a claim about that
+    // sequence, not just about the set. The composer sorts each group by name;
+    // a doc that numbers them differently sends the reader back and forth.
+    it('numbers its read-list in the order the bundle emits it', () => {
+      const order = handoffReadList(row, ROOTS.agentsRoot);
+      const inDoc = [...new Set(backticked(text).filter((t) => order.includes(t)))];
+      expect(inDoc).toEqual(order);
+    });
+
     // The bundle is what a clone-less agent holds INSTEAD of these files, so
     // it must carry each of them byte-for-byte, plus the handoff itself and
     // the worked example — a partial bundle is a partial contract.
@@ -177,6 +209,38 @@ describe('builder handoff binding', () => {
       for (const rel of paths) {
         expect(fs.existsSync(path.join(REPO_ROOT, rel)), `${row.doc} names ${rel}, which does not exist`).toBe(true);
       }
+    });
+
+    // Existing in the repo is not enough: a handoff is read from a BUNDLE, so
+    // every path it tells the reader to open must be a path that bundle carries.
+    // This is the `near-loading-brace` inverse — never name a file you did not give.
+    it('quotes only paths the bundle carries', () => {
+      const carried = bundleCarries(composeBuilderHandoff(row, ROOTS, new Date(0)));
+      const paths = openablePaths(text);
+      expect(paths.length).toBeGreaterThan(0);
+      for (const rel of paths) {
+        const resolvable = carried.some((f) => f === rel || f.startsWith(`${rel}/`));
+        expect(resolvable, `${row.doc} tells the reader to open ${rel}, which no bundle carries`).toBe(true);
+      }
+    });
+
+    // A promise must never outrun the content. The runtime image may ship no
+    // `examples/`, and then the composer skips Part 3 — so nothing may announce it.
+    it('promises no Part 3 when the bundle carries no worked example', () => {
+      const bundle = composeBuilderHandoff(row, { agentsRoot: ROOTS.agentsRoot, docsRoot: ROOTS.docsRoot }, new Date(0));
+      expect(bundle).not.toContain('# Part 3');
+      expect(bundle).not.toContain('**Part 3**');
+      expect(bundle).not.toContain('examples/');
+    });
+
+    // The validators need a clone. Naming one without naming the clone-less
+    // branch puts a command in the completion contract that a bundle reader
+    // cannot run — it then loops or reports failure on work that was finished.
+    it('names the clone-less branch wherever it quotes a clone-only command', () => {
+      const offenders = blocksOf(text).filter(
+        (b) => b.includes('pnpm --filter @ant/cli') && !/with(out)? a clone/i.test(b),
+      );
+      expect(offenders, `${row.doc} quotes a clone-only command with no clone-less branch`).toEqual([]);
     });
 
     it('spells the intent hooks exactly as hooks.yaml does', () => {

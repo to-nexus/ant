@@ -208,6 +208,11 @@ COPY --from=builder /app/packages/ant-cli/tsconfig.json ./packages/ant-cli/tscon
 # Copy monorepo docs
 COPY docs ./docs
 
+# The worked example the builder-handoff bundles inline as Part 3. A bundle is
+# the whole contract for an agent with no clone, so this is runtime data, not
+# sample code — omit it and every downloaded handoff loses its example.
+COPY examples ./examples
+
 # Create workspace directory and fix ownership
 RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces && chmod 2775 /cross/workspaces
 RUN mkdir -p /home/ant/go && chown -R ant:ant /home/ant/go
@@ -321,6 +326,11 @@ COPY --from=builder /app/packages/ant-cli/tsconfig.json ./packages/ant-cli/tscon
 
 # Copy monorepo docs (rubrics, guides, architecture docs used by ask tools)
 COPY docs ./docs
+
+# The worked example the builder-handoff bundles inline as Part 3. A bundle is
+# the whole contract for an agent with no clone, so this is runtime data, not
+# sample code — omit it and every downloaded handoff loses its example.
+COPY examples ./examples
 
 # Create workspace directory
 RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces && chmod 2775 /cross/workspaces

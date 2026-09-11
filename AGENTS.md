@@ -27,7 +27,7 @@ the user-facing concepts live in [`docs/concepts/`](docs/concepts/).
 | Make a change that crosses BE↔FE      | [Cross-Package Contracts](#cross-package-contracts-antshared) |
 | Touch a security boundary (paths, origins, child processes, resource budgets) | [`docs/internals/security-posture.md`](docs/internals/security-posture.md) — the seven-axis SSOT |
 | Self-host, design input, custom prompts | [docs/guides/](docs/guides/)                      |
-| Run the custom-agent + MCP example end-to-end | [examples/README.md](examples/README.md) — not product code, never loaded at runtime |
+| Run the custom-agent + MCP example end-to-end | [examples/README.md](examples/README.md) — not product code. The one runtime reader is the builder-handoff composer, which inlines `custom-agents/ops-team` and `pipelines/weekly-ops.yaml` as a bundle's Part 3, so both images ship `examples/` beside `docs/` |
 
 If a rule here contradicts the code, the **code is authoritative** for runtime
 behaviour — please file an issue so the document gets fixed.
