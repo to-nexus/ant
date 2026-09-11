@@ -43,6 +43,8 @@ In Ant: **Agent Settings → the builder's ⋯ menu → "Download handoff · bui
 pipelines. The server composes the bundle from its own definition files, so
 what the agent reads is the version it will import into.
 
+![The builder's ⋯ menu in Agent Settings, showing Download folder, Download handoff · build, and Download handoff · review](download-handoff-menu.png)
+
 From a clone: `pnpm --filter @ant/cli definition handoff agent-builder author build --out handoff.md`.
 
 ## 2. Get what the work needs

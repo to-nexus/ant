@@ -74,12 +74,27 @@ describe('builder handoff binding', () => {
   // The entry docs are the human's — one per language. A translation that
   // drifts is a guide that sends someone to a route or a command that is not
   // there, so both are held to the same bindings.
-  it.each(INDEX_DOCS)('%s names every handoff, and the directory holds exactly these files', (index) => {
+  it.each(INDEX_DOCS)('%s names every handoff', (index) => {
     const readme = read(`docs/guides/builder-handoff/${index}`);
     for (const row of HANDOFFS) {
       expect(readme, `${index} does not list ${row.doc}`).toContain(`docs/guides/builder-handoff/${row.doc}`);
     }
-    expect(fs.readdirSync(HANDOFF_DIR).sort()).toEqual([...INDEX_DOCS, ...HANDOFFS.map((h) => h.doc)].sort());
+  });
+
+  // The directory holds exactly the markdown this table describes, plus
+  // whatever non-markdown assets (screenshots) the index docs embed — an
+  // orphaned image left behind by a later edit fails here, not silently.
+  it('the directory holds exactly these docs, and no unreferenced asset', () => {
+    const entries = fs.readdirSync(HANDOFF_DIR);
+    const markdown = entries.filter((f) => f.endsWith('.md'));
+    const assets = entries.filter((f) => !f.endsWith('.md'));
+    expect(markdown.sort()).toEqual([...INDEX_DOCS, ...HANDOFFS.map((h) => h.doc)].sort());
+    const allText = [...INDEX_DOCS, ...HANDOFFS.map((h) => h.doc)]
+      .map((d) => read(`docs/guides/builder-handoff/${d}`))
+      .join('\n');
+    for (const asset of assets) {
+      expect(allText, `${asset} sits in the handoff directory but no doc references it`).toContain(asset);
+    }
   });
 
   it.each(INDEX_DOCS)('%s quotes only repo paths that exist', (index) => {

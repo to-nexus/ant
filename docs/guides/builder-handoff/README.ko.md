@@ -41,6 +41,8 @@ Ant 에서: **Agent Settings → 해당 빌더 행의 ⋯ 메뉴 → "핸드오�
 `Pipeline Builder` 입니다. 서버가 자기 정의 파일로 번들을 합치므로, 에이전트가 읽는
 버전이 곧 반입될 버전입니다.
 
+![Agent Settings 의 빌더 ⋯ 메뉴 — Download folder, 핸드오프 내려받기 · build, 핸드오프 내려받기 · review](download-handoff-menu.png)
+
 클론이 있다면: `pnpm --filter @ant/cli definition handoff agent-builder author build --out handoff.md`
 
 ## 2. 작업에 필요한 것 받기
