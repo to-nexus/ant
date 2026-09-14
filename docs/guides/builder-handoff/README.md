@@ -113,6 +113,11 @@ The review handoffs exist to be run repeatedly. Run one in a **separate
 session** from the build — a reviewer holding the author's reasoning in its
 context audits itself, and that failure is measured, not theoretical.
 
+0. Before a review, hold the build report against what it describes:
+   `check-report` with a clone, the same diff by hand without one. A flow
+   report whose Intent coverage table is short an intent, or a dependency
+   report whose mapping never names one, is the build's gap — hand it back to
+   the build session before reviewing the rest.
 1. Review the definition against the material it was authored from. The report
    carries one Trace row per material file: carried, merged, split, changed,
    dropped, or retired in the material — plus the reverse direction, and a
@@ -138,6 +143,7 @@ the bundle route never has that problem.
 | `pnpm --filter @ant/cli definition validate-pipeline <pipeline.yaml> --agents <dir>` | the save funnel's `errors[]` and `catalogWarnings` |
 | `pnpm --filter @ant/cli definition preview-fires "<cron>" --tz <zone>` | `POST /definitions/pipelines/preview-fires` |
 | `pnpm --filter @ant/cli definition check-review <report.md> <materialDir>` | whether a review report's Trace table names every material file, and nothing else |
+| `pnpm --filter @ant/cli definition check-report <report.md> --pipelines <dir>... --agents <dir>...` · `--agent <agentDir>` | whether a build report accounts for its definitions: a flow report's Intent coverage table names every intent the given agents declare and every step the pipelines run, a dependency report's Mapping as built names every intent of the definition, and each count line agrees |
 | `pnpm --filter @ant/cli definition handoff <agentId> <jobId> <intentId> --out <file>` | the same bundle the "Download handoff" menu serves, composed from this clone |
 
 With a clone you can also hand the agent the handoff file at its path instead

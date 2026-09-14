@@ -573,6 +573,8 @@ contract — the third omitted only when done is not observable.**
   ```markdown
   # Dependency Report — {agent name} ({agentId})
 
+  jobs: J · intents: I · units mapped: U · dropped: D
+
   {two or three lines for a reader outside this session: what this agent
   does and who runs it — the context a granting team needs, because one
   counterpart's section below is handed whole to the parties that own it}
@@ -688,9 +690,11 @@ contract — the third omitted only when done is not observable.**
 
   | work unit, as the material names it | performed by |
   |---|---|
-  | {unit} | {intent id · merged into {id} · split into {ids} · dropped — {why}} |
+  | {unit} | {{jobId}/{intentId} · merged into {jobId}/{intentId} · split into
+    {jobId}/{intentId}, … · dropped — {why}} |
   | {a card the schedule places on two dates} | {one row per date, each saying
     which way it went and why — or one row saying why it stayed whole} |
+  | — | {jobId}/{intentId} — answers no unit of the material: {why it exists} |
 
   ## Hook decisions
 
@@ -702,6 +706,12 @@ contract — the third omitted only when done is not observable.**
   - {artifact path pattern, or the named system}: produced by {intent},
     consumed by {intent or party} — form {kept at the user's ask · redesigned
     from {what} to {what}}
+
+  ## Judgment calls
+
+  - {a defensible choice the contract leaves to you — a unit merged where the
+    material argued for a split, a counterpart kept virtual by design} —
+    {its cost}.
   ```
 
   Read each `consumed by` off that consumer's own declared inputs rather than
@@ -733,15 +743,23 @@ contract — the third omitted only when done is not observable.**
   session — never a second scheme). Wiring guidance lives only in the
   dependency report — the definition's `on-demand/` keeps to what the
   running agent opens mid-task.
-- The three sections after the entries are owed on every build, and the
+- The four sections after the entries are owed on every build, and the
   mapping is the one a reader checks the coverage claim against. It accounts
   for every work unit the material carries, not every section heading: one
   document section often holds several units, each with its own trigger and
   required form, and each gets its own row — mapped or dropped. A unit in
   neither column is not a scoping decision the reader can see; it reads as
-  complete coverage. Hook decisions carry the same burden in the other
-  direction: a correct "no hooks" is invisible without the line, and an
-  auditor cannot tell it from a forgotten one.
+  complete coverage. The table is read in both directions: every intent the
+  saved definition declares appears in `performed by` as `{jobId}/{intentId}`
+  — an intent answering no unit gets the `—` row saying why it exists — so
+  the count line (`jobs`, `intents` read off the definition; `units mapped`,
+  `dropped` read off the rows) agrees with the table and an offline checker
+  can hold the two against the definition folder. Headings, column names and
+  the count line are structural tokens. Hook decisions carry the same burden
+  in the other direction: a correct "no hooks" is invisible without the
+  line, and an auditor cannot tell it from a forgotten one. Judgment calls
+  are the choices the contract left to you and you can defend — kept apart
+  from the entries, which are the user's action list.
 
 **Close with the chat report.**
 

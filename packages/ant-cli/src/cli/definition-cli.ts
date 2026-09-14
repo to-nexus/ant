@@ -11,6 +11,7 @@
  *   pnpm --filter @ant/cli definition validate-pipeline <pipeline.yaml> [--agents dir]... [--no-builtin] [--strict] [--json]
  *   pnpm --filter @ant/cli definition preview-fires "<cron>" [--tz zone] [--json]
  *   pnpm --filter @ant/cli definition check-review <report.md> <materialDir> [--json]
+ *   pnpm --filter @ant/cli definition check-report <report.md> (--pipelines <dir>... --agents <dir>... | --agent <agentDir>) [--json]
  *   pnpm --filter @ant/cli definition handoff <agentId> <jobId> <intentId> [--out file] [--json]
  *
  * Exit codes: 0 clean · 1 findings · 2 usage / IO.
@@ -22,6 +23,7 @@ import { runValidateAgent } from './definition/validateAgent';
 import { runValidatePipeline } from './definition/validatePipeline';
 import { runPreviewFires } from './definition/previewFires';
 import { runCheckReview } from './definition/checkReview';
+import { runCheckReport } from './definition/checkReport';
 import { runHandoff } from './definition/handoff';
 
 function emit(result: CliResult, json: boolean): void {
@@ -68,6 +70,18 @@ program
   .option('--json', 'print the result', false)
   .action((report: string, materialDir: string, opts: { json: boolean }) => {
     emit(runCheckReview(report, materialDir), opts.json);
+  });
+
+program
+  .command('check-report')
+  .argument('<report>', 'a pipeline-report/{flowId}.md or dependency-report/{agentId}.md')
+  .option('--pipelines <dir...>', 'flow report: the {pipelineId}/pipeline.yaml folders it describes (repeatable)')
+  .option('--agents <dir...>', 'flow report: containers of the agent folders the steps run (repeatable)')
+  .option('--agent <dir>', 'dependency report: the one definition folder it describes')
+  .option('--builtin', 'flow report: count the shipped builtin agents in the coverage universe', false)
+  .option('--json', 'print the result', false)
+  .action((report: string, opts: { pipelines?: string[]; agents?: string[]; agent?: string; builtin: boolean; json: boolean }) => {
+    emit(runCheckReport(report, { pipelines: opts.pipelines, agents: opts.agents, agent: opts.agent, builtin: opts.builtin }), opts.json);
   });
 
 program

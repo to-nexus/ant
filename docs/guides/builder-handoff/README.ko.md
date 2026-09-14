@@ -106,6 +106,10 @@ handoff.md 를 읽고 그대로 수행해라. 작업 디렉토리는 이 폴더�
 작성자의 추론을 컨텍스트에 들고 있는 리뷰어는 자기 자신을 감사하게 되고, 이 실패는
 가설이 아니라 측정된 사실입니다.
 
+0. 리뷰 전에 빌드 리포트를 그것이 설명하는 정의와 먼저 대조합니다 — 클론이
+   있으면 `check-report`, 없으면 같은 diff 를 손으로. Intent coverage 표에
+   인텐트 하나가 빠진 플로우 리포트, 매핑이 인텐트 하나를 호명하지 않는 의존성
+   리포트는 빌드의 공백입니다 — 나머지를 리뷰하기 전에 빌드 세션에 돌려보냅니다.
 1. 정의를 그것이 만들어진 소재와 대조해 리뷰합니다. 리포트에는 소재 파일 하나당 Trace
    행이 하나씩 있습니다. 옮겨졌는지, 병합됐는지, 쪼개졌는지, 바뀌었는지, 빠졌는지,
    소재에서 폐기된 것인지가 판정으로 들어갑니다. 역방향 대조와, 빌드 리포트가 스스로
@@ -130,6 +134,7 @@ handoff.md 를 읽고 그대로 수행해라. 작업 디렉토리는 이 폴더�
 | `pnpm --filter @ant/cli definition validate-pipeline <pipeline.yaml> --agents <dir>` | 저장 퍼널의 `errors[]` 와 `catalogWarnings` |
 | `pnpm --filter @ant/cli definition preview-fires "<cron>" --tz <zone>` | `POST /definitions/pipelines/preview-fires` |
 | `pnpm --filter @ant/cli definition check-review <report.md> <materialDir>` | 리뷰 리포트의 Trace 표가 소재 파일을 빠짐없이, 그리고 없는 파일 없이 담았는지 |
+| `pnpm --filter @ant/cli definition check-report <report.md> --pipelines <dir>... --agents <dir>...` · `--agent <agentDir>` | 빌드 리포트가 자기 정의를 다 설명하는지: 플로우 리포트의 Intent coverage 표가 주어진 에이전트의 모든 인텐트와 파이프라인의 모든 step을 담았는지, 의존성 리포트의 Mapping as built 가 정의의 모든 인텐트를 호명하는지, 카운트 줄이 맞는지 |
 | `pnpm --filter @ant/cli definition handoff <agentId> <jobId> <intentId> --out <file>` | "핸드오프 내려받기" 메뉴가 주는 것과 같은 번들을, 이 클론에서 합성 |
 
 클론이 있으면 번들 대신 핸드오프 파일 경로를 그대로 주고, 마무리에 검증을 덧붙일 수

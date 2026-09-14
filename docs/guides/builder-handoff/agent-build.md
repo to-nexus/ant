@@ -83,7 +83,7 @@ accepts the folder. A cell that names a clone-only command says so.
 | `4xx` bodies — "When a call fails" (`base/role.md`) | the import's response carries the server's own messages, as do the validator's `error:` lines with a clone; `403`/`404` cannot happen offline; `409` is deferred to the import | yes |
 | `GET /definitions/agents/{agentId}/jobs/{jobId}/prompt-preview` | none offline — after import, the agent settings screen shows the composed prompt | n/a |
 | `GET /definitions/agents/{agentId}/permissions` | none offline — org access is a person's setting | n/a |
-| `create_file dependency-report/{agentId}.md` (`build/prompt.md`, "Write the agent's dependency report") | write `dependency-report/{agentId}.md`; the newest-existing rule reads the earlier reports you were given (`{agentId}*.md`, legacy `dependencies/{agentId}.md`), and when one exists from an earlier session you write `{agentId}-{mnemonic}.md` instead | n/a (a report, not a definition) |
+| `create_file dependency-report/{agentId}.md` (`build/prompt.md`, "Write the agent's dependency report") | write `dependency-report/{agentId}.md`; the newest-existing rule reads the earlier reports you were given (`{agentId}*.md`, legacy `dependencies/{agentId}.md`), and when one exists from an earlier session you write `{agentId}-{mnemonic}.md` instead | you are the checker: list every `{jobId}/{intentId}` in the folder you wrote, hold the Mapping as built table's `performed by` column and the count line against it, and state the counts. With a clone, `pnpm --filter @ant/cli definition check-report <the report> --agent <the definition folder>` performs that same diff — every intent appears in the mapping, Hook decisions names every job, the count line agrees — and exits `0` |
 | `<checklist>` before the first write | a plain checklist at the top of your reply | n/a |
 | clarify — the two cases in `base/system.md` | stop and ask the person before the first write; do not guess a partition that reshapes their material | n/a |
 | `read_ant_source`, `list_ant_files`, `search_ant_code` | nothing to substitute, and nothing you need: Part 2 is the whole contract for this job, so Ant's own source never decides anything here. If you believe you need it, stop and say so rather than improvising (with a clone: `packages/ant-cli/src/**`, `packages/ant-shared/src/**`, `docs/**`) | n/a |
@@ -110,7 +110,10 @@ hooks, `api__ant__request PUT /definitions/agents/*/file` and
   without a clone the import is that check — deliver, and treat the loader
   verdict its response carries as the findings to fix;
 - `dependency-report/{agentId}.md` (or its `-{mnemonic}` revision) exists and
-  follows the skeleton in `build/prompt.md`;
+  follows the skeleton in `build/prompt.md` — the count line, and every
+  `{jobId}/{intentId}` you wrote appearing in Mapping as built. With a clone,
+  `check-report` on it exits `0`; without one, the diff you performed by hand
+  is that check;
 - your reply is the chat report the contract describes, naming the report's
   path.
 

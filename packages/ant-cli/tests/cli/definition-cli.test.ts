@@ -13,6 +13,7 @@ import { runValidateAgent } from '../../src/cli/definition/validateAgent';
 import { runValidatePipeline } from '../../src/cli/definition/validatePipeline';
 import { runPreviewFires } from '../../src/cli/definition/previewFires';
 import { runCheckReview, extractTracePaths } from '../../src/cli/definition/checkReview';
+import { runCheckReport, PIPELINE_REPORT_SECTIONS, DEPENDENCY_REPORT_SECTIONS } from '../../src/cli/definition/checkReport';
 import { runHandoff } from '../../src/cli/definition/handoff';
 
 const CLI_ROOT = path.resolve(__dirname, '../..');
@@ -37,8 +38,15 @@ function writeTree(root: string, files: Record<string, string>): void {
 }
 
 describe('definition CLI — command table', () => {
-  it('names exactly the four subcommands the handoffs may quote', () => {
-    expect([...DEFINITION_CLI_COMMANDS]).toEqual(['validate-agent', 'validate-pipeline', 'preview-fires', 'check-review', 'handoff']);
+  it('names exactly the six subcommands the handoffs may quote', () => {
+    expect([...DEFINITION_CLI_COMMANDS]).toEqual([
+      'validate-agent',
+      'validate-pipeline',
+      'preview-fires',
+      'check-review',
+      'check-report',
+      'handoff',
+    ]);
     expect(EXIT).toEqual({ CLEAN: 0, FINDINGS: 1, USAGE: 2 });
   });
 
@@ -203,6 +211,173 @@ describe('check-review', () => {
     fs.writeFileSync(report, '# Review\n\nnothing here\n', 'utf-8');
     expect(extractTracePaths(fs.readFileSync(report, 'utf-8'))).toBeNull();
     expect(runCheckReview(report, path.join(tmp, 'material')).exitCode).toBe(EXIT.FINDINGS);
+  });
+});
+
+describe('check-report', () => {
+  // The committed example: ops-team declares weekly-report/{report,escalate}
+  // (chat has no intent catalog) and weekly-ops.yaml runs both, so a report
+  // that accounts for them is the clean pass.
+  const FLOW_OK = [
+    '# Weekly ops — weekly-ops',
+    '',
+    'pipelines: 1 · boundaries: 0 · intents: 2 · scheduled: 2 · not scheduled: 0',
+    '',
+    '## Flow',
+    '- weekly-ops-report (cron) — no split',
+    '',
+    '## Intent coverage',
+    '| agent/job/intent | runs at | note |',
+    '|---|---|---|',
+    '| ops-team/weekly-report/report | weekly-ops-report/draft | |',
+    '| ops-team/weekly-report/escalate | weekly-ops-report/escalate | |',
+    '',
+    '## Seams',
+    '- none',
+    '## Relays',
+    '- none',
+    '## Substitutes',
+    '- none',
+    '## Intent changes this flow needs',
+    '- none',
+    '## Outcome coverage',
+    '- weekly-ops-report / success: skips none',
+    '## Run entry',
+    '- weekly-ops-report/draft asks nobody',
+    '## Judgment calls',
+    '- none',
+    '## Left to a person',
+    '- enable and activate',
+    '',
+  ];
+  const pipelineOpts = { pipelines: [EXAMPLES_PIPELINE], agents: [EXAMPLES_AGENTS] };
+  const writeReport = (name: string, lines: string[]): string => {
+    const file = path.join(tmp, name);
+    fs.writeFileSync(file, lines.join('\n'), 'utf-8');
+    return file;
+  };
+  const kinds = (file: string, opts: Parameters<typeof runCheckReport>[1]) =>
+    runCheckReport(file, opts).json.findings.map((f) => `${f.kind}: ${f.subject}`);
+
+  it('the section lists are the shipped skeletons\' headings — the checker never invents a token', () => {
+    const read = (agentId: string) =>
+      fs.readFileSync(path.join(BUILTIN_DIR, agentId, 'jobs', 'author', 'intents', 'build', 'prompt.md'), 'utf-8');
+    const pipelinePrompt = read('pipeline-builder');
+    for (const h of PIPELINE_REPORT_SECTIONS) expect(pipelinePrompt).toContain(`\n## ${h}\n`);
+    expect(pipelinePrompt).toContain('pipelines: N · boundaries: N−1 · intents: M · scheduled: K · not scheduled: M−K');
+    const agentPrompt = read('agent-builder');
+    for (const h of DEPENDENCY_REPORT_SECTIONS) expect(agentPrompt).toContain(`## ${h}\n`);
+    expect(agentPrompt).toContain('jobs: J · intents: I · units mapped: U · dropped: D');
+  });
+
+  it('a flow report that accounts for the committed example passes clean', () => {
+    const result = runCheckReport(writeReport('flow-ok.md', FLOW_OK), pipelineOpts);
+    expect(result.json.findings).toEqual([]);
+    expect(result.json.counts).toEqual({ pipelines: 1, intents: 2, scheduled: 2, 'not scheduled': 0, steps: 2 });
+    expect(result.exitCode).toBe(EXIT.CLEAN);
+    expect(result.lines.at(-1)).toMatch(/^ok: pipeline report/);
+  });
+
+  it('a dropped row is missing, an invented one is unknown, and the count line must still agree', () => {
+    const lines = FLOW_OK.map((l) =>
+      l.startsWith('| ops-team/weekly-report/escalate') ? '| ops-team/weekly-report/ghost | not scheduled | never existed |' : l,
+    );
+    const found = kinds(writeReport('flow-missing.md', lines), pipelineOpts);
+    expect(found).toContain('missing: ops-team/weekly-report/escalate');
+    expect(found).toContain('unknown: ops-team/weekly-report/ghost');
+    expect(found).toContain('unaccounted-step: weekly-ops-report/escalate (runs ops-team/weekly-report/escalate)');
+    expect(found).toContain('count-mismatch: scheduled: 2 (report) vs 1 (definitions)');
+  });
+
+  it('`not scheduled` without a reason, and a step that runs something else, are findings', () => {
+    const lines = FLOW_OK.map((l) => {
+      if (l.startsWith('| ops-team/weekly-report/report')) return '| ops-team/weekly-report/report | weekly-ops-report/escalate | |';
+      if (l.startsWith('| ops-team/weekly-report/escalate')) return '| ops-team/weekly-report/escalate | not scheduled | |';
+      return l;
+    });
+    const found = kinds(writeReport('flow-mismatch.md', lines), pipelineOpts);
+    expect(found).toContain('mismatch: ops-team/weekly-report/report → weekly-ops-report/escalate: that step runs ops-team/weekly-report/escalate');
+    expect(found).toContain('unreasoned: ops-team/weekly-report/escalate — not scheduled, no reason');
+    expect(found).toContain('unaccounted-step: weekly-ops-report/draft (runs ops-team/weekly-report/report)');
+  });
+
+  it('a report on the pre-coverage skeleton names every section it lacks, and no table', () => {
+    const legacy = writeReport('flow-legacy.md', ['# x — x', '', '## Substitutes', '- a', '## Human seams', '- b', '## Left to a person', '- c']);
+    const found = kinds(legacy, pipelineOpts);
+    expect(found).toContain('section-missing: ## Intent coverage');
+    expect(found).toContain('section-missing: ## Judgment calls');
+    expect(found).toContain('table-missing: ## Intent coverage — no table');
+    expect(found.some((f) => f.startsWith('count-line-missing:'))).toBe(true);
+  });
+
+  it('a dependency report that maps every intent of the definition passes clean', () => {
+    const report = writeReport('dep-ok.md', [
+      '# Dependency Report — Ops team (ops-team)',
+      '',
+      'jobs: 2 · intents: 2 · units mapped: 2 · dropped: 1',
+      '',
+      'status: virtual · provided · wired',
+      '',
+      '## Incident tracker',
+      '- used-by: weekly-report/report',
+      '- status: wired',
+      '',
+      '## Mapping as built',
+      '| work unit, as the material names it | performed by |',
+      '|---|---|',
+      '| weekly incident digest | weekly-report/report |',
+      '| paging the on-call | weekly-report/escalate |',
+      '| quarterly retro | dropped — no cadence in the material |',
+      '',
+      '## Hook decisions',
+      '- weekly-report: report and escalate carry artifact hooks',
+      '- chat: none — a conversation owes nothing',
+      '',
+      '## Deliverable contracts',
+      '- reports/*.md: produced by report, consumed by escalate',
+      '',
+      '## Judgment calls',
+      '- none',
+    ]);
+    const result = runCheckReport(report, { agent: path.join(EXAMPLES_AGENTS, 'ops-team') });
+    expect(result.json.findings).toEqual([]);
+    expect(result.json.counts).toEqual({ jobs: 2, intents: 2, 'units mapped': 2, dropped: 1 });
+    expect(result.exitCode).toBe(EXIT.CLEAN);
+  });
+
+  it('an intent the mapping never names, a job Hook decisions skips, and an intent the definition lacks', () => {
+    const report = writeReport('dep-gap.md', [
+      '# Dependency Report — Ops team (ops-team)',
+      '',
+      'jobs: 2 · intents: 2 · units mapped: 1 · dropped: 0',
+      '',
+      '## Mapping as built',
+      '| work unit | performed by |',
+      '|---|---|',
+      '| weekly incident digest | weekly-report/summarize |',
+      '',
+      '## Hook decisions',
+      '- weekly-report: report carries an artifact hook',
+      '',
+      '## Deliverable contracts',
+      '- none',
+      '',
+      '## Judgment calls',
+      '- none',
+    ]);
+    const found = kinds(report, { agent: path.join(EXAMPLES_AGENTS, 'ops-team') });
+    expect(found).toContain('unmapped-intent: weekly-report/report');
+    expect(found).toContain('unmapped-intent: weekly-report/escalate');
+    expect(found).toContain('unknown: weekly-report/summarize');
+    expect(found).toContain('missing-job: ## Hook decisions names no line for job "chat"');
+  });
+
+  it('usage: one lane, not both; the agents are required for a flow report', () => {
+    const report = writeReport('any.md', FLOW_OK);
+    expect(runCheckReport(report, {}).exitCode).toBe(EXIT.USAGE);
+    expect(runCheckReport(report, { pipelines: [EXAMPLES_PIPELINE], agent: EXAMPLES_AGENTS }).exitCode).toBe(EXIT.USAGE);
+    expect(runCheckReport(report, { pipelines: [EXAMPLES_PIPELINE] }).exitCode).toBe(EXIT.USAGE);
+    expect(runCheckReport(path.join(tmp, 'nope.md'), pipelineOpts).exitCode).toBe(EXIT.USAGE);
   });
 });
 

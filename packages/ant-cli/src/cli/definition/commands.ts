@@ -13,6 +13,7 @@ export const DEFINITION_CLI_COMMANDS = [
   'validate-pipeline',
   'preview-fires',
   'check-review',
+  'check-report',
   'handoff',
 ] as const;
 

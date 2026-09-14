@@ -24,7 +24,7 @@ designing.
    — the criterion that selects this intent.
 5. `packages/ant-cli/src/core/data/agents/pipeline-builder/jobs/author/intents/build/prompt.md`
    — the whole authoring contract: seams, relays, boundaries, pins, the
-   eight-section run report.
+   ten-section run report with its count line and Intent coverage table.
 6. `packages/ant-cli/src/core/data/agents/pipeline-builder/jobs/author/intents/build/hooks.yaml`
 7. `packages/ant-cli/src/core/data/agents/pipeline-builder/on-demand/api-surface.md`
 8. `packages/ant-cli/src/core/data/agents/pipeline-builder/on-demand/audit.md`
@@ -46,7 +46,10 @@ and say in your closing report where things are.
   file: `{pipelineId}/pipeline.yaml`. A flow that splits is several such
   folders.
 - **The run report is `pipeline-report/{flowId}.md`** — ONE file for the whole
-  flow, however many pipelines it split into.
+  flow, however many pipelines it split into. It is the flow's account of
+  itself and answers for every omission; a per-pipeline detail file
+  (`pipeline-report/{flowId}/{pipelineId}.md`) is optional and never stands in
+  for it.
 
 You were given, wherever the person put them: the agents the steps run, any
 pipelines to edit, each agent's dependency report, the flow's earlier report
@@ -68,7 +71,7 @@ accepts the folder. A cell that names a clone-only command says so.
 | `POST /definitions/pipelines/preview-fires` `{ cron, tz? }` — the only cron authority | never compute fire times yourself, in either mode. Without a clone you do not state them at all: give the cron expression and the cadence you intended in words, and record that the next fires are the ones Ant's Pipelines tab shows after upload. With a clone, `pnpm --filter @ant/cli definition preview-fires "<cron>" --tz <zone>` — same parser, same five-minute floor | with a clone, yes; otherwise deferred to the upload |
 | `400` `errors[]`, `201` `catalogWarnings` | without a clone, the upload answers both: its response carries the errors and the catalog warnings, and those lines are your findings. With a clone, `pnpm --filter @ant/cli definition validate-pipeline <the pipeline.yaml> --agents <the agent folders>` — `error:` lines are the 400, `warning:` lines are the save warnings that hard-fail enable later; `--strict` makes them exit `1` | with a clone, yes; otherwise the upload |
 | `GET /definitions/pipelines/activatable-projects`, `GET /definitions/pipelines/{id}/permissions` | none offline — the hand-over names no project unless the person gives you the list | n/a |
-| `create_file pipeline-report/{flowId}.md` ("Write the run report") | write `pipeline-report/{flowId}.md` from the definitions you wrote, read back; an edit turn reads the flow's earlier report first and rewrites it whole | n/a |
+| `create_file pipeline-report/{flowId}.md` ("Write the run report") | write `pipeline-report/{flowId}.md` from the definitions you wrote, read back; an edit turn reads the flow's earlier report first and rewrites it whole | you are the checker: list every `{agentId}/{jobId}/{intentId}` the agents you were given declare, hold your Intent coverage table and count line against that list and against the steps in your `pipeline.yaml` files, and state the counts. With a clone, `pnpm --filter @ant/cli definition check-report <the report> --pipelines <the pipeline folders> --agents <folder holding the agents>` performs that same diff — every intent has a row, every `runs at` names a step that runs that intent, every step is accounted for, the count line agrees — and exits `0` |
 | clarify — a step needs an agent, job or intent that does not exist | stop and ask; do not invent a step. The missing work is the agent-build handoff's | n/a |
 | `read_ant_source`, `list_ant_files`, `search_ant_code` | nothing to substitute, and nothing you need: Part 2 is the whole contract for this job. If you believe you need Ant's source, stop and say so rather than improvising (with a clone: `packages/ant-cli/src/**`, `docs/**`) | n/a |
 
@@ -93,7 +96,11 @@ hooks, `api__ant__request POST|PUT /definitions/pipelines**` and
   `0` with the agents it runs passed through `--agents`; without a clone the
   upload is that check — deliver, and treat the errors and catalog warnings its
   response carries as the findings to fix;
-- `pipeline-report/{flowId}.md` exists with all eight sections;
+- `pipeline-report/{flowId}.md` exists with all ten sections and the count
+  line, and its Intent coverage table has a row for every intent the given
+  agents declare — a step that runs it, or `not scheduled` with the reason.
+  With a clone, `check-report` on it exits `0`; without one, the diff you
+  performed by hand is that check, and the counts you state are it;
 - your reply is the report-and-hand-over the contract describes: the trigger
   and the cadence it encodes, each step and what it runs, what remains a
   person's decision. State the next fires only if you were able to have them

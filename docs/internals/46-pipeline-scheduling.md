@@ -1114,14 +1114,28 @@ every authoring turn) is where those obligations land durably. Like the
 dependency report it has ZERO programmatic readers — do not teach the
 scheduler to parse it. One file per FLOW (`pipeline-report/{flowId}.md`,
 however many pipelines the flow splits into — the split and its reasons are
-readable only whole), eight sections: flow, seams, relays, substitutes,
-**intent changes this flow needs**, outcome coverage, run entry, and what was
-left to a person. The fifth is the load-bearing one: a limitation of the AGENT reaches the lane that
-can fix it only through that list. The pipeline builder's `review` intent is
-the report's one reader: it verifies all eight sections against the saved
-definitions and the material's cadence claims (Outcome coverage by
-simulation) and writes `review-report/{pipelineId}-pipeline.md` — a
-deliverable of its own, never an input to any gate. Six loop rounds in 2026-09 produced the
+readable only whole), a count line (`pipelines · boundaries · intents ·
+scheduled · not scheduled`) and ten sections: flow, **intent coverage**,
+seams, relays, substitutes, **intent changes this flow needs**, outcome
+coverage, run entry, judgment calls, and what was left to a person. Two are
+load-bearing. Intent changes is the only channel by which a limitation of the
+AGENT reaches the lane that can fix it. Intent coverage is the count read
+back: one row per `{agentId}/{jobId}/{intentId}` the flow's agents declare,
+naming the step that runs it or `not scheduled` with the reason — the
+section that answers "does this set of pipelines cover the agent" and takes
+responsibility for every omission, which eight rounds of flow reports had no
+home for (every build report matched its skeleton; the skeleton never asked).
+The pipeline builder's `review` intent is the report's reader inside Ant: it
+verifies the sections against the saved definitions and the material's
+cadence claims (Outcome coverage by simulation) and writes
+`review-report/{pipelineId}-pipeline.md` — a deliverable of its own, never an
+input to any gate. Outside Ant, `definition check-report` (the offline CLI,
+`cli/definition/checkReport.ts`) holds the count line and the coverage table
+against the pipeline folders and the agent catalog — a reviewer's tool run on
+the same bytes whether the report came from the in-app builder or a handoff,
+which is what turns "handoff defect or performing-agent fidelity" into a
+comparison of exit codes. It is not a runtime reader and does not soften the
+rule above. Six loop rounds in 2026-09 produced the
 motivating case three times — the deciding intent's `outcomes`
 (adverse/standard) cannot express the standard-form-contract case that needs
 seven days AND individual notice, so routing on the verdict drops it and not

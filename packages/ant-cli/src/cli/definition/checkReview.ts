@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { EXIT, type CliResult } from './commands';
+import { extractTableUnder, isPlaceholderRow } from './markdownTable';
 
 export interface CheckReviewJson {
   files: number;
@@ -20,33 +21,15 @@ function walkMarkdown(dir: string, rel = ''): string[] {
 
 /**
  * Column one of the first table under the first heading that names "Trace",
- * as the review prompts contract it. Placeholder rows (`{…}`) and the header /
- * separator rows are not paths.
+ * as the review prompts contract it. Placeholder rows (`{…}`) are not paths.
  */
 export function extractTracePaths(report: string): string[] | null {
-  const lines = report.split(/\r?\n/);
-  const start = lines.findIndex((l) => /^#{1,6}\s+.*trace/i.test(l));
-  if (start === -1) return null;
-  const cells: string[] = [];
-  let inTable = false;
-  let headerSeen = false;
-  for (const line of lines.slice(start + 1)) {
-    const isRow = /^\s*\|/.test(line);
-    if (!isRow) {
-      if (inTable) break;
-      continue;
-    }
-    inTable = true;
-    if (!headerSeen) {
-      headerSeen = true;
-      continue;
-    }
-    if (/^\s*\|\s*:?-{3,}/.test(line)) continue;
-    const first = line.split('|')[1]?.trim().replace(/^`|`$/g, '').replace(/^\.\//, '') ?? '';
-    if (!first || first.includes('{')) continue;
-    cells.push(first);
-  }
-  return inTable ? cells : null;
+  const table = extractTableUnder(report, /trace/i);
+  if (!table) return null;
+  return table.rows
+    .filter((row) => !isPlaceholderRow(row.slice(0, 1)))
+    .map((row) => (row[0] ?? '').replace(/^\.\//, ''))
+    .filter((cell) => cell.length > 0);
 }
 
 /**

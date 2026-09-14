@@ -28,6 +28,16 @@ change, everything that follows applies.
 - An intent whose `prompt.md` has no closing operating-context section gave
   you no cadence input. Say so in the report's Intent changes; do not infer a
   cadence from the base docs and present it as the intent's own.
+- Do the counting explicitly, before the graph is designed. List every
+  `{agentId}/{jobId}/{intentId}` the agents you read declare — that list is
+  what the flow answers to, and each intent ends up either behind a step or
+  in the report as `not scheduled` with the reason. Then read the count back
+  off the definitions you saved: the pipelines, the boundaries between them,
+  the intents a step runs and the intents none does. An intent in neither
+  column is not a scoping decision anyone can see; it reads as covered. An
+  intent left out because the material never gives it a cadence is a legal
+  drop — say so; an intent left out because you stopped seeing it is the
+  defect this count exists to catch.
 
 **Design the trigger.**
 
@@ -264,15 +274,31 @@ turns; an edit turn on one pipeline reads the flow's file first (it names its
 pipelines) and rewrites it whole. Write it from the definitions you read BACK
 after saving, never from the design you intended: the next round and the Agent
 Builder read this file as fact, so a section describing a pin, a branch or a
-gate the saved definitions do not have is worse than no section at all. Eight
-sections, omitting none:
+gate the saved definitions do not have is worse than no section at all. This
+file is the flow's account of itself — why it is this many pipelines and
+which of the agents' intents it schedules — and it answers for every
+omission; a per-pipeline detail file (`pipeline-report/{flowId}/{pipelineId}.md`)
+is optional and never stands in for it. Headings and the count line are
+structural tokens — never localized, never renamed — so a reader and the
+offline checker can find them; prose in the entries follows the definition's
+language. Ten sections, omitting none:
 
 ```markdown
 # {flow name} — {flowId}
 
+pipelines: N · boundaries: N−1 · intents: M · scheduled: K · not scheduled: M−K
+
 ## Flow
 - {pipelineId} ({trigger}) → [{seam, one phrase}] → {pipelineId} ({trigger})
   → … — the whole procedure on one line; a flow that did not split is one entry.
+- split at {pipelineId}/{stepId} → {pipelineId}: {the Seams row that forced it,
+  named} — one line per boundary; a flow of one pipeline says `no split`.
+
+## Intent coverage
+| agent/job/intent | runs at | note |
+|---|---|---|
+| {agentId}/{jobId}/{intentId} | {pipelineId}/{stepId} | |
+| {agentId}/{jobId}/{intentId} | not scheduled | {why — and whose lane owns it} |
 
 ## Seams
 - {between {pipelineId}/{stepId} and {pipelineId}/{stepId} | before
@@ -308,6 +334,11 @@ sections, omitting none:
   intent "{intent}" declares clarify: false, so the step proceeds on defaults
   and seals a case nobody supplied; do not activate until it is enabled.
 
+## Judgment calls
+- {a defensible choice the contract leaves to you — a routed-around gap, a
+  boundary placed where a clarify would also have done, an over-split} —
+  {its cost}.
+
 ## Left to a person
 - {pipelineId}: {the policy you chose and its default}: {what to change it to,
   and when}.
@@ -318,3 +349,13 @@ sections, omitting none:
 reaches the lane that can fix it. Write the request even when you routed
 around the gap; especially then, because a routed-around gap looks solved in
 the graph.
+
+**Intent coverage** is the count read back: one row per intent the agents you
+read declare, `runs at` naming the step that runs it — the step's own
+`customJobRef` and pinned intent, read off the saved definition — or `not
+scheduled` with the reason in `note`. An empty `note` beside `not scheduled` is
+the tell; the count line must agree with the rows. The Flow section's `split
+at` lines name each boundary, the Seams section carries its classification —
+say it once, in the section that owns it. **Judgment calls** and **Left to a
+person** stay apart: the first is a choice you made and can defend, the second
+a decision you did not make.
