@@ -24,7 +24,8 @@
       "uploadFolder": "파이프라인 폴더 업로드…"
     },
     "unsaved": "저장 전",
-    "upload": "파이프라인 정의 업로드"
+    "upload": "파이프라인 정의 업로드",
+    "openAdvisories": "미결 검토 사항 {{n}}건 — 파이프라인을 열어 확인하세요"
   },
   "views": {
     "wiring": "설계",
@@ -397,12 +398,26 @@
     "scopeOrg": "조직"
   },
   "advisory": {
-    "title": "검토 사항 {{n}}건",
-    "more": "{{n}}건 더 보기",
-    "less": "접기",
-    "saved": "저장 응답",
-    "savedHint": "마지막 저장 때 서버가 돌려준 검토 사항",
-    "nodeDot": "검토 사항이 있습니다 — 스텝을 열어 확인하세요"
+    "title": "미결 검토 사항 {{n}}건",
+    "titleAcknowledged": "확인된 검토 사항 {{n}}건",
+    "open": "미결 — 고치거나 사유를 적어 확인하세요",
+    "acknowledged": "의도된 설계로 확인됨",
+    "acknowledgedHint": "확인됨 — {{reason}}",
+    "stale": "더 이상 해당하지 않음 — 확인 항목을 제거하세요",
+    "ackAction": "의도된 설계로 확인…",
+    "ackReasonPlaceholder": "이 흐름에서 이 형태가 맞는 이유 — 정의와 함께 저장됩니다",
+    "ackConfirm": "확인",
+    "ackCancel": "뒤로",
+    "unack": "다시 열기",
+    "removeStale": "제거",
+    "saved": "서버",
+    "savedHint": "마지막 조회·저장 때 서버가 돌려준 검토 사항",
+    "nodeDot": "미결 검토 사항이 있습니다 — 스텝을 열어 확인하세요",
+    "blocking": "게시 불가 {{n}}건",
+    "blockingHint": "에이전트 카탈로그에서 해결되기 전까지 게시가 거부됩니다.",
+    "enableWithOpen": "미결 검토 사항 {{n}}건이 남아 있습니다. 게시를 막지는 않지만, 해당 지점에서 런이 무한 대기하거나 조용히 실패할 수 있습니다. 그래도 게시할까요?",
+    "enableWithOpenTitle": "미결 검토 사항이 있는 상태로 게시",
+    "enableWithOpenConfirm": "그래도 게시"
   },
   "legend": {
     "title": "범례",

@@ -24,7 +24,8 @@
       "uploadFolder": "Upload pipeline folder…"
     },
     "unsaved": "Unsaved",
-    "upload": "Upload pipeline definition"
+    "upload": "Upload pipeline definition",
+    "openAdvisories": "{{n}} open advisories — open the pipeline"
   },
   "views": {
     "wiring": "Design",
@@ -397,12 +398,26 @@
     "scopeOrg": "Organization"
   },
   "advisory": {
-    "title": "{{n}} advisories",
-    "more": "{{n}} more",
-    "less": "Show fewer",
-    "saved": "Saved",
-    "savedHint": "Returned by the server on the last save",
-    "nodeDot": "Has advisories — open the step"
+    "title": "{{n}} open advisories",
+    "titleAcknowledged": "{{n}} acknowledged advisories",
+    "open": "Open — fix, or acknowledge with a reason",
+    "acknowledged": "Acknowledged as by-design",
+    "acknowledgedHint": "Acknowledged — {{reason}}",
+    "stale": "No longer fires — remove the acknowledgement",
+    "ackAction": "Acknowledge as by-design…",
+    "ackReasonPlaceholder": "Why this shape is right for this flow — saved with the definition",
+    "ackConfirm": "Acknowledge",
+    "ackCancel": "Back",
+    "unack": "Reopen",
+    "removeStale": "Remove",
+    "saved": "Server",
+    "savedHint": "Returned by the server on the last read or save",
+    "nodeDot": "Has open advisories — open the step",
+    "blocking": "{{n}} blocking",
+    "blockingHint": "Publishing is refused until these resolve against your agent catalog.",
+    "enableWithOpen": "{{n}} open advisories remain. They never block publishing, but a run may wait or fail silently where they point. Publish anyway?",
+    "enableWithOpenTitle": "Publish with open advisories",
+    "enableWithOpenConfirm": "Publish anyway"
   },
   "legend": {
     "title": "Legend",

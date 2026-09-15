@@ -121,6 +121,7 @@ describe('validate-pipeline', () => {
     const result = runValidatePipeline(EXAMPLES_PIPELINE, { agents: [EXAMPLES_AGENTS], builtinRoot: BUILTIN_DIR });
     expect(result.json.errors).toEqual([]);
     expect(result.json.catalogWarnings).toEqual([]);
+    expect(result.json.advisories.open).toEqual([]);
     expect(result.exitCode).toBe(EXIT.CLEAN);
   });
 
@@ -141,6 +142,33 @@ describe('validate-pipeline', () => {
     expect(result.exitCode).toBe(EXIT.FINDINGS);
     expect(result.json.errors.length).toBeGreaterThan(0);
     expect(result.json.id).toBe('broken');
+  });
+
+  it('advisories print apart from warnings, and only --strict turns an OPEN one into a finding', () => {
+    const gated = (extra = '', gateExtra = '') =>
+      `version: 2\nname: Gated\nsteps:\n  - id: draft\n    customJobRef: ops-team/weekly-report\n    intent: report\n  - id: sign\n    type: approval\n    prompt: ok?\n${gateExtra}  - id: escalate\n    customJobRef: ops-team/weekly-report\n    intent: escalate\n${extra}`;
+    const file = path.join(tmp, 'gated', 'pipeline.yaml');
+    writeTree(path.dirname(file), { 'pipeline.yaml': gated() });
+    const loose = runValidatePipeline(file, { agents: [EXAMPLES_AGENTS], builtin: false });
+    expect(loose.json.catalogWarnings).toEqual([]);
+    expect(loose.json.advisories.open.map((a) => a.code)).toEqual(['gate-waits-forever']);
+    expect(loose.lines.some((l) => l.startsWith('advisory: '))).toBe(true);
+    expect(loose.lines.some((l) => l.startsWith('warning: '))).toBe(false);
+    expect(loose.exitCode).toBe(EXIT.CLEAN);
+    expect(runValidatePipeline(file, { agents: [EXAMPLES_AGENTS], builtin: false, strict: true }).exitCode).toBe(EXIT.FINDINGS);
+
+    writeTree(path.dirname(file), { 'pipeline.yaml': gated('acknowledged:\n  - code: gate-waits-forever\n    step: sign\n    reason: the owner reads the inbox daily\n') });
+    const acked = runValidatePipeline(file, { agents: [EXAMPLES_AGENTS], builtin: false, strict: true });
+    expect(acked.json.advisories.open).toEqual([]);
+    expect(acked.json.advisories.acknowledged.map((a) => a.reason)).toEqual(['the owner reads the inbox daily']);
+    expect(acked.lines.some((l) => l.startsWith('acknowledged: gate-waits-forever @ sign'))).toBe(true);
+    expect(acked.exitCode).toBe(EXIT.CLEAN);
+
+    writeTree(path.dirname(file), { 'pipeline.yaml': gated('acknowledged:\n  - code: gate-waits-forever\n    step: sign\n    reason: was by design\n', '    remindAfter: 4h\n') });
+    const stale = runValidatePipeline(file, { agents: [EXAMPLES_AGENTS], builtin: false, strict: true });
+    expect(stale.json.advisories.stale).toHaveLength(1);
+    expect(stale.lines.some((l) => l.startsWith('stale: acknowledged gate-waits-forever @ sign'))).toBe(true);
+    expect(stale.exitCode).toBe(EXIT.CLEAN);
   });
 
   it('a name that cannot slug and no id folder is a warning naming the fix', () => {

@@ -286,9 +286,9 @@ separate call (`activate`), and the activation lives in the caller's account.
 
 | Verb | Path | Notes |
 |------|------|-------|
-| GET  | `/api/definitions/pipelines` | List definitions with `scope`, availability, and activation counts. |
-| POST | `/api/definitions/pipelines` | Create. Body is validated by `validatePipelineDef`; reserved knobs are rejected, never ignored. |
-| GET/PUT/DELETE | `/api/definitions/pipelines/:pipelineId` | Read, replace, delete. Writes answer **409** `pipeline-enabled` while the definition is enabled. |
+| GET  | `/api/definitions/pipelines` | List definitions with `scope`, availability, activation counts, and each entry's `openAdvisoryCount` (judged against the caller's catalog per read). |
+| POST | `/api/definitions/pipelines` | Create. Body is validated by `validatePipelineDef`; reserved knobs are rejected, never ignored. The response carries `catalogWarnings?` (enable hard-fails on these) and `advisories?` (`{ open, acknowledged, stale }`, never a gate) — each key only when non-empty. |
+| GET/PUT/DELETE | `/api/definitions/pipelines/:pipelineId` | Read, replace, delete. GET and PUT carry the same `catalogWarnings?` / `advisories?` verdicts as create, recomputed against the caller's catalog at that moment. Writes answer **409** `pipeline-enabled` while the definition is enabled. |
 | POST | `/api/definitions/pipelines/:pipelineId/enable` · `/disable` | The availability state machine. `disable` answers **409** `pipeline-has-activations` while anyone holds one — never cascaded. |
 | POST | `/api/definitions/pipelines/:pipelineId/promote` | Move a user-scope definition into the org scope (team organizations only). Requires **disabled**. |
 | GET  | `/api/definitions/pipelines/:pipelineId/permissions` · PUT `/editors` | Org ACL — owner plus delegated editors, the same rule set as agent definitions. |

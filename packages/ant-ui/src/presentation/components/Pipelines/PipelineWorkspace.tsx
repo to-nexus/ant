@@ -19,7 +19,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { collectPipelineAdvisoryItems, validatePipelineDef, type CustomAgentSummary, type PipelineDef, type PipelineListEntry } from '@ant/shared';
+import { resolvePipelineAdvisories, validatePipelineDef, type CustomAgentSummary, type PipelineAdvisory, type PipelineAdvisoryResolution, type PipelineDef, type PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectPipelineDirty } from '@/domain/store/slices/pipelineSlice';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
@@ -28,7 +28,7 @@ import { StepInspector } from './StepInspector';
 import { PipelineSettingsPanel } from './PipelineSettingsPanel';
 import { PipelineHeader } from './PipelineHeader';
 import { PipelineExecutionView } from './PipelineExecutionView';
-import { type AdvisoryStripItem } from './AdvisoryStrip';
+import { EMPTY_ADVISORY_VIEW, type AdvisoryActions, type AdvisoryStripItem, type AdvisoryView } from './AdvisoryStrip';
 import { CanvasNotice, type CanvasNoticeKind } from './CanvasNotice';
 import { TRIGGER_NODE_ID, addBranchAfter, insertStepAfter, makeGateStep, makeJobStep } from './draft';
 
@@ -52,8 +52,10 @@ export function PipelineWorkspace() {
   const runDetails = useStore((s) => s.pipelineRunDetails);
   const pipelines = useStore((s) => s.pipelines);
   const accountAgents = useStore((s) => s.accountAgents) as CustomAgentSummary[];
-  const saveWarnings = useStore((s) => s.pipelineSaveWarnings);
+  const serverJudgement = useStore((s) => s.pipelineServerJudgement);
   const setPipelineDraft = useStore((s) => s.setPipelineDraft);
+  const acknowledgePipelineAdvisory = useStore((s) => s.acknowledgePipelineAdvisory);
+  const removePipelineAcknowledgement = useStore((s) => s.removePipelineAcknowledgement);
   const savePipelineAll = useStore((s) => s.savePipelineAll);
   const discardPipelineAll = useStore((s) => s.discardPipelineAll);
   const setPipelinePanelView = useStore((s) => s.setPipelinePanelView);
@@ -82,16 +84,25 @@ export function PipelineWorkspace() {
     [pipelines, selectedId, draft, saved, editorsDraft, approversDraft],
   );
   const validationErrors = useMemo(() => (draft ? validatePipelineDef(draft) : []), [draft]);
-  // Save-time advisories, live over the draft (the same shared collectors the
-  // server runs) plus whatever the server returned on the last save.
-  const liveAdvisories = useMemo(() => (draft ? collectPipelineAdvisoryItems(draft, accountAgents) : []), [draft, accountAgents]);
-  const advisoryItems = useMemo<AdvisoryStripItem[]>(() => {
-    const live = liveAdvisories.map((a, i) => ({ id: `live-${i}-${a.code}-${a.stepId ?? ''}`, message: a.message, stepId: a.stepId, source: 'live' as const }));
-    const liveMessages = new Set(live.map((l) => l.message));
-    const saved = saveWarnings.filter((m) => !liveMessages.has(m)).map((m, i) => ({ id: `saved-${i}`, message: m, source: 'saved' as const }));
-    return [...live, ...saved];
-  }, [liveAdvisories, saveWarnings]);
-  const advisoryStepIds = useMemo(() => new Set(liveAdvisories.flatMap((a) => (a.stepId ? [a.stepId] : []))), [liveAdvisories]);
+  // The advisory lifecycle, live over the draft (the same shared resolver the
+  // server runs) — plus the server's open items the FE catalog could not see.
+  const resolution = useMemo<PipelineAdvisoryResolution>(
+    () => (draft ? resolvePipelineAdvisories(draft, accountAgents) : { open: [], acknowledged: [], stale: [] }),
+    [draft, accountAgents],
+  );
+  const advisoryView = useMemo<AdvisoryView>(() => {
+    const keyOf = (a: PipelineAdvisory) => `${a.code}:${a.stepId ?? ''}`;
+    const open: AdvisoryStripItem[] = resolution.open.map((a) => ({ ...a, id: keyOf(a), source: 'live' as const }));
+    const acknowledged: AdvisoryStripItem[] = resolution.acknowledged.map((a) => ({ ...a, id: keyOf(a), source: 'live' as const }));
+    const known = new Set([...open, ...acknowledged].map((a) => a.id));
+    const saved: AdvisoryStripItem[] = (serverJudgement.advisories?.open ?? [])
+      .filter((a) => !known.has(keyOf(a)))
+      .map((a) => ({ ...a, id: `saved:${keyOf(a)}`, source: 'saved' as const }));
+    return { open: [...open, ...saved], acknowledged, stale: resolution.stale };
+  }, [resolution, serverJudgement]);
+  // Amber dots and inspector hints follow OPEN items only; acknowledged ones show muted under their field.
+  const advisoryStepIds = useMemo(() => new Set(advisoryView.open.flatMap((a) => (a.stepId ? [a.stepId] : []))), [advisoryView]);
+  const stepAdvisories = useMemo(() => [...resolution.open, ...resolution.acknowledged], [resolution]);
   const definitionValid = validationErrors.length === 0 && cronOk && (draft?.steps.length ?? 0) > 0;
   const canSave = !!dirty && (!dirty.definition || definitionValid);
   const saveBlockedReason =
@@ -116,6 +127,10 @@ export function PipelineWorkspace() {
     if (!editable) return;
     setPipelineDraft(next);
   };
+  // Acknowledging is a definition edit — the same editability gate as any field.
+  const advisoryActions: AdvisoryActions = editable
+    ? { onSelectStep: selectPipelineNode, onAcknowledge: acknowledgePipelineAdvisory, onUnacknowledge: removePipelineAcknowledgement }
+    : {};
 
   const cronSummary = describeTrigger(draft, t, i18n.language);
   const canvasNotice: CanvasNoticeKind | null =
@@ -157,8 +172,9 @@ export function PipelineWorkspace() {
         onSave={() => void savePipelineAll()}
         onDiscard={discardPipelineAll}
         saveError={saveError}
-        advisories={view === 'execution' ? [] : advisoryItems}
-        onSelectStep={editable ? selectPipelineNode : undefined}
+        advisories={view === 'execution' ? EMPTY_ADVISORY_VIEW : advisoryView}
+        advisoryActions={advisoryActions}
+        catalogWarnings={view === 'execution' ? [] : serverJudgement.catalogWarnings}
       />
 
       {view === 'execution' ? (
@@ -193,7 +209,7 @@ export function PipelineWorkspace() {
               onChange={patch}
               onClose={() => selectPipelineNode(null)}
               onCronValidity={setCronOk}
-              advisories={liveAdvisories.filter((a) => a.stepId === selectedNodeId)}
+              advisories={stepAdvisories.filter((a) => a.stepId === selectedNodeId)}
               onStepRenamed={selectPipelineNode}
             />
           ) : (

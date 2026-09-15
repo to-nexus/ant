@@ -16,7 +16,7 @@ import {
   type PipelineScope,
 } from '@ant/shared';
 import { sendErrorResponse } from '../helpers/errorResponse';
-import { collectPipelineSaveWarnings } from '../../../../../core/pipelines/catalogBinding';
+import { judgePipelineForCatalog, judgementResponseFields, resolvePipelineCatalog, type PipelineJudgement } from '../../../../../core/pipelines/catalogBinding';
 import { derivePipelinesRoot, pipelineDir } from '../../../../../core/pipelines/paths';
 import {
   listAccountActivations,
@@ -43,6 +43,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       const needsGate = scopeRoots.some((r) => r.aclGoverned);
       const gate = needsGate ? await orgGateFor(req)() : null;
       const pending = await deps.coordinator.listPendingApprovals(owner);
+      const agents = resolvePipelineCatalog(ctxOf(owner)); // once per request — every entry's open-advisory count reads it
       const pendingByPipeline = new Map<string, number>();
       for (const p of pending) pendingByPipeline.set(p.pipelineId, (pendingByPipeline.get(p.pipelineId) ?? 0) + 1);
 
@@ -59,7 +60,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
             continue;
           }
           resolvable.add(`${scopeRoot.scope}:${item.id}`);
-          entries.push(await buildListEntry(owner, gate, scopeRoot, item.id, item.def, pendingByPipeline));
+          entries.push(await buildListEntry(owner, gate, scopeRoot, item.id, item.def, pendingByPipeline, agents));
         }
       }
 
@@ -90,7 +91,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
     res: Response,
     def: PipelineDef,
     suppliedId: string | undefined,
-  ): Promise<{ id: string; entry: PipelineListEntry; catalogWarnings: string[] } | null> {
+  ): Promise<{ id: string; entry: PipelineListEntry; judgement: PipelineJudgement } | null> {
     const owner = ownerOf(req);
     const errors = validatePipelineDefServer(def);
     if (errors.length > 0) {
@@ -155,12 +156,13 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
     });
     await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId: requestedId });
     const userRoot = scopeRoots.find((r) => r.scope === 'user')!;
-    // Advisory, never blocking: a draft may reference agents not authored
-    // yet. Enable/activate are where the same findings hard-fail.
+    // Never blocking: a draft may reference agents not authored yet.
+    // Enable/activate are where `catalogWarnings` hard-fail; advisories never do.
+    const agents = resolvePipelineCatalog(ctxOf(owner));
     return {
       id: requestedId,
-      entry: await buildListEntry(owner, null, userRoot, requestedId, def, new Map()),
-      catalogWarnings: collectPipelineSaveWarnings(def, ctxOf(owner)),
+      entry: await buildListEntry(owner, null, userRoot, requestedId, def, new Map(), agents),
+      judgement: judgePipelineForCatalog(def, agents),
     };
   }
 
@@ -178,7 +180,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       res.status(201).json({
         id: created.id,
         entry: created.entry,
-        ...(created.catalogWarnings.length > 0 && { catalogWarnings: created.catalogWarnings }),
+        ...judgementResponseFields(created.judgement),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
@@ -221,7 +223,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
           id: created.id,
           entry: created.entry,
           created: true,
-          ...(created.catalogWarnings.length > 0 && { catalogWarnings: created.catalogWarnings }),
+          ...judgementResponseFields(created.judgement),
         });
         return;
       }
@@ -247,12 +249,12 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       await savePipeline(found.scopeRoot.root, targetId, def);
       await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId: targetId });
       const gate = found.scopeRoot.aclGoverned ? await orgGateFor(req)() : null;
-      const catalogWarnings = collectPipelineSaveWarnings(def, ctxOf(owner));
+      const agents = resolvePipelineCatalog(ctxOf(owner));
       res.json({
         id: targetId,
-        entry: await buildListEntry(owner, gate, found.scopeRoot, targetId, def, new Map()),
+        entry: await buildListEntry(owner, gate, found.scopeRoot, targetId, def, new Map(), agents),
         created: false,
-        ...(catalogWarnings.length > 0 && { catalogWarnings }),
+        ...judgementResponseFields(judgePipelineForCatalog(def, agents)),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {

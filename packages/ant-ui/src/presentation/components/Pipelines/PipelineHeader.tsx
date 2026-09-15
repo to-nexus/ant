@@ -23,7 +23,7 @@ import { Crumb, CRUMB_SEPARATOR } from '../shared/Crumb';
 import { usePipelineDiscardGuard } from './usePipelineDiscardGuard';
 import { decideDelete, decideLifecycle, type DeleteBlock } from './lifecycle';
 import { LifecycleSegment } from './LifecycleSegment';
-import { AdvisoryBadge, type AdvisoryStripItem } from './AdvisoryStrip';
+import { AdvisoryBadge, BlockingFindingsBadge, type AdvisoryActions, type AdvisoryView } from './AdvisoryStrip';
 import { PipelineChangeSlot } from './PipelineChangeSlot';
 
 export type PipelinePanelView = 'editor' | 'execution';
@@ -45,7 +45,8 @@ export function PipelineHeader({
   onDiscard,
   saveError,
   advisories,
-  onSelectStep,
+  advisoryActions,
+  catalogWarnings,
 }: {
   draft: PipelineDef;
   entry: PipelineListEntry | undefined;
@@ -64,8 +65,10 @@ export function PipelineHeader({
   /** Save / availability refusal (e.g. disable's 409 holder list). */
   saveError?: string | null;
   /** Design-view advisories; empty on the execution view. */
-  advisories: AdvisoryStripItem[];
-  onSelectStep?: (stepId: string) => void;
+  advisories: AdvisoryView;
+  advisoryActions: AdvisoryActions;
+  /** Catalog-binding findings from the server — publishing is refused while any remain. */
+  catalogWarnings: string[];
 }) {
   const { t } = useTranslation('pipelines');
   const selectPipeline = useStore((s) => s.selectPipeline);
@@ -146,13 +149,27 @@ export function PipelineHeader({
             busy={busy}
             activationCount={activationCount}
             onChange={async (next) => {
-              setBusy(true);
-              try {
-                if (next === 'published') await enablePipelineById(entry.id);
-                else await disablePipelineById(entry.id);
-              } finally {
-                setBusy(false);
-              }
+              const run = async (op: () => Promise<unknown>) => {
+                setBusy(true);
+                try {
+                  await op();
+                } finally {
+                  setBusy(false);
+                }
+              };
+              if (next !== 'published') return run(() => disablePipelineById(entry.id));
+              // Advisories never gate publishing — but publishing is the moment
+              // a person decides, so the open count is put in front of them once.
+              if (advisories.open.length === 0) return run(() => enablePipelineById(entry.id));
+              showConfirm(
+                t('advisory.enableWithOpen', '{{n}} open advisories remain. They never block publishing, but a run may wait or fail silently where they point. Publish anyway?', { n: advisories.open.length }),
+                {
+                  type: 'warning',
+                  title: t('advisory.enableWithOpenTitle', 'Publish with open advisories'),
+                  confirmText: t('advisory.enableWithOpenConfirm', 'Publish anyway'),
+                  onConfirm: () => run(() => enablePipelineById(entry.id)),
+                },
+              );
             }}
           />
         )
@@ -162,7 +179,8 @@ export function PipelineHeader({
           {t('execution.activationsCount', '{{n}} project(s)', { n: activationCount })}
         </Badge>
       )}
-      <AdvisoryBadge items={advisories} onSelectStep={onSelectStep} />
+      <BlockingFindingsBadge findings={catalogWarnings} />
+      <AdvisoryBadge view={advisories} actions={advisoryActions} />
       {saveError && (
         <Tooltip
           content={<span style={{ display: 'block', width: 300, textAlign: 'left', fontSize: 12, lineHeight: 1.55, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>{saveError}</span>}

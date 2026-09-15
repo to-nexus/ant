@@ -312,6 +312,16 @@ function PipelineRow({
               {entry.pendingApprovalCount}
             </Badge>
           )}
+          {entry.openAdvisoryCount > 0 && (
+            <span
+              className="shrink-0"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: 'var(--amber-500)', fontSize: 11, fontWeight: 600 }}
+              title={t('rail.openAdvisories', '{{n}} open advisories — open the pipeline', { n: entry.openAdvisoryCount })}
+            >
+              <AlertTriangle size={11} />
+              {entry.openAdvisoryCount}
+            </span>
+          )}
           {running && (
             <span
               className="shrink-0 rounded-full"

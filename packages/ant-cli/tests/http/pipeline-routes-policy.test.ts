@@ -1250,3 +1250,93 @@ describe('activation approver rosters — activate body + the approvers PUT (act
     }
   });
 });
+
+describe('advisory lifecycle — recomputed on save and read, acknowledged in the definition', () => {
+  const GATED_DEF = (extra: object = {}) => ({
+    version: 2,
+    name: 'Gated',
+    on: { schedule: { cron: '0 9 * * 1' } },
+    steps: [
+      { id: 'collect', customJobRef: 'research/collect', directive: 'x' },
+      { id: 'sign', type: 'approval', prompt: 'ok?' },
+      { id: 'notify', customJobRef: 'research/collect', directive: 'y' },
+    ],
+    ...extra,
+  });
+  const ACK = [{ code: 'gate-waits-forever', step: 'sign', reason: 'The owner checks the inbox daily.' }];
+  // Earlier groups re-point the local identity and leave org-scope state behind; this axis is the personal root of `localuser`.
+  beforeEach(() => {
+    process.env.ANT_LOCAL_ORG = 'localorg';
+    process.env.ANT_LOCAL_USER = 'localuser';
+    fs.rmSync(path.join(wsRoot, 'localorg', '.ant'), { recursive: true, force: true });
+    fs.rmSync(path.join(wsRoot, 'individual'), { recursive: true, force: true });
+  });
+
+  it('a save answers the open advisory structured, apart from catalogWarnings (which it has none of)', async () => {
+    const res = await api('', { method: 'POST', body: JSON.stringify({ id: 'gated', def: GATED_DEF() }) });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect('catalogWarnings' in body).toBe(false);
+    expect(body.advisories.open.map((a: any) => [a.code, a.stepId, a.field])).toEqual([['gate-waits-forever', 'sign', 'timeout']]);
+    expect(body.advisories.acknowledged).toEqual([]);
+    expect(body.entry.openAdvisoryCount).toBe(1);
+  });
+
+  it('GET re-judges on read — the same advisories come back without a save', async () => {
+    await api('', { method: 'POST', body: JSON.stringify({ id: 'gated', def: GATED_DEF() }) });
+    const res = await api('/gated');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.advisories.open.map((a: any) => a.code)).toEqual(['gate-waits-forever']);
+    const list = await (await api('')).json();
+    expect(list.pipelines.find((p: any) => p.id === 'gated').openAdvisoryCount).toBe(1);
+  });
+
+  it('acknowledging through PUT moves the finding out of open, into acknowledged with the reason, and the list count drops to zero', async () => {
+    await api('', { method: 'POST', body: JSON.stringify({ id: 'gated', def: GATED_DEF() }) });
+    const res = await api('/gated', { method: 'PUT', body: JSON.stringify({ def: GATED_DEF({ acknowledged: ACK }) }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.advisories.open).toEqual([]);
+    expect(body.advisories.acknowledged.map((a: any) => [a.code, a.stepId, a.reason])).toEqual([['gate-waits-forever', 'sign', ACK[0].reason]]);
+    expect(body.entry.openAdvisoryCount).toBe(0);
+    const yaml = fs.readFileSync(path.join(userDir, '.ant/pipelines/gated/pipeline.yaml'), 'utf-8');
+    expect(yaml).toMatch(/acknowledged:\n\s+- code: gate-waits-forever/);
+  });
+
+  it('a malformed acknowledgement is a 400 like any other definition error', async () => {
+    const res = await api('', {
+      method: 'POST',
+      body: JSON.stringify({ id: 'gated', def: GATED_DEF({ acknowledged: [{ code: 'gate-waits-forever', step: 'sign', reason: '' }] }) }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe('invalid-pipeline-def');
+    expect(body.errors.join('\n')).toMatch(/acknowledged\[0\]\.reason/);
+  });
+
+  it('fixing the shape underneath an acknowledgement reports it stale — never silently kept, never a gate', async () => {
+    const fixed = GATED_DEF({
+      steps: [
+        { id: 'collect', customJobRef: 'research/collect', directive: 'x' },
+        { id: 'sign', type: 'approval', prompt: 'ok?', remindAfter: '4h' },
+        { id: 'notify', customJobRef: 'research/collect', directive: 'y' },
+      ],
+      acknowledged: ACK,
+    });
+    const res = await api('', { method: 'POST', body: JSON.stringify({ id: 'gated', def: fixed }) });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.advisories.open).toEqual([]);
+    expect(body.advisories.stale).toEqual(ACK);
+    expect((await api('/gated/enable', { method: 'POST' })).status).toBe(200);
+  });
+
+  it('a clean definition answers neither catalogWarnings nor advisories', async () => {
+    const res = await api('', { method: 'POST', body: JSON.stringify({ id: 'clean', def: DEF() }) });
+    const body = await res.json();
+    expect('catalogWarnings' in body).toBe(false);
+    expect('advisories' in body).toBe(false);
+    expect(body.entry.openAdvisoryCount).toBe(0);
+  });
+});

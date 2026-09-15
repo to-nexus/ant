@@ -1,10 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { PIPELINE_FILE_NAME, isValidCustomId, toCustomId, type PipelineDef } from '@ant/shared';
+import { PIPELINE_FILE_NAME, isValidCustomId, toCustomId, type PipelineAdvisoryResolution, type PipelineDef } from '@ant/shared';
 import { WorkspacePathResolver } from '../../core/config/WorkspacePathResolver';
 import { discoverAgents, type CustomAgentScopeRoot } from '../../core/customAgents/CustomAgentLoader';
-import { collectPipelineSaveWarningsForCatalog } from '../../core/pipelines/catalogBinding';
+import { judgePipelineForCatalog } from '../../core/pipelines/catalogBinding';
 import { validatePipelineDefServer } from '../../core/pipelines/store';
 import { EXIT, type CliResult } from './commands';
 
@@ -13,7 +13,7 @@ export interface ValidatePipelineOptions {
   agents?: string[];
   /** Include the shipped builtin agents in the catalog (default true). */
   builtin?: boolean;
-  /** Treat catalog warnings as findings (exit 1). */
+  /** Treat catalog warnings AND open advisories as findings (exit 1). */
   strict?: boolean;
   builtinRoot?: string;
 }
@@ -21,21 +21,27 @@ export interface ValidatePipelineOptions {
 export interface ValidatePipelineJson {
   id: string | null;
   errors: string[];
+  /** Catalog-binding findings — what enable hard-fails on. */
   catalogWarnings: string[];
+  /** The advisory lifecycle against the given catalog — same shape the save and GET responses carry. */
+  advisories: PipelineAdvisoryResolution;
 }
+
+const NO_ADVISORIES: PipelineAdvisoryResolution = { open: [], acknowledged: [], stale: [] };
 
 /**
  * Judge a `pipeline.yaml` by the save funnel's rules: `validatePipelineDefServer`
- * (what `POST /` and `PUT /:id` refuse with 400 `errors[]`) and the three
- * save-warning collectors over a catalog built from the given agent folders
- * (what the 201 carries as `catalogWarnings`, and what enable hard-fails on).
+ * (what `POST /` and `PUT /:id` refuse with 400 `errors[]`), then both verdicts
+ * over a catalog built from the given agent folders — `catalogWarnings` (what
+ * enable hard-fails on) and `advisories` (open / acknowledged / stale, never a
+ * gate). Lines: `error:` / `warning:` / `advisory:` / `acknowledged:` / `stale:`.
  */
 export function runValidatePipeline(fileArg: string, opts: ValidatePipelineOptions = {}): CliResult<ValidatePipelineJson> {
   const file = path.resolve(fileArg);
   const usage = (msg: string): CliResult<ValidatePipelineJson> => ({
     exitCode: EXIT.USAGE,
     lines: [`error: ${msg}`],
-    json: { id: null, errors: [msg], catalogWarnings: [] },
+    json: { id: null, errors: [msg], catalogWarnings: [], advisories: NO_ADVISORIES },
   });
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
     return usage(`${fileArg} is not a file`);
@@ -49,12 +55,13 @@ export function runValidatePipeline(fileArg: string, opts: ValidatePipelineOptio
     raw = yaml.load(fs.readFileSync(file, 'utf-8'));
   } catch (e) {
     const msg = `Cannot read ${PIPELINE_FILE_NAME}: ${e instanceof Error ? e.message : String(e)}`;
-    return { exitCode: EXIT.FINDINGS, lines: [`error: ${msg}`], json: { id: null, errors: [msg], catalogWarnings: [] } };
+    return { exitCode: EXIT.FINDINGS, lines: [`error: ${msg}`], json: { id: null, errors: [msg], catalogWarnings: [], advisories: NO_ADVISORIES } };
   }
 
   const errors = validatePipelineDefServer(raw);
   const lines = errors.map((e) => `error: ${e}`);
   const catalogWarnings: string[] = [];
+  let advisories: PipelineAdvisoryResolution = NO_ADVISORIES;
 
   // The folder name is the id on import; a bare file falls back to the slug
   // the server would derive, and a name that cannot slug is a real finding.
@@ -82,22 +89,27 @@ export function runValidatePipeline(fileArg: string, opts: ValidatePipelineOptio
     if (opts.builtin !== false) {
       roots.push({ scope: 'builtin', root: opts.builtinRoot ?? WorkspacePathResolver.getBuiltinAgentsPath(), readonly: true });
     }
-    catalogWarnings.push(...collectPipelineSaveWarningsForCatalog(raw as PipelineDef, discoverAgents(roots)));
+    const judged = judgePipelineForCatalog(raw as PipelineDef, discoverAgents(roots));
+    catalogWarnings.push(...judged.catalogWarnings);
+    advisories = judged.advisories;
     lines.push(...catalogWarnings.map((w) => `warning: ${w}`));
     if (catalogWarnings.length > 0 && (opts.agents ?? []).length === 0) {
       lines.push('hint: pass --agents <dir> with the agent folders this pipeline runs, or the catalog is the builtins alone');
     }
+    lines.push(...advisories.open.map((a) => `advisory: ${a.message}`));
+    lines.push(...advisories.acknowledged.map((a) => `acknowledged: ${a.code} @ ${a.stepId ?? '-'} — ${a.reason}`));
+    lines.push(...advisories.stale.map((a) => `stale: acknowledged ${a.code} @ ${a.step} no longer fires — remove it from acknowledged`));
   }
 
-  const findings = errors.length > 0 || (opts.strict === true && catalogWarnings.length > 0);
+  const findings = errors.length > 0 || (opts.strict === true && (catalogWarnings.length > 0 || advisories.open.length > 0));
   lines.push(
     errors.length > 0
       ? `${id ?? path.basename(file)}: ${errors.length} error(s)`
-      : `ok: ${id ?? path.basename(file)} — definition valid, ${catalogWarnings.length} warning(s)`,
+      : `ok: ${id ?? path.basename(file)} — definition valid, ${catalogWarnings.length} warning(s), ${advisories.open.length} open advisory(ies)`,
   );
   return {
     exitCode: findings ? EXIT.FINDINGS : EXIT.CLEAN,
     lines,
-    json: { id, errors, catalogWarnings },
+    json: { id, errors, catalogWarnings, advisories },
   };
 }

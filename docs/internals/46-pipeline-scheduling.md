@@ -744,13 +744,33 @@ also carries `orphanActivations`, own activations whose pinned def no longer
 resolves; server-computed `nextFireAt` — the FE never parses cron) · create
 (personal root, DISABLED draft, cross-scope id collision 409) / get / put +
 delete (`findWritablePipeline` funnel: 403 `org-pipeline-forbidden` per ACL;
-409 `pipeline-enabled` while enabled; create/put responses carry
-non-blocking `catalogWarnings` — the catalog-binding findings the
-enable gate hard-fails on, PLUS def-structural advisories
-(`collectPipelineDefAdvisories`: an approval gate no step needs — a
+409 `pipeline-enabled` while enabled; create/put AND get responses carry
+two verdicts with different force, each key present only when non-empty:
+`catalogWarnings: string[]` — the catalog-binding findings the enable gate
+hard-fails on — and `advisories: { open, acknowledged, stale }` — the
+advisory LIFECYCLE (`resolvePipelineAdvisories`, the one owner every reader
+calls: the FE editor over the draft, the save funnel, GET, the list's
+`openAdvisoryCount`, the offline `validate-pipeline`). Nothing about either
+verdict is stored: it is a pure function of (definition × the caller's
+catalog) recomputed on every read, so a catalog change — an intent's stop
+glob edited, `clarify` flipped — shows on the next GET or list without a
+save (an enabled pipeline cannot be re-saved). The one persisted thing is
+the author's disposition, `acknowledged: [{ code, step, reason }]` INSIDE
+`pipeline.yaml` (a `DEF_KEYS` member, validated: known code, existing step,
+non-empty reason, no duplicate `(code, step)`) — authoring information, so
+it travels with the definition through promote / download / import / the
+builder handoff, and the pipeline-builder writes it through the same
+`PUT /:id` it already holds (no new route, no self-api pin change). `open`
+= collector fired, no acknowledgement (amber in the editor, `--strict`
+refuses); `acknowledged` = fired, acknowledged, the reason rides along;
+`stale` = acknowledged, no longer fires (cleanup, never a gate). Enable /
+activate / dispatch stay advisory-blind — the FE puts the open count in
+front of the person once, as a confirm, at the moment they publish. The
+advisories themselves: def-structural
+(`collectPipelineDefAdvisoryItems`: an approval gate no step needs — a
 decision the run does not execute belongs in the report's Left to a person,
 not in the graph) and
-catalog advisories (`collectPipelineCatalogAdvisories`: pin-needs
+catalog advisories (`collectPipelineCatalogAdvisoryItems`: pin-needs
 coherence — a `context` pin whose producing step, identified by
 exact stop-glob match, is not in the pinning step's needs closure
 is wired by file-order luck; "what you pin, you needs"; a step pinning
@@ -786,7 +806,9 @@ produce" gets over-applied to intra-pipeline pins; prompt-side
 prose and a skeleton both proved unstable against it, so the save
 advisory is the compensating control) that stay
 advisory even at enable, so an authoring job (pipeline-builder)
-self-corrects at save time) · `enable` (re-validates the def AND the
+self-corrects at save time — and, since the disposition lives in the
+definition, a person reads the residue (the rail's open count, the
+header badge) instead of trusting that it did) · `enable` (re-validates the def AND the
 catalog binding — `validatePipelineCatalogBinding` against the ENABLER's
 agent catalog: agent/job/intent existence, verdict-edge vocabulary,
 `onMissingVerdict` vocabulary; a broken draft or a typo'd ref never
