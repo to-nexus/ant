@@ -3,6 +3,8 @@ import { StateCreator } from 'zustand';
 import type {
   ActivePipelineInfo,
   PipelineActivationView,
+  PipelineAdvisoryCode,
+  PipelineAdvisoryResolution,
   PipelineDef,
   PipelineEventData,
   PipelineListEntry,
@@ -36,6 +38,7 @@ import {
 } from '@/infrastructure/http/api/pipelines';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { editorsEqual } from '@/presentation/components/shared/org/editors';
+import { withAcknowledgement, withoutAcknowledgement } from '@/presentation/components/Pipelines/draft';
 
 /**
  * pipelineSlice — FE state for the pipeline scheduler tab.
@@ -91,8 +94,13 @@ export interface PipelineSliceState {
   pipelineSavedDef: PipelineDef | null;
   pipelineDraftIsNew: boolean;
   pipelineSaveError: string | null;
-  /** Non-blocking advisories the server returned on the last save (`catalogWarnings`). */
-  pipelineSaveWarnings: string[];
+  /**
+   * The server's judgement of the selected pipeline against the caller's
+   * catalog — from the GET that opened it and from every save since. Held,
+   * not recomputed: the FE's live resolution over the draft is the primary
+   * view; this fills what the FE catalog cannot see (an empty `accountAgents`).
+   */
+  pipelineServerJudgement: { catalogWarnings: string[]; advisories: PipelineAdvisoryResolution | null };
   pipelinePanelView: 'editor' | 'execution';
   /** Org editors draft for the selected pipeline — null = untouched. */
   pipelineEditorsDraft: string[] | null;
@@ -131,6 +139,9 @@ export interface PipelineSliceActions {
   selectPipeline: (pipelineId: string | null) => Promise<void>;
   newPipelineDraft: () => void;
   setPipelineDraft: (def: PipelineDef) => void;
+  /** Record an advisory as by-design in the draft (`acknowledged:`) — a definition edit, saved with the pipeline. */
+  acknowledgePipelineAdvisory: (code: PipelineAdvisoryCode, step: string, reason: string) => void;
+  removePipelineAcknowledgement: (code: PipelineAdvisoryCode, step: string) => void;
   discardPipelineDraft: () => void;
   savePipelineDraft: () => Promise<boolean>;
   setPipelineEditorsDraft: (editors: string[] | null) => void;
@@ -214,7 +225,8 @@ export const selectPipelineDirty = (s: PipelineDirtyState): PipelineDirtyReport 
   return count === 0 ? null : { definition, editors, approvers, count };
 };
 
-const CLEAN_DRAFTS = { pipelineEditorsDraft: null, pipelineApproversDraft: {}, pipelineSaveWarnings: [] as string[] } as const;
+const NO_JUDGEMENT = { catalogWarnings: [] as string[], advisories: null as PipelineAdvisoryResolution | null };
+const CLEAN_DRAFTS = { pipelineEditorsDraft: null, pipelineApproversDraft: {}, pipelineServerJudgement: NO_JUDGEMENT } as const;
 
 export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (set, get) => ({
   pipelines: [],
@@ -227,7 +239,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineSavedDef: null,
   pipelineDraftIsNew: false,
   pipelineSaveError: null,
-  pipelineSaveWarnings: [],
+  pipelineServerJudgement: NO_JUDGEMENT,
   pipelinePanelView: 'editor',
   pipelineEditorsDraft: null,
   pipelineApproversDraft: {},
@@ -281,6 +293,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       set({
         pipelineDraft: detail.def,
         pipelineSavedDef: detail.def,
+        pipelineServerJudgement: { catalogWarnings: detail.catalogWarnings ?? [], advisories: detail.advisories ?? null },
         pipelines: get().pipelines.map((p: PipelineListEntry) =>
           p.id === pipelineId
             ? { ...p, scope: detail.scope, readonly: detail.readonly, enabled: detail.enabled, org: detail.org, activations: detail.activations }
@@ -322,6 +335,16 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
 
   setPipelineDraft: (def: PipelineDef) => set({ pipelineDraft: def }),
 
+  acknowledgePipelineAdvisory: (code, step, reason) => {
+    const draft = get().pipelineDraft as PipelineDef | null;
+    if (draft) set({ pipelineDraft: withAcknowledgement(draft, code, step, reason) });
+  },
+
+  removePipelineAcknowledgement: (code, step) => {
+    const draft = get().pipelineDraft as PipelineDef | null;
+    if (draft) set({ pipelineDraft: withoutAcknowledgement(draft, code, step) });
+  },
+
   discardPipelineDraft: () => {
     const saved = get().pipelineSavedDef;
     if (saved) {
@@ -336,11 +359,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     if (!pipelineDraft) return false;
     try {
       if (pipelineDraftIsNew) {
-        const { id, catalogWarnings } = await createPipeline(pipelineDraft);
-        set({ pipelineDraftIsNew: false, selectedPipelineId: id, pipelineSavedDef: pipelineDraft, pipelineSaveError: null, pipelineSaveWarnings: catalogWarnings ?? [] });
+        const { id, catalogWarnings, advisories } = await createPipeline(pipelineDraft);
+        set({ pipelineDraftIsNew: false, selectedPipelineId: id, pipelineSavedDef: pipelineDraft, pipelineSaveError: null, pipelineServerJudgement: { catalogWarnings: catalogWarnings ?? [], advisories: advisories ?? null } });
       } else if (selectedPipelineId) {
-        const { catalogWarnings } = await updatePipeline(selectedPipelineId, pipelineDraft);
-        set({ pipelineSavedDef: pipelineDraft, pipelineSaveError: null, pipelineSaveWarnings: catalogWarnings ?? [] });
+        const { catalogWarnings, advisories } = await updatePipeline(selectedPipelineId, pipelineDraft);
+        set({ pipelineSavedDef: pipelineDraft, pipelineSaveError: null, pipelineServerJudgement: { catalogWarnings: catalogWarnings ?? [], advisories: advisories ?? null } });
       } else {
         return false;
       }

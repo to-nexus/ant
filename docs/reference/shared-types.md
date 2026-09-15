@@ -44,7 +44,8 @@ key types and their meaning.
 
 | Type / function | Source | Purpose |
 |-----------------|--------|---------|
-| `PipelineDef` / `PIPELINE_DEF_VERSION` | `pipeline.ts` | One definition: `version`, `name`, `on.schedule`, `defaults?`, `steps[]`. Project-free by construction — `projectId` was a v1 field and is now rejected. |
+| `PipelineDef` / `PIPELINE_DEF_VERSION` | `pipeline.ts` | One definition: `version`, `name`, `on.schedule`, `defaults?`, `steps[]`, `acknowledged?`. Project-free by construction — `projectId` was a v1 field and is now rejected. |
+| `PipelineAdvisory` / `PIPELINE_ADVISORY_CODES` / `PipelineAcknowledgement` / `PipelineAdvisoryResolution` / `resolvePipelineAdvisories` | `pipeline.ts` | The advisory lifecycle: a closed code vocabulary, the author's `{ code, step, reason }` disposition inside the definition, and the ONE resolver every reader (editor, save/GET responses, list count, offline CLI) calls — `{ open, acknowledged, stale }`, recomputed per read, never a gate. |
 | `PipelineStepDef` = `JobStepDef` \| `ApprovalStepDef` / `isApprovalStep` | `pipeline.ts` | A step is either a custom-job dispatch (`customJobRef`, `intent?`, `directive`, `context?`) or a gate that issues no job. |
 | `PipelineScheduleTrigger` | `pipeline.ts` | `cron` (5 fields, parsed server-side), `tz?`, `onMissed?`, `overlap?`. |
 | `StepEdgeCondition` / `StepFailurePolicy` | `pipeline.ts` | `'success' \| 'failure' \| 'always'` per edge; `'abort' \| 'continue'` for the run. |

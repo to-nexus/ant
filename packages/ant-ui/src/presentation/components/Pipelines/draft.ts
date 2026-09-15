@@ -20,6 +20,7 @@
 import {
   type ApprovalStepDef,
   type JobStepDef,
+  type PipelineAdvisoryCode,
   type PipelineDef,
   type PipelineRunCompletedTrigger,
   type PipelineScheduleTrigger,
@@ -262,6 +263,28 @@ export function renameStep(def: PipelineDef, from: string, to: string): Pipeline
       return next;
     }),
   };
+}
+
+/**
+ * Acknowledge one advisory as by-design. `(code, step)` is the identity the
+ * shared resolver matches on; re-acknowledging replaces the reason. A blank
+ * reason is identity — the validator refuses it, so never author one.
+ */
+export function withAcknowledgement(def: PipelineDef, code: PipelineAdvisoryCode, step: string, reason: string): PipelineDef {
+  const trimmed = reason.trim();
+  if (trimmed.length === 0) return def;
+  const rest = (def.acknowledged ?? []).filter((a) => !(a.code === code && a.step === step));
+  return { ...def, acknowledged: [...rest, { code, step, reason: trimmed }] };
+}
+
+/** Drop one acknowledgement; the key disappears entirely when none remain (zero YAML churn). */
+export function withoutAcknowledgement(def: PipelineDef, code: PipelineAdvisoryCode, step: string): PipelineDef {
+  const rest = (def.acknowledged ?? []).filter((a) => !(a.code === code && a.step === step));
+  if (rest.length === 0) {
+    const { acknowledged: _drop, ...bare } = def;
+    return bare as PipelineDef;
+  }
+  return { ...def, acknowledged: rest };
 }
 
 /** Client copy of the executor's implicit-needs rule for edge rendering. */

@@ -6,8 +6,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisories, collectPipelineCatalogAdvisories, collectPipelineAdvisoryItems, defaultStepDirective, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisoryItems, collectPipelineCatalogAdvisoryItems, collectPipelineAdvisoryItems, resolvePipelineAdvisories, defaultStepDirective, PIPELINE_DEF_VERSION, PIPELINE_ADVISORY_CODES, DIRECTIVE_MAX_CHARS } from '@ant/shared';
 import type { PipelineCatalogAgent, PipelineDef } from '@ant/shared';
+
+// The rows below assert on the wire text — `message` is what the CLI prints and the editor renders.
+const collectPipelineDefAdvisories = (d: PipelineDef): string[] => collectPipelineDefAdvisoryItems(d).map((a) => a.message);
+const collectPipelineCatalogAdvisories = (d: PipelineDef, agents: PipelineCatalogAgent[]): string[] =>
+  collectPipelineCatalogAdvisoryItems(d, agents).map((a) => a.message);
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
 function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -818,5 +823,87 @@ describe('collectPipelineCatalogAdvisories — entry-no-case-channel (the rapid-
     ])('stays silent when %s', (_label, pipeline) => {
       expect(noProducer(pipeline)).toHaveLength(0);
     });
+  });
+});
+
+describe('validatePipelineDef — acknowledged (the advisory disposition lives in the definition)', () => {
+  const gated = (acknowledged: unknown) =>
+    baseDef({
+      steps: [
+        { id: 'collect', customJobRef: 'research/collect', directive: 'x' },
+        { id: 'sign', type: 'approval', prompt: 'ok?' },
+        { id: 'notify', customJobRef: 'research/collect', directive: 'y' },
+      ],
+      acknowledged,
+    });
+
+  it('accepts a well-formed entry: a known code, an existing step, a non-empty reason', () => {
+    expect(validatePipelineDef(gated([{ code: 'gate-waits-forever', step: 'sign', reason: 'The owner checks the inbox daily.' }]))).toEqual([]);
+  });
+
+  it.each([
+    ['not an array', { code: 'gate-waits-forever', step: 'sign', reason: 'r' }, /acknowledged must be an array/],
+    ['an unknown code', [{ code: 'made-up', step: 'sign', reason: 'r' }], /\.code must be an advisory code/],
+    ['a step that does not exist', [{ code: 'gate-waits-forever', step: 'ghost', reason: 'r' }], /\.step must name a step/],
+    ['a blank reason', [{ code: 'gate-waits-forever', step: 'sign', reason: '   ' }], /\.reason must be a non-empty sentence/],
+    ['an unknown key', [{ code: 'gate-waits-forever', step: 'sign', reason: 'r', by: 'me' }], /unknown key "by"/],
+    ['a duplicate (code, step)', [{ code: 'gate-waits-forever', step: 'sign', reason: 'a' }, { code: 'gate-waits-forever', step: 'sign', reason: 'b' }], /duplicate acknowledgement/],
+  ])('refuses %s', (_label, acknowledged, pattern) => {
+    expect(validatePipelineDef(gated(acknowledged)).join('\n')).toMatch(pattern);
+  });
+
+  it('the code vocabulary the validator names is the closed constant', () => {
+    const errors = validatePipelineDef(gated([{ code: 'nope', step: 'sign', reason: 'r' }]));
+    for (const code of PIPELINE_ADVISORY_CODES) expect(errors.join('\n')).toContain(code);
+  });
+});
+
+describe('resolvePipelineAdvisories — open / acknowledged / stale, the one lifecycle owner', () => {
+  const def = (extra: object = {}): PipelineDef =>
+    ({
+      version: PIPELINE_DEF_VERSION,
+      name: 'n',
+      // `notify` needs the gate implicitly, so only the timeout axis fires.
+      steps: [
+        { id: 'collect', customJobRef: 'research/collect', directive: 'x' },
+        { id: 'sign', type: 'approval', prompt: 'ok?' },
+        { id: 'notify', customJobRef: 'research/collect', directive: 'y' },
+      ],
+      ...extra,
+    }) as unknown as PipelineDef;
+
+  it('an unacknowledged finding is open; nothing else', () => {
+    const r = resolvePipelineAdvisories(def(), []);
+    expect(r.open.map((a) => [a.code, a.stepId])).toEqual([['gate-waits-forever', 'sign']]);
+    expect(r.acknowledged).toEqual([]);
+    expect(r.stale).toEqual([]);
+  });
+
+  it('a matching (code, step) acknowledgement moves the finding out of open and carries the reason', () => {
+    const r = resolvePipelineAdvisories(def({ acknowledged: [{ code: 'gate-waits-forever', step: 'sign', reason: 'inbox is watched daily' }] }), []);
+    expect(r.open).toEqual([]);
+    expect(r.acknowledged.map((a) => [a.code, a.stepId, a.reason])).toEqual([['gate-waits-forever', 'sign', 'inbox is watched daily']]);
+    expect(r.stale).toEqual([]);
+  });
+
+  it('an acknowledgement whose finding no longer fires is stale — the finding was fixed underneath it', () => {
+    const fixed = def({
+      steps: [
+        { id: 'collect', customJobRef: 'research/collect', directive: 'x' },
+        { id: 'sign', type: 'approval', prompt: 'ok?', remindAfter: '4h' },
+        { id: 'notify', customJobRef: 'research/collect', directive: 'y' },
+      ],
+      acknowledged: [{ code: 'gate-waits-forever', step: 'sign', reason: 'was by design' }],
+    });
+    const r = resolvePipelineAdvisories(fixed, []);
+    expect(r.open).toEqual([]);
+    expect(r.acknowledged).toEqual([]);
+    expect(r.stale).toEqual([{ code: 'gate-waits-forever', step: 'sign', reason: 'was by design' }]);
+  });
+
+  it('an acknowledgement for another step does not silence this one', () => {
+    const r = resolvePipelineAdvisories(def({ acknowledged: [{ code: 'gate-waits-forever', step: 'collect', reason: 'x' }] }), []);
+    expect(r.open).toHaveLength(1);
+    expect(r.stale).toHaveLength(1);
   });
 });

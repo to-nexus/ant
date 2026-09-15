@@ -22,6 +22,8 @@ import {
   renameStep,
   setStepNeeds,
   updateSchedule,
+  withAcknowledgement,
+  withoutAcknowledgement,
 } from '../../src/presentation/components/Pipelines/draft';
 import { upstreamStepIds } from '../../src/presentation/components/Pipelines/upstreamOutputs';
 
@@ -221,5 +223,27 @@ describe('upstreamStepIds', () => {
     expect(upstreamStepIds(d, 'c', { jobsOnly: true })).toEqual(['a', 'b']);
     expect(upstreamStepIds(d, 'd')).toEqual([]);
     expect(upstreamStepIds(d, 'zzz')).toEqual([]);
+  });
+});
+
+describe('withAcknowledgement / withoutAcknowledgement', () => {
+  const d = def([job('a'), { id: 'g', type: 'approval', prompt: 'p' } as PipelineStepDef]);
+
+  it('adds an entry keyed by (code, step); re-acknowledging replaces the reason', () => {
+    const once = withAcknowledgement(d, 'gate-waits-forever', 'g', ' first ');
+    expect(once.acknowledged).toEqual([{ code: 'gate-waits-forever', step: 'g', reason: 'first' }]);
+    const twice = withAcknowledgement(once, 'gate-waits-forever', 'g', 'second');
+    expect(twice.acknowledged).toEqual([{ code: 'gate-waits-forever', step: 'g', reason: 'second' }]);
+  });
+
+  it('a blank reason is identity — the validator refuses it, so the editor never authors one', () => {
+    expect(withAcknowledgement(d, 'gate-waits-forever', 'g', '   ')).toBe(d);
+  });
+
+  it('removing the last entry drops the key entirely (zero YAML churn)', () => {
+    const acked = withAcknowledgement(withAcknowledgement(d, 'gate-waits-forever', 'g', 'r'), 'gate-holds-nothing', 'g', 'r2');
+    const one = withoutAcknowledgement(acked, 'gate-waits-forever', 'g');
+    expect(one.acknowledged).toEqual([{ code: 'gate-holds-nothing', step: 'g', reason: 'r2' }]);
+    expect('acknowledged' in withoutAcknowledgement(one, 'gate-holds-nothing', 'g')).toBe(false);
   });
 });

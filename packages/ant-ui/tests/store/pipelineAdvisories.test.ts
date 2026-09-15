@@ -1,7 +1,8 @@
 /**
- * Save-time advisories reach the author: the server's `catalogWarnings` are
- * kept on the slice (they used to be destructured away), and they are
- * scoped to the selection they were answered for.
+ * The server's verdicts reach the author: `catalogWarnings` and the advisory
+ * lifecycle are kept on the slice from the GET that opened the pipeline and
+ * from every save, scoped to the selection they were answered for; an
+ * acknowledgement is a draft edit.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from 'zustand';
@@ -34,7 +35,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@/infrastructure/http/api/pipelines', () => api);
 
 const DEF = { version: 2, name: 'Notice', steps: [{ id: 'lookup', customJobRef: 'terms/notice', intent: 'lookup-period' }] };
-const ENTRY = { id: 'p1', name: 'Notice', stepCount: 1, scope: 'user', readonly: false, enabled: false, activations: [], pendingApprovalCount: 0 };
+const ENTRY = { id: 'p1', name: 'Notice', stepCount: 1, scope: 'user', readonly: false, enabled: false, activations: [], pendingApprovalCount: 0, openAdvisoryCount: 0 };
 
 function buildStore() {
   return create<any>((set, get, store) => ({ selectedProject: 'proj-a', ...createPipelineSlice(set as any, get as any, store as any) }));
@@ -46,46 +47,53 @@ beforeEach(() => {
   api.fetchPipelineApprovals.mockResolvedValue({ approvals: [] });
 });
 
-describe('pipelineSaveWarnings — the save response\'s catalogWarnings reach the author', () => {
-  it('create keeps the warnings; a clean save clears them', async () => {
+describe('pipelineServerJudgement — the server verdicts reach the author on save AND on open', () => {
+  const OPEN = { open: [{ code: 'gate-waits-forever', stepId: 'sign', field: 'timeout', message: 'approval step "sign" waits forever' }], acknowledged: [], stale: [] };
+
+  it('create keeps the judgement; a clean save clears it', async () => {
     const useStore = buildStore();
     useStore.getState().newPipelineDraft();
     useStore.getState().setPipelineDraft(DEF);
-    api.createPipeline.mockResolvedValue({ id: 'p1', entry: ENTRY, catalogWarnings: ['step "lookup" pins its own intent\'s stop artifact'] });
+    api.createPipeline.mockResolvedValue({ id: 'p1', entry: ENTRY, catalogWarnings: ['agent "ghost" is not in your agent catalog'], advisories: OPEN });
     expect(await useStore.getState().savePipelineDraft()).toBe(true);
-    expect(useStore.getState().pipelineSaveWarnings).toEqual(['step "lookup" pins its own intent\'s stop artifact']);
+    expect(useStore.getState().pipelineServerJudgement).toEqual({ catalogWarnings: ['agent "ghost" is not in your agent catalog'], advisories: OPEN });
 
     api.updatePipeline.mockResolvedValue({ id: 'p1', entry: ENTRY });
     useStore.getState().setPipelineDraft({ ...DEF, name: 'Notice v2' });
     expect(await useStore.getState().savePipelineDraft()).toBe(true);
-    expect(useStore.getState().pipelineSaveWarnings).toEqual([]);
+    expect(useStore.getState().pipelineServerJudgement).toEqual({ catalogWarnings: [], advisories: null });
   });
 
-  it('warnings belong to the selection — selecting another pipeline (or none) resets them', async () => {
+  it('opening a pipeline carries the GET judgement — a catalog change shows without a save', async () => {
     const useStore = buildStore();
-    useStore.setState({ selectedPipelineId: 'p1', pipelineDraft: DEF, pipelineSavedDef: DEF, pipelines: [ENTRY] });
-    api.updatePipeline.mockResolvedValue({ id: 'p1', entry: ENTRY, catalogWarnings: ['w'] });
-    await useStore.getState().savePipelineDraft();
-    expect(useStore.getState().pipelineSaveWarnings).toEqual(['w']);
-
-    api.fetchPipeline.mockResolvedValue({ id: 'p2', def: DEF, scope: 'user', readonly: false, enabled: false, activations: [] });
+    api.fetchPipeline.mockResolvedValue({ id: 'p2', def: DEF, scope: 'user', readonly: false, enabled: true, activations: [], advisories: OPEN });
     await useStore.getState().selectPipeline('p2');
-    expect(useStore.getState().pipelineSaveWarnings).toEqual([]);
-
-    api.updatePipeline.mockResolvedValue({ id: 'p2', entry: { ...ENTRY, id: 'p2' }, catalogWarnings: ['w2'] });
-    await useStore.getState().savePipelineDraft();
-    expect(useStore.getState().pipelineSaveWarnings).toEqual(['w2']);
+    expect(useStore.getState().pipelineServerJudgement.advisories).toEqual(OPEN);
+    // Selecting another pipeline (or none) resets it — the verdict belongs to the selection.
+    api.fetchPipeline.mockResolvedValue({ id: 'p3', def: DEF, scope: 'user', readonly: false, enabled: false, activations: [] });
+    await useStore.getState().selectPipeline('p3');
+    expect(useStore.getState().pipelineServerJudgement).toEqual({ catalogWarnings: [], advisories: null });
     await useStore.getState().selectPipeline(null);
-    expect(useStore.getState().pipelineSaveWarnings).toEqual([]);
+    expect(useStore.getState().pipelineServerJudgement).toEqual({ catalogWarnings: [], advisories: null });
   });
 
-  it('a failed save keeps the previous warnings and records the error', async () => {
+  it('a failed save keeps the previous judgement and records the error', async () => {
     const useStore = buildStore();
-    useStore.setState({ selectedPipelineId: 'p1', pipelineDraft: DEF, pipelineSavedDef: DEF, pipelines: [ENTRY], pipelineSaveWarnings: ['old'] });
+    useStore.setState({ selectedPipelineId: 'p1', pipelineDraft: DEF, pipelineSavedDef: DEF, pipelines: [ENTRY], pipelineServerJudgement: { catalogWarnings: ['old'], advisories: null } });
     api.updatePipeline.mockRejectedValue(new Error('invalid-pipeline-def'));
     expect(await useStore.getState().savePipelineDraft()).toBe(false);
     expect(useStore.getState().pipelineSaveError).toBe('invalid-pipeline-def');
-    expect(useStore.getState().pipelineSaveWarnings).toEqual(['old']);
+    expect(useStore.getState().pipelineServerJudgement.catalogWarnings).toEqual(['old']);
+  });
+
+  it('acknowledging writes into the draft (a definition edit, saved with the pipeline); reopening removes the key', () => {
+    const useStore = buildStore();
+    useStore.setState({ selectedPipelineId: 'p1', pipelineDraft: DEF, pipelineSavedDef: DEF, pipelines: [ENTRY] });
+    useStore.getState().acknowledgePipelineAdvisory('gate-waits-forever', 'lookup', 'inbox is watched daily');
+    expect(useStore.getState().pipelineDraft.acknowledged).toEqual([{ code: 'gate-waits-forever', step: 'lookup', reason: 'inbox is watched daily' }]);
+    expect(JSON.stringify(useStore.getState().pipelineDraft)).not.toBe(JSON.stringify(useStore.getState().pipelineSavedDef));
+    useStore.getState().removePipelineAcknowledgement('gate-waits-forever', 'lookup');
+    expect('acknowledged' in useStore.getState().pipelineDraft).toBe(false);
   });
 });
 

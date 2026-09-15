@@ -13,7 +13,7 @@ import { streamDefinitionArchive } from '../helpers/definitionArchive';
 import { downloadRateLimiter } from '../../middleware/rateLimiter';
 import { computeOrgResourcePermissions, updateOrgPipelineAcl } from '../helpers/orgAclStore';
 import { resolveLiveTeamMembership } from '../helpers/teamRole';
-import { collectPipelineSaveWarnings, validatePipelineCatalogServer } from '../../../../../core/pipelines/catalogBinding';
+import { judgePipeline, judgePipelineForCatalog, judgementResponseFields, resolvePipelineCatalog, validatePipelineCatalogServer } from '../../../../../core/pipelines/catalogBinding';
 import { pipelineDir } from '../../../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../../../core/pipelines/scopeRoots';
 import {
@@ -41,6 +41,8 @@ export function registerDefinitionRoutes(router: Router, ctx: PipelinesRouteCont
       const gate = scopeRoot.aclGoverned ? await orgGateFor(req)() : null;
       const org = gate ? computeOrgResourcePermissions(gate.records[req.params.pipelineId], gate.callerId, gate.liveRole) : undefined;
       const activations = await listActivationViews(owner, scopeRoot.scope, req.params.pipelineId, nextFireOf(def), enabled);
+      // Judged against the CALLER's catalog on every read — an enabled
+      // pipeline cannot be re-saved, so this is where catalog drift shows.
       res.json({
         id: req.params.pipelineId,
         def,
@@ -49,6 +51,7 @@ export function registerDefinitionRoutes(router: Router, ctx: PipelinesRouteCont
         enabled,
         ...(org && { org }),
         activations,
+        ...judgementResponseFields(judgePipeline(def, ctxOf(owner))),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {
@@ -105,11 +108,11 @@ export function registerDefinitionRoutes(router: Router, ctx: PipelinesRouteCont
       await savePipeline(found.scopeRoot.root, pipelineId, def);
       await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId });
       const gate = found.scopeRoot.aclGoverned ? await orgGateFor(req)() : null;
-      const catalogWarnings = collectPipelineSaveWarnings(def, ctxOf(owner));
+      const agents = resolvePipelineCatalog(ctxOf(owner));
       res.json({
         id: pipelineId,
-        entry: await buildListEntry(owner, gate, found.scopeRoot, pipelineId, def, new Map()),
-        ...(catalogWarnings.length > 0 && { catalogWarnings }),
+        entry: await buildListEntry(owner, gate, found.scopeRoot, pipelineId, def, new Map(), agents),
+        ...judgementResponseFields(judgePipelineForCatalog(def, agents)),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {

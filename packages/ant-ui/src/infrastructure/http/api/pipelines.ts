@@ -12,6 +12,7 @@ import type {
   ActivePipelineInfo,
   PipelineActivation,
   PipelineActivationView,
+  PipelineAdvisoryResolution,
   PipelineDef,
   PipelineListEntry,
   PipelineOrgPermissions,
@@ -44,7 +45,18 @@ export function fetchPipelines(): Promise<{
   return apiGet(base());
 }
 
-export interface PipelineDetail {
+/**
+ * Both verdicts the server recomputes against the caller's catalog on every
+ * save and read — each key absent when it carries nothing.
+ */
+export interface PipelineJudgementFields {
+  /** Catalog-binding findings — enable hard-fails on these. */
+  catalogWarnings?: string[];
+  /** The advisory lifecycle: open / acknowledged / stale. Never a gate. */
+  advisories?: PipelineAdvisoryResolution;
+}
+
+export interface PipelineDetail extends PipelineJudgementFields {
   id: string;
   def: PipelineDef;
   scope: PipelineScope;
@@ -58,11 +70,9 @@ export function fetchPipeline(pipelineId: string): Promise<PipelineDetail> {
   return apiGet(`${base()}/${encodeURIComponent(pipelineId)}`);
 }
 
-export interface PipelineSaveResult {
+export interface PipelineSaveResult extends PipelineJudgementFields {
   id: string;
   entry: PipelineListEntry;
-  /** Non-blocking catalog-binding findings (unknown agent/job/intent, unsatisfiable verdict edge). */
-  catalogWarnings?: string[];
 }
 
 export function createPipeline(def: PipelineDef, id?: string): Promise<PipelineSaveResult> {

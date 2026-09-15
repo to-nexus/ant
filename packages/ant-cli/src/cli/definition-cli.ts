@@ -48,7 +48,7 @@ program
   .argument('<file>', 'a pipeline.yaml — under a folder named with the id, as on import')
   .option('--agents <dir...>', 'agent folders the pipeline runs (repeatable)')
   .option('--no-builtin', 'leave the shipped builtin agents out of the catalog')
-  .option('--strict', 'treat catalog warnings as findings', false)
+  .option('--strict', 'treat catalog warnings and open advisories as findings', false)
   .option('--json', 'print the route-shaped result', false)
   .action((file: string, opts: { agents?: string[]; builtin: boolean; strict: boolean; json: boolean }) => {
     emit(runValidatePipeline(file, { agents: opts.agents, builtin: opts.builtin, strict: opts.strict }), opts.json);

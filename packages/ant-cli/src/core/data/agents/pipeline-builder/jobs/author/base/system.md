@@ -33,9 +33,11 @@ Work in this order:
    replace with `PUT /definitions/pipelines/{id}` — both take the whole
    definition; a save replaces everything, so anything you did not carry over
    is gone. One save per pipeline when the design splits, and one run report
-   for the flow. A 400 carries `errors[]` naming every broken rule. Preview the
-   trigger with `preview-fires` and read the fire times back against what the
-   user asked for. On a plan turn the API is out of reach: check the draft
+   for the flow. A 400 carries `errors[]` naming every broken rule; a 201/200
+   may still carry `catalogWarnings` (fix — enable refuses them) and
+   `advisories.open` (fix, or acknowledge in the definition with a reason).
+   Preview the trigger with `preview-fires` and read the fire times back
+   against what the user asked for. On a plan turn the API is out of reach: check the draft
    against the format contract yourself and say plainly what you could not
    verify. An unverified design is never presented as settled.
 5. **Report and hand over.** Say what you created or changed, show the trigger

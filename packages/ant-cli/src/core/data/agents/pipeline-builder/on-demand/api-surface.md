@@ -27,7 +27,7 @@ base — pass them exactly as written, starting with `/`.
 | Call | Returns |
 |---|---|
 | `GET /definitions/pipelines` | `{ pipelines[], invalid[], orphanActivations[], caps }` — every pipeline this user can see, each with `scope`, per-caller `readonly`, `enabled`, and activation rows |
-| `GET /definitions/pipelines/{id}` | `{ id, def, scope, readonly, enabled, org?, activations }` — `def` is the full definition to edit |
+| `GET /definitions/pipelines/{id}` | `{ id, def, scope, readonly, enabled, org?, activations, catalogWarnings?, advisories? }` — `def` is the full definition to edit; the two verdicts are recomputed against your catalog on every read (see Writes) |
 | `GET /definitions/pipelines/{id}/permissions` | who owns and may edit an organization pipeline |
 | `GET /definitions/pipelines/activatable-projects` | `{ projects: [{ id, name, activePipelineId }] }` — where a person could activate the draft. A project whose `activePipelineId` is set is already TAKEN: one active pipeline per project, so activating there means deactivating that one first. Call this before writing a hand-over that names a project |
 | `GET /definitions/agents` | every agent this user can see, with its jobs and their intents |
@@ -50,7 +50,18 @@ YAML text. Writes have no mount: they go through the calls below.
 | `PUT /definitions/pipelines/{id}` | `{ def }` | **replaces the whole definition** — fetch first, edit, send everything back |
 | `DELETE /definitions/pipelines/{id}` | — | removes the definition; refused while enabled |
 
-Both saves answer `{ id, entry }` on success (201 for POST, 200 for PUT).
+Both saves answer `{ id, entry }` on success (201 for POST, 200 for PUT),
+plus two OPTIONAL verdicts, each present only when non-empty:
+
+| Field | Force | What to do |
+|---|---|---|
+| `catalogWarnings: string[]` | enable refuses the pipeline while any remain | a step's agent, job or intent is not in the catalog, or a `verdict:` edge names an outcome the intent does not declare — fix the definition |
+| `advisories: { open, acknowledged, stale }` | never a gate | `open[]` (`{ code, stepId, field, message }`) are wiring shapes that die silently at run time — fix the step, or add `{ code, step, reason }` to the definition's `acknowledged:` list; `acknowledged[]` echoes your reasons; `stale[]` are acknowledgements whose shape no longer exists — remove them |
+
+Nothing is stored about either verdict except your `acknowledged:` entries;
+the same two fields come back on `GET /definitions/pipelines/{id}`, judged
+against the catalog at that moment.
+
 There is no partial update and no file interface — the definition is one JSON
 object in `def`, shaped exactly as `on-demand/pipeline-format.md` describes.
 

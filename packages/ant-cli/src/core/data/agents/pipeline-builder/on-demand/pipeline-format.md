@@ -53,6 +53,11 @@ steps:
     intent: escalate
     context:
       - reports/**              # glob over the artifacts tree
+acknowledged:                   # OPTIONAL — advisories you judged by-design
+  - code: gate-holds-nothing    # an advisory code the save response named
+    step: sign-off              # the step it named
+    reason: >-                  # one sentence: why THIS flow wants the shape
+      The gate's decision is the run's verdict; a chained pipeline reads it.
 ```
 
 A CHAINED pipeline's pins, demonstrated — this is required content, not a
@@ -202,6 +207,23 @@ approval STEP gates the transition BETWEEN steps.
 - Branches never run concurrently: at most one job step is in flight per run,
   so fan-out siblings execute one at a time in file order. Branch for
   routing (`on:`) and failure isolation, not for speed.
+
+## Acknowledging an advisory
+
+A save answers `advisories.open` for wiring shapes that are legal but tend to
+die silently at run time — a gate with neither `timeout` nor `remindAfter`, a
+gate no step `needs`, a pin no sibling step produces or that sits outside the
+pinning step's `needs` chain, a step pinning its own output, an outcome no
+edge routes and no `onMissingVerdict` catches, a `*` pin whose consumer's
+directive threads no case identity, an entry step with no channel to learn
+its case. They never block a save or an enable. Each is closed one of two
+ways: change the definition, or record that the shape is right for this flow
+in `acknowledged:` — `code` (as the response spelled it), `step` (an existing
+step id), `reason` (non-empty; a sentence that restates the finding is not
+a reason — an auditor names it as a defect). The same `(code, step)` twice is an error. An
+entry whose shape no longer fires comes back as `advisories.stale`: remove
+it. The Pipelines tab shows open advisories amber and acknowledged ones with
+your reason, so what you sign is what the owner reads.
 
 ## Keys that are rejected on purpose
 

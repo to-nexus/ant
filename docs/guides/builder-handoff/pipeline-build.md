@@ -69,7 +69,7 @@ accepts the folder. A cell that names a clone-only command says so.
 | `POST /definitions/pipelines` `{ id?, def }`, `PUT /definitions/pipelines/{id}` `{ def }` (step 4) | write `{pipelineId}/pipeline.yaml` — YAML of the same `def`, `version: 2`; mint the id yourself, the folder name is the id on import | yes — `validatePipelineDefServer`, same `errors[]` |
 | `DELETE /definitions/pipelines/{id}` | delete the folder | n/a |
 | `POST /definitions/pipelines/preview-fires` `{ cron, tz? }` — the only cron authority | never compute fire times yourself, in either mode. Without a clone you do not state them at all: give the cron expression and the cadence you intended in words, and record that the next fires are the ones Ant's Pipelines tab shows after upload. With a clone, `pnpm --filter @ant/cli definition preview-fires "<cron>" --tz <zone>` — same parser, same five-minute floor | with a clone, yes; otherwise deferred to the upload |
-| `400` `errors[]`, `201` `catalogWarnings` | without a clone, the upload answers both: its response carries the errors and the catalog warnings, and those lines are your findings. With a clone, `pnpm --filter @ant/cli definition validate-pipeline <the pipeline.yaml> --agents <the agent folders>` — `error:` lines are the 400, `warning:` lines are the save warnings that hard-fail enable later; `--strict` makes them exit `1` | with a clone, yes; otherwise the upload |
+| `400` `errors[]`, `201` `catalogWarnings` + `advisories` | without a clone, the upload answers all three: its response carries the errors, the catalog warnings and the advisory lifecycle, and those lines are your findings. With a clone, `pnpm --filter @ant/cli definition validate-pipeline <the pipeline.yaml> --agents <the agent folders>` — `error:` lines are the 400; `warning:` lines are the catalog findings enable refuses (fix them); `advisory:` lines are `advisories.open` (fix the step, or add `{ code, step, reason }` to the definition's `acknowledged:` list — the prose says when that is honest); `acknowledged:` echoes your reasons; `stale:` names an acknowledgement whose shape no longer exists (remove it). `--strict` makes warnings and open advisories exit `1` | with a clone, yes; otherwise the upload |
 | `GET /definitions/pipelines/activatable-projects`, `GET /definitions/pipelines/{id}/permissions` | none offline — the hand-over names no project unless the person gives you the list | n/a |
 | `create_file pipeline-report/{flowId}.md` ("Write the run report") | write `pipeline-report/{flowId}.md` from the definitions you wrote, read back; an edit turn reads the flow's earlier report first and rewrites it whole | you are the checker: list every `{agentId}/{jobId}/{intentId}` the agents you were given declare, hold your Intent coverage table and count line against that list and against the steps in your `pipeline.yaml` files, and state the counts. With a clone, `pnpm --filter @ant/cli definition check-report <the report> --pipelines <the pipeline folders> --agents <folder holding the agents>` performs that same diff — every intent has a row, every `runs at` names a step that runs that intent, every step is accounted for, the count line agrees — and exits `0` |
 | clarify — a step needs an agent, job or intent that does not exist | stop and ask; do not invent a step. The missing work is the agent-build handoff's | n/a |
@@ -92,10 +92,11 @@ hooks, `api__ant__request POST|PUT /definitions/pipelines**` and
 
 - at least one `{pipelineId}/pipeline.yaml` exists, and every step of it
   resolves against an agent, job and intent you were actually given. With a
-  clone, `pnpm --filter @ant/cli definition validate-pipeline` on each exits
-  `0` with the agents it runs passed through `--agents`; without a clone the
-  upload is that check — deliver, and treat the errors and catalog warnings its
-  response carries as the findings to fix;
+  clone, `pnpm --filter @ant/cli definition validate-pipeline --strict` on
+  each exits `0` with the agents it runs passed through `--agents` — no
+  `warning:`, no `advisory:`, no `stale:` line; without a clone the upload is
+  that check — deliver, and treat the errors, catalog warnings and open
+  advisories its response carries as the findings to fix or acknowledge;
 - `pipeline-report/{flowId}.md` exists with all ten sections and the count
   line, and its Intent coverage table has a row for every intent the given
   agents declare — a step that runs it, or `not scheduled` with the reason.

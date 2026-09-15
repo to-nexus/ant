@@ -78,6 +78,11 @@ step, and say which:
 - A gate no step `needs`, or one whose downstream work is reachable without
   it: approving and rejecting lead to the same run, so the decision is
   decoration.
+- The definition's `acknowledged:` entries, each held against the shape it
+  names: a reason that restates the finding, or that the material
+  contradicts, is a finding; so is an entry whose shape no longer exists
+  (the save answers it as `advisories.stale`). An advisory left open with
+  no acknowledgement and no fix is a finding of its own.
 - A seam classified against the material — judge what the downstream step
   needs and when it exists, never who does the work. A gate where the step
   needs content (one bit carries none); an in-run clarify for a value that

@@ -177,6 +177,21 @@ export interface PipelineDef {
   on?: { schedule?: PipelineScheduleTrigger; runCompleted?: PipelineRunCompletedTrigger };
   defaults?: { onStepFailure?: StepFailurePolicy };
   steps: PipelineStepDef[];
+  /**
+   * Advisories the author judged by-design, with the reason. Authoring
+   * information, so it travels with the definition (promote / download /
+   * import), never a sidecar. An entry that no longer fires is `stale`
+   * in {@link resolvePipelineAdvisories} — cleanup, never a gate.
+   */
+  acknowledged?: PipelineAcknowledgement[];
+}
+
+/** One acknowledged advisory: `(code, step)` is the identity the resolver matches on. */
+export interface PipelineAcknowledgement {
+  code: PipelineAdvisoryCode;
+  step: string;
+  /** Why this shape is right for this flow — non-empty; a reason that merely restates the finding is a review finding, not a validator error. */
+  reason: string;
 }
 
 // ============================================
@@ -723,6 +738,8 @@ export interface PipelineListEntry {
   lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
   /** Pending approval gates across own activations. */
   pendingApprovalCount: number;
+  /** Open (unacknowledged) advisories against the caller's catalog — recomputed per list read. */
+  openAdvisoryCount: number;
 }
 
 export interface PipelinePendingApproval {
@@ -761,7 +778,8 @@ export interface PipelinePendingApproval {
 // ============================================
 
 const STEP_ID_HINT = 'lowercase letters, digits and hyphens (e.g. "collect-sources")';
-const DEF_KEYS = ['version', 'name', 'on', 'defaults', 'steps'];
+const DEF_KEYS = ['version', 'name', 'on', 'defaults', 'steps', 'acknowledged'];
+const ACK_KEYS = ['code', 'step', 'reason'];
 /** Keys that existed in def v1 or belong to future axes — reject loudly, never ignore. */
 const RESERVED_DEF_KEYS: Record<string, string> = {
   enabled: '"enabled" lives in the availability sidecar — use POST /api/pipelines/{id}/enable|disable, not the definition',
@@ -1214,6 +1232,34 @@ export function validatePipelineDef(
     errors.push('steps: the needs graph must be acyclic');
   }
 
+  if (raw.acknowledged !== undefined) {
+    if (!Array.isArray(raw.acknowledged)) {
+      errors.push('acknowledged must be an array of { code, step, reason }');
+    } else {
+      const seen = new Set<string>();
+      raw.acknowledged.forEach((rawAck, index) => {
+        const where = `acknowledged[${index}]`;
+        if (!isPlainObject(rawAck)) {
+          errors.push(`${where} must be a mapping { code, step, reason }`);
+          return;
+        }
+        errors.push(...unknownKeyErrors(rawAck, ACK_KEYS, where));
+        if (typeof rawAck.code !== 'string' || !(PIPELINE_ADVISORY_CODES as readonly string[]).includes(rawAck.code)) {
+          errors.push(`${where}.code must be an advisory code (${PIPELINE_ADVISORY_CODES.join(', ')})`);
+        }
+        if (typeof rawAck.step !== 'string' || !ids.has(rawAck.step)) {
+          errors.push(`${where}.step must name a step of this pipeline (got: ${String(rawAck.step)})`);
+        }
+        if (typeof rawAck.reason !== 'string' || rawAck.reason.trim().length === 0) {
+          errors.push(`${where}.reason must be a non-empty sentence — why this shape is right for this flow`);
+        }
+        const key = `${String(rawAck.code)}:${String(rawAck.step)}`;
+        if (seen.has(key)) errors.push(`${where}: duplicate acknowledgement for ${key}`);
+        seen.add(key);
+      });
+    }
+  }
+
   return errors;
 }
 
@@ -1331,28 +1377,49 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
 /** Field an advisory anchors to — an editor renders it under that field of the named step. */
 export type PipelineAdvisoryField = 'context' | 'directive' | 'timeout' | 'needs' | 'onMissingVerdict';
 
-export type PipelineAdvisoryCode =
-  | 'gate-holds-nothing'
-  | 'gate-waits-forever'
-  | 'self-pin'
-  | 'pin-not-in-needs'
-  | 'pin-has-no-producer-here'
-  | 'case-identity-not-threaded'
-  | 'chained-pinless-consumer'
-  | 'unrouted-verdict-no-fallback'
-  | 'entry-no-case-channel';
+/** The closed advisory vocabulary — the validator judges `acknowledged[].code` against it. */
+export const PIPELINE_ADVISORY_CODES = [
+  'gate-holds-nothing',
+  'gate-waits-forever',
+  'self-pin',
+  'pin-not-in-needs',
+  'pin-has-no-producer-here',
+  'case-identity-not-threaded',
+  'chained-pinless-consumer',
+  'unrouted-verdict-no-fallback',
+  'entry-no-case-channel',
+] as const;
+export type PipelineAdvisoryCode = (typeof PIPELINE_ADVISORY_CODES)[number];
 
 /**
- * One save-time advisory. `message` is the wire form (the save response's
- * `catalogWarnings` and the string collectors below map to it); `stepId` +
- * `field` let an editor anchor the same finding to the offending control.
- * Advisory by design — never fed to the enable/activate hard gate.
+ * One advisory: a wiring shape that is legal but tends to die silently at
+ * run time. `stepId` + `field` let an editor anchor it to the offending
+ * control; `message` carries the remedy. Advisory by design — never fed to
+ * the enable/activate hard gate. Its lifecycle is {@link resolvePipelineAdvisories}.
  */
 export interface PipelineAdvisory {
   code: PipelineAdvisoryCode;
   stepId?: string;
   field?: PipelineAdvisoryField;
   message: string;
+}
+
+export interface PipelineAcknowledgedAdvisory extends PipelineAdvisory {
+  reason: string;
+}
+
+/**
+ * The advisory lifecycle of one definition against one catalog. Nothing here
+ * is stored — it is recomputed wherever it is shown (save response, GET,
+ * list), so a catalog change is visible on the next read. `open` is what an
+ * editor renders amber and what `--strict` refuses; `acknowledged` carries
+ * the author's reason; `stale` is an acknowledgement whose finding no longer
+ * fires (cleanup, never a gate).
+ */
+export interface PipelineAdvisoryResolution {
+  open: PipelineAdvisory[];
+  acknowledged: PipelineAcknowledgedAdvisory[];
+  stale: PipelineAcknowledgement[];
 }
 
 /** Effective needs of one step (omitted = previous step in file order). */
@@ -1606,17 +1673,38 @@ export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: Pi
   return out;
 }
 
-/** Every save-time advisory, structured — the one source the string collectors and editors read. */
+/** Every advisory the collectors fire, structured — before acknowledgements are applied. */
 export function collectPipelineAdvisoryItems(def: PipelineDef, agents: PipelineCatalogAgent[]): PipelineAdvisory[] {
   return [...collectPipelineDefAdvisoryItems(def), ...collectPipelineCatalogAdvisoryItems(def, agents)];
 }
 
-/** Wire form of {@link collectPipelineCatalogAdvisoryItems} — rides the save response's `catalogWarnings`. */
-export function collectPipelineCatalogAdvisories(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
-  return collectPipelineCatalogAdvisoryItems(def, agents).map((a) => a.message);
+const acknowledgementKey = (code: string, step: string | undefined): string => `${code}:${step ?? ''}`;
+
+/**
+ * The ONE owner of the advisory lifecycle — every reader (editor, save
+ * response, GET, list, offline CLI) calls this and nothing else, so the
+ * amber count means the same thing everywhere.
+ */
+export function resolvePipelineAdvisories(def: PipelineDef, agents: PipelineCatalogAgent[]): PipelineAdvisoryResolution {
+  const acks = new Map((def.acknowledged ?? []).map((a) => [acknowledgementKey(a.code, a.step), a]));
+  const open: PipelineAdvisory[] = [];
+  const acknowledged: PipelineAcknowledgedAdvisory[] = [];
+  const matched = new Set<string>();
+  for (const item of collectPipelineAdvisoryItems(def, agents)) {
+    const key = acknowledgementKey(item.code, item.stepId);
+    const ack = acks.get(key);
+    if (ack) {
+      matched.add(key);
+      acknowledged.push({ ...item, reason: ack.reason });
+    } else {
+      open.push(item);
+    }
+  }
+  const stale = (def.acknowledged ?? []).filter((a) => !matched.has(acknowledgementKey(a.code, a.step)));
+  return { open, acknowledged, stale };
 }
 
-/** Wire form of {@link collectPipelineDefAdvisoryItems}. */
-export function collectPipelineDefAdvisories(def: PipelineDef): string[] {
-  return collectPipelineDefAdvisoryItems(def).map((a) => a.message);
+/** True when a resolution has anything worth showing or sending. */
+export function hasPipelineAdvisories(r: PipelineAdvisoryResolution): boolean {
+  return r.open.length > 0 || r.acknowledged.length > 0 || r.stale.length > 0;
 }

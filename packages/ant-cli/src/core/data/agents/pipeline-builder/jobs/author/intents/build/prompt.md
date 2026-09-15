@@ -245,9 +245,20 @@ long it takes never decide on their own.
   rule, not just the first, and save again. Keys refused by design (the format
   contract's table): say the knob does not exist there rather than smuggling
   the behavior into prose.
-- A save may answer 201 and still carry `catalogWarnings` — findings that
-  hard-fail enable later. Read them and fix them now; a draft that cannot be
-  enabled is not a finished draft.
+- A save may answer 201 and still carry two verdicts, each with its own force.
+  `catalogWarnings` name a step that does not resolve against the agent
+  catalog — enable refuses them, so fix every one now; a draft that cannot be
+  enabled is not a finished draft. `advisories.open` name wiring shapes that
+  are legal but tend to die silently at run time (a gate nobody is reminded
+  of, a pin no upstream step produces, an entry with no case channel). For
+  each one either change the definition, or — when the shape is right for
+  this flow — acknowledge it in the definition's own `acknowledged:` list
+  with its `code`, its `step` and one sentence saying why this flow wants it
+  (the format contract shows the block). An acknowledgement is a judgment
+  you sign, not a way to clear a list: a reason that merely restates the
+  finding is itself a defect an auditor will name. Remove any
+  `advisories.stale` entry — its shape no longer exists. The turn ends with
+  `advisories.open` empty.
 - A cron trigger you did not `preview-fires` is not verified: read the fire
   times back against the user's words. A manual-only pipeline has no fires to
   preview, and saying so is the verification; never invent a cron to preview.
