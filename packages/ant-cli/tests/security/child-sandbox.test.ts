@@ -56,7 +56,10 @@ function fakeHost(entries: Record<string, 'dir' | 'file' | { symlink: string }>)
   };
 }
 
-const NODE_PREFIX = path.dirname(path.dirname(process.execPath));
+// Pinned, not derived from process.execPath: a CI runner keeps node under
+// /opt — already a system read-only root — so the composer legitimately
+// omits it and a derived value would test the runner, not the rule.
+const NODE_PREFIX = '/srv/node';
 
 function pairs(args: string[], flag: string): Array<[string, string]> {
   const out: Array<[string, string]> = [];
@@ -109,6 +112,7 @@ describe('composeSandboxArgs — what a child can and cannot see', () => {
     '/usr/local/cargo': 'dir',
     '/root/.local/share/mise/shims': 'dir',
     [NODE_PREFIX]: 'dir',
+    '/opt/hostedtoolcache/node/x64': 'dir',
     '/app': 'dir',
     '/tmp/w/inside': 'dir',
   });
@@ -181,6 +185,7 @@ describe('composeSandboxArgs — what a child can and cannot see', () => {
         rwRoots: [tenant],
         workingDir: tenant,
         env: { GOPATH: '/home/ant/go', CARGO_HOME: '/usr/local/cargo', PATH: '/root/.local/share/mise/shims:/usr/bin:/nonexistent/bin' },
+        nodePrefix: NODE_PREFIX,
       },
       host,
     );
@@ -188,6 +193,14 @@ describe('composeSandboxArgs — what a child can and cannot see', () => {
     expect(roBindsOf(args)).toContain('/root/.local/share/mise/shims');
     expect(roBindsOf(args)).toContain(NODE_PREFIX);
     expect(args.join(' ')).not.toContain('/nonexistent/bin');
+
+    // A node prefix already inside a system read-only root is not re-emitted.
+    const underOpt = composeSandboxArgs(
+      { rwRoots: [tenant], workingDir: tenant, env: {}, nodePrefix: '/opt/hostedtoolcache/node/x64' },
+      host,
+    );
+    expect(roBindsOf(underOpt)).toContain('/opt');
+    expect(roBindsOf(underOpt)).not.toContain('/opt/hostedtoolcache/node/x64');
   });
 
   it('explicit read-only roots (the service checkout for the static server) and deployment extras are honored', () => {
