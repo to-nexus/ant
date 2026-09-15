@@ -14,6 +14,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { WorkspacePathResolver } from '../../src/core/config/WorkspacePathResolver';
 import {
   childSandboxMode,
   composeSandboxArgs,
@@ -269,10 +270,14 @@ describe('wrapChildInSandbox / spawnUserChild — mode and refusals', () => {
 });
 
 describe('serviceCodeRoot — the one tree of ours a child may read', () => {
-  it('is the topmost pnpm workspace above the CLI root', () => {
+  // Cloud nests this repo one level under its own workspace, so the topmost
+  // root holds no `packages/ant-cli` — the contract is "a pnpm workspace that
+  // CONTAINS the CLI root", never a fixed directory layout below it.
+  it('is a pnpm workspace root that contains the CLI root', () => {
     const root = serviceCodeRoot();
+    const cliRoot = WorkspacePathResolver.getCliRoot();
     expect(fs.existsSync(path.join(root, 'pnpm-workspace.yaml'))).toBe(true);
-    expect(fs.existsSync(path.join(root, 'packages', 'ant-cli'))).toBe(true);
+    expect(path.relative(root, cliRoot).startsWith('..')).toBe(false);
   });
 });
 
