@@ -49,7 +49,8 @@ import {
   resolveRestConnectivity,
   type CompiledRestServer,
 } from './restApi';
-import { assertUserCodeIsolationOrThrow, wrapCommandForChildIdentity } from '../config/childIdentity';
+import { assertUserCodeIsolationOrThrow } from '../config/childIdentity';
+import { wrapCommandForUserChild, type ChildSandboxRoots } from '../config/childSandbox';
 
 const CONNECT_TIMEOUT_MS = 60_000;
 /** Fast-retry lane: a server that failed on the previous turn must not hold a
@@ -152,6 +153,8 @@ export class McpConnectionManager {
     private readonly servers: Record<string, McpServerConfig>,
     private readonly resolver: McpCredentialResolver,
     private readonly apis: Record<string, RestApiServerConfig> = {},
+    /** The filesystem a stdio server may reach — the job's artifact tree. Required once any stdio server connects. */
+    private readonly sandboxRoots: ChildSandboxRoots = { rwRoots: [] },
   ) {}
 
   /**
@@ -251,19 +254,23 @@ export class McpConnectionManager {
       // A stdio MCP server is arbitrary code execution. The SDK spawns it
       // internally with no uid/gid option, so — fail closed in cloud unless a
       // distinct child UID is configured (H-014), then re-exec under setpriv
-      // so the child actually drops off the service UID (its /proc and the
-      // shared credential store are otherwise readable by a same-UID child).
+      // (drops off the service UID: its /proc and the shared credential store
+      // are otherwise readable by a same-UID child) around bwrap (a mount
+      // namespace holding the job's artifact tree and nothing else).
       assertUserCodeIsolationOrThrow(`mcp:stdio:${serverName}`);
-      const wrapped = wrapCommandForChildIdentity(cfg.command!, cfg.args ?? []);
-      transport = new StdioClientTransport({
-        command: wrapped.command,
-        args: wrapped.args,
-        // Declared env ONLY (resolved from the encrypted store), plus the
-        // minimum a process needs to execute. Never `...process.env` — that
-        // handed every third-party server the host's full secret set (LLM
-        // provider keys, JWT secret, Redis URL).
-        env: buildStdioChildEnv(await this.resolveCredentials(cfg.env, 'env', serverName)),
-      });
+      // Declared env ONLY (resolved from the encrypted store), plus the
+      // minimum a process needs to execute. Never `...process.env` — that
+      // handed every third-party server the host's full secret set (LLM
+      // provider keys, JWT secret, Redis URL).
+      const env = buildStdioChildEnv(await this.resolveCredentials(cfg.env, 'env', serverName));
+      const cwd = this.sandboxRoots.rwRoots[0] ?? process.cwd();
+      const wrapped = wrapCommandForUserChild(
+        cfg.command!,
+        cfg.args ?? [],
+        { ...this.sandboxRoots, workingDir: cwd, env },
+        `mcp:stdio:${serverName}`,
+      );
+      transport = new StdioClientTransport({ command: wrapped.command, args: wrapped.args, env, cwd });
     } else {
       transport = new StreamableHTTPClientTransport(new URL(cfg.url!), {
         requestInit: { headers: await this.resolveCredentials(cfg.headers, 'headers', serverName) },

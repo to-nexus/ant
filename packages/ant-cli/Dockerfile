@@ -88,6 +88,10 @@ ARG JAVA_VERSION=""
 # spawn path re-execs through. It is resolved by ABSOLUTE path (a bare name would
 # be looked up through the tenant-controlled child PATH — H-014), so the binary
 # has to exist at /usr/bin/setpriv rather than as a busybox applet.
+# bubblewrap: the mount-namespace launcher EVERY user-authored child (dev
+# servers, installs, run_command, stdio MCP) is re-exec'd through, so /vault,
+# other tenants' workspaces and /etc do not exist for it (childSandbox.ts).
+# Needs user namespaces at runtime — see docs/cloud-mode/self-host.md.
 RUN apk add --no-cache \
     git \
     ca-certificates \
@@ -99,8 +103,14 @@ RUN apk add --no-cache \
     build-base \
     libc6-compat \
     util-linux \
+    bubblewrap \
     docker-cli \
     docker-cli-compose
+
+# Both launchers are resolved by ABSOLUTE path at runtime (childIdentity.ts /
+# childSandbox.ts) — fail the build, not the first user-authored spawn.
+RUN test -x /usr/bin/setpriv && test -x /usr/bin/bwrap \
+    || (echo "ERROR: setpriv/bwrap missing in preview stage" && exit 1)
 
 # -------- Go (official binary + GOTOOLCHAIN=auto) --------
 # Installs base toolchain; per-project go.mod/go.work `toolchain` directive
@@ -254,6 +264,7 @@ ARG GO_VERSION="1.23.6"
 #   execFileSync calls ENOENT silently and orphan dev servers accumulate
 #   between verification cycles.
 # util-linux: the real /usr/bin/setpriv — see the preview stage (H-014).
+# bubblewrap: the per-child mount namespace — see the preview stage.
 RUN apk add --no-cache \
     git \
     ca-certificates \
@@ -264,7 +275,11 @@ RUN apk add --no-cache \
     iproute2 \
     lsof \
     libc6-compat \
-    util-linux
+    util-linux \
+    bubblewrap
+
+RUN test -x /usr/bin/setpriv && test -x /usr/bin/bwrap \
+    || (echo "ERROR: setpriv/bwrap missing in production stage" && exit 1)
 
 # Go toolchain (official binary + GOTOOLCHAIN=auto for per-project version switching)
 RUN if [ -n "${GO_VERSION}" ]; then \

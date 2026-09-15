@@ -30,7 +30,8 @@ class MockChild extends EventEmitter {
 
 function makeCtx(): ToolExecutionContext {
   return {
-    fileSystem: {} as any,
+    // The sandbox root the long-running spawn is bounded to comes from here.
+    fileSystem: { getRootPath: () => '/tmp' } as any,
     chatStatus: createNoopChatStatusReporter(),
     workingDir: '/tmp',
   };

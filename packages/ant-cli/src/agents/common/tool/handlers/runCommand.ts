@@ -22,6 +22,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import type { ChildProcess } from 'child_process';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 type Gate = string;
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
@@ -31,7 +32,7 @@ import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment, maskQuotedR
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
 import { getDefaultDevProcessControl } from '../../../../core/process/DevProcessControl';
 import { cleanCommandEnv } from '../../../../periphery/adapters/command/NodeCommandAdapter';
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../core/config/childIdentity';
+import { spawnUserChild } from '../../../../core/config/childSandbox';
 import { AsyncMutex } from '../../../../core/utils/AsyncMutex';
 import {
   lookupInjection,
@@ -787,6 +788,44 @@ export function nfdCommandHint(command: string, output: string, success: boolean
   );
 }
 
+/**
+ * Servers left alive by `keep_running`, keyed by the `server_pid` reported to
+ * the model. Each command runs in its own PID namespace, so a later
+ * `run_command` shell cannot see — let alone signal — a process an earlier one
+ * started; `kill <server_pid>` is therefore served here, in the parent, against
+ * the handle we hold. Anything else `kill` names falls through to the shell.
+ */
+const ownedServers = new Map<number, ChildProcess>();
+const OWNED_KILL_RE = /^\s*kill\s+(?:-(?:s\s+)?[A-Za-z0-9]+\s+)?(\d+(?:\s+\d+)*)\s*$/;
+
+async function serveOwnedServerKill(
+  ctx: ToolExecutionContext,
+  command: string,
+  verifies?: Gate,
+): Promise<ToolResult | null> {
+  const match = OWNED_KILL_RE.exec(command);
+  if (!match) return null;
+  const pids = match[1].trim().split(/\s+/).map(Number);
+  if (!pids.every((pid) => ownedServers.has(pid))) return null;
+
+  const devControl = getDefaultDevProcessControl();
+  for (const pid of pids) {
+    const child = ownedServers.get(pid)!;
+    try {
+      await devControl.killTree(child);
+    } catch {
+      if (child.pid) await terminateProcessTree(child.pid);
+    }
+    ownedServers.delete(pid);
+  }
+  const content = `killed server_pid ${pids.join(', ')} (started by this job with keep_running; reaped with its process tree)`;
+  await ctx.chatStatus.commandComplete(command, true, 0, content);
+  return {
+    content,
+    sideEffects: [makeCommandExecuted({ exitCode: 0, command, success: true, hasWarnings: false, verifies })],
+  };
+}
+
 async function makeRejection(
   ctx: ToolExecutionContext,
   command: string,
@@ -1132,6 +1171,9 @@ async function executeCommandLogic(
 
   const cardId = await ctx.chatStatus.commandStart(command);
 
+  const servedKill = await serveOwnedServerKill(ctx, command, verifies);
+  if (servedKill) return servedKill;
+
   // Allowlist pre-check for EVERY command (was long-running-only): rejections
   // get the `[Policy] ❌ COMMAND NOT ALLOWED` framing instead of surfacing as
   // a thrown `COMMAND EXECUTION ERROR` from the adapter (which reads as a
@@ -1331,6 +1373,9 @@ async function executeCommandLogic(
 
     const commandPromise = commandPort.execute(command, {
       cwd: workingDir,
+      // The mount namespace the command runs in — the same root the read/write
+      // path guards above contain to; outside it nothing exists.
+      sandbox: { rwRoots: [featureRootPath] },
       signal: controller.signal,
       env: spawnEnv,
       onStdout: (chunk: string) => {
@@ -1523,7 +1568,6 @@ export async function handleLongRunningCommand(
   serverPid?: number;
   serverPort?: number;
 }> {
-  const { spawn } = await import('child_process');
   const startedAt = Date.now();
   // Separate function scope from the short-running path — read the (memoized)
   // cgroup memory limit here so the memoryBudget watchdog arms for long-running
@@ -1551,11 +1595,11 @@ export async function handleLongRunningCommand(
 
     console.log(`   🐚 Spawning: ${shell} ${shellArgs[0]} "${command}"`);
 
-    // Long-running LLM command shares the worker UID otherwise — drop to the
-    // child identity and fail closed in cloud when the drop is unavailable, the
-    // same as the short command path in NodeCommandAdapter (M-014).
-    assertUserCodeIsolationOrThrow('run_command:long-running');
-    const child = spawn(shell, shellArgs, {
+    // Same funnel as the short path in NodeCommandAdapter: identity gate + UID
+    // drop + mount namespace bounded to the sandbox root (M-014).
+    const child = spawnUserChild(shell, shellArgs, {
+      context: 'run_command:long-running',
+      sandbox: { rwRoots: [ctx.fileSystem.getRootPath()] },
       cwd: workingDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       // Same cgroup-derived spawn env (CI + heap cap + vitest pool) as the
@@ -1563,7 +1607,6 @@ export async function handleLongRunningCommand(
       // unbounded. See commandResourceLimits.ts.
       env: cleanCommandEnv(spawnEnv),
       detached: process.platform !== 'win32',
-      ...childSpawnIdentity(),
     });
 
     console.log(`   📋 Process spawned with PID: ${child.pid}`);
@@ -1649,6 +1692,10 @@ export async function handleLongRunningCommand(
       // Left alive iff keepRunning and the child didn't exit on its own — the
       // auto-kill path only runs when !keepRunning (see finalize opts.kill).
       const alive = keepRunning && exit === null ? { pid: serverPid, port: resolvedPort } : null;
+      if (alive?.pid) {
+        ownedServers.set(alive.pid, child);
+        child.once('exit', () => ownedServers.delete(alive.pid!));
+      }
       const output = buildOutput(exit, alive);
       await ctx.chatStatus.commandComplete(command, success, exit ?? -1, output);
       resolve({

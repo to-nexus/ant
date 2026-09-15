@@ -10,6 +10,7 @@
  */
 
 import type { FileSystemPort } from '../../../core/ports/filesystem';
+import type { CommandOptions, CommandResult } from '../../../core/ports/command';
 // `Gate` was a 3-element union `'typecheck' | 'build' | 'test'` declared in
 // `tasks/_shared/verify/gates.ts`. After plan §5.4 the gate set + ordering
 // guard moved entirely to LLM judgment, so the type is now inlined here as
@@ -93,14 +94,8 @@ export interface ChatStatusReporter {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface CommandPort {
-  execute(command: string, opts: {
-    cwd: string;
-    signal: AbortSignal;
-    env?: Record<string, string>;
-    onStdout?: (chunk: string) => void;
-    onStderr?: (chunk: string) => void;
-    onExit?: (code: number) => void;
-  }): Promise<{ stdout: string; stderr: string; exitCode: number; success: boolean }>;
+  /** Options are the core port's (one owner for the sandbox contract); the tool layer always names a cwd. */
+  execute(command: string, opts: CommandOptions & { cwd: string }): Promise<CommandResult>;
   isAllowed(command: string): boolean;
   notAllowedGuidance?(): string;
   firstDisallowedHead?(command: string): string | null;

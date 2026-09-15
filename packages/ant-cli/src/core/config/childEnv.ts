@@ -269,3 +269,8 @@ function resolveChildHome(): string | undefined {
     return undefined;
   }
 }
+
+/** The isolated child HOME (if one is in effect) — the sandbox binds exactly this one read-write. */
+export function childHomeDir(): string | undefined {
+  return resolveChildHome();
+}

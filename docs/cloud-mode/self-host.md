@@ -93,6 +93,21 @@ Both are deployment-layer, so the code ships the seam and the deployment decides
    credentialed fetch is refused unless this UID is configured and differs from
    both the service UID and `ANT_CHILD_UID`.
 
+   **Let those two containers create user namespaces.** Every user-authored
+   child is also re-exec'd under bubblewrap into a mount namespace that holds
+   the tenant's own tree and the read-only toolchain — nothing else, so
+   `/vault`, `/etc` and other tenants' directories do not exist for it. bwrap
+   runs unprivileged (after the UID drop) and needs only unprivileged user
+   namespaces: `user.max_user_namespaces > 0` on the node, and a seccomp /
+   AppArmor profile that permits `CLONE_NEWUSER` (the compose cloud profile sets
+   `seccomp=unconfined` + `apparmor=unconfined` on `ant-job` and `ant-preview`;
+   on Kubernetes use `seccompProfile: Unconfined` or a custom profile that
+   allows it, not `RuntimeDefault`). This is on by default in cloud and
+   fail-closed: a pod that cannot build the namespace refuses every
+   user-authored spawn with a message naming the fix. `ANT_CHILD_SANDBOX=off`
+   is the explicit opt-out; `ANT_CHILD_SANDBOX_RW` / `_RO` bind additional host
+   paths a deployment's toolchain needs.
+
 2. **Serve user content from its own hostname.** `ant-preview` runs two listeners:
    `PORT` (4102) is the cookie-authenticated `/projects/*` control plane, and
    `ANT_PREVIEW_CONTENT_PORT` (4103) serves preview and deploy content. Publish

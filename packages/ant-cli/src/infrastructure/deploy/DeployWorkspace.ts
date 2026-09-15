@@ -35,7 +35,7 @@ import { spawn } from 'child_process';
 import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
 import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
 import { composeChildEnv } from '../../core/config/childEnv';
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
+import { spawnUserChild } from '../../core/config/childSandbox';
 import { isStaticWebProject, readManifests } from '../../periphery/adapters/http/services/PreviewService/detectors/manifest';
 
 /**
@@ -341,20 +341,18 @@ export async function installDeployDependencies(
   const { command, args } = buildInstallCommand(pm);
   onLog?.(`📦 Installing deploy dependencies (${pm}) at workspace root...`);
 
-  // Runs the project's own lifecycle scripts — fail closed in cloud unless the
-  // child drops to a distinct unprivileged UID (M-015).
-  assertUserCodeIsolationOrThrow('deploy:install');
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     // The install runs the project's OWN lifecycle scripts and its output is
-    // streamed back to the requester — so it gets the composed allowlist, not
-    // the service's `process.env`.
-    const child = spawn(command, args, {
+    // streamed back to the requester — composed env, identity gate + drop, and
+    // a mount namespace over the deploy workspace (M-015).
+    const child = spawnUserChild(command, args, {
+      context: 'deploy:install',
+      sandbox: { rwRoots: [deployRoot] },
       cwd: deployRoot,
       env: composeChildEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
-      ...childSpawnIdentity(),
     });
 
     const timer = setTimeout(() => {

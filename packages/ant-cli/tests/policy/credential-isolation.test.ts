@@ -718,27 +718,63 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Enforcement: every user-authored spawn that spreads childSpawnIdentity()
-  // must be gated by assertUserCodeIsolationOrThrow in the same file (M-015).
-  // A new install/build/static-server spawn added without the gate fails here.
+  // Enforcement: user-authored code is spawned through ONE funnel,
+  // `spawnUserChild` (identity gate + UID drop + mount namespace, M-015 and
+  // the 2026-09 read-containment report). The offense is structural, not a
+  // count: a bare child_process `spawn(` in one of these files, or an identity
+  // spread into spawn options, is a site that skipped the funnel. The rsync
+  // mirror in DeployWorkspace is the service's own tool, not user code, and is
+  // the one recorded allowance.
   // ──────────────────────────────────────────────────────────────────────────
-  describe('user-code spawn sites are gated (M-015 enforcement)', () => {
-    const files = [
-      'src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts',
-      'src/periphery/adapters/http/services/PreviewService/managers/ProvisioningManager.ts',
-      'src/periphery/adapters/http/services/PreviewService/managers/ProcessSpawner.ts',
-      'src/infrastructure/deploy/DeployWorkspace.ts',
-      'src/infrastructure/deploy/BuildRunner.ts',
-      'src/infrastructure/deploy/StaticServer.ts',
+  describe('user-code spawn sites go through spawnUserChild (M-015 enforcement)', () => {
+    const files: Array<[string, number]> = [
+      ['src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts', 0],
+      ['src/periphery/adapters/http/services/PreviewService/managers/ProvisioningManager.ts', 0],
+      ['src/periphery/adapters/http/services/PreviewService/managers/ProcessSpawner.ts', 0],
+      ['src/infrastructure/deploy/DeployWorkspace.ts', 2],
+      ['src/infrastructure/deploy/BuildRunner.ts', 0],
+      ['src/infrastructure/deploy/StaticServer.ts', 0],
+      ['src/periphery/adapters/command/NodeCommandAdapter.ts', 0],
+      ['src/agents/common/tool/handlers/runCommand.ts', 0],
     ];
-    for (const rel of files) {
-      it(`${path.basename(rel)}: assert count >= childSpawnIdentity() spawn count`, () => {
+    for (const [rel, bareSpawnAllowance] of files) {
+      it(`${path.basename(rel)}: uses the funnel, spreads no identity, no bare spawn beyond the allowance`, () => {
         const src = fs.readFileSync(path.join(process.cwd(), rel), 'utf-8');
-        const spawns = (src.match(/\.\.\.childSpawnIdentity\(\)/g) ?? []).length;
-        const gates = (src.match(/assertUserCodeIsolationOrThrow\(/g) ?? []).length;
-        expect(gates).toBeGreaterThanOrEqual(spawns);
+        expect((src.match(/spawnUserChild\(/g) ?? []).length).toBeGreaterThanOrEqual(1);
+        expect(src).not.toMatch(/\.\.\.(childSpawnIdentity|credentialedAcquireIdentity)\(\)/);
+        expect(src).not.toMatch(/\.\.\.identity\b/);
+        // The funnel owns the gate; a site calling it directly is a second owner.
+        expect(src).not.toMatch(/assertUserCodeIsolationOrThrow\(/);
+        const bare = (src.match(/(?<=[=(,]\s*)spawn\(/g) ?? []).length;
+        expect(bare).toBe(bareSpawnAllowance);
       });
     }
+
+    it('the stdio MCP path wraps through wrapCommandForUserChild (setpriv around bwrap)', () => {
+      const src = fs.readFileSync(path.join(process.cwd(), 'src/core/customAgents/McpConnectionManager.ts'), 'utf-8');
+      expect(src).toMatch(/wrapCommandForUserChild\(/);
+      expect(src).not.toMatch(/wrapCommandForChildIdentity\(/);
+    });
+  });
+
+  // The launcher is resolved by ABSOLUTE path at runtime, so the image has to
+  // ship it: both OSS stages install bubblewrap next to util-linux (setpriv) and
+  // assert the binaries at build time — a refused spawn at runtime is the
+  // expensive way to learn the package was dropped.
+  describe('images ship the sandbox and UID-drop launchers', () => {
+    const dockerfile = fs.readFileSync(path.join(process.cwd(), 'Dockerfile'), 'utf-8');
+    const apkBlocks = dockerfile.match(/RUN apk add --no-cache[\s\S]*?(?=\n\n)/g) ?? [];
+    it('every apk install block carries bubblewrap and util-linux', () => {
+      expect(apkBlocks.length).toBeGreaterThanOrEqual(2);
+      for (const block of apkBlocks) {
+        expect(block).toMatch(/\bbubblewrap\b/);
+        expect(block).toMatch(/\butil-linux\b/);
+      }
+    });
+    it('asserts both launchers at build time', () => {
+      expect((dockerfile.match(/test -x \/usr\/bin\/bwrap/g) ?? []).length).toBeGreaterThanOrEqual(2);
+      expect((dockerfile.match(/test -x \/usr\/bin\/setpriv/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

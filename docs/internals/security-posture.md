@@ -265,10 +265,31 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   read verb names — `cat`/`head`/`ls`/`find`/`grep` FILE args, `cp`/`mv` SOURCES,
   `tar -C`/`-f`, `<` input redirects, `cd` (tracked across `&&` chains), `~` —
   to the same sandbox root the write guard uses. It is a guardrail, not a
-  boundary: `node -e` / `python -c` bypass it by design, and the structural
-  closure is mount-namespace isolation of every user-authored child (planned:
-  bubblewrap, `.claude/plans/ant-eventual-mitten.md` Tier 2). Guard rows:
+  boundary: `node -e` / `python -c` bypass it by design; the boundary is the
+  mount namespace in the next bullet. Guard rows:
   `tests/utils/runCommand-policy.test.ts`.
+- **A user-authored child's filesystem is a mount namespace, not the pod.** ✅
+  `spawnUserChild()` ([childSandbox.ts](../../packages/ant-cli/src/core/config/childSandbox.ts))
+  is the one funnel every preview / deploy / `run_command` spawn goes through
+  (`wrapCommandForUserChild()` for the SDK-spawned stdio MCP child), composing
+  the identity gate, the UID drop and bubblewrap in that order. The call site
+  names the tenant roots (`sandbox.rwRoots` / `roRoots`); the system toolchain,
+  a fixed set of `/etc` entries, the node prefix and `PATH` entries are bound
+  read-only; the isolated child HOME and the toolchain caches the composed env
+  points at are bound read-write; `/proc` is fresh in the child's own PID
+  namespace; and what is not bound does not exist — `/vault`, `/etc/shadow`,
+  every other tenant's workspace, the service's `/proc/<pid>`. The network is
+  shared (egress is `urlPolicy`'s axis). `ANT_CHILD_SANDBOX` defaults to on in
+  cloud and is fail-closed: non-Linux, no `bwrap`, or a kernel / seccomp /
+  AppArmor that refuses user namespaces refuses the spawn with a message naming
+  the fix; `off` is the explicit opt-out, `ANT_CHILD_SANDBOX_RW` / `_RO` add
+  deployment binds. Two corollaries: `CommandOptions.sandbox` is required in
+  type space, and `kill <server_pid>` is served by the `run_command` handler
+  against the handle it holds, since a later command's PID namespace cannot see
+  an earlier command's server. Guards: `tests/security/child-sandbox.test.ts`
+  (binding rules over a fake host, refusals, live invisibility where bwrap
+  exists), `tests/policy/credential-isolation.test.ts` (funnel adoption, image
+  launchers).
 - **One owner for "may this process connect to that host".** ✅
   `core/config/urlPolicy.ts` holds `isLoopbackHost` (the dev-server predicate:
   `http_request`, shell `curl`/`wget`), `isPrivateAddress` + `resolvePublicEgress`

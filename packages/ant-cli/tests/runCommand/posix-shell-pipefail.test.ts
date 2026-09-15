@@ -49,6 +49,7 @@ describe('NodeCommandAdapter — POSIX-sh operator commands (pipefail portabilit
     const adapter = new NodeCommandAdapter();
     const res = await adapter.execute('echo hello | sort', {
       cwd: process.cwd(),
+      sandbox: { rwRoots: [process.cwd()] },
       signal: new AbortController().signal,
     });
     expect(res.exitCode).toBe(0);
@@ -62,6 +63,7 @@ describe('NodeCommandAdapter — POSIX-sh operator commands (pipefail portabilit
     // literal args and the command would fail.
     const res = await adapter.execute('false || true', {
       cwd: process.cwd(),
+      sandbox: { rwRoots: [process.cwd()] },
       signal: new AbortController().signal,
     });
     expect(res.exitCode).toBe(0);
@@ -72,6 +74,7 @@ describe('NodeCommandAdapter — POSIX-sh operator commands (pipefail portabilit
     const adapter = new NodeCommandAdapter();
     const res = await adapter.execute('false | cat', {
       cwd: process.cwd(),
+      sandbox: { rwRoots: [process.cwd()] },
       signal: new AbortController().signal,
     });
     // pipefail (bash) → left failure surfaces; without pipefail (POSIX) → exit

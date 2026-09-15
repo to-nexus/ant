@@ -14,11 +14,10 @@
  */
 
 import { CommandPort, CommandResult, CommandOptions } from "../../../core/ports";
-import { spawn } from "child_process";
 import { isProcessGroupAlive } from "./processTree";
 import { splitOnShellOperators, tokenizeShellSegment, maskQuotedRegions } from "../../../core/utils/shellParser";
 import { composeCommandChildEnv } from "../../../core/config/childEnv";
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from "../../../core/config/childIdentity";
+import { spawnUserChild } from "../../../core/config/childSandbox";
 
 /**
  * Build the environment for a user command child.
@@ -412,26 +411,19 @@ export class NodeCommandAdapter implements CommandPort {
       
       const envForChild = cleanCommandEnv(options.env);
 
-      // LLM-chosen command against a user workspace: fail closed in cloud if the
-      // OS identity drop is unavailable, so it cannot read the worker's /proc
-      // environment under the service UID (M-NEW-016).
-      assertUserCodeIsolationOrThrow('run_command');
-
-      // ✅ Spawn with a dedicated process group for proper cleanup
-      const child = spawn(cmd, args, {
+      // LLM-chosen command against a user workspace: the one user-code spawn
+      // funnel — identity gate (fail closed in cloud, M-NEW-016), UID drop
+      // (C-001) and mount namespace bounded to `options.sandbox`.
+      // Dedicated process group for cleanup; stdin closed so prompts cannot
+      // hang (shell-internal pipes/heredocs ride the -c argument, not stdin).
+      const child = spawnUserChild(cmd, args, {
+        context: 'run_command',
+        sandbox: options.sandbox,
         cwd,
         env: envForChild,
-        // We only use an explicit shell process when needed; otherwise spawn directly.
-        // This avoids subtle quoting bugs and improves safety.
         shell: false,
-        detached: process.platform !== 'win32', // create new process group (POSIX)
-        // stdin closed: prevents interactive prompts from hanging forever.
-        // Shell-internal pipes (cmd1 | cmd2) and heredocs are unaffected
-        // as the shell handles them via -c argument, not spawn's stdin.
+        detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],
-        // LLM-chosen command running against a user workspace — same OS identity
-        // boundary as the preview children (C-001).
-        ...childSpawnIdentity(),
       });
 
       let stdout = '';

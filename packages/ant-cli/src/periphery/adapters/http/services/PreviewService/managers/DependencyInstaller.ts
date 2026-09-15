@@ -1,4 +1,4 @@
-import { spawn, execSync, execFileSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,10 +11,10 @@ import { resolveSpawnLanguage } from '../utils/projectFacts';
 import { composeChildEnv } from './envAssembly';
 import {
   childSpawnIdentity,
-  assertUserCodeIsolationOrThrow,
   credentialedAcquireIdentity,
   assertCredentialedAcquireIsolationOrThrow,
 } from '../../../../../../core/config/childIdentity';
+import { spawnUserChild } from '../../../../../../core/config/childSandbox';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
 const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -280,15 +280,15 @@ export class DependencyInstaller {
       // (M-NEW-001, same axis as the node two-pass install above). Go still gets
       // it: private module fetch needs it and Go runs no dependency code at
       // install time — see `installGoDeps`.
-      // Runs user-authored resolver/build code (cargo/mvn/gradlew) — fail closed
-      // in cloud unless it drops to a distinct unprivileged UID (M-015).
-      assertUserCodeIsolationOrThrow('preview:install:native');
-      const installProcess = spawn(command, args, {
+      // Runs user-authored resolver/build code (cargo/mvn/gradlew) — the
+      // user-code funnel, bounded to the project (M-015).
+      const installProcess = spawnUserChild(command, args, {
+        context: 'preview:install:native',
+        sandbox: { rwRoots: [findProjectRoot(packagePath), packagePath] },
         cwd: packagePath,
         shell: true,
         stdio: 'pipe',
         env: composeChildEnv(),
-        ...childSpawnIdentity(),
       });
 
       const onAbort = () => {
@@ -425,10 +425,6 @@ export class DependencyInstaller {
 
       let settled = false;
 
-      // The node install pass runs lifecycle scripts / loaders the project
-      // authors — fail closed in cloud without UID isolation (M-015).
-      assertUserCodeIsolationOrThrow('preview:install:node');
-
       // The credentialed FETCH pass holds the user's PAT in its environment, and
       // /proc/<pid>/environ is readable by any process sharing its UID — which,
       // with one deployment-wide child UID, means a concurrently running dev
@@ -440,14 +436,18 @@ export class DependencyInstaller {
       if (credentialed) assertCredentialedAcquireIsolationOrThrow('preview:install:node:acquire');
       const identity = credentialed ? credentialedAcquireIdentity() : childSpawnIdentity();
 
-      const installProcess = spawn(command, args, {
+      // Lifecycle scripts / loaders are project-authored — the user-code funnel
+      // (identity gate, drop, mount namespace over the project) (M-015).
+      const installProcess = spawnUserChild(command, args, {
+        context: 'preview:install:node',
+        sandbox: { rwRoots: [findProjectRoot(packagePath), packagePath] },
+        identity,
         cwd: packagePath,
         shell: true,
         stdio: 'pipe',
         // invocationEnv carries package-manager loader-isolation flags (e.g.
         // yarn YARN_IGNORE_PATH) that must apply on the credentialed pass.
         env: composeChildEnv({ COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...invocationEnv }, credentialEnv),
-        ...identity,
       });
 
       const onAbort = () => {
@@ -656,10 +656,6 @@ export class DependencyInstaller {
 
       let settled = false;
 
-      // `go mod` fetch runs with the user's PAT in env — fail closed in cloud
-      // without UID isolation so a same-UID child cannot read the service /proc
-      // environment while it holds credentials (M-015).
-      assertUserCodeIsolationOrThrow('preview:install:go');
       // When credentials are actually present, this acquire must run under the
       // DEDICATED credential UID, not the shared child UID — otherwise a
       // concurrent ordinary user-code child at the same UID can read the PAT out
@@ -670,12 +666,15 @@ export class DependencyInstaller {
         assertCredentialedAcquireIsolationOrThrow('preview:install:go:acquire');
       }
       const identity = credentialed ? credentialedAcquireIdentity() : childSpawnIdentity();
-      const proc = spawn('go', args, {
+      // `go mod` fetch holds the PAT in env — the user-code funnel (M-015).
+      const proc = spawnUserChild('go', args, {
+        context: 'preview:install:go',
+        sandbox: { rwRoots: [findProjectRoot(cwd), cwd] },
+        identity,
         cwd,
         shell: true,
         stdio: 'pipe',
         env: composeChildEnv(env),
-        ...identity,
       });
 
       const onAbort = () => {

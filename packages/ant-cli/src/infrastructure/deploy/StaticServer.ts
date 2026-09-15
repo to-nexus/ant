@@ -8,11 +8,11 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+import { ChildProcess } from 'child_process';
 import { createStaticApp } from '../static/staticApp';
 import { staticEntryFile } from '../../periphery/adapters/http/services/PreviewService/detectors/manifest';
 import { composeChildEnv } from '../../core/config/childEnv';
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
+import { spawnUserChild } from '../../core/config/childSandbox';
 import { logger } from '../../utils/logger';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 
@@ -78,9 +78,8 @@ function startSpaServer(options: StaticServerOptions): Promise<StaticServerHandl
 function startNextServer(options: StaticServerOptions): Promise<StaticServerHandle> {
   const { port, basePath, workspacePath } = options;
 
-  // `next start` runs the user's built server long-lived — fail closed in cloud
-  // without UID isolation (M-015).
-  assertUserCodeIsolationOrThrow('deploy:static-server');
+  // `next start` runs the user's built server long-lived — the user-code
+  // funnel: identity gate, UID drop, mount namespace over the workspace (M-015).
   return new Promise((resolve, reject) => {
     const nextBin = path.join(workspacePath, 'node_modules', '.bin', 'next');
     const cmd = fs.existsSync(nextBin) ? nextBin : 'npx';
@@ -88,14 +87,15 @@ function startNextServer(options: StaticServerOptions): Promise<StaticServerHand
       ? ['start', '-p', String(port)]
       : ['next', 'start', '-p', String(port)];
 
-    const child: ChildProcess = spawn(cmd, args, {
+    const child: ChildProcess = spawnUserChild(cmd, args, {
+      context: 'deploy:static-server',
+      sandbox: { rwRoots: [workspacePath] },
       cwd: workspacePath,
       env: composeChildEnv({
         PORT: String(port),
         NEXT_PUBLIC_BASE_PATH: basePath === '/' ? '' : basePath,
       }),
       stdio: ['ignore', 'pipe', 'pipe'],
-      ...childSpawnIdentity(),
     });
 
     let started = false;

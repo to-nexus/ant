@@ -12,8 +12,10 @@
  *      best-effort save so the turn's conversation is not lost.
  */
 
+import * as path from 'path';
 import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { buildUniversalGraph } from './graph';
+import { buildUniversalArtifactsPath } from '../../../core/config/WorkspacePathResolver';
 import { createInitialUniversalState, inheritedClarifyRounds, parseSealedTurnContext, type InheritedTurnContext, type UniversalGraphState } from './state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph/conversations';
 import { buildUniversalErrorSealState } from './session/sealConversation';
@@ -285,7 +287,11 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
       await persistFatalTurn(err);
       throw err;
     }
-    mcp = new McpConnectionManager(resolved.mcpServers, resolver, resolved.apiServers);
+    // A stdio server's mount namespace holds the job's artifact tree and nothing
+    // else — the same root the agent's own tools are contained to.
+    const artifactsRoot = params.deps.fileSystem?.getRootPath()
+      ?? buildUniversalArtifactsPath(path.dirname(params.containerPath));
+    mcp = new McpConnectionManager(resolved.mcpServers, resolver, resolved.apiServers, { rwRoots: [artifactsRoot] });
     try {
       await mcp.connect({ failFast, knownBad: knownBadServers });
     } catch (e) {

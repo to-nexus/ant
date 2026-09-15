@@ -27,7 +27,7 @@ The five steps are **mutually exclusive** (each does one thing) and **collective
 - Probe ONLY routes that execute server code — API routes, server-rendered pages, server actions. A 200 from a client-rendered (CSR) shell proves nothing about whether the page renders; an HTTP probe never runs the page's JavaScript. Do NOT treat a shell 200 as evidence the page works.
 - Do NOT background processes by appending `&` or running through `nohup` — use `keep_running: true` so the runtime knows about the PID and can act as the safety net described above.
 - Persistent process freedom does NOT relax the typecheck/build/test gate ordering — those still run in their normal sequence; the reproducer is an additional verification step, not a substitute.
-- The kill in step 3 must target the PID returned by the spawning `run_command` (it is surfaced in that command's output). Killing by port number works too — `lsof -ti :PORT | xargs kill` — but the PID-based form is preferred because it survives port reallocation.
+- The kill in step 3 must target the PID returned by the spawning `run_command` (it is surfaced in that command's output); that PID is a handle the tool itself honors. Do NOT kill by port (`lsof -ti :PORT | xargs kill`, `pkill`): every command runs in its own process namespace and cannot see a server another command started, so a port-based kill finds nothing and proves nothing.
 
 {{else}}
 ### Persistent Process Policy — DISABLED

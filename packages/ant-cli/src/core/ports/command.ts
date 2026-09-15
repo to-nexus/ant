@@ -8,6 +8,8 @@
  * then runs SIGTERM → SIGKILL (2s grace) → force-resolve (8s safety net).
  */
 
+import type { ChildSandboxRoots } from '../config/childSandbox';
+
 export interface CommandResult {
   stdout: string;
   stderr: string;
@@ -18,6 +20,14 @@ export interface CommandResult {
 export interface CommandOptions {
   /** Working directory. Defaults to process.cwd(). */
   cwd?: string;
+
+  /**
+   * The filesystem the command may reach. Required: the adapter runs the
+   * command in a mount namespace where nothing outside these roots (and the
+   * system toolchain) exists, so a caller that cannot name the boundary has
+   * no business spawning.
+   */
+  sandbox: ChildSandboxRoots;
 
   /**
    * Abort channel. Required.

@@ -831,7 +831,7 @@ Guards: `tests/http/preview-origin-split.test.ts`, `tests/http/same-origin-guard
 ## Child Process Boundaries — env profile, credential scope, OS identity
 
 Preview, deploy and code-job children run **user-authored code**, and their
-stdout/stderr is streamed back to the requester. Three separate rules, each violated
+stdout/stderr is streamed back to the requester. Four separate rules, each violated
 once:
 
 1. **Env profile.** `composeChildEnv()` (preview/deploy) honours
@@ -851,15 +851,39 @@ once:
    install without it. Installs that cannot use `GIT_CONFIG_*` at all
    (python/rust/java) never receive it.
 
-Every user-authored `spawn()` also spreads `childSpawnIdentity()`, so a deployment
-that grants the privilege runs those children under their own UID — a same-UID child
+4. **The filesystem a child sees is a mount namespace, not the pod.** Env
+   scrubbing and the UID drop bound what a child learns from its own process;
+   neither bounds the disk — a child under any UID walked `/vault`, `/etc` and
+   every other tenant's workspace, and one `cp` moved a Vault-injected secret
+   file into the requester-visible artifacts (2026-09 report). Every
+   user-authored spawn goes through ONE funnel, `spawnUserChild()`
+   (`core/config/childSandbox.ts`; `wrapCommandForUserChild()` where an SDK owns
+   the spawn), which composes identity gate → UID drop → bubblewrap in that
+   order: the call site names the tenant roots (`sandbox.rwRoots` / `roRoots`),
+   the system toolchain is read-only, and what is not bound does not exist. The
+   path parsers (`detectReadPathViolations`) stay as guardrails; the namespace
+   is the boundary. `ANT_CHILD_SANDBOX` is on by default in cloud and
+   fail-CLOSED (non-Linux, no `bwrap`, namespaces refused → the spawn is
+   refused); a deployment that cannot sandbox says `off` explicitly. Two
+   corollaries: `CommandOptions.sandbox` is required in TYPE space, so a caller
+   that cannot name the boundary does not compile; and `kill <server_pid>` is
+   served by the `run_command` handler against the handle it holds, because a
+   later command's PID namespace cannot see an earlier command's server.
+
+The funnel is also where `childSpawnIdentity()` is spread, so a deployment that
+grants the privilege runs those children under their own UID — a same-UID child
 can read `/proc/<service-pid>/environ` whatever the composed env says.
 
 ```bash
 rg -n "composeChildEnv\(\)" packages/ant-cli/src/periphery/adapters/command  # Expected: 0 (command profile)
+# User code has ONE spawn funnel; an identity spread into spawn options is a site that skipped it.
+rg -n "\.\.\.(childSpawnIdentity|credentialedAcquireIdentity)\(\)" packages/ant-cli/src --type ts  # Expected: 0
+rg -n "wrapCommandForChildIdentity\(" packages/ant-cli/src --type ts  # Expected: 2 (definition + its one call, inside wrapCommandForUserChild)
 ```
 
-Guards: `tests/policy/credential-isolation.test.ts`, `tests/preview/installCommand.test.ts`.
+Guards: `tests/policy/credential-isolation.test.ts` (funnel adoption, image
+launchers), `tests/security/child-sandbox.test.ts` (binding rules, refusals,
+live invisibility), `tests/preview/installCommand.test.ts`.
 
 ---
 

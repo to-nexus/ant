@@ -89,13 +89,11 @@ function readId(name: string): number | undefined {
 }
 
 /**
- * Spawn options fragment for a user-authored child. Spread it into every
- * `spawn()` that runs code the user wrote — dev servers, install scripts, build
- * commands, static servers:
+ * Spawn options fragment for a user-authored child. `spawnUserChild()`
+ * (`childSandbox.ts`) is the one place that spreads it — call sites go through
+ * that funnel rather than spawning with it directly.
  *
- *     spawn(cmd, args, { cwd, env, ...childSpawnIdentity() })
- *
- * Returns `{}` when no child account is configured, so the call site reads the
+ * Returns `{}` when no child account is configured, so the funnel reads the
  * same in both deployments and there is no `if (cloud)` fork.
  */
 export function childSpawnIdentity(): ChildSpawnIdentity {

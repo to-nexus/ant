@@ -1,5 +1,6 @@
-import { spawn, ChildProcess, execFileSync } from 'child_process';
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../../../core/config/childIdentity';
+import { ChildProcess, execFileSync } from 'child_process';
+import { serviceCodeRoot, spawnUserChild } from '../../../../../../core/config/childSandbox';
+import { findProjectRoot } from '../../../../../../utils/packageManager';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
@@ -225,18 +226,16 @@ export class ProcessSpawner {
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
     options.onLog('stdout', `📋 Command: ${command} ${args.join(' ')}`);
     
-    // User-authored dev command. Under the service's own UID it could read
-    // `/proc/<service-pid>/environ` and re-link workspace directory entries
-    // the service writes through (C-001, H-003, M-NEW-003) — fail closed in
-    // cloud if the OS drop is unavailable.
-    assertUserCodeIsolationOrThrow(`preview:${pkg.type}`);
-    const childProcess = spawn(command, args, {
+    // User-authored dev command — identity gate, UID drop and mount namespace
+    // bounded to the project (C-001, H-003, M-NEW-003).
+    const childProcess = spawnUserChild(command, args, {
+      context: `preview:${pkg.type}`,
+      sandbox: { rwRoots: [options.projectRoot ?? findProjectRoot(pkg.path), pkg.path] },
       cwd: pkg.path,
       shell: true,
       detached: true,
       env,
       stdio: 'pipe',
-      ...childSpawnIdentity(),
     });
     
     logger.warn(`[Preview] Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });
@@ -316,14 +315,15 @@ export class ProcessSpawner {
 
     // This child runs ANT's own code, but it reads the user's workspace and is
     // part of the same preview fleet — hold it to the one isolation policy
-    // rather than carving out an exemption.
-    assertUserCodeIsolationOrThrow('preview:static');
-    const childProcess = spawn(command, args, {
+    // rather than carving out an exemption. It needs no write anywhere: the
+    // served root and our own checkout are read-only.
+    const childProcess = spawnUserChild(command, args, {
+      context: 'preview:static',
+      sandbox: { rwRoots: [], roRoots: [root, serviceCodeRoot()] },
       cwd,
       detached: true,
       env,
       stdio: 'pipe',
-      ...childSpawnIdentity(),
     });
 
     logger.warn(`[Preview] Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });
@@ -428,17 +428,16 @@ export class ProcessSpawner {
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${language}) on port ${port}...`);
     options.onLog('stdout', `📋 Command: ${command} ${args.join(' ')}`);
 
-    // User-authored dev command (Go/Python/Rust/Java/…). Fail closed in cloud if
-    // OS isolation is unavailable, and drop to the child UID — the Node path
-    // above had this but these language paths did not (M-015, M-NEW-015).
-    assertUserCodeIsolationOrThrow(`preview:${language}`);
-    const childProcess = spawn(command, args, {
+    // User-authored dev command (Go/Python/Rust/Java/…) — same funnel as the
+    // Node path above (M-015, M-NEW-015).
+    const childProcess = spawnUserChild(command, args, {
+      context: `preview:${language}`,
+      sandbox: { rwRoots: [options.projectRoot ?? findProjectRoot(pkg.path), pkg.path] },
       cwd: pkg.path,
       shell: true,
       detached: true,
       env,
       stdio: 'pipe',
-      ...childSpawnIdentity(),
     });
     
     logger.warn(`[Preview] Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });

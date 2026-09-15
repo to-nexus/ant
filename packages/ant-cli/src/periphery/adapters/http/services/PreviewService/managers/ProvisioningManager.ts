@@ -1,10 +1,9 @@
-import { spawn } from 'child_process';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
 import type { LogCallback, PackageInfo } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { buildPackageEnv, composeChildEnv } from './envAssembly';
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../../../core/config/childIdentity';
+import { spawnUserChild } from '../../../../../../core/config/childSandbox';
 import type { PreviewManifestResult } from './previewManifest';
 
 /**
@@ -146,20 +145,20 @@ export class ProvisioningManager {
     onLog: LogCallback,
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
-    // User-declared setup commands run arbitrary project code — fail closed in
-    // cloud unless the child drops to a distinct unprivileged UID (M-015).
-    assertUserCodeIsolationOrThrow('preview:provision');
     return new Promise((resolve) => {
       const env = composeChildEnv(
         buildPackageEnv({ pkgPath: cmd.cwd, projectRoot, connections, packageSource: cmd.packageSource }),
       );
 
-      const child = spawn(cmd.command, cmd.args, {
+      // User-declared setup commands run arbitrary project code — the user-code
+      // funnel, bounded to the project (M-015).
+      const child = spawnUserChild(cmd.command, cmd.args, {
+        context: 'preview:provision',
+        sandbox: { rwRoots: [projectRoot, cmd.cwd] },
         cwd: cmd.cwd,
         shell: cmd.shell,
         stdio: 'pipe',
         env,
-        ...childSpawnIdentity(),
       });
 
       let stderr = '';

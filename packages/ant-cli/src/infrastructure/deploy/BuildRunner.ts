@@ -7,12 +7,11 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn } from 'child_process';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 import { detectPackageManager, buildInstallCommand, findProjectRoot } from '../../utils/packageManager';
 import { staticDocRoot } from '../../periphery/adapters/http/services/PreviewService/detectors/manifest';
 import { composeChildEnv } from '../../core/config/childEnv';
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
+import { spawnUserChild } from '../../core/config/childSandbox';
 
 export interface BuildResult {
   success: boolean;
@@ -153,20 +152,18 @@ async function ensureDependencies(
 
   onLog?.(`📦 Installing dependencies (${pm})...`);
 
-  // Lifecycle scripts are user-authored — fail closed in cloud without UID
-  // isolation (M-015).
-  assertUserCodeIsolationOrThrow('deploy:install');
   return new Promise<void>((resolve, reject) => {
     let settled = false;
 
     // Same boundary as the build below: lifecycle scripts are user-authored and
-    // their output reaches the requester's deploy log.
-    const child = spawn(command, args, {
+    // their output reaches the requester's deploy log (M-015).
+    const child = spawnUserChild(command, args, {
+      context: 'deploy:install',
+      sandbox: { rwRoots: [findProjectRoot(workspacePath), workspacePath] },
       cwd: workspacePath,
       env: composeChildEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
-      ...childSpawnIdentity(),
     });
 
     const timer = setTimeout(() => {
@@ -283,9 +280,6 @@ export async function runBuild(
 
   const BUILD_TIMEOUT_MS = 10 * 60 * 1000;
 
-  // The build script is user-authored — fail closed in cloud without UID
-  // isolation (M-015).
-  assertUserCodeIsolationOrThrow('deploy:build');
   return new Promise<BuildResult>((resolve) => {
     let resolved = false;
     const done = (result: BuildResult) => {
@@ -295,12 +289,14 @@ export async function runBuild(
       resolve(result);
     };
 
-    const child = spawn(npmBin, args, {
+    // The build script is user-authored — the user-code funnel (M-015).
+    const child = spawnUserChild(npmBin, args, {
+      context: 'deploy:build',
+      sandbox: { rwRoots: [findProjectRoot(workspacePath), workspacePath] },
       cwd: workspacePath,
       env: composeChildEnv(envVars, { NODE_ENV: 'production' }),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
-      ...childSpawnIdentity(),
     });
 
     const timer = setTimeout(() => {

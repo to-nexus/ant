@@ -86,6 +86,13 @@ services:
   # so the installed tree stays writable by the credential-free lifecycle pass.
   ant-job:
     user: "0:0"
+    # bwrap builds each user-authored child's mount namespace from an
+    # unprivileged user namespace. Docker's default seccomp and AppArmor
+    # profiles refuse CLONE_NEWUSER without CAP_SYS_ADMIN, so lift them for the
+    # two services that run user code (cheaper than granting SYS_ADMIN).
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     environment:
       <<: *ant-env-cloud-base
       ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}
@@ -99,6 +106,13 @@ services:
   # it receives the public key ONLY.
   ant-preview:
     user: "0:0"
+    # bwrap builds each user-authored child's mount namespace from an
+    # unprivileged user namespace. Docker's default seccomp and AppArmor
+    # profiles refuse CLONE_NEWUSER without CAP_SYS_ADMIN, so lift them for the
+    # two services that run user code (cheaper than granting SYS_ADMIN).
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     environment:
       <<: [*ant-env-cloud-base, *ant-env-cloud-verify]
       ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}

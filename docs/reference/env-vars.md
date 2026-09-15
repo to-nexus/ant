@@ -133,6 +133,9 @@ gate sites.
 | `ANT_CHILD_UID` | unset | Numeric uid for user-authored child processes (dev servers, install scripts, build commands). Unset = children keep the service identity, correct for the single-developer local CLI. Requires the container to be permitted to change uids; the runtime probes once and logs loudly if not. |
 | `ANT_CHILD_GID` | unset | Numeric gid companion to `ANT_CHILD_UID`. |
 | `ANT_CHILD_UMASK` | `002` in the images | Octal umask applied at service bootstrap so the service and the child identity can each clean up the other's files in the shared workspace. Unset = no change. |
+| `ANT_CHILD_SANDBOX` | `on` in cloud, `off` in local | Mount-namespace isolation of every user-authored child (`run_command`, stdio MCP servers, preview/deploy installs, dev servers) via bubblewrap: the call site's tenant roots read-write, the system toolchain read-only, own PID namespace, nothing else — `/vault`, `/etc` and other tenants' workspaces do not exist for the child. Fail-closed when on: non-Linux, no `bwrap`, or user namespaces refused by the kernel/seccomp/AppArmor refuses the spawn. `off` is the explicit opt-out; `on` opts a Linux local install in. SSOT: `core/config/childSandbox.ts`. |
+| `ANT_CHILD_SANDBOX_RW` | unset | Extra host paths (`:`-separated) bound read-write into every child sandbox — a shared toolchain cache the composed env does not already name, a docker socket a provisioning step needs. Each entry is a deliberate widening of the boundary. |
+| `ANT_CHILD_SANDBOX_RO` | unset | Same, read-only. |
 | `ANT_REQUIRE_BILLING` | unset | Managed deployment only: `1` makes a missing/unloadable `@ant/cloud` billing overlay a **boot failure** instead of a silent free tier. Self-hosted cloud and local leave this unset (billing off, unmetered). SSOT: `core/config/billingCapability.ts`. |
 
 Figma MCP transport is selected by `ANT_SERVER_MODE` (desktop MCP locally,
