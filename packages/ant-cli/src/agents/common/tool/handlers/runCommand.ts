@@ -25,6 +25,8 @@ import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 type Gate = string;
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
+import { toNfc } from '../../../../core/utils/unicodePath';
+import { isLoopbackHost } from '../../../../core/config/urlPolicy';
 import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment, maskQuotedRegions } from '../../../../core/utils/shellParser';
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
 import { getDefaultDevProcessControl } from '../../../../core/process/DevProcessControl';
@@ -412,6 +414,308 @@ function detectWritePathViolations(
   }
 
   return violations;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Read path guard
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Commands whose positional arguments name files/directories they READ. The
+ * write guard above checks only where bytes land; a shell child has no
+ * filesystem isolation of its own, so `cp /vault/secrets/x .` or
+ * `cat /etc/passwd` moved host files into the user-visible sandbox (the
+ * 2026-09 secret-copy report). Sources of `cp`/`mv` are reads too.
+ */
+const READ_VERBS = new Set([
+  'cat', 'head', 'tail', 'less', 'more', 'cp', 'mv', 'ls', 'tree', 'find', 'grep', 'egrep', 'fgrep', 'rg',
+  'sed', 'awk', 'tar', 'base64', 'od', 'xxd', 'wc', 'file', 'diff', 'cmp', 'stat', 'readlink', 'realpath',
+  'du', 'sort', 'uniq', 'nl', 'tac', 'rev', 'column', 'cut', 'jq', 'yq', 'strings', 'sha256sum', 'shasum',
+  'md5sum', 'gzip', 'gunzip', 'unzip', 'zip', 'cd',
+]);
+
+/** Verbs whose FIRST positional is a pattern/script/filter, not a path. */
+const PATTERN_FIRST_VERBS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'sed', 'awk', 'jq', 'yq']);
+
+const HEAD_SKIP_TOKENS = new Set(['do', 'then', 'else', 'elif', 'while', 'until', 'if', '!', 'done', 'fi', 'esac', '}', '{']);
+
+/**
+ * Index of the executable head of one segment: skips `VAR=x` prefixes,
+ * control-flow keywords, and the `env` / `timeout` wrappers (mirrors the
+ * allowlist's head rule). `-1` when the segment runs nothing (a `for` header).
+ */
+function commandHeadIndex(tokens: string[]): number {
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i].replace(/^\(+/, '');
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t) || HEAD_SKIP_TOKENS.has(t) || t === '') { i++; continue; }
+    if (t === 'for') return -1;
+    if (t === 'env' || t === 'timeout') {
+      i++;
+      while (i < tokens.length && (tokens[i].startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]))) i++;
+      if (t === 'timeout' && i < tokens.length && /^\d+(\.\d+)?[smhd]?$/.test(tokens[i])) i++;
+      continue;
+    }
+    return i;
+  }
+  return -1;
+}
+
+const REDIRECT_OP_RE = /^\d*(>{1,2}|<)$/;
+const REDIRECT_ATTACHED_RE = /^\d*(>{1,2}|<)(?=\S)/;
+
+interface SegmentReads { verb: string | undefined; tokens: string[]; targets: string[] }
+
+/** Per segment, in order: the head verb and every token that names a path it reads (incl. `<` targets). */
+function extractReadTargets(command: string): SegmentReads[] {
+  const out: SegmentReads[] = [];
+  const cmdPart = command.split(/<<-?\s*['"]?\w+['"]?/)[0] || command;
+
+  for (const seg of splitOnShellOperators(cmdPart)) {
+    const tokens = tokenizeShellSegment(seg.trim());
+    if (tokens.length === 0) continue;
+    const headIdx = commandHeadIndex(tokens);
+    const verb = headIdx === -1 ? undefined : tokens[headIdx].replace(/^\(+/, '');
+    const isReadVerb = verb !== undefined && READ_VERBS.has(verb);
+    const targets: string[] = [];
+    const positional: string[] = [];
+    let skipNext = false;
+    let nextIsPath = false;
+    let skipPattern = verb !== undefined && PATTERN_FIRST_VERBS.has(verb);
+    let stopped = false;
+
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      const masked = maskQuotedRegions(tok);
+      if (skipNext) { skipNext = false; continue; }
+      if (masked.startsWith('<<')) continue; // here-string / heredoc marker
+      // `< file` is a read on ANY segment (`node x.js < /etc/passwd`).
+      const opOnly = REDIRECT_OP_RE.exec(masked);
+      if (opOnly) {
+        if (opOnly[1] === '<' && tokens[i + 1]) targets.push(tokens[i + 1]);
+        skipNext = true;
+        continue;
+      }
+      const attached = REDIRECT_ATTACHED_RE.exec(masked);
+      if (attached) {
+        if (attached[1] === '<') targets.push(tok.slice(attached[0].length));
+        continue;
+      }
+      if (!isReadVerb || i <= headIdx || stopped) continue;
+
+      if (nextIsPath) { nextIsPath = false; positional.push(tok); continue; }
+      // find: everything from the first expression token on is predicates.
+      if (verb === 'find' && (tok.startsWith('-') || tok === '(' || tok === '!')) { stopped = true; continue; }
+      if (tok === '-') continue; // stdin
+      if (tok.startsWith('-')) {
+        if (verb === 'tar') {
+          if (/^-[A-Za-z]*[Cf]$/.test(tok)) nextIsPath = true;
+          const long = /^--(?:file|directory)=(.+)$/.exec(tok);
+          if (long) positional.push(long[1]);
+        }
+        continue;
+      }
+      if (skipPattern) { skipPattern = false; continue; }
+      positional.push(tok);
+    }
+    // cp/mv: the last positional is the destination — the write guard's axis.
+    targets.push(...((verb === 'cp' || verb === 'mv') ? positional.slice(0, -1) : positional));
+    out.push({ verb, tokens, targets });
+  }
+  return out;
+}
+
+/**
+ * CONTAINMENT for reads — every path a read verb names must resolve inside the
+ * tool sandbox's root. Relative paths resolve against the working directory,
+ * following `cd` across `&&`/`;` chains. Tokens carrying a shell expansion are
+ * skipped (a `for f in *; do cat "$f"; done` loop must keep working — this is a
+ * guardrail, and `node -e` bypasses it anyway); `~` is refused outright.
+ * Both sides are NFC-normalized so a Korean workspace path never reads as an
+ * escape merely because the LLM re-emitted it in a different form.
+ */
+export function detectReadPathViolations(
+  command: string,
+  workingDir: string,
+  boundaryRoot: string,
+): WriteViolation[] {
+  const violations: WriteViolation[] = [];
+  const rootNfc = toNfc(boundaryRoot);
+  const isOutside = (abs: string): boolean => {
+    const rel = normalizeRelPath(path.relative(rootNfc, toNfc(abs)));
+    return rel === '..' || rel.startsWith('../');
+  };
+
+  let cwd = workingDir;
+  for (const { verb, tokens, targets } of extractReadTargets(command)) {
+    for (const target of targets) {
+      const { value } = unquoteToken(target);
+      if (!value || value.startsWith('&')) continue;
+      if (value.includes('`') || /\$/.test(value)) continue;
+      if (value.startsWith('/dev/')) continue;
+      if (value.startsWith('~')) {
+        violations.push({ path: value, reason: 'the home directory is outside the sandbox' });
+        continue;
+      }
+      const abs = path.isAbsolute(value) ? path.normalize(value) : path.resolve(cwd, value);
+      if (isOutside(abs)) {
+        violations.push({ path: value, reason: `outside the sandbox root (${boundaryRoot})` });
+        continue;
+      }
+      if (verb === 'cd') cwd = abs;
+    }
+    // A bare `cd` goes to $HOME — outside by construction.
+    if (verb === 'cd' && tokens.length === commandHeadIndex(tokens) + 1) {
+      violations.push({ path: 'cd', reason: 'a bare `cd` changes to the home directory, outside the sandbox' });
+    }
+  }
+  return violations;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Shell network guard
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * curl/wget from the shell may reach ONLY a loopback host — the dev server
+ * the job started. `http_request` already enforces that for its own URLs;
+ * without this the shell was the bypass (SSRF into the pod network, cloud
+ * metadata, the data plane). External pages are `fetch_url`'s job, REST
+ * systems are declared `apis`, both of which run under `core/config/urlPolicy`.
+ */
+const NETWORK_VERBS = new Set(['curl', 'wget']);
+
+/** Short flags that consume the next token (or the rest of their cluster). */
+const CURL_VALUE_SHORT = new Set(['H', 'd', 'o', 'X', 'u', 'A', 'e', 'b', 'c', 'F', 'T', 'w', 'm', 'E', 'r', 'y', 'Y', 'z', 'C', 'D', 'Q', 't', 'U', 'P']);
+const WGET_VALUE_SHORT = new Set(['O', 'o', 'a', 'P', 'T', 't', 'w', 'U', 'B', 'Q', 'l', 'A', 'R', 'D', 'I', 'X']);
+/** Long flags that consume the next token when written without `=`. */
+const CURL_VALUE_LONG = new Set([
+  '--header', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--json', '--output', '--request', '--user',
+  '--user-agent', '--referer', '--cookie', '--cookie-jar', '--form', '--form-string', '--upload-file', '--write-out',
+  '--max-time', '--connect-timeout', '--retry', '--retry-delay', '--retry-max-time', '--cert', '--key', '--cacert',
+  '--capath', '--range', '--speed-limit', '--speed-time', '--time-cond', '--continue-at', '--dump-header',
+  '--limit-rate', '--max-filesize', '--max-redirs', '--stderr', '--trace', '--trace-ascii', '--url', '--oauth2-bearer',
+  '--tlsv1.2', '--ciphers', '--expect100-timeout', '--happy-eyeballs-timeout-ms', '--keepalive-time', '--output-dir',
+  '--proto', '--proto-redir', '--pubkey', '--variable', '--aws-sigv4', '--alt-svc', '--hsts', '--etag-save', '--etag-compare',
+]);
+const WGET_VALUE_LONG = new Set([
+  '--output-document', '--output-file', '--append-output', '--directory-prefix', '--timeout', '--tries', '--wait',
+  '--user-agent', '--base', '--quota', '--level', '--accept', '--reject', '--domains', '--include-directories',
+  '--exclude-directories', '--header', '--user', '--password', '--http-user', '--http-password', '--referer',
+  '--post-data', '--post-file', '--body-data', '--body-file', '--method', '--ca-certificate', '--certificate',
+  '--private-key', '--limit-rate', '--dns-timeout', '--connect-timeout', '--read-timeout', '--waitretry',
+  '--random-wait', '--cut-dirs', '--load-cookies', '--save-cookies', '--exclude-domains', '--follow-tags',
+  '--ignore-tags', '--regex-type', '--accept-regex', '--reject-regex', '--bind-address', '--prefer-family',
+  '--local-encoding', '--remote-encoding', '--rejected-log', '--start-pos', '--progress', '--restrict-file-names',
+]);
+/** Flags that re-route or redefine the target host, or read URLs from elsewhere. */
+const CURL_FORBIDDEN = new Set(['-x', '-K', '--proxy', '--preproxy', '--socks4', '--socks4a', '--socks5', '--socks5-hostname',
+  '--resolve', '--connect-to', '--unix-socket', '--abstract-unix-socket', '--interface', '--doh-url', '--config', '--proxy1.0',
+  '--haproxy-protocol', '--noproxy', '--proxy-user', '--proxy-header']);
+const WGET_FORBIDDEN = new Set(['-e', '-i', '--execute', '--input-file', '--config', '--proxy-user', '--proxy-password',
+  '--use-askpass', '--force-html']);
+
+/** Host part of a URL token, or `null` when the token carries no host. */
+function hostOfUrlToken(value: string): { host: string } | null {
+  let s = value;
+  const m = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.exec(s);
+  if (m) s = s.slice(m[0].length);
+  const at = s.indexOf('@');
+  const firstDelim = s.search(/[/?#]/);
+  if (at !== -1 && (firstDelim === -1 || at < firstDelim)) s = s.slice(at + 1);
+  let host: string;
+  if (s.startsWith('[')) {
+    const end = s.indexOf(']');
+    host = end === -1 ? s.slice(1) : s.slice(1, end);
+  } else {
+    host = s.split(/[:/?#]/)[0];
+  }
+  if (!host) return null;
+  return { host };
+}
+
+/**
+ * Every URL a `curl`/`wget` segment names must point at a loopback host over
+ * http(s); host-rerouting and proxy flags are refused outright. A host whose
+ * spelling cannot be verified (shell expansion) is refused too — the port may
+ * be a variable (`http://localhost:$PORT`), the host may not.
+ */
+export function detectShellNetworkViolations(command: string): WriteViolation[] {
+  const violations: WriteViolation[] = [];
+  const cmdPart = command.split(/<<-?\s*['"]?\w+['"]?/)[0] || command;
+
+  for (const seg of splitOnShellOperators(cmdPart)) {
+    const tokens = tokenizeShellSegment(seg.trim());
+    const headIdx = commandHeadIndex(tokens);
+    if (headIdx === -1) continue;
+    const verb = tokens[headIdx].replace(/^\(+/, '');
+    if (!NETWORK_VERBS.has(verb)) continue;
+    const valueShort = verb === 'curl' ? CURL_VALUE_SHORT : WGET_VALUE_SHORT;
+    const valueLong = verb === 'curl' ? CURL_VALUE_LONG : WGET_VALUE_LONG;
+    const forbidden = verb === 'curl' ? CURL_FORBIDDEN : WGET_FORBIDDEN;
+
+    const urls: string[] = [];
+    let skipNext = false;
+    for (let i = headIdx + 1; i < tokens.length; i++) {
+      const tok = tokens[i];
+      const masked = maskQuotedRegions(tok);
+      if (skipNext) { skipNext = false; continue; }
+      if (REDIRECT_OP_RE.test(masked)) { skipNext = true; continue; }
+      if (REDIRECT_ATTACHED_RE.test(masked) || masked.startsWith('<<')) continue;
+      if (tok.startsWith('--')) {
+        const eq = tok.indexOf('=');
+        const name = eq === -1 ? tok : tok.slice(0, eq);
+        if (forbidden.has(name)) { violations.push({ path: tok, reason: `${verb} ${name} redefines the target or reads URLs from a file — not allowed` }); continue; }
+        if (name === '--url') { if (eq !== -1) urls.push(tok.slice(eq + 1)); else if (tokens[i + 1]) { urls.push(tokens[i + 1]); skipNext = true; } continue; }
+        if (eq === -1 && valueLong.has(name)) skipNext = true;
+        continue;
+      }
+      if (tok.startsWith('-') && tok.length > 1) {
+        if (forbidden.has(tok.slice(0, 2))) { violations.push({ path: tok, reason: `${verb} ${tok.slice(0, 2)} redefines the target or reads URLs from a file — not allowed` }); continue; }
+        // Short cluster: the first value-taking letter consumes the rest of the
+        // cluster, or the next token when it is the last letter.
+        for (let j = 1; j < tok.length; j++) {
+          if (valueShort.has(tok[j])) { if (j === tok.length - 1) skipNext = true; break; }
+        }
+        continue;
+      }
+      urls.push(tok);
+    }
+
+    for (const raw of urls) {
+      const { value } = unquoteToken(raw);
+      if (!value) continue;
+      const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//.exec(value)?.[1]?.toLowerCase();
+      if (scheme && scheme !== 'http' && scheme !== 'https') {
+        violations.push({ path: value, reason: `scheme "${scheme}:" is not allowed from the shell — http(s) to a loopback host only` });
+        continue;
+      }
+      const parsed = hostOfUrlToken(value);
+      if (!parsed) continue;
+      if (parsed.host.includes('$') || parsed.host.includes('`')) {
+        violations.push({ path: value, reason: 'the URL host contains a shell expansion whose value cannot be verified — write the host literally (the port may be a variable)' });
+        continue;
+      }
+      if (!isLoopbackHost(parsed.host)) {
+        violations.push({ path: value, reason: `host "${parsed.host}" is not loopback (localhost / 127.0.0.0/8 / ::1)` });
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * Name only tools the model can actually call (`availableToolNames` is the
+ * registry's own stamp) — a redirect to an absent tool is a retry loop.
+ */
+function shellNetworkAlternatives(ctx: ToolExecutionContext): string {
+  const names = ctx.availableToolNames;
+  if (!names) return '';
+  const parts: string[] = [];
+  if (names.has('fetch_url')) parts.push('For an external web page use `fetch_url`.');
+  if ([...names].some(n => n.startsWith('api__'))) parts.push('A declared REST API is reached through its `api__*` tools.');
+  if (names.has('http_request')) parts.push('For a route on a server you started here, `http_request` returns the response as structured facts.');
+  return parts.length ? ` ${parts.join(' ')}` : '';
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -849,6 +1153,21 @@ async function executeCommandLogic(
     );
   }
 
+  // Shell egress is loopback-only; the guard runs before the path guards so a
+  // refused URL is named as the reason, not a redirect target that follows it.
+  const networkViolations = detectShellNetworkViolations(command);
+  if (networkViolations.length > 0) {
+    const msg = networkViolations.map(v => `  - "${v.path}" → ${v.reason}`).join('\n');
+    console.error(`\n   ❌ [run_command] Shell network policy violation:\n${msg}\n`);
+    return makeRejection(
+      ctx,
+      command,
+      `❌ COMMAND REJECTED: Shell network access is limited to loopback.\n\nViolations:\n${msg}\n\ncurl/wget may only reach a server running on this host (e.g. http://127.0.0.1:PORT).${shellNetworkAlternatives(ctx)}`,
+      cardId,
+      verifies,
+    );
+  }
+
   const isLongRunning = LONG_RUNNING_PATTERNS.some(p => p.test(command));
   const isInstallCommand = isLikelyInstallCommand(command);
   const hasShellOperators = /(\|\||&&|;)/.test(command);
@@ -918,6 +1237,22 @@ async function executeCommandLogic(
       ctx,
       command,
       `❌ COMMAND REJECTED: File write target outside the allowed area.\n\nViolations:\n${msg}\n\n${rule}`,
+      cardId,
+      verifies,
+    );
+  }
+
+  // Reads are contained to the same root. The host filesystem is never part
+  // of a task; the message says so, because the alternative the model reaches
+  // for after a bare refusal is another probe.
+  const readViolations = detectReadPathViolations(command, workingDir, projectPath);
+  if (readViolations.length > 0) {
+    const msg = readViolations.map(v => `  - "${v.path}" → ${v.reason}`).join('\n');
+    console.error(`\n   ❌ [run_command] Read path violation detected:\n${msg}\n`);
+    return makeRejection(
+      ctx,
+      command,
+      `❌ COMMAND REJECTED: File read target outside the sandbox.\n\nViolations:\n${msg}\n\nCommands may read only paths inside this job's own directory. The host filesystem (/vault, /proc, /etc, other users' workspaces) is not part of any task — if asked about it, describe the sandbox instead of probing it.`,
       cardId,
       verifies,
     );

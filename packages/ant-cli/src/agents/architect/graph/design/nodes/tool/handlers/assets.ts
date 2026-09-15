@@ -1,35 +1,10 @@
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
 import { isFigmaLocalAssetUrl, proxyAssetDownload } from '../../../../../../../periphery/adapters/figma/MCPTransport';
+import { fetchPublicUrl } from '../../../../../../../core/config/urlPolicy';
 // Asset pool root resolution moved to `@ant/shared` (canonical.ts) so the
 // code/spec jobs share the single domain gate instead of re-deriving it.
 // Re-exported here for back-compat with existing importers of this module.
 export { pickAssetsRoot, type AssetsRootInput } from '@ant/shared';
-
-/**
- * True when `ip` is a loopback / private / link-local / CGNAT address (IPv4 or
- * IPv6). Unparseable input is treated as unsafe. `169.254.169.254` (cloud
- * metadata) falls under the IPv4 link-local block.
- */
-export function isPrivateAddress(ip: string): boolean {
-  if (ip.includes(':')) {
-    const v6 = ip.toLowerCase();
-    if (v6 === '::1' || v6 === '::') return true;
-    if (v6.startsWith('fe80')) return true; // link-local
-    if (v6.startsWith('fc') || v6.startsWith('fd')) return true; // unique-local
-    const mapped = v6.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped) return isPrivateAddress(mapped[1]);
-    return false;
-  }
-  const parts = ip.split('.').map((n) => Number(n));
-  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true;
-  const [a, b] = parts;
-  if (a === 0 || a === 10 || a === 127) return true;
-  if (a === 169 && b === 254) return true; // link-local incl. metadata endpoint
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  return false;
-}
 
 /** Ceiling on a single downloaded asset. Generous for design assets, bounded so
  *  an attacker-controlled response cannot exhaust the worker heap (M-NEW-014). */
@@ -43,39 +18,12 @@ const ASSET_FETCH_TIMEOUT_MS = 30_000;
 let assetInflightBytes = 0;
 
 /**
- * Validate one hop's URL and resolve it to a single vetted public IP.
- * Rejects non-http(s) schemes and any host resolving to an internal address
- * (every A/AAAA record checked). The returned address is what the connection is
- * pinned to, so a later DNS answer cannot rebind the socket to a private target.
- */
-async function resolveVettedAddress(rawUrl: string): Promise<{ url: URL; address: string; family: number }> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error(`Invalid URL: ${rawUrl}`);
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`Blocked URL scheme: ${parsed.protocol}`);
-  }
-  const { lookup } = await import('dns/promises');
-  const resolved = await lookup(parsed.hostname, { all: true });
-  if (resolved.length === 0 || resolved.some((r) => isPrivateAddress(r.address))) {
-    throw new Error(`Blocked internal address for host: ${parsed.hostname}`);
-  }
-  return { url: parsed, address: resolved[0].address, family: resolved[0].family };
-}
-
-/**
  * SSRF-safe, memory-bounded server-side asset fetch (H-NEW-002, M-NEW-014).
  *
- * Redirects are followed MANUALLY (`maxRedirections: 0`), re-validating scheme +
- * every DNS record at each hop, and each connection is pinned to the vetted IP
- * via a custom `connect.lookup` — so neither a `Location` to a private host nor a
- * post-check DNS rebind reaches an internal endpoint. Host/SNI stay the original
- * hostname (TLS + vhosts keep working). The body is read as a bounded stream
- * with a hard byte cap and a per-worker in-flight reservation, replacing the
- * unbounded `response.arrayBuffer()`.
+ * The fetch itself is `fetchPublicUrl` (core/config/urlPolicy — pinned
+ * connection, per-hop re-vetting, byte cap). This wrapper adds the asset
+ * ceiling and the per-worker in-flight reservation that bounds concurrent
+ * heap use.
  */
 export async function safeFetchAssetToBuffer(rawUrl: string): Promise<Buffer> {
   if (assetInflightBytes + ASSET_MAX_BYTES > ASSET_INFLIGHT_MAX_BYTES) {
@@ -83,65 +31,16 @@ export async function safeFetchAssetToBuffer(rawUrl: string): Promise<Buffer> {
   }
   assetInflightBytes += ASSET_MAX_BYTES; // reserve the ceiling up front
   try {
-    const { Agent, request } = await import('undici');
-    let current = rawUrl;
-
-    for (let hop = 0; hop <= ASSET_MAX_REDIRECT_HOPS; hop++) {
-      const vetted = await resolveVettedAddress(current);
-      const agent = new Agent({
-        connect: {
-          lookup: (_hostname: string, _opts: unknown, cb: (err: Error | null, address: string, family: number) => void) =>
-            cb(null, vetted.address, vetted.family),
-        },
-      });
-
-      try {
-        // undici `request` does not follow redirects on its own — each 3xx is
-        // returned so it can be re-validated below before the next hop.
-        const res = await request(current, {
-          method: 'GET',
-          dispatcher: agent,
-          headersTimeout: ASSET_FETCH_TIMEOUT_MS,
-          bodyTimeout: ASSET_FETCH_TIMEOUT_MS,
-        });
-
-        const status = res.statusCode;
-        if (status >= 300 && status < 400) {
-          const loc = res.headers['location'];
-          await res.body.dump();
-          if (!loc || hop === ASSET_MAX_REDIRECT_HOPS) {
-            throw new Error('Too many redirects or missing redirect target');
-          }
-          current = new URL(Array.isArray(loc) ? loc[0] : loc, current).toString();
-          continue;
-        }
-        if (status >= 400) {
-          await res.body.dump();
-          throw new Error(`HTTP ${status}`);
-        }
-
-        const declared = Number(res.headers['content-length']);
-        if (Number.isFinite(declared) && declared > ASSET_MAX_BYTES) {
-          await res.body.dump();
-          throw new Error(`Asset exceeds ${ASSET_MAX_BYTES} bytes`);
-        }
-
-        const chunks: Buffer[] = [];
-        let total = 0;
-        for await (const chunk of res.body) {
-          total += chunk.length;
-          if (total > ASSET_MAX_BYTES) {
-            res.body.destroy();
-            throw new Error(`Asset exceeds ${ASSET_MAX_BYTES} bytes`);
-          }
-          chunks.push(chunk as Buffer);
-        }
-        return Buffer.concat(chunks, total);
-      } finally {
-        await agent.close().catch(() => {});
-      }
-    }
-    throw new Error('Too many redirects');
+    const r = await fetchPublicUrl(rawUrl, {
+      maxBytes: ASSET_MAX_BYTES,
+      onOverflow: 'throw',
+      timeoutMs: ASSET_FETCH_TIMEOUT_MS,
+      maxRedirects: ASSET_MAX_REDIRECT_HOPS,
+    });
+    return r.body;
+  } catch (e) {
+    if (/^Response exceeds/.test((e as Error).message ?? '')) throw new Error(`Asset exceeds ${ASSET_MAX_BYTES} bytes`);
+    throw e;
   } finally {
     assetInflightBytes -= ASSET_MAX_BYTES;
   }

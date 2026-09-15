@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { executeFetchUrl, handleFetchUrl } from '../../src/agents/common/tool/handlers/fetchUrl';
+import { executeFetchUrl, handleFetchUrl, htmlToText, type PublicFetcher } from '../../src/agents/common/tool/handlers/fetchUrl';
+import { EgressPolicyError } from '../../src/core/config/urlPolicy';
 import { plannerObserveTools, plannerToolsForMode } from '../../src/agents/planner/graph/plan/nodes/tools';
 import {
   ToolName,
@@ -30,13 +31,82 @@ afterEach(() => {
   else process.env.ANT_TAVILY_API_KEY = origKey;
 });
 
-describe('executeFetchUrl — graceful degradation', () => {
-  it('returns a usable fallback string (never throws) when no API key is set', async () => {
+/** Stub fetcher: canned body/content-type, records the options the handler chose. */
+function stubFetcher(body: string, contentType = 'text/html; charset=utf-8') {
+  const calls: Array<Parameters<PublicFetcher>[1]> = [];
+  const fetcher: PublicFetcher = async (url, opts) => {
+    calls.push(opts);
+    return { url, status: 200, contentType, body: Buffer.from(body), truncated: false };
+  };
+  return { fetcher, calls };
+}
+
+// Without a Tavily key the handler fetches in-process through
+// `core/config/urlPolicy` — public addresses only, bounded, HTML → text.
+// `search_web` keeps its "not configured" notice: a keyword search needs an engine.
+describe('executeFetchUrl — self-fetcher fallback (no Tavily key)', () => {
+  it('returns the page as text with scripts/styles dropped and the title kept', async () => {
     delete process.env.ANT_TAVILY_API_KEY;
-    const out = await executeFetchUrl({ url: 'https://example.com' });
-    expect(typeof out).toBe('string');
-    expect(out).toMatch(/not configured|proceed/i);
-    // Must not throw — the caller keeps planning with available info.
+    const html = '<html><head><title>Release notes</title><style>p{}</style></head><body><script>evil()</script><h1>v2.0</h1><p>Faster &amp; smaller.</p></body></html>';
+    const { fetcher, calls } = stubFetcher(html);
+    const out = await executeFetchUrl({ url: 'https://example.com/notes' }, fetcher);
+    expect(out).toMatch(/^## Page content: https:\/\/example\.com\/notes/);
+    expect(out).toContain('# Release notes');
+    expect(out).toContain('v2.0');
+    expect(out).toContain('Faster & smaller.');
+    expect(out).not.toMatch(/evil\(\)|p\{\}|<h1>/);
+    // The bounds the fetcher is asked for: truncate (never refuse a long page),
+    // few redirects, no ambient credentials — only the explicit UA/Accept.
+    expect(calls[0].onOverflow).toBe('truncate');
+    expect(calls[0].maxRedirects).toBeLessThanOrEqual(3);
+    expect(Object.keys(calls[0].headers ?? {}).map(k => k.toLowerCase()).sort()).toEqual(['accept', 'user-agent']);
+  });
+
+  it('passes plain text / JSON through and caps the body', async () => {
+    delete process.env.ANT_TAVILY_API_KEY;
+    const { fetcher } = stubFetcher('x'.repeat(20_000), 'text/plain');
+    const out = await executeFetchUrl({ url: 'https://example.com/big.txt' }, fetcher);
+    expect(out).toContain('[content truncated]');
+    expect(out.length).toBeLessThan(9_000);
+  });
+
+  it('a policy refusal is reported as such (never thrown) and points at http_request for local servers', async () => {
+    delete process.env.ANT_TAVILY_API_KEY;
+    const refusing: PublicFetcher = async () => { throw new EgressPolicyError('Blocked internal address for host: 169.254.169.254'); };
+    const out = await executeFetchUrl({ url: 'http://169.254.169.254/latest/meta-data/' }, refusing);
+    expect(out).toMatch(/refused/i);
+    expect(out).toMatch(/169\.254\.169\.254/);
+    expect(out).toMatch(/http_request/);
+  });
+
+  it('refuses a private-range URL for real (literal host — no DNS, no socket)', async () => {
+    delete process.env.ANT_TAVILY_API_KEY;
+    const out = await executeFetchUrl({ url: 'http://10.0.0.5/admin' });
+    expect(out).toMatch(/refused/i);
+    expect(out).toMatch(/internal address/i);
+  });
+
+  it('a network failure degrades to a usable string', async () => {
+    delete process.env.ANT_TAVILY_API_KEY;
+    const failing: PublicFetcher = async () => { throw new Error('HTTP 503'); };
+    const out = await executeFetchUrl({ url: 'https://example.com' }, failing);
+    expect(out).toMatch(/failed/i);
+    expect(out).toMatch(/HTTP 503/);
+    expect(out).toMatch(/search_web/);
+  });
+
+  it('a binary content type is named, not inlined', async () => {
+    delete process.env.ANT_TAVILY_API_KEY;
+    const { fetcher } = stubFetcher('\x89PNG', 'image/png');
+    const out = await executeFetchUrl({ url: 'https://example.com/a.png' }, fetcher);
+    expect(out).toMatch(/image\/png/);
+    expect(out).toMatch(/not a text page/);
+  });
+});
+
+describe('htmlToText', () => {
+  it('turns block boundaries into newlines and decodes entities', () => {
+    expect(htmlToText('<p>a&nbsp;b</p><div>c &lt;d&gt;</div>e&#39;s &#x41;<br>')).toBe('a b\nc <d>\ne\'s A');
   });
 });
 
@@ -53,11 +123,11 @@ describe('handleFetchUrl — plan-phase cap (mirrors search_web)', () => {
     expect(res.content).toMatch(/SKIPPED/);
   });
 
-  it('allows the call when under the limit (no key → graceful content, no error)', async () => {
+  it('allows the call when under the limit (no key → policy-refused literal host, still no tool error)', async () => {
     delete process.env.ANT_TAVILY_API_KEY;
     const res = await handleFetchUrl(
       ctx({ planFetchUrlCount: 0, planFetchUrlLimit: 5 }),
-      { url: 'https://example.com' },
+      { url: 'http://127.0.0.1:1/' },
     );
     expect(res.error).toBeUndefined();
     expect(typeof res.content).toBe('string');

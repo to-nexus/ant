@@ -116,6 +116,12 @@ in `core/config/vectorDbCapability.ts` — never read
 See [AGENTS.md](../../AGENTS.md) for the binding rule and the active
 gate sites.
 
+## Web tools
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ANT_TAVILY_API_KEY` | unset | Tavily key behind `search_web` (`/search`) and `fetch_url` (`/extract`). **`fetch_url` works without it**: the in-process self-fetcher reads the page through `core/config/urlPolicy` — public addresses only (every DNS record classified, connection pinned to the vetted address), each redirect hop re-vetted, no cookies or ambient credentials, bounded time and bytes, HTML reduced to text. `search_web` has no fallback and reports itself as not configured. |
+
 ## Cloud-only
 
 | Variable | Default | Purpose |

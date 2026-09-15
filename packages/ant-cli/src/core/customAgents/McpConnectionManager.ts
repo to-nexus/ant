@@ -42,6 +42,7 @@ import type { McpCredentialResolver } from './McpCredentialResolver';
 import type { McpServerConfig, RestApiServerConfig } from './types';
 import {
   buildRestToolInfos,
+  assertPublicApiBaseUrl,
   compileRestServer,
   executeRestCall,
   parseApiToolName,
@@ -234,7 +235,9 @@ export class McpConnectionManager {
       cfg,
       isSelfApiConfig(cfg) ? {} : await this.resolveCredentials(cfg.headers, 'headers', serverName, 'API server'),
     );
-    this.restServers.set(serverName, compileRestServer(serverName, cfg, connectivity));
+    const compiledServer = compileRestServer(serverName, cfg, connectivity);
+    if (!isSelfApiConfig(cfg)) await assertPublicApiBaseUrl(serverName, compiledServer.baseUrl.href);
+    this.restServers.set(serverName, compiledServer);
     const infos = buildRestToolInfos(serverName, cfg, connectivity.label);
     this.tools.push(...infos);
     console.log(`🔌 [API] "${serverName}" declared — ${infos.length} synthesized tools (base: ${connectivity.label})`);

@@ -49,6 +49,7 @@ import {
   API_TOOL_VERBS,
 } from '@ant/shared';
 import { CHILD_PROCESS_ENV } from '../types/processEnv';
+import { isEgressPolicyError, resolvePublicEgress } from '../config/urlPolicy';
 import { McpConfigError } from './McpConfigError';
 import type { McpCallResult, McpToolInfo } from './McpConnectionManager';
 import type { ToolDefinition } from '../ports/llm';
@@ -158,6 +159,34 @@ export function resolveSelfApiConfig(
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     label: SELF_API_LABEL,
   };
+}
+
+/**
+ * Cloud mode only: an external `apis.baseUrl` must resolve to public addresses.
+ * The pod sits inside the cluster network, so a definition naming
+ * `http://10.x/…`, the metadata endpoint, or a loopback service would turn the
+ * synthesized tools into an internal pivot carrying declared headers. Local
+ * mode is exempt — a private-range dev server is the normal target there. A
+ * self entry never comes here: its origin is `ANT_API_URL`, not authored.
+ * Throws McpConfigError so the definition is classified `config_invalid`.
+ */
+export async function assertPublicApiBaseUrl(
+  serverName: string,
+  baseUrl: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  if (env[CHILD_PROCESS_ENV.SERVER_MODE] !== 'cloud') return;
+  try {
+    await resolvePublicEgress(baseUrl);
+  } catch (e) {
+    const detail = (e as Error).message ?? String(e);
+    throw new McpConfigError(
+      isEgressPolicyError(e)
+        ? `API server "${serverName}": baseUrl "${baseUrl}" points at an internal address (${detail}) — in cloud mode a declared API must be reachable on the public internet`
+        : `API server "${serverName}": baseUrl "${baseUrl}" host could not be resolved (${detail})`,
+      { serverName },
+    );
+  }
 }
 
 /** Connectivity for either entry form. External entries need their headers already resolved. */

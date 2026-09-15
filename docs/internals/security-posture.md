@@ -258,6 +258,31 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   ([20-workspace-isolation.md](20-workspace-isolation.md)).
 - **CORS.** `ANT_CORS_ORIGINS=*` is **opt-in OFF by default** and **forbidden in
   production** ([corsConfig.ts](../../packages/ant-cli/src/periphery/adapters/http/middleware/corsConfig.ts)).
+- **A shell child reads only what it may write.** ✅ The write guard in
+  `runCommand.ts` checked only where bytes LAND, so `cp /vault/secrets/set-env.sh
+  <artifacts>/` succeeded and moved a Vault-injected file into the user-visible
+  sandbox (2026-09 report). `detectReadPathViolations` now contains every path a
+  read verb names — `cat`/`head`/`ls`/`find`/`grep` FILE args, `cp`/`mv` SOURCES,
+  `tar -C`/`-f`, `<` input redirects, `cd` (tracked across `&&` chains), `~` —
+  to the same sandbox root the write guard uses. It is a guardrail, not a
+  boundary: `node -e` / `python -c` bypass it by design, and the structural
+  closure is mount-namespace isolation of every user-authored child (planned:
+  bubblewrap, `.claude/plans/ant-eventual-mitten.md` Tier 2). Guard rows:
+  `tests/utils/runCommand-policy.test.ts`.
+- **One owner for "may this process connect to that host".** ✅
+  `core/config/urlPolicy.ts` holds `isLoopbackHost` (the dev-server predicate:
+  `http_request`, shell `curl`/`wget`), `isPrivateAddress` + `resolvePublicEgress`
+  (public-only DNS classification with the vetted address pinned into the
+  connection), and `fetchPublicUrl` (manual per-hop re-vetting, byte cap) —
+  consumed by `download_asset`, the `fetch_url` self-fetcher, and cloud-mode
+  `apis.baseUrl` (`assertPublicApiBaseUrl`; local mode is exempt, a self entry
+  never comes through it). Shell `curl`/`wget` used to bypass the loopback rule
+  `http_request` enforced for its own URLs; `detectShellNetworkViolations` closes
+  that lane and refuses proxy / `--resolve` / `--connect-to` / config-file flags
+  outright. Do not add a second fetch path or a second address classifier.
+  Guards: `tests/security/url-egress-policy.test.ts`,
+  `tests/security/download-asset-fetch.test.ts`, `tests/customAgents/rest-api.test.ts`
+  (cloud baseUrl rows), `tests/utils/runCommand-policy.test.ts` (curl/wget rows).
 - **Threat model notes.** `run_command` chaining is bounded by an allowlist with
   an intentional `ANT_UNSAFE_*` escape hatch (accepted). Multi-org/user
   detection emits a one-shot `logger.warn`. Local mode assumes a

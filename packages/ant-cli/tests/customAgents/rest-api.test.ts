@@ -17,7 +17,7 @@
  *      be wrong is loud at connect time rather than a 401 mid-turn.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { parseRestAllowLine, validateApiServers } from '@ant/shared';
 import {
   buildRestToolInfos,
@@ -387,6 +387,45 @@ describe('connection manager — apis channel', () => {
     const mcp = new McpConnectionManager({}, stubResolver({}), { d: { baseUrl: 'not-a-url' } });
     const err = await mcp.connect({ failFast: true }).then(() => null, (e) => e);
     expect(isMcpConfigError(err)).toBe(true);
+  });
+});
+
+// N1: the pod sits inside the cluster network, so an authored baseUrl naming a
+// private / metadata / loopback host would turn the synthesized tools into an
+// internal pivot carrying the declared headers. Cloud only — a private-range
+// dev server is the normal local target. Literal hosts decide without DNS.
+describe('connection manager — cloud-mode baseUrl egress (urlPolicy owner)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['cloud metadata', 'http://169.254.169.254/latest'],
+    ['a private range', 'http://10.0.0.5/api'],
+    ['loopback', 'http://127.0.0.1:4100/api'],
+    ['localhost by name', 'http://localhost:4100/api'],
+  ])('cloud refuses %s as McpConfigError', async (_n, baseUrl) => {
+    vi.stubEnv('ANT_SERVER_MODE', 'cloud');
+    const mcp = new McpConnectionManager({}, stubResolver({}), { d: { baseUrl } });
+    const err = await mcp.connect({ failFast: true }).then(() => null, (e) => e);
+    expect(isMcpConfigError(err)).toBe(true);
+    expect(String(err.message)).toMatch(/internal address/);
+  });
+
+  it('local admits the same private baseUrl (dev servers live there)', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    const mcp = new McpConnectionManager({}, stubResolver({}), { d: { baseUrl: 'http://10.0.0.5/api' } });
+    await mcp.connect({ failFast: true });
+    expect(mcp.listToolInfos().map((t) => t.name)).toEqual(['api__d__get', 'api__d__request']);
+    await mcp.close();
+  });
+
+  it('a self entry is exempt — its origin is ANT_API_URL, not authored', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'cloud');
+    vi.stubEnv('ANT_API_URL', 'http://ant-api.ant.svc:4100');
+    vi.stubEnv('ANT_SELF_API_TOKEN', 'tok');
+    const mcp = new McpConnectionManager({}, stubResolver({}), { ant: { self: true } });
+    await mcp.connect({ failFast: true });
+    expect(mcp.listToolInfos().length).toBe(2);
+    await mcp.close();
   });
 });
 
