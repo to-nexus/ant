@@ -551,3 +551,37 @@ describe('self-re-arming control jobs', () => {
     expect(q).not.toMatch(/getJob\(jobId\)/);
   });
 });
+
+describe('run-record write → publish has ONE owner (runStore)', () => {
+  it("`cause: 'runUpdate'` is spelled only in runStore.ts — a cluster module publishing after executeDispatches re-sends a pre-dispatch snapshot", () => {
+    for (const file of [path.join(SRC, 'infrastructure/scheduling/PipelineRunCoordinator.ts'), ...walk(PIPELINE_RUN_DIR)]) {
+      const text = fs.readFileSync(file, 'utf-8');
+      const hits = text.match(/cause: 'runUpdate'/g)?.length ?? 0;
+      if (path.basename(file) === 'runStore.ts') expect(hits).toBe(1);
+      else expect(hits, path.basename(file)).toBe(0);
+    }
+  });
+
+  it('saveRun is module-private; every other write commits through commitRun (create, seal) or mutateRun', () => {
+    const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
+    expect(runStore).not.toMatch(/export async function saveRun/);
+    expect(runStore).toMatch(/export async function commitRun/);
+    // mutateRun publishes only a CHANGED record, and does so under the lock.
+    expect(runStore).toMatch(/if \(result\.run !== live\) await commitRun\(deps, owner, result\.run\);/);
+    for (const file of walk(PIPELINE_RUN_DIR)) {
+      if (path.basename(file) === 'runStore.ts') continue;
+      expect(fs.readFileSync(file, 'utf-8'), path.basename(file)).not.toMatch(/\bsaveRun\(/);
+    }
+    expect(read('infrastructure/scheduling/pipelineRun/fire.ts')).toMatch(/commitRun\(ctx\.deps, owner, plan\.run\)/);
+    expect(read('infrastructure/scheduling/pipelineRun/lifecycle.ts')).toMatch(/commitRun\(ctx\.deps, owner, sealed\)/);
+  });
+
+  it('the run summary line has ONE shape (shared runSummaryOf) — index line, live runs row, no inline gate filter', () => {
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    expect(lifecycle).toMatch(/appendRunIndex\([\s\S]*?runSummaryOf\(sealed\)\)/);
+    expect(lifecycle).not.toMatch(/startsWith\('gate-'\)/);
+    expect(read('periphery/adapters/http/routes/pipelines/activations.routes.ts')).toMatch(/live = runSummaryOf\(run\)/);
+    // The list entry no longer carries a second pending-count owner — the FE reads its inbox rows.
+    expect(pipeRoutesAll()).not.toMatch(/pendingApprovalCount/);
+  });
+});

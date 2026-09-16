@@ -18,7 +18,7 @@ import type {
 import { REDIS_KEYS, REDIS_TTL } from '../../../core/constants/redis';
 import { logger } from '../../../utils/logger';
 import { deriveRunStatus } from '../../../core/pipelines/ChainExecutor';
-import { appendEvent, isTerminal, mutateRun, publicRun, publish } from './runStore';
+import { appendEvent, isTerminal, mutateRun, publish } from './runStore';
 import {
   COMPONENT,
   MAX_OUTCOME_RETRIES,
@@ -142,7 +142,6 @@ export async function enterAwaitingToolApproval(ctx: PipelineRunOps, data: Pipel
       jobId,
     },
   });
-  await publish(ctx.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
 }
 
 /**
@@ -227,7 +226,6 @@ export async function enterAwaitingClarify(ctx: PipelineRunOps, data: PipelineCl
       jobId,
     },
   });
-  await publish(ctx.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
 }
 
 /**
@@ -310,7 +308,6 @@ export async function applyClarifyAnswer(ctx: PipelineRunOps, params: {
     clarifyId: resolved.clarifyId,
     answeredBy: params.answeredBy,
   });
-  await publish(ctx.deps, owner, { cause: 'runUpdate', projectId, pipelineId, run: publicRun(result.run) });
 
   const def = result.run.defSnapshot;
   const stepDef = def?.steps.find((s) => s.id === stepId);

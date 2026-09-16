@@ -23,7 +23,7 @@ import { deriveRunStatus, effectiveNeeds } from '../../../core/pipelines/ChainEx
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { loadActivationByProject } from '../../../core/pipelines/store';
 import { pipelineGateDeepLink, type PipelineNotice, type PipelineNoticeRecipient } from '../../../core/pipelines/notifications';
-import { appendEvent, getRun, isTerminal, mutateRun, publicRun, publish, tenantCtx } from './runStore';
+import { appendEvent, getRun, isTerminal, mutateRun, publish, tenantCtx } from './runStore';
 import { COMPONENT, type HitlRecord, type PipelineRunOps } from './types';
 
 /**
@@ -279,7 +279,6 @@ export async function applyResolvedGate(
       decision,
       decidedBy,
     });
-    await publish(ctx.deps, hitl.owner, { cause: 'runUpdate', projectId: hitl.projectId, pipelineId: hitl.pipelineId, run: publicRun(result.run) });
     const def = result.run.defSnapshot;
     const stepDef = def?.steps.find((s) => s.id === hitl.stepId);
     if (def && stepDef && !isApprovalStep(stepDef) && hitl.tool) {

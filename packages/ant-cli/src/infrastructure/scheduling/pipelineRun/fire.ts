@@ -18,7 +18,7 @@ import { buildInitialSteps, planAdvance } from '../../../core/pipelines/ChainExe
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../core/pipelines/scopeRoots';
 import { loadActivationByProject, loadAvailability, loadPipeline, readRunIndex } from '../../../core/pipelines/store';
-import { appendEvent, publicRun, publish, saveRun, tenantCtx } from './runStore';
+import { appendEvent, commitRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
 /** A cron fire older than this is "missed" (worker downtime) — `onMissed` decides. */
@@ -167,7 +167,6 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
 
   await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
   const plan = planAdvance(def, run);
-  await saveRun(ctx.deps, plan.run);
-  await publish(ctx.deps, owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId, run: publicRun(plan.run) });
+  await commitRun(ctx.deps, owner, plan.run);
   await ctx.executeDispatches(owner, def, plan.run, plan.dispatches);
 }

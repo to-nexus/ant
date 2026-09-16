@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { PipelineDef, RunRecord } from '@ant/shared';
+import { runSummaryOf, type PipelineDef, type RunRecord } from '@ant/shared';
 import { buildInitialSteps, planAdvance, applyStepOutcome } from '../../src/core/pipelines/ChainExecutor';
 
 function def(steps: any[], onStepFailure: 'abort' | 'continue' = 'abort'): PipelineDef {
@@ -304,5 +304,29 @@ describe('planAdvance — terminal status', () => {
     const s1 = planAdvance(d, freshRun(d));
     const s2 = applyStepOutcome(d, s1.run, 'a', 'failed');
     expect(s2.run.status).toBe('failed');
+  });
+});
+
+describe('runSummaryOf — the ONE run-summary shape (index line, live row, FE fold)', () => {
+  it('decided approval-step gates ride the summary; tool gates and undecided gates do not', () => {
+    const run = {
+      ...freshRun(def([job('a'), gate('g1'), gate('g2'), job('b')])),
+      steps: [
+        { stepId: 'a', status: 'succeeded' as const },
+        { stepId: 'g1', status: 'succeeded' as const, gate: { gateId: 'gate-r1-g1', cardId: 'c', prompt: 'p', armedAt: 't', onTimeout: 'reject' as const, decision: 'approved' as const, decidedBy: 'bob' } },
+        { stepId: 'g2', status: 'awaiting_gate' as const, gate: { gateId: 'gate-r1-g2', cardId: 'c', prompt: 'p', armedAt: 't', onTimeout: 'reject' as const } },
+        { stepId: 'b', status: 'succeeded' as const, gate: { gateId: 'tga-r1-b', cardId: 'c', prompt: 'p', armedAt: 't', onTimeout: 'reject' as const, decision: 'approved' as const } },
+      ],
+    };
+    expect(runSummaryOf(run).gates).toEqual([{ stepId: 'g1', decision: 'approved', decidedBy: 'bob' }]);
+  });
+
+  it('optional keys (endedAt / error / gates) are present only when set', () => {
+    const live = freshRun(def([job('a')]));
+    const liveSummary = runSummaryOf(live);
+    expect(liveSummary).toEqual({ runId: 'r1', pipelineId: 'p1', projectId: 'proj', status: 'running', firedBy: 'cron', fireEpoch: 0, startedAt: live.startedAt });
+    expect('gates' in liveSummary).toBe(false);
+    const sealed = runSummaryOf({ ...live, status: 'failed', endedAt: 'e', error: 'a: boom' });
+    expect(sealed).toMatchObject({ status: 'failed', endedAt: 'e', error: 'a: boom' });
   });
 });

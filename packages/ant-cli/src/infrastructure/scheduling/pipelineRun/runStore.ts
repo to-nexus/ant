@@ -1,7 +1,14 @@
 /**
  * Run persistence, locking and fan-out kernel — every cluster funnels its run
- * mutations through `mutateRun` (per-run Redis lock + orphan-gate sweep), and
- * every event/SSE write goes through `appendEvent` / `publish`.
+ * mutations through `mutateRun` (per-run Redis lock + orphan-gate sweep) or
+ * `commitRun`, and every event/SSE write goes through `appendEvent` / `publish`.
+ *
+ * Write → publish has ONE owner: a run-record write publishes the record it
+ * wrote (`runUpdate`), under the run lock, so wire order equals write order.
+ * Cluster modules never publish the `runUpdate` cause themselves — an ad hoc
+ * publish after `executeDispatches` re-sent a pre-dispatch snapshot over the
+ * fresher one, and the writes that had no publish at all (dispatch, gate arm,
+ * seal) left the FE frozen on the previous step state until a refresh.
  */
 
 import {
@@ -49,12 +56,18 @@ export function readRunFromDisk(
   return null;
 }
 
-export async function saveRun(deps: PipelineCoordinatorDeps, run: RunRecord): Promise<void> {
+async function saveRun(deps: PipelineCoordinatorDeps, run: RunRecord): Promise<void> {
   // Open-ended human waits (gate without timeout, clarify) must outlive the
   // 7d projection TTL — align with the ACTIVE overlap bound while awaiting.
   const awaiting = run.steps.some((s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify');
   const ttl = awaiting ? REDIS_TTL.PIPE.ACTIVE : REDIS_TTL.PIPE.RUN;
   await deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.RUN(run.runId), JSON.stringify(run), ttl);
+}
+
+/** Save a run record and publish it — the ONE write→publish seam (create, seal, and every `mutateRun` change). */
+export async function commitRun(deps: PipelineCoordinatorDeps, owner: PipelineOwner, run: RunRecord): Promise<void> {
+  await saveRun(deps, run);
+  await publish(deps, owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId: run.pipelineId, run: publicRun(run) });
 }
 
 /**
@@ -99,7 +112,11 @@ export async function mutateRun(
         const live = await getRun(deps, runId);
         if (!live) return null;
         result = await fn(live, live.defSnapshot);
-        await saveRun(deps, result.run);
+        // Reference identity is the no-op signal: guard paths return `live`
+        // itself, every real change spreads a new record. A no-op still
+        // re-saves (TTL refresh) but publishes nothing.
+        if (result.run !== live) await commitRun(deps, owner, result.run);
+        else await saveRun(deps, result.run);
         // Any step this mutation turned `cancelled` while it still held an
         // undecided gate is an orphaned human wait (the abort cascade's
         // armed gate, §5). The executor owns the state change; the arms,

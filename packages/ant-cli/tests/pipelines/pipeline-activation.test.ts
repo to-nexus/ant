@@ -476,3 +476,80 @@ describe('approver-of index — advisory discovery projection (activate/PUT/deac
     expect(published[0].ch).not.toBe(published[1].ch);
   });
 });
+
+describe('mutateRun / commitRun — a run-record write publishes the record it wrote', () => {
+  const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
+  const RUN = (over: Record<string, unknown> = {}) => ({
+    runId: 'r1',
+    pipelineId: 'p1',
+    projectId: 'proj-a',
+    firedBy: 'manual',
+    fireEpoch: 1,
+    status: 'running',
+    startedAt: '2026-09-16T00:00:00.000Z',
+    defSnapshot: { version: 2, name: 'P', steps: [] },
+    steps: [{ stepId: 's1', status: 'running', jobId: 'j1', output: { answer: 'secret', capturedAt: 't' } }],
+    ...over,
+  });
+
+  function makeRunDeps(seed: Record<string, unknown>) {
+    const store = new Map<string, string>([[`ant:pipe:run:${seed.runId}`, JSON.stringify(seed)]]);
+    const calls: string[] = [];
+    const published: any[] = [];
+    const deps = {
+      workspacesPath: tmp,
+      scheduleQueue: { cancelDelayed: async () => {} },
+      stateStore: {
+        getKey: async (k: string) => store.get(k) ?? null,
+        setKeyWithTTL: async (k: string, v: string) => {
+          calls.push('save');
+          store.set(k, v);
+        },
+        deleteKey: async () => {},
+        acquireLock: async () => true,
+        releaseLock: async () => void calls.push('release'),
+        publish: async (_ch: string, msg: any) => {
+          calls.push('publish');
+          published.push(msg);
+        },
+      },
+    } as any;
+    return { deps, store, calls, published };
+  }
+
+  it('a changed mutator publishes exactly one runUpdate carrying the saved record (def + answers stripped), before the lock is released', async () => {
+    const { mutateRun } = await import('../../src/infrastructure/scheduling/pipelineRun/runStore');
+    const { deps, calls, published } = makeRunDeps(RUN());
+    const result = await mutateRun(deps, OWNER, 'r1', async (live) => ({
+      run: { ...live, steps: live.steps.map((s) => ({ ...s, status: 'succeeded' as const })) },
+      dispatches: [],
+    }));
+    expect(result?.run.steps[0].status).toBe('succeeded');
+    expect(published).toHaveLength(1);
+    expect(published[0].type).toBe('pipeline');
+    expect(published[0].data).toMatchObject({ cause: 'runUpdate', projectId: 'proj-a', pipelineId: 'p1' });
+    expect(published[0].data.run.steps[0]).toMatchObject({ status: 'succeeded' });
+    expect(published[0].data.run.defSnapshot).toBeUndefined();
+    expect(published[0].data.run.steps[0].output.answer).toBeUndefined();
+    expect(calls).toEqual(['save', 'publish', 'release']);
+  });
+
+  it('a guard no-op (mutator returns live) re-saves for the TTL refresh and publishes nothing', async () => {
+    const { mutateRun } = await import('../../src/infrastructure/scheduling/pipelineRun/runStore');
+    const { deps, calls, published } = makeRunDeps(RUN());
+    const result = await mutateRun(deps, OWNER, 'r1', async (live) => ({ run: live, dispatches: [] }));
+    expect(result).not.toBeNull();
+    expect(published).toEqual([]);
+    expect(calls).toEqual(['save', 'release']);
+  });
+
+  it('commitRun (create / seal) saves then publishes the same record', async () => {
+    const { commitRun } = await import('../../src/infrastructure/scheduling/pipelineRun/runStore');
+    const { deps, store, published } = makeRunDeps(RUN());
+    const sealed = RUN({ status: 'completed', endedAt: '2026-09-16T00:01:00.000Z' });
+    await commitRun(deps, OWNER, sealed as any);
+    expect(JSON.parse(store.get('ant:pipe:run:r1')!).endedAt).toBe('2026-09-16T00:01:00.000Z');
+    expect(published).toHaveLength(1);
+    expect(published[0].data.run).toMatchObject({ status: 'completed', endedAt: '2026-09-16T00:01:00.000Z' });
+  });
+});

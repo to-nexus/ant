@@ -18,7 +18,7 @@ import { logger } from '../../../utils/logger';
 import { deriveRunStatus } from '../../../core/pipelines/ChainExecutor';
 import { renderDirective } from './render';
 import { captureStepOutput, detectApprovalSeal, detectClarifySeal } from './seals';
-import { appendEvent, getRun, isTerminal, mutateRun, publicRun, publish } from './runStore';
+import { appendEvent, getRun, isTerminal, mutateRun } from './runStore';
 import {
   COMPONENT,
   MAX_OUTCOME_RETRIES,
@@ -344,7 +344,6 @@ export async function failStepOrRetry(
     retries: 0,
     directiveOverride: held.directiveOverride,
   });
-  await publish(ctx.deps, owner, { cause: 'runUpdate', projectId: held.projectId, pipelineId: held.pipelineId, run: publicRun(result.run) });
   return true;
 }
 

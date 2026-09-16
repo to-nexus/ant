@@ -668,6 +668,44 @@ export interface PipelineRunSummary {
   gates?: PipelineRunGateSummary[];
 }
 
+/**
+ * Decided approval-step gates of a run. Approval STEPS only — a paused tool
+ * call (`tga-…` gate id) is a runtime grant, not an authored decision, so it
+ * stays off the summary.
+ */
+export function summarizeRunGates(steps: readonly StepRecord[]): PipelineRunGateSummary[] {
+  return steps
+    .filter((s) => s.gate?.decision && s.gate.gateId.startsWith('gate-'))
+    .map((s) => ({
+      stepId: s.stepId,
+      decision: s.gate!.decision!,
+      ...(s.gate!.decidedBy && { decidedBy: s.gate!.decidedBy }),
+    }));
+}
+
+/**
+ * The ONE run-summary shape — the `runs/index.jsonl` line, the runs-list live
+ * row, and the FE `runUpdate` fold all derive it from here so a run never
+ * changes shape between "live" and "sealed". Optional keys ride only when set.
+ */
+export function runSummaryOf(
+  run: Pick<RunRecord, 'runId' | 'pipelineId' | 'projectId' | 'status' | 'firedBy' | 'fireEpoch' | 'startedAt' | 'endedAt' | 'error' | 'steps'>,
+): PipelineRunSummary {
+  const gates = summarizeRunGates(run.steps);
+  return {
+    runId: run.runId,
+    pipelineId: run.pipelineId,
+    projectId: run.projectId,
+    status: run.status,
+    firedBy: run.firedBy,
+    fireEpoch: run.fireEpoch,
+    startedAt: run.startedAt,
+    ...(run.endedAt && { endedAt: run.endedAt }),
+    ...(run.error && { error: run.error }),
+    ...(gates.length > 0 && { gates }),
+  };
+}
+
 /** Append-only run event line (`.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl`). */
 export interface PipelineRunEvent {
   ts: string;
@@ -736,8 +774,6 @@ export interface PipelineListEntry {
   nextFireAt?: string;
   /** Most recent run across own activations. */
   lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
-  /** Pending approval gates across own activations. */
-  pendingApprovalCount: number;
   /** Open (unacknowledged) advisories against the caller's catalog — recomputed per list read. */
   openAdvisoryCount: number;
 }

@@ -289,7 +289,6 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
     scopeRoot: PipelineScopeRoot,
     pipelineId: string,
     def: PipelineDef,
-    pendingByPipeline: Map<string, number>,
     agents: PipelineCatalogAgent[],
   ): Promise<PipelineListEntry> {
     const enabled = safeEnabled(scopeRoot.root, pipelineId);
@@ -315,7 +314,6 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
       activations,
       ...(enabled && mineActive.length > 0 && fire ? { nextFireAt: fire } : {}),
       ...(lastRun && { lastRun }),
-      pendingApprovalCount: pendingByPipeline.get(pipelineId) ?? 0,
       openAdvisoryCount: resolvePipelineAdvisories(def, agents).open.length,
     };
   }

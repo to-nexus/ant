@@ -4,7 +4,7 @@
  * chaining, and the run-finished chat notice.
  */
 
-import { UNIVERSAL_FEATURE, type RunRecord, type StepRecord } from '@ant/shared';
+import { UNIVERSAL_FEATURE, runSummaryOf, type RunRecord, type StepRecord } from '@ant/shared';
 import type { PipelineOwner } from '../../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_CHANNELS } from '../../../core/constants/redis';
 import { logger } from '../../../utils/logger';
@@ -18,7 +18,7 @@ import {
   loadAvailability,
   loadPipeline,
 } from '../../../core/pipelines/store';
-import { appendEvent, getActiveRunId, getRun, isTerminal, mutateRun, publicRun, publish, saveRun, tenantCtx } from './runStore';
+import { appendEvent, commitRun, getActiveRunId, getRun, isTerminal, mutateRun, publicRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
 /**
@@ -70,7 +70,6 @@ export async function applyOutcome(
   } else if (isTerminal(result.run.status)) {
     await finalizeRun(ctx, owner, result.run);
   }
-  await publish(ctx.deps, owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId: result.run.pipelineId, run: publicRun(result.run) });
   return true;
 }
 
@@ -121,7 +120,6 @@ export async function cancelRun(ctx: PipelineRunOps, owner: PipelineOwner, runId
     await ctx.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${s.stepId}`);
   }
   await finalizeRun(ctx, owner, result.run);
-  await publish(ctx.deps, owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId: result.run.pipelineId, run: publicRun(result.run) });
   return true;
 }
 
@@ -170,34 +168,16 @@ export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run
   const error =
     run.error ?? ((run.status === 'failed' || run.status === 'partial') && firstFailed ? `${firstFailed.stepId}: ${firstFailed.error}` : undefined);
   const sealed: RunRecord = { ...run, endedAt, ...(error && { error }) };
-  await saveRun(ctx.deps, sealed);
+  await commitRun(ctx.deps, owner, sealed);
   await appendEvent(ctx.deps, owner, run.projectId, {
     ts: endedAt,
     event: 'run_finished',
     runId: run.runId,
     detail: { status: run.status, run: publicRun(sealed) },
   });
-  // Gate decisions ride the summary line — the org observer's "who opened
-  // this gate" channel (approval STEPS only; tool gates stay off it).
-  const gates = run.steps
-    .filter((s) => s.gate?.decision && s.gate.gateId.startsWith('gate-'))
-    .map((s) => ({
-      stepId: s.stepId,
-      decision: s.gate!.decision!,
-      ...(s.gate!.decidedBy && { decidedBy: s.gate!.decidedBy }),
-    }));
-  await appendRunIndex(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), run.projectId, {
-    runId: run.runId,
-    pipelineId: run.pipelineId,
-    projectId: run.projectId,
-    status: run.status,
-    firedBy: run.firedBy,
-    fireEpoch: run.fireEpoch,
-    startedAt: run.startedAt,
-    endedAt,
-    ...(sealed.error && { error: sealed.error }),
-    ...(gates.length > 0 && { gates }),
-  });
+  // The index line is the shared summary shape — gate decisions (approval
+  // STEPS only) ride it as the org observer's "who opened this gate" channel.
+  await appendRunIndex(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), run.projectId, runSummaryOf(sealed));
   const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, run.projectId);
   const holder = await ctx.deps.stateStore.getKey(activeKey);
   if (holder === run.runId) {

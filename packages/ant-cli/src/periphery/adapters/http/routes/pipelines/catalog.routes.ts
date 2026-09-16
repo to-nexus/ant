@@ -42,10 +42,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       const scopeRoots = scopeRootsOf(owner);
       const needsGate = scopeRoots.some((r) => r.aclGoverned);
       const gate = needsGate ? await orgGateFor(req)() : null;
-      const pending = await deps.coordinator.listPendingApprovals(owner);
       const agents = resolvePipelineCatalog(ctxOf(owner)); // once per request — every entry's open-advisory count reads it
-      const pendingByPipeline = new Map<string, number>();
-      for (const p of pending) pendingByPipeline.set(p.pipelineId, (pendingByPipeline.get(p.pipelineId) ?? 0) + 1);
 
       const entries: PipelineListEntry[] = [];
       const invalid: Array<{ id: string; error: string; scope: PipelineScope }> = [];
@@ -60,7 +57,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
             continue;
           }
           resolvable.add(`${scopeRoot.scope}:${item.id}`);
-          entries.push(await buildListEntry(owner, gate, scopeRoot, item.id, item.def, pendingByPipeline, agents));
+          entries.push(await buildListEntry(owner, gate, scopeRoot, item.id, item.def, agents));
         }
       }
 
@@ -161,7 +158,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
     const agents = resolvePipelineCatalog(ctxOf(owner));
     return {
       id: requestedId,
-      entry: await buildListEntry(owner, null, userRoot, requestedId, def, new Map(), agents),
+      entry: await buildListEntry(owner, null, userRoot, requestedId, def, agents),
       judgement: judgePipelineForCatalog(def, agents),
     };
   }
@@ -252,7 +249,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       const agents = resolvePipelineCatalog(ctxOf(owner));
       res.json({
         id: targetId,
-        entry: await buildListEntry(owner, gate, found.scopeRoot, targetId, def, new Map(), agents),
+        entry: await buildListEntry(owner, gate, found.scopeRoot, targetId, def, agents),
         created: false,
         ...judgementResponseFields(judgePipelineForCatalog(def, agents)),
       });

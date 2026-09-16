@@ -11,6 +11,7 @@ import {
   validatePipelineActivation,
   type PipelineActivation,
   type PipelineDef,
+  runSummaryOf,
   type PipelineRunSummary,
 } from '@ant/shared';
 import { approverUnion, syncApproverIndexForActivation } from '../../../../../core/pipelines/approverIndex';
@@ -387,16 +388,7 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
       if (activeRunId) {
         const run = await deps.coordinator.getRun(activeRunId);
         if (run && run.pipelineId === pipelineId && !runs.some((r) => r.runId === run.runId)) {
-          live = {
-            runId: run.runId,
-            pipelineId,
-            projectId: run.projectId,
-            status: run.status,
-            firedBy: run.firedBy,
-            fireEpoch: run.fireEpoch,
-            startedAt: run.startedAt,
-            endedAt: run.endedAt,
-          };
+          live = runSummaryOf(run);
         }
       }
       res.json({ runs: live ? [live, ...runs] : runs });

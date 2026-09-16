@@ -111,7 +111,7 @@ export function registerDefinitionRoutes(router: Router, ctx: PipelinesRouteCont
       const agents = resolvePipelineCatalog(ctxOf(owner));
       res.json({
         id: pipelineId,
-        entry: await buildListEntry(owner, gate, found.scopeRoot, pipelineId, def, new Map(), agents),
+        entry: await buildListEntry(owner, gate, found.scopeRoot, pipelineId, def, agents),
         ...judgementResponseFields(judgePipelineForCatalog(def, agents)),
       });
     } catch (error) {
