@@ -445,9 +445,25 @@ export const REDIS_KEYS = {
       `${REDIS_DOMAINS.PIPE}:runslots:${org}:${user}`,
     /** Member of RUN_SLOTS for one run — one reservation per RUN, never per activation. */
     RUN_SLOT_MEMBER: (projectId: string, runId: string): string => `${projectId}:${runId}`,
-    /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{projectId}:{fireEpoch} */
-    FIRED: (org: string, user: string, projectId: string, fireEpoch: number): string =>
+    /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{projectId}:{fireEpoch} (fetch fires suffix the item key) */
+    FIRED: (org: string, user: string, projectId: string, fireEpoch: number | string): string =>
       `${REDIS_DOMAINS.PIPE}:fired:${org}:${user}:${projectId}:${fireEpoch}`,
+    /**
+     * Fetch-trigger item CLAIM (NX; value = `{runId, claimedAt}`) — the Redis
+     * projection of the activation's `items/index.jsonl` ledger, rebuilt from
+     * disk when ITEMS_BUILT is absent. - ant:pipe:item:{orgId}:{userId}:{projectId}:{encodedKey}
+     */
+    ITEM: (org: string, user: string, projectId: string, itemKey: string): string =>
+      `${REDIS_DOMAINS.PIPE}:item:${org}:${user}:${projectId}:${encodeURIComponent(itemKey)}`,
+    /** Marker that the claim projection was rebuilt from disk (poller is fail-CLOSED without it). - ant:pipe:items-built:{orgId}:{userId}:{projectId} */
+    ITEMS_BUILT: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:items-built:${org}:${user}:${projectId}`,
+    /** One poll in flight per activation (replicas + control-queue retries). - ant:lock:pipe-fetch:{orgId}:{userId}:{projectId} */
+    FETCH_LOCK: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.LOCK}:pipe-fetch:${org}:${user}:${projectId}`,
+    /** Last poll telemetry (JSON PipelineFetchStatus) — a view, never a judgment input. - ant:pipe:fetch:{orgId}:{userId}:{projectId} */
+    FETCH_STATUS: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:fetch:${org}:${user}:${projectId}`,
     /** jobId → {runId, stepId} reverse mapping for the status-update consumer - ant:pipe:job:{jobId} */
     JOB: (jobId: string): string => `${REDIS_DOMAINS.PIPE}:job:${jobId}`,
     /** Armed HITL gate (JSON) - ant:pipe:hitl:{gateId} */
@@ -564,6 +580,12 @@ export const REDIS_TTL = {
     ACTIVE: 30 * 24 * 60 * 60,
     /** Fire idempotency window. */
     FIRED: 48 * 60 * 60,
+    /** An item claim — bounds how long a polled source's item stays "seen" (the disk ledger is the record). */
+    ITEM: 30 * 24 * 60 * 60,
+    /** Claim-projection rebuilt marker — the reconciler re-checks the disk ledger this often. */
+    ITEMS_BUILT: 60 * 60,
+    /** Last-poll telemetry. */
+    FETCH_STATUS: 24 * 60 * 60,
     /** jobId → run/step reverse mapping. */
     JOB: 7 * 24 * 60 * 60,
     /** Armed gate + card reverse mapping — same 30d bound as ACTIVE. */

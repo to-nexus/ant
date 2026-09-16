@@ -6,7 +6,7 @@
  * per next fire lives in Redis, any replica's worker collects it).
  */
 
-import type { OrganizationKind, PipelineFiredBy, PipelineScope, StepOutputRecord } from '@ant/shared';
+import type { OrganizationKind, PipelineFiredBy, PipelineRunItem, PipelineScope, StepOutputRecord } from '@ant/shared';
 
 /**
  * ACTIVATOR coordinates stored at registration — never a token (owner
@@ -35,6 +35,22 @@ export interface PipelineFireJobData {
   requeues?: number;
   /** runCompleted chain position — bounded at fire (MAX_CHAIN_DEPTH). */
   chainDepth?: number;
+  /** `firedBy: 'fetch'` — the item this fire claims (the fire path refuses a fetch fire without one). */
+  item?: PipelineRunItem;
+}
+
+/**
+ * One poll of a fetch activation — registered as an `every` scheduler by the
+ * reconciler/activate route; `manual` = the Poll-now button (run-now on a
+ * fetch activation). Deterministic control work: no LLM, no credits.
+ */
+export interface PipelineFetchPollJobData {
+  kind: 'fetch-poll';
+  owner: PipelineOwner;
+  pipelineId: string;
+  pipelineScope: PipelineScope;
+  projectId: string;
+  manual?: boolean;
 }
 
 export interface PipelineGateTimeoutJobData {
@@ -149,6 +165,7 @@ export interface PipelineGateRemindJobData {
 
 export type PipelineControlJobData =
   | PipelineFireJobData
+  | PipelineFetchPollJobData
   | PipelineGateTimeoutJobData
   | PipelineStepRetryJobData
   | PipelineOutcomeRetryJobData
@@ -161,6 +178,8 @@ export interface ScheduleQueuePort {
   /** Idempotent upsert of a cron scheduler (`schedulerId` = owner-scoped pipeline key). */
   upsertCron(schedulerId: string, cron: string, tz: string | undefined, data: PipelineFireJobData): Promise<void>;
   removeCron(schedulerId: string): Promise<void>;
+  /** Idempotent upsert of a fixed-interval scheduler (fetch polls) — removed through `removeCron`, listed by `listCronIds`. */
+  upsertEvery(schedulerId: string, everyMs: number, data: PipelineFetchPollJobData): Promise<void>;
   /** All registered scheduler ids — reconciliation sweeps orphans against disk. */
   listCronIds(): Promise<string[]>;
   /** One-shot delayed control job. `jobId` dedupes; re-arming replaces. */

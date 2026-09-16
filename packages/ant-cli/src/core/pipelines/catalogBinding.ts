@@ -16,13 +16,17 @@
 
 import {
   hasPipelineAdvisories,
+  parseCustomJobRef,
+  parseRestAllowLine,
   resolvePipelineAdvisories,
   validatePipelineCatalogBinding,
   type PipelineAdvisoryResolution,
   type PipelineCatalogAgent,
   type PipelineDef,
+  type RestAllowRule,
 } from '@ant/shared';
 import { discoverAgents } from '../customAgents/CustomAgentLoader';
+import { isAllowedByRules } from '../customAgents/restApi';
 import { deriveCustomAgentScopeRootsForTenant, type CustomAgentTenantContext } from '../customAgents/scopeRoots';
 
 export interface PipelineJudgement {
@@ -35,14 +39,34 @@ export function resolvePipelineCatalog(tenant: CustomAgentTenantContext): Pipeli
   return discoverAgents(deriveCustomAgentScopeRootsForTenant(tenant));
 }
 
+/**
+ * The fetch request against the connection's `allow` rules, judged with the
+ * executor's OWN matcher (`isAllowedByRules`) so authoring feedback and the
+ * poll's admission cannot disagree. Silent when the shared binding already
+ * failed to resolve the connection (its rule owns that message).
+ */
+export function fetchAllowErrors(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
+  const fetch = def.on?.fetch;
+  if (!fetch) return [];
+  const ref = parseCustomJobRef(fetch.customJobRef);
+  const api = ref ? agents.find((a) => a.id === ref.agentId)?.jobs.find((j) => j.id === ref.jobId)?.apis?.[fetch.api] : undefined;
+  if (!api || api.self || !api.allow) return [];
+  const rules = api.allow.map((l) => parseRestAllowLine(l)).filter((r): r is RestAllowRule => typeof r !== 'string');
+  if (isAllowedByRules(rules, fetch.request.method, fetch.request.path)) return [];
+  return [
+    `on.fetch: ${fetch.request.method} ${fetch.request.path} is not permitted by connection "${fetch.api}" (allow: ${api.allow.join(', ')}) — adjust the request, or extend "allow" in the agent definition`,
+  ];
+}
+
 export function validatePipelineCatalogServer(def: PipelineDef, tenant: CustomAgentTenantContext): string[] {
-  return validatePipelineCatalogBinding(def, resolvePipelineCatalog(tenant));
+  const agents = resolvePipelineCatalog(tenant);
+  return [...validatePipelineCatalogBinding(def, agents), ...fetchAllowErrors(def, agents)];
 }
 
 /** Both verdicts over an already-resolved catalog — the offline CLI's entry as well. */
 export function judgePipelineForCatalog(def: PipelineDef, agents: PipelineCatalogAgent[]): PipelineJudgement {
   return {
-    catalogWarnings: validatePipelineCatalogBinding(def, agents),
+    catalogWarnings: [...validatePipelineCatalogBinding(def, agents), ...fetchAllowErrors(def, agents)],
     advisories: resolvePipelineAdvisories(def, agents),
   };
 }

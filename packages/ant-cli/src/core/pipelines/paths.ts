@@ -98,3 +98,8 @@ export function activationRunLogPath(actRoot: string, projectId: string, runId: 
 export function activationRunIndexPath(actRoot: string, projectId: string): string {
   return path.join(actRoot, assertPathSegment('projectId', projectId), 'runs', 'index.jsonl');
 }
+
+/** Fetch-trigger claim ledger (append-only JSONL; the fire path is the single writer). */
+export function activationItemIndexPath(actRoot: string, projectId: string): string {
+  return path.join(actRoot, assertPathSegment('projectId', projectId), 'items', 'index.jsonl');
+}

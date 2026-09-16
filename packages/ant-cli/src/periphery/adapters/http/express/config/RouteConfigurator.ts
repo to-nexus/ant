@@ -20,6 +20,8 @@ import { parseSuperAdminEmails } from '../../../../../core/auth/superAdmin';
 import { createGoogleOidcServiceFromEnv } from '../../../../../infrastructure/auth/GoogleOIDCService';
 import { extractUserContext } from '../../routes/helpers/userContext';
 import { CredentialsStore } from '../../../../../utils/userConfig/CredentialsStore';
+import { StoreBackedMcpCredentialResolver } from '../../../../../utils/userConfig/StoreBackedMcpCredentialResolver';
+import type { PipelineOwner } from '../../../../../core/ports/scheduler';
 import { parseCompositeUserEmail } from '../../../../../core/utils/compositeUserEmail';
 import { ensureCanonicalFeatureMiddleware } from '../../middleware/ensureCanonicalFeature';
 import { logger } from '../../../../../utils/logger';
@@ -109,6 +111,10 @@ export class RouteConfigurator {
       // Live team roles + pipeline ACL authority (org-scope pipelines).
       organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
       chatService: this.deps.chatService,
+      // `preview-fetch` polls with the CALLER's own secrets — the same store the
+      // credentials routes write.
+      credentialResolverFor: (owner: PipelineOwner) =>
+        new StoreBackedMcpCredentialResolver(new CredentialsStore(this.config.workspacesPath), owner),
     };
     app.use('/api/definitions/pipelines', createPipelinesRoutes(pipelineDeps));
     app.use('/api/projects/:projectId/active-pipeline', createActivePipelineRoute(pipelineDeps));

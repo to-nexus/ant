@@ -50,6 +50,7 @@ unique per `{org}/{user}`, and an activation binds a project):
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/activation.json
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/index.jsonl ← 1 line per terminal run, appended under `ant:lock:pipe-index:*`
+{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/items/index.jsonl ← fetch trigger: 1 line per CLAIMED item `{key, runId, claimedAt}` (fire path is the single writer)
 ```
 
 A pipeline cannot live inside an agent directory because its steps cross
@@ -279,6 +280,65 @@ Fire semantics (`scheduling/pipelineRun/fire.ts::handleFire`, addressed by
   one-run-per-activation guard verbatim.
 - `runNow` rides the same fire path with `firedBy: 'manual'` — the test
   button and the cron path cannot diverge.
+
+**`on.fetch` — the pull trigger (Phase C).** A DETERMINISTIC poller in the
+control plane (no LLM, no credits) calls a declared REST connection (`apis`)
+of one of the activator's jobs and fires ONE run per not-yet-claimed item.
+The external system is the queue; Ant keeps only a claim ledger. `fetch`
+stands alone on a definition (no schedule/chain coexistence in v1).
+
+- **Registration**: the reconciler / activate route upsert an `every`
+  scheduler (`fetch|{org}|{user}|{projectId}`, `upsertEvery` →
+  `upsertJobScheduler({ every })`) carrying a `fetch-poll` control job; the
+  orphan sweep owns both prefixes (`isPipelineSchedulerId`). Deactivate
+  removes both scheduler ids, the poll telemetry and the ledger marker — the
+  claims themselves survive (history; a re-activation must not re-fire cases
+  that already ran).
+- **The poll** (`pipelineRun/fetch.ts::handleFetchPoll`, never throws — a
+  retried poll is a wasted egress): `loadFireAuthority` (shared with the fire
+  path) → `ant:lock:pipe-fetch:*` NX (TTL = every/2 clamped 30..120s) →
+  `ensureItemLedger` **fail-CLOSED** (rebuilds `ant:pipe:item:*` from the
+  disk ledger when `ant:pipe:items-built:*` is absent — the opposite posture
+  from the mutual-exclusion gate, because a duplicate case costs credits and
+  a delayed poll costs nothing) → `pollFetchSource` (`core/pipelines/
+  fetchConnection.ts`: `loadCustomJob` in the ACTIVATOR's scope roots →
+  `resolveDeclaredCredentials` through `credentialResolverFor(owner)` — the
+  encrypted store, never `process.env` → `compileRestServer` →
+  `assertPublicApiBaseUrl` → **`buildRestRequest` → `performRestRequest`**,
+  the tool executor's own admission split, so the poller can reach no origin,
+  path or header the `api__*` tools could not) → `extractFetchItems`
+  (`fetchSource.ts`: item-path selection, ≤200 items, key pattern, field cut
+  2k, first-wins dedupe) → `room = concurrency − live`, `take = min(batch,
+  room)` → per unclaimed item `addNow({ kind: 'fire', firedBy: 'fetch',
+  item })`. Every exit records `ant:pipe:fetch:*` (`PipelineFetchStatus`,
+  24h) and publishes `fetchPolled`; the activation row derives `nextFireAt =
+  polledAt + every` from it. Items whose claim is DEAD (past the 10-minute
+  grace, no run doc, no run log) are healed and re-admitted.
+- **The claim lives in the FIRE path**, after BOTH slot reservations
+  (`tryAcquireLock(PIPE.ITEM(key), {runId, claimedAt}, 30d)` then the
+  `items/index.jsonl` line; either failing releases everything in reverse) —
+  so a full activation never claims what it cannot run and the item is seen
+  again next poll (backpressure). A fetch fire's `FIRED` identity suffixes
+  the item key (N items fire in one instant); `run.item` freezes the case;
+  `item_claimed` is appended beside `fired`; `prevSuccessFireEpoch` is never
+  set (validator refuses `run.prevSuccess.*` on a fetch pipeline).
+- **Templates**: `{{trigger.item.key}}` + `{{trigger.item.<declared field>}}`
+  render in `renderStaticVars` only (one owner); fields are directive-only,
+  pins take the key alone (source text must not name a path).
+  `fetchItemTemplateVars` (shared) is the ONE derivation the validator, the
+  renderer and the editor's token picker share. Item fields are
+  source-controlled text of the same trust grade as `{{steps.*.answer}}`.
+- **Run-now on a fetch activation is Poll-now** (`202 { polled: true }`, no
+  cap refusal — the poll judges room itself). `POST /definitions/pipelines/
+  preview-fetch` is the editor's dry run with the CALLER's credentials (no
+  claim, `claimed` flag per item when a projectId is given), rate-limited,
+  and a RESERVED segment the self-api pin refuses — a job must not turn the
+  owner's secrets into a credentialed proxy.
+- **Doctrine carve-out**: `on.fetch.request` is trigger CONFIGURATION (the
+  cron expression's sibling), never rendered to a model and never a tool;
+  the `apis` entry stays connectivity-only. Catalog binding checks the
+  connection exists and is external (shared) and that the request passes the
+  connection's `allow` rules with the executor's own matcher (server).
 
 Reconciliation (`PipelineReconciler`) is the StaleJobRecovery template
 verbatim: boot-time run + 90s `setInterval().unref()` in
@@ -1521,10 +1581,16 @@ The obligations live at authoring time, in the pipeline builder's contract:
   (`selectActiveJobByType`), the chat `PipelineRunDock`, run labels on the
   origin chip / inbox / approval card / banner (`runIdentity.ts`). The two
   Phase A shims stay until one release has shipped with them.
+- **Phase C — `on.fetch` (shipped 2026-09-16)**: the pull trigger (§2) —
+  shared contract (`PipelineFetchTrigger`, item paths, `{{trigger.item.*}}`,
+  `firedBy: 'fetch'`, `RunRecord.item`, catalog `apis` meta), the
+  deterministic poller on the `ant-pipelines` queue, the claim in the fire
+  path, the disk claim ledger + rebuildable projection, `preview-fetch`,
+  Poll-now, and the FE `fetch` trigger mode. MCP-source polling and webhook
+  push stay out of scope (the claim ledger is where a webhook would land).
 - **Phase 3**: parallel branches/fan-in inside a run, free-DAG canvas editing,
-  `cancelPrevious`, caps admin surface. `on.fetch` (Phase C) and the
-  candidate/assignee approval model (Phase D) are designed in
-  `.claude/plans/resilient-stirring-nova.md`.
+  `cancelPrevious`, caps admin surface. The candidate/assignee approval model
+  (Phase D) is designed in `.claude/plans/resilient-stirring-nova.md`.
 - **Backlog (user-locked)**: Slack/email channels, webhook triggers.
 
 ---

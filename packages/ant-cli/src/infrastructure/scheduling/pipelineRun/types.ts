@@ -21,6 +21,7 @@ import type {
 } from '../../../core/ports/scheduler';
 import type { StepDispatch } from '../../../core/pipelines/ChainExecutor';
 import type { NotificationChannelPort, PipelineNotice } from '../../../core/pipelines/notifications';
+import type { McpCredentialResolver } from '../../../core/customAgents/McpCredentialResolver';
 
 export const COMPONENT = 'PipelineCoordinator';
 export const MAX_OUTCOME_RETRIES = 5; // × 30s — lock-starved outcome re-applies
@@ -78,6 +79,14 @@ export interface PipelineCoordinatorDeps {
   checkTeamMembership(userContext: { userId: string; organizationId: string; organizationKind?: any }): Promise<boolean>;
   /** Gate-notice fan-out channel. Absent = the default InAppChannel (SSE). */
   notificationChannel?: NotificationChannelPort;
+  /**
+   * The ACTIVATOR's credential store view — the fetch poller resolves a
+   * connection's `${secret:KEY}` headers through it (store-only, never
+   * process.env). Absent = every poll records `credential store unavailable`.
+   */
+  credentialResolverFor?(owner: PipelineOwner): McpCredentialResolver;
+  /** Injectable for tests; the poller's only egress. */
+  fetchImpl?: typeof fetch;
 }
 
 /**

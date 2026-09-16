@@ -87,6 +87,61 @@ steps:
                                         # container are out of reach.
 ```
 
+## The fetch trigger — one run per item of an external queue
+
+`on.fetch` polls a REST connection one of the activator's jobs declares under
+`apis`, and fires ONE run per item that has not been claimed yet. The external
+system (a ticket tracker, an inbox API) is the queue; Ant keeps only the claim
+ledger. It stands alone — a fetch pipeline has no `schedule` and no
+`runCompleted`.
+
+```yaml
+on:
+  fetch:
+    customJobRef: ops-team/tickets   # the job whose apis map names the connection
+    api: jira                        # a connection in that job's `apis` (external; never `self: true`)
+    request:
+      method: GET                    # GET, or POST for a search endpoint — writes are refused
+      path: /rest/api/3/search       # /-rooted, under the connection's baseUrl, within its `allow` rules
+      query: { jql: "project = OPS AND status = Open" }
+    items: $.issues                  # item-path to the array in the response
+    key: $.key                       # item-path to each item's dedupe key — the run's case label
+    fields:                          # optional, name → item-path; each becomes {{trigger.item.<name>}}
+      summary: $.fields.summary
+      channel: $.fields['customfield_10021'].value
+    every: 5m                        # poll interval — {n}m|h|d, at least 1m
+    batch: 2                         # items admitted per poll, 1..5 (default 1)
+concurrency: 3                       # the SAME knob as every trigger: live runs one activation may hold
+```
+
+- Item-paths are `$`, `.name`, `['name']` and `[n]` — no wildcards, filters or
+  recursion. Keys must be simple identifiers (`OPS-42`, `inv_2026.09`); items
+  whose key does not fit are skipped, duplicates within one response are
+  first-wins.
+- A poll admits items only while the activation has room under
+  `concurrency`; an item it cannot run stays UNCLAIMED and is seen again next
+  poll. Nothing is missed and nothing overlaps — which is why `overlap` and
+  `onMissed` are refused on a fetch trigger.
+- `{{trigger.item.key}}` and `{{trigger.item.<field>}}` are the run's case
+  channel: reference them in the ENTRY step's directive, or the step has no
+  way to learn which item it was fired for (the `entry-no-case-channel`
+  advisory names this). Fields are directive-only; a context pin may use
+  `{{trigger.item.key}}` alone (`cases/{{trigger.item.key}}/**`) — an item
+  FIELD is text the source controls and must never name a path.
+  `{{run.prevSuccess.*}}` is refused on a fetch pipeline: runs are per item,
+  there is no previous-run watermark.
+- Item fields are quoted source content of the same trust grade as
+  `{{steps.*.answer}}`: write the directive so the step treats them as the
+  case's DATA ("the ticket summary is: …"), never as instructions to follow.
+- The connection's `${secret:}` headers resolve from the ACTIVATOR's
+  credential store at poll time; the request must also pass the connection's
+  `allow` rules — the enable step tells you when it does not.
+- Run now on a fetch activation is **Poll now**: it polls immediately instead
+  of starting a run. `POST /definitions/pipelines/preview-fetch { fetch }`
+  shows what a poll would see with your own credentials (`claimed` per item
+  when you pass a `projectId`) — use it to check `items` / `key` / `fields`
+  before saving.
+
 ## Job steps
 
 `{ id, customJobRef, intent?, directive?, context?, needs?, on? }` — no
@@ -237,14 +292,20 @@ never concludes a silently ignored knob works:
 | `retry` on a gate / `remindAfter` on a job step | each belongs to the other step kind |
 | `jobType`, `feature` | reserved for a future step kind |
 | `overlap: cancelPrevious` | reserved — use `skip` or `queue` |
+| `overlap` / `onMissed` under `on.fetch` | a poll admits items up to the room under `concurrency`; unclaimed items are seen again — nothing to skip or queue |
+| `on.fetch` beside `schedule` / `runCompleted` | a polled pipeline fires per item, not on a clock or a chain |
+| `{{run.prevSuccess.*}}` on a fetch pipeline | runs are per item — there is no previous-run watermark |
+| `{{trigger.item.*}}` without `on.fetch`, or an undeclared field | there is no item without a fetch trigger; declare fields under `on.fetch.fields` |
 | `{{steps.<id>.verdict}}` in a directive | reserved — a verdict routes edges (`on: verdict:<outcome>`), it is never substituted into directive text |
 
 ## Caps
 
 At most 20 pipelines per account, 20 steps per pipeline, 3 concurrent runs per
-activator, and no two fires closer than 5 minutes — judged by sampling the
-next ten fires of the actual expression, so a clever expression is judged by
-what it does.
+activator, `concurrency` at most 3 per activation, and no two fires closer than
+5 minutes — judged by sampling the next ten fires of the actual expression, so
+a clever expression is judged by what it does. A fetch trigger polls at most
+once a minute and admits at most 5 items per poll; a poll inspects at most 200
+items of the response.
 
 ## The lifecycle you do not own
 

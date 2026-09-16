@@ -13,8 +13,11 @@ import {
   activationStateOf,
   type PipelineCatalogAgent,
   type PipelineDef,
+  type PipelineFetchStatus,
+  type PipelineFetchTrigger,
   type PipelineListEntry,
   type PipelineScope,
+  parsePipelineDuration,
 } from '@ant/shared';
 import { extractUserContext } from '../helpers/userContext';
 import { assertPathSegment } from '../../../../../core/config/pathContainment';
@@ -44,6 +47,7 @@ import type { PipelineRunCoordinator } from '../../../../../infrastructure/sched
 import { REDIS_KEYS, REDIS_TTL } from '../../../../../core/constants/redis';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state/redisConstants';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
+import type { McpCredentialResolver } from '../../../../../core/customAgents/McpCredentialResolver';
 
 export interface PipelinesRoutesDeps {
   workspaceResolver: {
@@ -58,6 +62,8 @@ export interface PipelinesRoutesDeps {
   chatService?: {
     appendChoiceResolved(projectId: string, featureName: string, args: any): Promise<{ resolved: boolean }>;
   };
+  /** The caller's credential store view — `preview-fetch` polls with the caller's own secrets. */
+  credentialResolverFor?(owner: PipelineOwner): McpCredentialResolver;
 }
 
 export function ownerOf(req: Request): PipelineOwner {
@@ -194,9 +200,19 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
   }
 
   function nextFireOf(def: PipelineDef): string | undefined {
-    if (!def.on?.schedule) return undefined; // manual-only — no scheduled fire
+    if (!def.on?.schedule) return undefined; // manual-only / fetch — no cron fire (fetch: per activation, from its last poll)
     const preview = getNextFires(def.on.schedule.cron, def.on.schedule.tz, 1);
     return preview.ok ? preview.nextFires[0] : undefined;
+  }
+
+  /** Last poll telemetry of a fetch activation (Redis, 24h) — absent before the first poll. */
+  async function lastPollOf(actOwner: PipelineOwner, projectId: string): Promise<PipelineFetchStatus | undefined> {
+    try {
+      const raw = await deps.stateStore.getKey(REDIS_KEYS.PIPE.FETCH_STATUS(actOwner.organizationId, actOwner.userId, projectId));
+      return raw ? (JSON.parse(raw) as PipelineFetchStatus) : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async function setActivationProjections(owner: PipelineOwner, activation: PipelineActivation): Promise<void> {
@@ -219,9 +235,17 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
     mine: boolean,
     nextFireAt: string | undefined,
     broken: boolean,
+    fetch?: PipelineFetchTrigger,
   ): Promise<PipelineActivationView> {
     const liveRuns = await deps.coordinator.listLiveRuns(actOwner, activation.projectId);
     const state: PipelineActivationView['state'] = broken ? 'broken' : activationStateOf(liveRuns);
+    // A fetch activation's next fire is its next POLL — per activation, from its own last poll.
+    let lastPoll: PipelineFetchStatus | undefined;
+    if (fetch) {
+      lastPoll = await lastPollOf(actOwner, activation.projectId);
+      const everyMs = parsePipelineDuration(fetch.every);
+      nextFireAt = lastPoll && everyMs ? new Date(Date.parse(lastPoll.polledAt) + everyMs).toISOString() : undefined;
+    }
     let lastRun: PipelineActivationView['lastRun'];
     const newest = liveRuns[0];
     if (newest) lastRun = { runId: newest.runId, status: newest.status, firedAt: newest.startedAt };
@@ -239,6 +263,7 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
       ...(broken ? {} : nextFireAt ? { nextFireAt } : {}),
       liveRuns,
       ...(lastRun && { lastRun }),
+      ...(lastPoll && !broken && { lastPoll }),
       // Org-visible by design: who opens which gate is never hidden.
       ...(activation.approvers && { approvers: activation.approvers }),
     };
@@ -254,13 +279,14 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
     pipelineId: string,
     nextFireAt: string | undefined,
     enabled: boolean,
+    fetch?: PipelineFetchTrigger,
   ): Promise<PipelineActivationView[]> {
     const views: PipelineActivationView[] = [];
     const own = listAccountActivations(actRootOf(owner)).filter(
       (a) => a.pipelineId === pipelineId && a.pipelineScope === scope,
     );
     for (const activation of own) {
-      views.push(await activationView(owner, activation, true, nextFireAt, !enabled));
+      views.push(await activationView(owner, activation, true, nextFireAt, !enabled, fetch));
     }
     if (scope === 'org' && owner.organizationKind === 'team') {
       const all = findActivationsForPipeline(
@@ -271,7 +297,7 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
       for (const { userId, activation } of all) {
         if (userId === owner.userId || activation.pipelineScope !== 'org') continue;
         const member: PipelineOwner = { userId, organizationId: owner.organizationId, organizationKind: 'team' };
-        views.push(await activationView(member, activation, false, nextFireAt, !enabled));
+        views.push(await activationView(member, activation, false, nextFireAt, !enabled, fetch));
       }
     }
     return views;
@@ -290,23 +316,27 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
     const org = isOrg && gate ? computeOrgResourcePermissions(gate.records[pipelineId], gate.callerId, gate.liveRole) : undefined;
     const readonly = isOrg ? !(org?.canEdit ?? false) : false;
     const fire = nextFireOf(def);
-    const activations = await listActivationViews(owner, scopeRoot.scope, pipelineId, fire, enabled);
+    const activations = await listActivationViews(owner, scopeRoot.scope, pipelineId, fire, enabled, def.on?.fetch);
     const mineActive = activations.filter((a) => a.mine);
     let lastRun: PipelineListEntry['lastRun'];
     for (const a of mineActive) {
       if (a.lastRun && (!lastRun || a.lastRun.firedAt > lastRun.firedAt)) lastRun = a.lastRun;
     }
+    // Earliest next fire across own activations — a cron's is shared, a fetch
+    // activation's is its own next poll.
+    const entryNextFire = fire ?? mineActive.map((a) => a.nextFireAt).filter((t): t is string => !!t).sort()[0];
     return {
       id: pipelineId,
       name: def.name,
       ...(def.on?.schedule && { cron: def.on.schedule.cron, tz: def.on.schedule.tz }),
+      ...(def.on?.fetch && { every: def.on.fetch.every }),
       stepCount: def.steps.length,
       scope: scopeRoot.scope,
       readonly,
       enabled,
       ...(org && { org }),
       activations,
-      ...(enabled && mineActive.length > 0 && fire ? { nextFireAt: fire } : {}),
+      ...(enabled && mineActive.length > 0 && entryNextFire ? { nextFireAt: entryNextFire } : {}),
       ...(lastRun && { lastRun }),
       openAdvisoryCount: resolvePipelineAdvisories(def, agents).open.length,
     };

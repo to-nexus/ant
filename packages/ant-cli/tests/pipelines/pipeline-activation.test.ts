@@ -135,11 +135,18 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     const { deps, removed, deactivated, deletedKeys, published } = makeBindingDeps();
     const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a');
     expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
-    expect(removed).toEqual(['pipe|local|user|proj-a']);
+    // Both scheduler ids go (a cron's and a fetch poller's — the binding does not know which it had).
+    expect(removed).toEqual(['pipe|local|user|proj-a', 'fetch|local|user|proj-a']);
     expect(deactivated).toEqual(['proj-a']);
     expect(loadActivationByProject(actRoot(), 'proj-a')).toBeNull();
     expect(fs.existsSync(path.join(actRoot(), 'proj-a', 'runs', 'index.jsonl'))).toBe(true);
-    expect(deletedKeys.sort()).toEqual(['ant:pipe:actv:local:user:proj-a', 'ant:pipe:proj:local:user:proj-a']);
+    // Projections + poll telemetry + the claim-projection marker; the item claims themselves survive (history).
+    expect(deletedKeys.sort()).toEqual([
+      'ant:pipe:actv:local:user:proj-a',
+      'ant:pipe:fetch:local:user:proj-a',
+      'ant:pipe:items-built:local:user:proj-a',
+      'ant:pipe:proj:local:user:proj-a',
+    ]);
     expect(published).toHaveLength(1);
     expect(published[0].data).toMatchObject({
       cause: 'activationChanged',
@@ -153,8 +160,8 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     const { deps, removed, deletedKeys, published } = makeBindingDeps();
     const result = await deactivatePipelineBinding(deps as any, OWNER, 'ghost');
     expect(result).toEqual({ hadActivation: false, pipelineId: null });
-    expect(removed).toEqual(['pipe|local|user|ghost']);
-    expect(deletedKeys).toHaveLength(2);
+    expect(removed).toEqual(['pipe|local|user|ghost', 'fetch|local|user|ghost']);
+    expect(deletedKeys).toHaveLength(4);
     expect(published).toEqual([]);
   });
 
@@ -222,7 +229,10 @@ describe('availability sidecar — missing = disabled draft', () => {
 });
 
 describe('reconciler — activations drive scheduling; pinned scope; availability gates', () => {
-  function writeDef(defRoot: string, id: string, opts: { enabled?: boolean; manualOnly?: boolean } = {}) {
+  const FETCH_ON = {
+    fetch: { customJobRef: 'x/a', api: 'jira', request: { method: 'GET', path: '/search' }, items: '$.issues', key: '$.key', every: '5m' },
+  };
+  function writeDef(defRoot: string, id: string, opts: { enabled?: boolean; manualOnly?: boolean; fetch?: boolean } = {}) {
     const dir = path.join(defRoot, id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
@@ -230,7 +240,7 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
       yaml.dump({
         version: 2,
         name: id,
-        ...(opts.manualOnly ? {} : { on: { schedule: { cron: '0 9 * * 1' } } }),
+        ...(opts.manualOnly ? {} : opts.fetch ? { on: FETCH_ON } : { on: { schedule: { cron: '0 9 * * 1' } } }),
         steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a' }],
       }),
     );
@@ -248,6 +258,7 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
 
   function makeDeps(registered: string[] = []) {
     const upserts: string[] = [];
+    const everyUpserts: Array<{ id: string; everyMs: number; data: any }> = [];
     const removed: string[] = [];
     const keys = new Map<string, string>();
     /** Slot sets (ZSET member → expiry) — the live-run and account caps. */
@@ -259,6 +270,7 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     };
     return {
       upserts,
+      everyUpserts,
       removed,
       keys,
       slots,
@@ -269,6 +281,12 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
           getKey: async (k: string) => keys.get(k) ?? null,
           setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
           deleteKey: async (k: string) => void keys.delete(k),
+          exists: async (k: string) => keys.has(k),
+          tryAcquireLock: async (k: string, v: string) => {
+            if (keys.has(k)) return false;
+            keys.set(k, v);
+            return true;
+          },
           reserveSlot: async (k: string, member: string, limit: number, ttl: number) => {
             const set = setOf(k);
             if (!set.has(member) && set.size >= limit) return false;
@@ -281,6 +299,7 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
         } as any,
         scheduleQueue: {
           upsertCron: async (id: string) => void upserts.push(id),
+          upsertEvery: async (id: string, everyMs: number, data: any) => void everyUpserts.push({ id, everyMs, data }),
           removeCron: async (id: string) => void removed.push(id),
           listCronIds: async () => registered,
           armDelayed: async () => {},
@@ -368,6 +387,60 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     // The mutual-exclusion gate stays armed — the projection refresh is
     // decoupled from the cron upsert (it would otherwise lapse fail-OPEN).
     expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
+  });
+
+  // A fetch activation polls on its own `every` scheduler (`fetch|…`), never a
+  // cron; both prefixes are swept; the claim projection is rebuilt from the
+  // disk ledger when its marker is absent — dead claims (past grace, no run
+  // doc, no run log) are left out so the item is seen again.
+  it('fetch activation: registers the every-poller, no cron; both prefixes are swept', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1', { fetch: true });
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    const { deps, upserts, everyUpserts, removed, keys } = makeDeps(['pipe|local|user|proj-a', 'fetch|local|user|proj-a', 'fetch|local|user|p-old']);
+    deps.workspacesPath = tmp;
+    await reconcilePipelines(deps as any);
+    expect(upserts).toEqual([]);
+    expect(everyUpserts).toEqual([
+      { id: 'fetch|local|user|proj-a', everyMs: 5 * 60_000, data: expect.objectContaining({ kind: 'fetch-poll', pipelineId: 'p1', projectId: 'proj-a', pipelineScope: 'user' }) },
+    ]);
+    // The stale cron of a def that became a fetch trigger, and an orphan poller, both go.
+    expect(removed.sort()).toEqual(['fetch|local|user|p-old', 'pipe|local|user|proj-a']);
+    expect(keys.has('ant:pipe:items-built:local:user:proj-a')).toBe(true);
+    expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
+  });
+
+  it('claim ledger rebuild: live/terminal claims are re-projected, dead claims are not, a present marker is a no-op', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1', { fetch: true });
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    const actDir = path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations', 'proj-a');
+    fs.mkdirSync(path.join(actDir, 'items'), { recursive: true });
+    fs.mkdirSync(path.join(actDir, 'runs'), { recursive: true });
+    const old = new Date(Date.now() - 60 * 60_000).toISOString();
+    const fresh = new Date().toISOString();
+    fs.writeFileSync(
+      path.join(actDir, 'items', 'index.jsonl'),
+      [
+        JSON.stringify({ key: 'OPS-1', runId: 'run-live', claimedAt: old }),      // run doc in Redis
+        JSON.stringify({ key: 'OPS-2', runId: 'run-sealed', claimedAt: old }),    // run log on disk
+        JSON.stringify({ key: 'OPS-3', runId: 'run-dead', claimedAt: old }),      // nothing anywhere, past grace → dead
+        JSON.stringify({ key: 'OPS-4', runId: 'run-young', claimedAt: fresh }),   // nothing yet, within grace → trusted
+        '{"torn":',
+      ].join('\n') + '\n',
+    );
+    fs.writeFileSync(path.join(actDir, 'runs', 'run-sealed.jsonl'), '{"event":"run_finished"}\n');
+    const { deps, keys } = makeDeps();
+    deps.workspacesPath = tmp;
+    keys.set('ant:pipe:run:run-live', JSON.stringify({ runId: 'run-live', status: 'running' }));
+    await reconcilePipelines(deps as any);
+    const claim = (k: string) => keys.get(`ant:pipe:item:local:user:proj-a:${k}`);
+    expect(JSON.parse(claim('OPS-1')!)).toEqual({ runId: 'run-live', claimedAt: old });
+    expect(claim('OPS-2')).toBeDefined();
+    expect(claim('OPS-3')).toBeUndefined();
+    expect(claim('OPS-4')).toBeDefined();
+    // Marker present → the next reconcile does not touch the projection even if the ledger grew.
+    fs.appendFileSync(path.join(actDir, 'items', 'index.jsonl'), JSON.stringify({ key: 'OPS-5', runId: 'r5', claimedAt: fresh }) + '\n');
+    await reconcilePipelines(deps as any);
+    expect(claim('OPS-5')).toBeUndefined();
   });
 
   // Liveness is a slot SET (member = runId) on both the activation and the

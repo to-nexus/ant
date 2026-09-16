@@ -33,6 +33,7 @@ import type { PipelineScopeRoot } from './scopeRoots';
 import {
   activationDir,
   activationFilePath,
+  activationItemIndexPath,
   activationRunIndexPath,
   activationRunLogPath,
   activationRunsDir,
@@ -328,6 +329,31 @@ export function readRunIndex(
   let entries = readJsonlSafe<PipelineRunSummary>(activationRunIndexPath(actRoot, projectId));
   if (pipelineId) entries = entries.filter((e) => e.pipelineId === pipelineId);
   return entries.slice(-limit).reverse();
+}
+
+// ============================================
+// Fetch-trigger claim ledger (append-only JSONL; the fire path is the single writer)
+// ============================================
+
+/** One claimed item: which run took it and when. The Redis `ant:pipe:item:*` NX key is this line's projection. */
+export interface PipelineItemClaim {
+  key: string;
+  runId: string;
+  claimedAt: string;
+}
+
+/** Tail window a ledger rebuild reads — older claims have long since left the source's open set. */
+export const ITEM_CLAIM_READ_LIMIT = 5_000;
+
+export async function appendItemClaim(actRoot: string, projectId: string, claim: PipelineItemClaim): Promise<void> {
+  const indexPath = activationItemIndexPath(actRoot, projectId);
+  fs.mkdirSync(path.dirname(indexPath), { recursive: true });
+  await fs.promises.appendFile(indexPath, `${JSON.stringify(claim)}\n`, 'utf-8');
+}
+
+/** Newest-last tail of the claim ledger (bounded). */
+export function readItemClaims(actRoot: string, projectId: string, limit = ITEM_CLAIM_READ_LIMIT): PipelineItemClaim[] {
+  return readJsonlSafe<PipelineItemClaim>(activationItemIndexPath(actRoot, projectId)).slice(-limit);
 }
 
 export function hasRunLog(actRoot: string, projectId: string, runId: string): boolean {

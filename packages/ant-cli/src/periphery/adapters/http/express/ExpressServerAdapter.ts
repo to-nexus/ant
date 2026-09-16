@@ -47,6 +47,8 @@ import { resolveRedisUrl } from '../../../../core/config/redisUrl';
 import { PipelineQueue, PipelineRunCoordinator, reconcilePipelines } from '../../../../infrastructure/scheduling';
 import type { PipelineOwner } from '../../../../core/ports/scheduler';
 import { checkApproval, checkTeamMembership } from '../routes/helpers/approvalGate';
+import { CredentialsStore } from '../../../../utils/userConfig/CredentialsStore';
+import { StoreBackedMcpCredentialResolver } from '../../../../utils/userConfig/StoreBackedMcpCredentialResolver';
 
 // Service Initialization
 import { initializeServices } from './services/ServiceInitializer';
@@ -149,6 +151,9 @@ export class ExpressServerAdapter implements
         const factory = getInfrastructureFactory();
         const queue = new PipelineQueue(resolveRedisUrl());
         this.deps.pipelineScheduleQueue = queue;
+        // The fetch poller resolves a connection's `${secret:}` headers as the
+        // ACTIVATOR — same store the credentials routes write, never process.env.
+        const credentialsStore = new CredentialsStore(this.deps.workspaceResolver.getPhysicalWorkspacesPath());
         this.deps.pipelineCoordinator = new PipelineRunCoordinator({
           stateStore: factory.getStateStore(),
           scheduleQueue: queue,
@@ -163,6 +168,7 @@ export class ExpressServerAdapter implements
           getCreditLedger: () => factory.getCreditLedger(),
           checkApproval,
           checkTeamMembership,
+          credentialResolverFor: (owner) => new StoreBackedMcpCredentialResolver(credentialsStore, owner),
         });
         // Late-bind the delete/rename cascade's pipelineCleanup step —
         // ProjectService is constructed before these services exist.

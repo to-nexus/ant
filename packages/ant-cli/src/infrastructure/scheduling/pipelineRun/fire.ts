@@ -1,6 +1,7 @@
 /**
- * Cron/manual/event fire handling — activation authority, missed-fire and
- * overlap policy, the account-wide concurrent-run slot, run creation.
+ * Cron/manual/event/fetch fire handling — activation authority, missed-fire
+ * and overlap policy, the account-wide concurrent-run slot, the fetch item
+ * claim, run creation.
  */
 
 import {
@@ -11,14 +12,15 @@ import {
   type PipelineDef,
   type RunRecord,
 } from '@ant/shared';
-import type { PipelineFireJobData } from '../../../core/ports/scheduler';
+import type { PipelineFireJobData, PipelineOwner } from '../../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL } from '../../../core/constants/redis';
 import { generateHumanId } from '../../../utils/humanId';
 import { logger } from '../../../utils/logger';
 import { buildInitialSteps, planAdvance } from '../../../core/pipelines/ChainExecutor';
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../core/pipelines/scopeRoots';
-import { loadActivationByProject, loadAvailability, loadPipeline, readRunIndex } from '../../../core/pipelines/store';
+import { appendItemClaim, loadActivationByProject, loadAvailability, loadPipeline, readRunIndex } from '../../../core/pipelines/store';
+import { claimValue } from './itemLedger';
 import { appendEvent, commitRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
@@ -26,52 +28,72 @@ import { COMPONENT, type PipelineRunOps } from './types';
 const STALE_FIRE_MS = 10 * 60 * 1000;
 const MAX_OVERLAP_REQUEUES = 60; // 60 × 60s = 1h of queueing before giving up
 
-export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData, intendedFireAt: number): Promise<void> {
-  const { owner, pipelineId, projectId } = data;
-  const actRoot = deriveActivationsRoot(tenantCtx(ctx.deps, owner));
+export interface FireAuthority {
+  activation: PipelineActivation;
+  def: PipelineDef;
+  defRoot: string;
+  actRoot: string;
+}
 
-  // Activation is the fire authority: no activation ⇒ orphan scheduler —
-  // skip; the reconciler removes the cron entry. A pipelineId mismatch means
-  // the project switched pipelines after this fire was armed — stale, skip.
+/**
+ * The activation is the fire authority — shared by the fire path and the
+ * fetch poller. Null = skip (logged): no activation (orphan scheduler — the
+ * reconciler removes it), a project that switched pipelines (stale), a
+ * definition that no longer resolves at the PINNED scope, or a disabled
+ * sidecar (the availability machine forbids this live; hand edits happen).
+ */
+export function loadFireAuthority(
+  ctx: PipelineRunOps,
+  owner: PipelineOwner,
+  pipelineId: string,
+  projectId: string,
+  verb: 'fire' | 'poll' = 'fire',
+): FireAuthority | null {
+  const actRoot = deriveActivationsRoot(tenantCtx(ctx.deps, owner));
   let activation: PipelineActivation | null;
   try {
     activation = loadActivationByProject(actRoot, projectId);
   } catch (e) {
-    logger.warn(`[Pipeline] fire skipped — activation invalid: ${projectId}`, { component: COMPONENT }, e);
-    return;
+    logger.warn(`[Pipeline] ${verb} skipped — activation invalid: ${projectId}`, { component: COMPONENT }, e);
+    return null;
   }
   if (!activation) {
-    logger.info(`[Pipeline] fire skipped — not activated: ${projectId}`, { component: COMPONENT });
-    return;
+    logger.info(`[Pipeline] ${verb} skipped — not activated: ${projectId}`, { component: COMPONENT });
+    return null;
   }
   if (activation.pipelineId !== pipelineId) {
     logger.info(
-      `[Pipeline] fire skipped — project ${projectId} now runs ${activation.pipelineId}, not ${pipelineId}`,
+      `[Pipeline] ${verb} skipped — project ${projectId} now runs ${activation.pipelineId}, not ${pipelineId}`,
       { component: COMPONENT },
     );
-    return;
+    return null;
   }
-
   // Definition resolves ONLY at the activation's pinned scope.
   const defRoot = resolveDefRoot(tenantCtx(ctx.deps, owner), activation.pipelineScope);
   let def: PipelineDef;
   try {
     def = loadPipeline(defRoot, pipelineId);
   } catch (e) {
-    logger.warn(`[Pipeline] fire skipped — definition invalid: ${pipelineId}`, { component: COMPONENT }, e);
-    return;
+    logger.warn(`[Pipeline] ${verb} skipped — definition invalid: ${pipelineId}`, { component: COMPONENT }, e);
+    return null;
   }
-  // Defensive: the availability machine forbids disabling while activated,
-  // but a hand-edited sidecar must not fire.
   try {
     if (!loadAvailability(defRoot, pipelineId).enabled) {
-      logger.warn(`[Pipeline] fire skipped — pipeline disabled: ${pipelineId}`, { component: COMPONENT });
-      return;
+      logger.warn(`[Pipeline] ${verb} skipped — pipeline disabled: ${pipelineId}`, { component: COMPONENT });
+      return null;
     }
   } catch (e) {
-    logger.warn(`[Pipeline] fire skipped — availability unreadable: ${pipelineId}`, { component: COMPONENT }, e);
-    return;
+    logger.warn(`[Pipeline] ${verb} skipped — availability unreadable: ${pipelineId}`, { component: COMPONENT }, e);
+    return null;
   }
+  return { activation, def, defRoot, actRoot };
+}
+
+export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData, intendedFireAt: number): Promise<void> {
+  const { owner, pipelineId, projectId } = data;
+  const authority = loadFireAuthority(ctx, owner, pipelineId, projectId);
+  if (!authority) return;
+  const { activation, def, actRoot } = authority;
 
   // Chain-depth loop guard (caps doctrine: enforce at fire, skip + log).
   if ((data.chainDepth ?? 0) > MAX_CHAIN_DEPTH) {
@@ -82,9 +104,15 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     return;
   }
 
+  // A fetch fire is one claimed item — without one there is nothing to run.
+  if (data.firedBy === 'fetch' && !data.item) {
+    logger.warn(`[Pipeline] fetch fire skipped — no item: ${pipelineId} on ${projectId}`, { component: COMPONENT });
+    return;
+  }
+
   const fireEpoch = data.fireEpoch ?? Math.floor(intendedFireAt / 60_000) * 60_000;
 
-  // Missed-fire policy (cron only; manual fires are always "now").
+  // Missed-fire policy (cron only; manual/event/fetch fires are always "now").
   if (data.firedBy === 'cron' && Date.now() - intendedFireAt > STALE_FIRE_MS) {
     if ((def.on?.schedule?.onMissed ?? 'skip') === 'skip') {
       logger.info(`[Pipeline] missed fire skipped: ${pipelineId} @ ${new Date(fireEpoch).toISOString()}`, { component: COMPONENT });
@@ -92,8 +120,14 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     }
   }
 
-  // Fire idempotency (attempts:3 on the control queue + multi-replica).
-  const firedKey = REDIS_KEYS.PIPE.FIRED(owner.organizationId, owner.userId, projectId, fireEpoch);
+  // Fire idempotency (attempts:3 on the control queue + multi-replica). A poll
+  // fires N items in the same instant, so a fetch fire's identity is the item.
+  const firedKey = REDIS_KEYS.PIPE.FIRED(
+    owner.organizationId,
+    owner.userId,
+    projectId,
+    data.item ? `${fireEpoch}:${encodeURIComponent(data.item.key)}` : fireEpoch,
+  );
   if (!(await ctx.deps.stateStore.acquireLock(firedKey, REDIS_TTL.PIPE.FIRED))) return;
 
   const runId = generateHumanId();
@@ -121,6 +155,7 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
         { ...data, fireEpoch, requeues: (data.requeues ?? 0) + 1 },
       );
     } else {
+      // A fetch item is never queued: unclaimed, the next poll sees it again.
       logger.info(`[Pipeline] overlap skip: ${pipelineId} on ${projectId}`, { component: COMPONENT });
     }
     return;
@@ -139,25 +174,54 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     DEFAULT_PIPELINE_CAPS.maxConcurrentRuns,
     REDIS_TTL.PIPE.ACTIVE,
   );
+  const releaseSlots = async () => {
+    await ctx.deps.stateStore.releaseSlot(activeRunsKey, runId).catch(() => {});
+    await ctx.deps.stateStore.releaseLock(firedKey).catch(() => {});
+  };
   if (!reserved) {
     logger.warn(
       `[Pipeline] fire skipped — maxConcurrentRuns reached (${DEFAULT_PIPELINE_CAPS.maxConcurrentRuns}): ${pipelineId}`,
       { component: COMPONENT },
     );
-    await ctx.deps.stateStore.releaseSlot(activeRunsKey, runId).catch(() => {});
-    await ctx.deps.stateStore.releaseLock(firedKey).catch(() => {});
+    await releaseSlots();
     return;
+  }
+
+  // The item CLAIM — after both slots, so a full activation never claims what
+  // it cannot run (the item stays in the source for the next poll). Redis NX is
+  // the race arbiter; the disk ledger line is the record the projection is
+  // rebuilt from. Either failing gives everything back, in reverse.
+  const startedAt = new Date().toISOString();
+  if (data.item) {
+    const itemKey = REDIS_KEYS.PIPE.ITEM(owner.organizationId, owner.userId, projectId, data.item.key);
+    const claimed = await ctx.deps.stateStore.tryAcquireLock(itemKey, claimValue(runId, startedAt), REDIS_TTL.PIPE.ITEM);
+    if (!claimed) {
+      logger.info(`[Pipeline] fetch fire skipped — item already claimed: ${data.item.key} (${pipelineId})`, { component: COMPONENT });
+      await ctx.deps.stateStore.releaseSlot(slotKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
+      await releaseSlots();
+      return;
+    }
+    try {
+      await appendItemClaim(actRoot, projectId, { key: data.item.key, runId, claimedAt: startedAt });
+    } catch (e) {
+      logger.warn(`[Pipeline] fetch fire aborted — claim ledger append failed: ${data.item.key}`, { component: COMPONENT }, e);
+      await ctx.deps.stateStore.releaseLockIfOwner(itemKey, claimValue(runId, startedAt)).catch(() => {});
+      await ctx.deps.stateStore.releaseSlot(slotKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
+      await releaseSlots();
+      return;
+    }
   }
 
   // Cross-run watermark, frozen at fire so every step of this run sees the
   // same value ({{run.prevSuccess.*}}): the newest COMPLETED run of this
-  // pipeline on this activation.
+  // pipeline on this activation. Meaningless per item — a fetch run has none.
   let prevSuccessFireEpoch: number | undefined;
-  try {
-    prevSuccessFireEpoch = readRunIndex(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), projectId, 50, pipelineId)
-      .find((e) => e.status === 'completed')?.fireEpoch;
-  } catch {
-    prevSuccessFireEpoch = undefined;
+  if (!data.item) {
+    try {
+      prevSuccessFireEpoch = readRunIndex(actRoot, projectId, 50, pipelineId).find((e) => e.status === 'completed')?.fireEpoch;
+    } catch {
+      prevSuccessFireEpoch = undefined;
+    }
   }
 
   const run: RunRecord = {
@@ -168,14 +232,18 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     fireEpoch,
     status: 'running',
     steps: buildInitialSteps(def),
-    startedAt: new Date().toISOString(),
+    startedAt,
     defSnapshot: def,
     activationSnapshot: activation,
     ...(prevSuccessFireEpoch !== undefined && { prevSuccessFireEpoch }),
     ...(data.chainDepth !== undefined && { chainDepth: data.chainDepth }),
+    ...(data.item && { item: data.item }),
   };
 
   await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
+  if (data.item) {
+    await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'item_claimed', runId, detail: { key: data.item.key } });
+  }
   const plan = planAdvance(def, run);
   await commitRun(ctx.deps, owner, plan.run);
   await ctx.executeDispatches(owner, def, plan.run, plan.dispatches);

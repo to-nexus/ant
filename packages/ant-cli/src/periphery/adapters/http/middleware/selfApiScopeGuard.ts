@@ -76,7 +76,7 @@ const SELF_API_FAMILY_PREFIX = '/definitions';
  * this by registration order; this guard matches independently, so the
  * exclusion has to be explicit.
  */
-const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projects', 'approvals', 'runs', 'activations', 'import']);
+const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'preview-fetch', 'activatable-projects', 'approvals', 'runs', 'activations', 'import']);
 
 /**
  * The pipeline routes a definition-authoring job may reach, as METHOD + the
@@ -97,6 +97,9 @@ const PIPELINE_RESERVED_SEGMENTS = new Set(['preview-fires', 'activatable-projec
  *   import                      replaces a definition wholesale from uploaded
  *                               bytes — the `/definitions/agents/import` twin,
  *                               refused there too; a job drafts via `POST /`
+ *   preview-fetch               an authenticated egress with the OWNER's
+ *                               secrets on a request the job composed — the
+ *                               pin would become a credentialed proxy
  */
 const PIPELINE_ALLOWED_ROUTES: ReadonlyArray<{ method: string; tail: readonly string[] }> = [
   { method: 'GET', tail: [] },

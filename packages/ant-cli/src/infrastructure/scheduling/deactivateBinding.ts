@@ -18,7 +18,7 @@ import { approverUnion, syncApproverIndexForActivation } from '../../core/pipeli
 import { deriveActivationsRoot } from '../../core/pipelines/paths';
 import { deleteActivationRecord, loadActivationByProject } from '../../core/pipelines/store';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
-import { schedulerIdFor } from './PipelineReconciler';
+import { fetchSchedulerIdFor, schedulerIdFor } from './PipelineReconciler';
 import type { PipelineRunCoordinator } from './PipelineRunCoordinator';
 
 export interface DeactivateBindingDeps {
@@ -48,6 +48,7 @@ export async function deactivatePipelineBinding(
   const hadActivation = activation !== null || unreadable;
 
   await deps.scheduleQueue.removeCron(schedulerIdFor(owner, projectId));
+  await deps.scheduleQueue.removeCron(fetchSchedulerIdFor(owner, projectId));
   await deps.coordinator.deactivate(owner, projectId);
   deleteActivationRecord(actRoot, projectId);
   // Approver-of discovery entries for this activation go with it (advisory —
@@ -65,6 +66,15 @@ export async function deactivatePipelineBinding(
     .catch(() => {});
   await deps.stateStore
     .deleteKey(REDIS_KEYS.PIPE.PROJECT(owner.organizationId, owner.userId, projectId))
+    .catch(() => {});
+  // Poll telemetry and the claim-projection marker go with the binding; the
+  // claims themselves stay (disk ledger = history, Redis keys lapse on TTL) —
+  // a re-activation must not re-fire cases that already ran.
+  await deps.stateStore
+    .deleteKey(REDIS_KEYS.PIPE.FETCH_STATUS(owner.organizationId, owner.userId, projectId))
+    .catch(() => {});
+  await deps.stateStore
+    .deleteKey(REDIS_KEYS.PIPE.ITEMS_BUILT(owner.organizationId, owner.userId, projectId))
     .catch(() => {});
 
   const pipelineId = activation?.pipelineId ?? opts.pipelineIdHint ?? null;

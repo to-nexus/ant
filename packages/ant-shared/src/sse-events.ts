@@ -21,7 +21,7 @@
 
 import type { GitSnapshot, GitOperationState, GitPatState } from './git';
 import type { CustomDomainStatus, CustomDomainCertStatus, CustomDomainTarget } from './deploy';
-import type { RunRecord, GateDecision, PipelinePendingApproval, PipelineActivation } from './pipeline';
+import type { RunRecord, GateDecision, PipelinePendingApproval, PipelineActivation, PipelineFetchStatus } from './pipeline';
 
 /**
  * Discriminator for SSE messages routed through the unified stream.
@@ -255,6 +255,13 @@ export type PipelineEventData =
   | {
       cause: 'defChanged';
       pipelineId: string;
+    }
+  | {
+      /** A fetch activation polled its source — the activation row's `lastPoll` / `nextFireAt` refresh. */
+      cause: 'fetchPolled';
+      pipelineId: string;
+      projectId: string;
+      lastPoll: PipelineFetchStatus;
     }
   | {
       cause: 'availabilityChanged';

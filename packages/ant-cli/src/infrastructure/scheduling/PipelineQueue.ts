@@ -10,7 +10,7 @@
 import { Queue, Worker } from 'bullmq';
 import { parseRedisUrl } from '../utils/redis';
 import { logger } from '../../utils/logger';
-import type { PipelineControlJobData, PipelineFireJobData, ScheduleQueuePort } from '../../core/ports/scheduler';
+import type { PipelineControlJobData, PipelineFetchPollJobData, PipelineFireJobData, ScheduleQueuePort } from '../../core/ports/scheduler';
 
 const QUEUE_NAME = 'ant-pipelines';
 
@@ -37,6 +37,10 @@ export class PipelineQueue implements ScheduleQueuePort {
       { pattern: cron, ...(tz ? { tz } : {}) },
       { name: 'fire', data, opts: CONTROL_JOB_OPTIONS },
     );
+  }
+
+  async upsertEvery(schedulerId: string, everyMs: number, data: PipelineFetchPollJobData): Promise<void> {
+    await this.queue.upsertJobScheduler(schedulerId, { every: everyMs }, { name: 'fetch-poll', data, opts: CONTROL_JOB_OPTIONS });
   }
 
   async removeCron(schedulerId: string): Promise<void> {

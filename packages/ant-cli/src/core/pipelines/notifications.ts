@@ -36,6 +36,8 @@ export interface PipelineNotice {
   ownerUserId: string;
   stepId: string;
   prompt: string;
+  /** The run's case label (fetch-fired runs) — the inbox row's `runLabel`. */
+  itemKey?: string;
   /** Required on requested/reminder notices; resolved notices may omit it. */
   armedAt?: string;
   timeoutAt?: string;
@@ -93,6 +95,7 @@ export class InAppChannel implements NotificationChannelPort {
               armedAt: notice.armedAt ?? new Date().toISOString(),
               ...(notice.timeoutAt && { timeoutAt: notice.timeoutAt }),
               ...(notice.onTimeout && { onTimeout: notice.onTimeout }),
+              ...(notice.itemKey && { itemKey: notice.itemKey }),
               ...(recipient.role === 'approver' && { role: 'approver' as const, ownerUserId: notice.ownerUserId }),
             },
           };

@@ -1339,6 +1339,14 @@ function isAcyclic(steps: Array<{ id: string; needs?: string[] }>): boolean {
   return visited === steps.length;
 }
 
+/** The fetch-trigger rules alone — the editor's preview round-trip validates the block before polling with it. */
+export function validatePipelineFetchTrigger(
+  raw: unknown,
+  caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'> = DEFAULT_PIPELINE_CAPS,
+): string[] {
+  return fetchTriggerErrors(raw, caps);
+}
+
 /**
  * Every rule the pipeline store enforces, as plain messages. Empty = valid.
  * Catalog binding (agent/job/intent existence, verdict vocabulary) is the

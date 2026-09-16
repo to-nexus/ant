@@ -396,48 +396,63 @@ function isTextLike(contentType: string): boolean {
   );
 }
 
+/** One admitted request — the ONLY shape a fetch may be built from (secrets ride `headers`; never log it). */
+export interface BuiltRestRequest {
+  method: string;
+  url: string;
+  /** Path relative to the compiled base path — the allow-list subject and the error-text subject. */
+  relPath: string;
+  headers: Record<string, string>;
+  body?: string;
+  timeoutMs: number;
+}
+
+export type BuildRestRequestResult = { ok: true; request: BuiltRestRequest } | { ok: false; error: McpCallResult };
+
 /**
- * Execute one synthesized-tool call. Returns an McpCallResult so the shared
- * registry handler (spooling, error framing) applies unchanged. Never throws
- * on request failure; `fetchImpl` is injectable for tests.
+ * Admission — method enum, `/`-rooted path resolved and re-asserted under
+ * baseUrl, allow rules, query/header/body shape, declared-header precedence.
+ * Pure over `(compiled, args)`; no I/O. The tool executor and the pipeline
+ * fetch poller share this ONE owner so neither can reach an origin, a path or
+ * a header the other could not.
  */
-export async function executeRestCall(
+export function buildRestRequest(
   compiled: CompiledRestServer,
   toolName: 'get' | 'request',
   args: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
-): Promise<McpCallResult> {
+): BuildRestRequestResult {
+  const refuse = (text: string): BuildRestRequestResult => ({ ok: false, error: policyError(text) });
   // method — bounded by the tool's own enum, defense-in-depth re-checked here.
   const legalMethods: readonly string[] = toolName === 'get' ? GET_METHODS : WRITE_METHODS;
   const method = typeof args.method === 'string' ? args.method.toUpperCase() : toolName === 'get' ? 'GET' : '';
   if (!legalMethods.includes(method)) {
-    return policyError(`Policy: method must be one of ${legalMethods.join(', ')} for this tool (got: ${String(args.method)}).`);
+    return refuse(`Policy: method must be one of ${legalMethods.join(', ')} for this tool (got: ${String(args.method)}).`);
   }
 
   // path — /-rooted relative only; resolve and assert it stays under baseUrl.
   const rawPath = args.path;
   if (typeof rawPath !== 'string' || !/^\/(?!\/)/.test(rawPath) || rawPath.includes('\\') || /\s/.test(rawPath)) {
-    return policyError(`Policy: "path" must be a /-rooted path relative to the base URL (got: ${String(rawPath)}).`);
+    return refuse(`Policy: "path" must be a /-rooted path relative to the base URL (got: ${String(rawPath)}).`);
   }
   const baseHref = compiled.baseUrl.href.replace(/\/+$/, '') + '/';
   let resolved: URL;
   try {
     resolved = new URL('.' + rawPath, baseHref);
   } catch {
-    return policyError(`Policy: "path" could not be resolved under the base URL (got: ${rawPath}).`);
+    return refuse(`Policy: "path" could not be resolved under the base URL (got: ${rawPath}).`);
   }
   if (
     resolved.origin !== compiled.baseUrl.origin ||
     (resolved.pathname !== compiled.basePath && !resolved.pathname.startsWith(compiled.basePath + '/'))
   ) {
-    return policyError(`Policy: resolved path escapes the declared base URL (${compiled.baseUrl.href}).`);
+    return refuse(`Policy: resolved path escapes the declared base URL (${compiled.baseUrl.href}).`);
   }
   const relPath = resolved.pathname.slice(compiled.basePath.length) || '/';
 
   // allow-list — mechanical scope, checked before any request is sent.
   if (!isAllowedByRules(compiled.allow, method, relPath)) {
     const allowText = compiled.allow?.map((r) => `${r.method} ${r.pattern}`).join(', ') ?? '';
-    return policyError(
+    return refuse(
       `Policy: ${method} ${relPath} is not permitted by API server "${compiled.serverName}" (allowed: ${allowText}). ` +
         'Adjust the call, or ask the job author to extend "allow" in the definition.',
     );
@@ -446,7 +461,7 @@ export async function executeRestCall(
   // query
   if (args.query !== undefined) {
     if (typeof args.query !== 'object' || args.query === null || Array.isArray(args.query)) {
-      return policyError('Policy: "query" must be an object of string values.');
+      return refuse('Policy: "query" must be an object of string values.');
     }
     for (const [k, v] of Object.entries(args.query as Record<string, unknown>)) {
       resolved.searchParams.append(k, String(v));
@@ -459,11 +474,11 @@ export async function executeRestCall(
   const headers: Record<string, string> = {};
   if (args.headers !== undefined) {
     if (typeof args.headers !== 'object' || args.headers === null || Array.isArray(args.headers)) {
-      return policyError('Policy: "headers" must be an object of string values.');
+      return refuse('Policy: "headers" must be an object of string values.');
     }
     for (const [k, v] of Object.entries(args.headers as Record<string, unknown>)) {
       if (declaredNames.has(k.toLowerCase())) {
-        return policyError(`Policy: header "${k}" is declared by the server definition and cannot be overridden per call.`);
+        return refuse(`Policy: header "${k}" is declared by the server definition and cannot be overridden per call.`);
       }
       headers[k] = String(v);
     }
@@ -490,12 +505,12 @@ export async function executeRestCall(
         // was malformed, the caller rewrites the text and the rewrite lands
         // new corruptions (a build turn's three rejected saves produced its
         // three most garbled files). Copying is lossless — say to copy.
-        return policyError(
+        return refuse(
           `Policy: "body" must be the JSON structure itself (object/array), and the string passed is not valid JSON (${e instanceof Error ? e.message : String(e)}). Resend the body as the structure — not a hand-serialized string. Reuse the SAME text you just composed, character for character, and write every non-ASCII character as itself: do not re-escape it, and do not rewrite the content, which is how a rejected save comes back with different words in it. For a form-encoded or plain-text body, set an explicit non-JSON Content-Type header.`,
         );
       }
       if (structured === null || typeof structured !== 'object') {
-        return policyError(
+        return refuse(
           'Policy: "body" must be a JSON object or array — the string passed parses to a bare scalar. Pass the structure itself; for a plain-text body, set an explicit non-JSON Content-Type header.',
         );
       }
@@ -507,53 +522,103 @@ export async function executeRestCall(
 
   const timeoutRaw = typeof args.timeout_ms === 'number' ? args.timeout_ms : REST_CALL_TIMEOUT_DEFAULT_MS;
   const timeoutMs = Math.min(REST_CALL_TIMEOUT_MAX_MS, Math.max(REST_CALL_TIMEOUT_MIN_MS, timeoutRaw));
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  return { ok: true, request: { method, url: resolved.href, relPath, headers, ...(body !== undefined ? { body } : {}), timeoutMs } };
+}
+
+/** What came back — a 3xx carries `location` and no body (never followed). */
+export interface RestResponse {
+  status: number;
+  statusText: string;
+  contentType: string;
+  location?: string;
+  body: Buffer;
+}
+
+export type PerformRestResult = { ok: true; response: RestResponse } | { ok: false; reason: string };
+
+/**
+ * The wire step — `redirect: 'manual'`, bounded by the admitted timeout, body
+ * read whole. Never throws: a network failure or timeout is a reason string.
+ */
+export async function performRestRequest(request: BuiltRestRequest, fetchImpl: typeof fetch = fetch): Promise<PerformRestResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), request.timeoutMs);
   try {
-    const res = await fetchImpl(resolved.href, {
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
+    const res = await fetchImpl(request.url, {
+      method: request.method,
+      headers: request.headers,
+      ...(request.body !== undefined ? { body: request.body } : {}),
       redirect: 'manual',
       signal: controller.signal,
     });
-
     const contentType = res.headers.get('content-type') ?? '';
-    const head = `HTTP ${res.status} ${res.statusText}`.trimEnd();
     if (res.status >= 300 && res.status < 400) {
       // Never followed — an off-origin Location must not receive the auth header.
-      const location = res.headers.get('location') ?? '(no Location header)';
-      return { text: `${head}\nlocation: ${location}\n\n(redirect not followed by policy)`, isError: false };
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (!isTextLike(contentType)) {
       return {
-        text: `${head}\ncontent-type: ${contentType}\n\n(binary body, ${buf.byteLength} bytes — not returned inline)`,
-        isError: res.status >= 400,
+        ok: true,
+        response: { status: res.status, statusText: res.statusText, contentType, location: res.headers.get('location') ?? '(no Location header)', body: Buffer.alloc(0) },
       };
     }
-    let text = buf.toString('utf-8');
-    let note = '';
-    if (res.status >= 400 && /html/i.test(contentType)) {
-      // An upstream error PAGE (Express default handler, a proxy) is not
-      // recovery data: strip tags, redact local filesystem paths (stack
-      // traces), cap hard. JSON/text error bodies stay verbatim below.
-      text = sanitizeHtmlErrorBody(text);
-      note = `\n\n[HTML error page reduced: ${buf.byteLength} bytes → sanitized extract (cap ${REST_ERROR_HTML_EXTRACT_BYTES}) — the status line is the signal; the request may not have reached the API handler]`;
-    } else if (buf.byteLength > REST_BODY_CAP_BYTES) {
-      text = buf.subarray(0, REST_BODY_CAP_BYTES).toString('utf-8');
-      note = `\n\n[... truncated: body is ${buf.byteLength} bytes, cap is ${REST_BODY_CAP_BYTES} ...]`;
-    }
-    // 4xx/5xx are errors (stop-hook evidence must not count a rejected write),
-    // but the body rides along — it is what the model plans recovery from.
-    return { text: `${head}\ncontent-type: ${contentType}\n\n${text}${note}`, isError: res.status >= 400 };
+    return { ok: true, response: { status: res.status, statusText: res.statusText, contentType, body: Buffer.from(await res.arrayBuffer()) } };
   } catch (e) {
-    const reason = (e as Error)?.name === 'AbortError'
-      ? `request timed out after ${timeoutMs}ms`
-      : `${(e as Error)?.message ?? String(e)}`;
-    return { text: `Network error calling ${method} ${relPath} on API server "${compiled.serverName}": ${reason}`, isError: true };
+    return {
+      ok: false,
+      reason: (e as Error)?.name === 'AbortError' ? `request timed out after ${request.timeoutMs}ms` : `${(e as Error)?.message ?? String(e)}`,
+    };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Model-facing framing of a performed request — the tool result the registry handler spools. */
+export function formatRestResult(serverName: string, request: BuiltRestRequest, result: PerformRestResult): McpCallResult {
+  if (!result.ok) {
+    return { text: `Network error calling ${request.method} ${request.relPath} on API server "${serverName}": ${result.reason}`, isError: true };
+  }
+  const res = result.response;
+  const head = `HTTP ${res.status} ${res.statusText}`.trimEnd();
+  if (res.location !== undefined) {
+    return { text: `${head}\nlocation: ${res.location}\n\n(redirect not followed by policy)`, isError: false };
+  }
+  const buf = res.body;
+  const contentType = res.contentType;
+  if (!isTextLike(contentType)) {
+    return {
+      text: `${head}\ncontent-type: ${contentType}\n\n(binary body, ${buf.byteLength} bytes — not returned inline)`,
+      isError: res.status >= 400,
+    };
+  }
+  let text = buf.toString('utf-8');
+  let note = '';
+  if (res.status >= 400 && /html/i.test(contentType)) {
+    // An upstream error PAGE (Express default handler, a proxy) is not
+    // recovery data: strip tags, redact local filesystem paths (stack
+    // traces), cap hard. JSON/text error bodies stay verbatim below.
+    text = sanitizeHtmlErrorBody(text);
+    note = `\n\n[HTML error page reduced: ${buf.byteLength} bytes → sanitized extract (cap ${REST_ERROR_HTML_EXTRACT_BYTES}) — the status line is the signal; the request may not have reached the API handler]`;
+  } else if (buf.byteLength > REST_BODY_CAP_BYTES) {
+    text = buf.subarray(0, REST_BODY_CAP_BYTES).toString('utf-8');
+    note = `\n\n[... truncated: body is ${buf.byteLength} bytes, cap is ${REST_BODY_CAP_BYTES} ...]`;
+  }
+  // 4xx/5xx are errors (stop-hook evidence must not count a rejected write),
+  // but the body rides along — it is what the model plans recovery from.
+  return { text: `${head}\ncontent-type: ${contentType}\n\n${text}${note}`, isError: res.status >= 400 };
+}
+
+/**
+ * Execute one synthesized-tool call: build → perform → format. Returns an
+ * McpCallResult so the shared registry handler (spooling, error framing)
+ * applies unchanged. Never throws on request failure; `fetchImpl` is
+ * injectable for tests.
+ */
+export async function executeRestCall(
+  compiled: CompiledRestServer,
+  toolName: 'get' | 'request',
+  args: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<McpCallResult> {
+  const built = buildRestRequest(compiled, toolName, args);
+  if (!built.ok) return built.error;
+  return formatRestResult(compiled.serverName, built.request, await performRestRequest(built.request, fetchImpl));
 }

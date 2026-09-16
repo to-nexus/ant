@@ -490,7 +490,9 @@ The two-tool split is forced by mechanics, not taste: `gateCall` and
 tool could not be read-exempt and write-gated at once.
 
 The API's **knowledge** (endpoints, fields, call sequences) is deliberately
-NOT declared — no per-endpoint tool schemas, no OpenAPI import. It is prose:
+NOT declared — no per-endpoint tool schemas, no OpenAPI import. (The one
+declared request outside prose is a pipeline's `on.fetch.request`, executed
+by the control-plane poller and never shown to a model — doc 46 §2.) It is prose:
 `base/*.md` for always-on conventions, the intent's `prompt.md` for the
 task-shaped subset, and `on-demand/**` (agent- and job-level, `.md`/`.json`,
 any depth) for full specs read on demand via the `_agent-definition/` mount.

@@ -576,9 +576,14 @@ describe('per-activation liveness is a slot set', () => {
 
   it('the fire path reserves the activation slot with the ONE concurrency reader, before the account slot', () => {
     const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
-    expect(fire).not.toMatch(/tryAcquireLock\(/);
+    // Liveness is never a lock — the ONE tryAcquireLock in the fire path is the
+    // fetch item CLAIM (PIPE.ITEM), and it comes after BOTH slot reservations,
+    // so a full activation never claims what it cannot run.
+    expect(fire.match(/tryAcquireLock\(/g)?.length).toBe(1);
+    expect(fire).toMatch(/tryAcquireLock\(itemKey,/);
     expect(fire).toMatch(/reserveSlot\(\s*activeRunsKey,\s*runId,\s*resolveRunConcurrency\(def\)/);
     expect(fire.indexOf('ACTIVE_RUNS(')).toBeLessThan(fire.indexOf('RUN_SLOTS('));
+    expect(fire.lastIndexOf('reserveSlot(')).toBeLessThan(fire.indexOf('PIPE.ITEM('));
     // No bare literal cap — the knob has one reader.
     expect(fire).not.toMatch(/reserveSlot\([^)]*,\s*1,/);
   });
@@ -650,6 +655,74 @@ describe('duplicate gate — run-scoped for the coordinator, unscoped elsewhere'
   ] as const)('%s', async (_label, scope, expected) => {
     const hit = await findDuplicateActiveJob(store, ctx, 'proj', 'universal', 'universal', scope);
     expect(hit?.jobId).toBe(expected);
+  });
+});
+
+/**
+ * `on.fetch` — the deterministic poller. Its egress is the tool executor's
+ * admission owner (build → perform), never a bare fetch; it enqueues only
+ * `fire` control jobs (the fire path claims, after both slots); the preview
+ * route is reserved from the self-api pin.
+ */
+describe('fetch trigger — one egress owner, claim after slots, poller confinement', () => {
+  const fetchPoll = read('infrastructure/scheduling/pipelineRun/fetch.ts');
+  const connection = read('core/pipelines/fetchConnection.ts');
+  const restApi = read('core/customAgents/restApi.ts');
+
+  it('the poller and the preview share pollFetchSource, which admits through buildRestRequest → performRestRequest only', () => {
+    expect(fetchPoll).toMatch(/pollFetchSource\(/);
+    expect(fetchPoll).not.toMatch(/\bfetch\(|fetchImpl\(|process\.env\[|process\.env\./);
+    expect(connection).toMatch(/buildRestRequest\(/);
+    expect(connection).toMatch(/performRestRequest\(/);
+    expect(connection).not.toMatch(/executeRestCall|\bfetch\(|process\.env/);
+    const planning = read('periphery/adapters/http/routes/pipelines/planning.routes.ts');
+    expect(planning).toMatch(/pollFetchSource\(/);
+    expect(planning).not.toMatch(/\bfetch\(|buildRestRequest|process\.env/);
+    // The tool executor is the same three steps — one admission owner.
+    expect(restApi).toMatch(/const built = buildRestRequest\(compiled, toolName, args\);/);
+    expect(restApi).toMatch(/formatRestResult\(compiled\.serverName, built\.request, await performRestRequest\(built\.request, fetchImpl\)\)/);
+  });
+
+  it('the poller enqueues fire control jobs only and never claims itself — the fire path claims after both slots', () => {
+    expect([...fetchPoll.matchAll(/addNow\(\{\s*kind: '([a-z-]+)'/g)].map((m) => m[1])).toEqual(['fire']);
+    expect(fetchPoll).not.toMatch(/tryAcquireLock\(|appendItemClaim\(/);
+    const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
+    expect(fire.match(/appendItemClaim\(/g)?.length).toBe(1);
+    expect(coordinatorAll().match(/appendItemClaim\(/g)?.length).toBe(1);
+  });
+
+  it('the poller is fail-CLOSED on the claim projection and serialized per activation', () => {
+    expect(fetchPoll.indexOf('ensureItemLedger(')).toBeGreaterThan(fetchPoll.indexOf('FETCH_LOCK('));
+    expect(fetchPoll.indexOf('ensureItemLedger(')).toBeLessThan(fetchPoll.indexOf('pollFetchSource('));
+  });
+
+  it('handleControlJob routes fetch-poll; the reconciler owns both scheduler prefixes; deactivate removes both', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/case 'fetch-poll':\s*return handleFetchPoll\(/);
+    const reconciler = read('infrastructure/scheduling/PipelineReconciler.ts');
+    expect(reconciler).toMatch(/isPipelineSchedulerId\(id\) && !scheduled\.has\(id\)/);
+    expect(reconciler).toMatch(/upsertEvery\(fetchId,/);
+    const deactivate = read('infrastructure/scheduling/deactivateBinding.ts');
+    expect(deactivate).toMatch(/removeCron\(fetchSchedulerIdFor\(owner, projectId\)\)/);
+  });
+
+  it('preview-fetch is a reserved literal the self-api pin refuses (an authenticated egress on a job-composed request)', () => {
+    const guard = read('periphery/adapters/http/middleware/selfApiScopeGuard.ts');
+    expect(guard).toMatch(/PIPELINE_RESERVED_SEGMENTS = new Set\(\[[^\]]*'preview-fetch'/);
+    expect(guard).not.toMatch(/tail: \['preview-fetch'\]/);
+    const planning = read('periphery/adapters/http/routes/pipelines/planning.routes.ts');
+    expect(planning).toMatch(/router\.post\('\/preview-fetch', jobExecuteRateLimiter,/);
+  });
+
+  it('{{trigger.item.*}} has ONE render site and the run item rides the chat attribution + inbox rows', () => {
+    const render = read('infrastructure/scheduling/pipelineRun/render.ts');
+    expect(render.match(/trigger\\\.item/g)?.length).toBe(1);
+    const others = walk(PIPELINE_RUN_DIR).filter((f) => !f.endsWith('render.ts')).map((f) => fs.readFileSync(f, 'utf-8')).join('\n');
+    expect(others).not.toMatch(/trigger\\\.item|\{\{\s*trigger\.item/);
+    const dispatch = read('infrastructure/scheduling/pipelineRun/dispatch.ts');
+    expect(dispatch).toMatch(/firedBy: run\.firedBy, \.\.\.\(run\.item && \{ itemKey: run\.item\.key \}\)/);
+    const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
+    expect(runStore.match(/itemKey: run\.item\.key/g)?.length).toBeGreaterThanOrEqual(3);
   });
 });
 

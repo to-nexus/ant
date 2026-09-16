@@ -6,11 +6,15 @@
 import type { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { validatePipelineFetchTrigger, type PipelineFetchTrigger } from '@ant/shared';
 import { extractUserContext } from '../helpers/userContext';
 import { sendErrorResponse } from '../helpers/errorResponse';
+import { jobExecuteRateLimiter } from '../../middleware/rateLimiter';
+import { REDIS_KEYS } from '../../../../../core/constants/redis';
 import { getNextFires, checkMinInterval } from '../../../../../core/pipelines/cron';
+import { pollFetchSource } from '../../../../../core/pipelines/fetchConnection';
 import { listAccountActivations } from '../../../../../core/pipelines/store';
-import { ownerOf, type PipelinesRouteContext } from './context';
+import { isSingleSegment, ownerOf, reject400, type PipelinesRouteContext } from './context';
 
 export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContext): void {
   const { deps, actRootOf } = ctx;
@@ -32,6 +36,49 @@ export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContex
       res.json({ ok: !intervalError, error: intervalError ?? undefined, fires: preview.nextFires });
     } catch (error) {
       sendErrorResponse(res, 500, error, 'PipelinesPreviewFires');
+    }
+  });
+
+  // ── Fetch preview — the editor's "what would a poll see" round-trip ──
+  // A dry run with the CALLER's credentials: no claim, no fire, `claimed` per
+  // item when a projectId names one of the caller's activations. An
+  // authenticated egress on a caller-composed request, so it is rate-limited
+  // and refused to the self-api pin (a job must not turn the owner's secrets
+  // into a proxy).
+  router.post('/preview-fetch', jobExecuteRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const owner = ownerOf(req);
+      const raw = req.body?.fetch;
+      const errors = validatePipelineFetchTrigger(raw);
+      if (errors.length > 0) {
+        res.status(400).json({ error: errors[0], errors, code: 'invalid-fetch-trigger' });
+        return;
+      }
+      const projectId = req.body?.projectId;
+      if (projectId !== undefined && !isSingleSegment(projectId)) return void reject400(res, 'projectId');
+      if (!deps.credentialResolverFor) {
+        res.status(503).json({ error: 'credential store unavailable in this process', code: 'credentials-unavailable' });
+        return;
+      }
+      const trigger = raw as PipelineFetchTrigger;
+      const outcome = await pollFetchSource(
+        { tenant: ctx.ctxOf(owner), credentialResolver: deps.credentialResolverFor(owner) },
+        trigger,
+      );
+      if (!outcome.ok) {
+        res.json({ ok: false, error: outcome.error, items: [], seen: 0, skipped: 0 });
+        return;
+      }
+      const items = [];
+      for (const item of outcome.extracted.items) {
+        const claimed = projectId
+          ? await deps.stateStore.exists(REDIS_KEYS.PIPE.ITEM(owner.organizationId, owner.userId, projectId, item.key)).catch(() => false)
+          : false;
+        items.push({ ...item, claimed });
+      }
+      res.json({ ok: true, items, seen: outcome.extracted.seen, skipped: outcome.extracted.skipped });
+    } catch (error) {
+      sendErrorResponse(res, 500, error, 'PipelinesPreviewFetch');
     }
   });
 

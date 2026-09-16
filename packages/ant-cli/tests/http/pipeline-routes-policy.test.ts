@@ -29,8 +29,11 @@ let server: http.Server;
 let baseUrl: string;
 let liveJobs: Array<{ jobId: string; status: string; type?: string }> = [];
 let liveRunIds: string[] = [];
+const redisKeys = new Map<string, string>();
 const cronUpserts: string[] = [];
 const cronRemoved: string[] = [];
+const everyUpserts: Array<{ id: string; everyMs: number }> = [];
+const addedNow: any[] = [];
 
 function api(pathname: string, init?: RequestInit): Promise<Response> {
   return fetch(`${baseUrl}/api/definitions/pipelines${pathname}`, {
@@ -72,7 +75,8 @@ function scaffoldAgentCatalog(agentsRoot: string): void {
   const jobDir = path.join(agentsRoot, 'research', 'jobs', 'collect');
   fs.mkdirSync(path.join(jobDir, 'intents', 'triage'), { recursive: true });
   fs.writeFileSync(path.join(agentsRoot, 'research', 'agent.yaml'), 'id: research\nname: Research\nversion: 1\n');
-  fs.writeFileSync(path.join(jobDir, 'job.yaml'), 'id: collect\nname: Collect\n');
+  // `jira` is the external connection the fetch-trigger rows poll; `allow` bounds it.
+  fs.writeFileSync(path.join(jobDir, 'job.yaml'), 'id: collect\nname: Collect\napis:\n  jira:\n    baseUrl: https://jira.example.com\n    allow:\n      - GET /rest/**\n');
   fs.writeFileSync(
     path.join(jobDir, 'intents', 'triage', 'infer.md'),
     '---\noutcomes: [ok, needs-review]\n---\nTriage the collected sources.\n',
@@ -105,18 +109,25 @@ beforeAll(async () => {
   };
   const scheduleQueue = {
     upsertCron: async (id: string) => void cronUpserts.push(id),
+    upsertEvery: async (id: string, everyMs: number) => void everyUpserts.push({ id, everyMs }),
     removeCron: async (id: string) => void cronRemoved.push(id),
     listCronIds: async () => [],
     armDelayed: async () => {},
     cancelDelayed: async () => {},
-    addNow: async () => {},
+    addNow: async (data: any) => void addedNow.push(data),
     close: async () => {},
   };
   const stateStore = {
     listJobsByFeature: async () => liveJobs,
-    setKeyWithTTL: async () => {},
-    deleteKey: async () => {},
-    getKey: async () => null,
+    setKeyWithTTL: async (k: string, v: string) => void redisKeys.set(k, v),
+    deleteKey: async (k: string) => void redisKeys.delete(k),
+    getKey: async (k: string) => redisKeys.get(k) ?? null,
+    exists: async (k: string) => redisKeys.has(k),
+    tryAcquireLock: async (k: string, v: string) => {
+      if (redisKeys.has(k)) return false;
+      redisKeys.set(k, v);
+      return true;
+    },
     publish: async () => {},
   };
 
@@ -153,6 +164,9 @@ beforeEach(() => {
   liveRunIds = [];
   cronUpserts.length = 0;
   cronRemoved.length = 0;
+  everyUpserts.length = 0;
+  addedNow.length = 0;
+  redisKeys.clear();
   fs.rmSync(path.join(userDir, '.ant'), { recursive: true, force: true });
   for (const entry of fs.readdirSync(userDir)) {
     if (entry !== '.ant') fs.rmSync(path.join(userDir, entry), { recursive: true, force: true });
@@ -428,6 +442,82 @@ describe('activation — one per project, many per pipeline', () => {
     expect(list.orphanActivations).toHaveLength(1);
     expect(list.orphanActivations[0]).toMatchObject({ pipelineId: 'ghost', projectId: 'proj-x', state: 'broken', mine: true });
     expect(fs.existsSync(path.join(orphanDir, 'activation.json'))).toBe(true);
+  });
+});
+
+describe('fetch trigger — poll-now, the every-poller, preview-fetch', () => {
+  const FETCH_DEF = (request: Record<string, unknown> = {}) => ({
+    version: 2,
+    name: 'Tickets',
+    on: {
+      fetch: {
+        customJobRef: 'research/collect',
+        api: 'jira',
+        request: { method: 'GET', path: '/rest/api/3/search', ...request },
+        items: '$.issues',
+        key: '$.key',
+        every: '5m',
+      },
+    },
+    steps: [{ id: 'collect', customJobRef: 'research/collect', directive: 'Handle {{trigger.item.key}}' }],
+  });
+
+  it('activate registers the every-poller (not a cron), the list carries `every`, and run-now is Poll-now (202 polled)', async () => {
+    makeUniversalProject('proj-a');
+    expect((await api('', { method: 'POST', body: JSON.stringify({ id: 'tickets', def: FETCH_DEF() }) })).status).toBe(201);
+    await enable('tickets');
+    const act = await activate('tickets', 'proj-a');
+    expect(act.status).toBe(200);
+    expect(cronUpserts).toEqual([]);
+    expect(everyUpserts).toEqual([{ id: 'fetch|localorg|localuser|proj-a', everyMs: 5 * 60_000 }]);
+    // The claim projection marker is set at activate (rebuilt from an empty ledger).
+    expect(redisKeys.has('ant:pipe:items-built:localorg:localuser:proj-a')).toBe(true);
+
+    const list = await (await api('')).json();
+    const entry = list.pipelines.find((p: any) => p.id === 'tickets');
+    expect(entry.every).toBe('5m');
+    expect(entry.cron).toBeUndefined();
+    // No poll yet → no nextFireAt, no lastPoll.
+    expect(entry.activations[0].lastPoll).toBeUndefined();
+    expect(entry.activations[0].nextFireAt).toBeUndefined();
+
+    // A stored poll status becomes lastPoll and nextFireAt = polledAt + every.
+    redisKeys.set('ant:pipe:fetch:localorg:localuser:proj-a', JSON.stringify({ polledAt: '2026-09-16T00:00:00.000Z', seen: 3, unclaimed: 1, enqueued: 1 }));
+    const views = await (await api('/tickets/activations')).json();
+    expect(views.activations[0].lastPoll).toMatchObject({ seen: 3, enqueued: 1 });
+    expect(views.activations[0].nextFireAt).toBe('2026-09-16T00:05:00.000Z');
+
+    // Run-now on a fetch activation polls — even at cap, the poll judges room itself.
+    liveRunIds = ['run-1'];
+    const res = await api('/tickets/run-now', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ accepted: true, polled: true });
+    expect(addedNow).toEqual([expect.objectContaining({ kind: 'fetch-poll', pipelineId: 'tickets', projectId: 'proj-a', manual: true })]);
+  });
+
+  it('enable hard-fails a fetch request outside the connection\'s allow rules, with the executor\'s own verdict', async () => {
+    expect((await api('', { method: 'POST', body: JSON.stringify({ id: 'tickets', def: FETCH_DEF({ path: '/admin/export' }) }) })).status).toBe(201);
+    const res = await api('/tickets/enable', { method: 'POST' });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.errors.join('\n')).toMatch(/on\.fetch: GET \/admin\/export is not permitted by connection "jira" \(allow: GET \/rest\/\*\*\)/);
+  });
+
+  it('preview-fetch validates the block (400 invalid-fetch-trigger), refuses a traversal projectId, and answers 503 without a credential store', async () => {
+    const bad = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: { customJobRef: 'research/collect' } }) });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).code).toBe('invalid-fetch-trigger');
+    const traversal = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: FETCH_DEF().on.fetch, projectId: '../x' }) });
+    expect(traversal.status).toBe(400);
+    // This harness mounts no credentialResolverFor — the route says so instead of polling with nothing.
+    const noStore = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: FETCH_DEF().on.fetch }) });
+    expect(noStore.status).toBe(503);
+    expect((await noStore.json()).code).toBe('credentials-unavailable');
+  });
+
+  it('preview-fetch is registered as a LITERAL — it never resolves as a pipeline id', async () => {
+    const res = await api('/preview-fetch');
+    expect([404, 405]).toContain(res.status);
   });
 });
 

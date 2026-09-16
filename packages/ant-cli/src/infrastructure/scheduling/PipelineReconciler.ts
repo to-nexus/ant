@@ -15,16 +15,17 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { INDIVIDUAL_ORG_ID, type OrganizationKind, type RunRecord } from '@ant/shared';
+import { INDIVIDUAL_ORG_ID, parsePipelineDuration, type OrganizationKind, type RunRecord } from '@ant/shared';
 import { logger } from '../../utils/logger';
 import type { StateStorePort } from '../../core/ports/stateStore';
-import type { ScheduleQueuePort, PipelineOwner, PipelineFireJobData } from '../../core/ports/scheduler';
+import type { ScheduleQueuePort, PipelineOwner, PipelineFireJobData, PipelineFetchPollJobData } from '../../core/ports/scheduler';
 import { REDIS_DOMAINS, REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
 import { approverIndexEntry, approverUnion, replaceApproverIndex } from '../../core/pipelines/approverIndex';
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import { loadActivationByProject, loadAvailability, loadPipeline } from '../../core/pipelines/store';
 import { pruneRunSessionFiles } from './pipelineRun/sessionRetention';
+import { ensureItemLedger } from './pipelineRun/itemLedger';
 
 const COMPONENT = 'PipelineReconciler';
 const RECONCILE_LOCK_KEY = 'ant:lock:pipeline-reconcile';
@@ -35,6 +36,16 @@ export const PIPELINE_OWNER_FILE = 'owner.json';
 
 export function schedulerIdFor(owner: PipelineOwner, projectId: string): string {
   return `pipe|${owner.organizationId}|${owner.userId}|${projectId}`;
+}
+
+/** The fetch poller's scheduler id — same coordinates, its own prefix (both are swept). */
+export function fetchSchedulerIdFor(owner: PipelineOwner, projectId: string): string {
+  return `fetch|${owner.organizationId}|${owner.userId}|${projectId}`;
+}
+
+/** Scheduler ids the reconciler owns — anything else on the queue is another feature's. */
+export function isPipelineSchedulerId(id: string): boolean {
+  return id.startsWith('pipe|') || id.startsWith('fetch|');
 }
 
 export function readPipelineOwner(pipelineDir: string): PipelineOwner | null {
@@ -90,7 +101,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
     // scheduler upsert is cron-gated.
     const wanted = new Map<
       string,
-      { fire: PipelineFireJobData; schedule?: { cron: string; tz?: string }; activatedAt: string }
+      { fire: PipelineFireJobData; schedule?: { cron: string; tz?: string }; fetchEveryMs?: number; activatedAt: string }
     >();
 
     // Approver-of discovery index rebuild — collected across the same scan,
@@ -127,6 +138,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
             firedBy: 'cron',
           },
           ...(def.on?.schedule && { schedule: { cron: def.on.schedule.cron, tz: def.on.schedule.tz } }),
+          ...(def.on?.fetch && { fetchEveryMs: parsePipelineDuration(def.on.fetch.every) ?? undefined }),
           activatedAt: activation.activatedAt,
         });
       } catch (e) {
@@ -142,9 +154,22 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
         await deps.scheduleQueue.upsertCron(schedulerId, entry.schedule.cron, entry.schedule.tz, entry.fire);
         scheduled.add(schedulerId);
       }
+      const { owner, pipelineId, projectId } = entry.fire;
+      if (entry.fetchEveryMs) {
+        // A fetch activation polls on its own `every` scheduler; the claim
+        // projection is rebuilt from the disk ledger whenever its marker lapsed.
+        const fetchId = fetchSchedulerIdFor(owner, projectId);
+        const poll: PipelineFetchPollJobData = { kind: 'fetch-poll', owner, pipelineId, pipelineScope: entry.fire.pipelineScope, projectId };
+        await deps.scheduleQueue.upsertEvery(fetchId, entry.fetchEveryMs, poll);
+        scheduled.add(fetchId);
+        try {
+          await ensureItemLedger(deps.stateStore, path.join(deps.workspacesPath, owner.organizationId, owner.userId, PIPELINE_ACTIVATIONS_DIRNAME), owner, projectId);
+        } catch (e) {
+          logger.warn(`[Pipeline] item ledger rebuild failed for ${projectId} (non-fatal)`, { component: COMPONENT }, e);
+        }
+      }
       // Refresh the activation projections — this is what keeps the job-start
       // mutual-exclusion gate alive (TTL > interval; lapse fails OPEN).
-      const { owner, pipelineId, projectId } = entry.fire;
       await deps.stateStore.setKeyWithTTL(
         REDIS_KEYS.PIPE.ACTIVATION(owner.organizationId, owner.userId, projectId),
         JSON.stringify({
@@ -185,7 +210,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
     // wanted (projections) but never scheduled, so its stale cron must go.
     const registered = await deps.scheduleQueue.listCronIds();
     for (const id of registered) {
-      if (id.startsWith('pipe|') && !scheduled.has(id)) {
+      if (isPipelineSchedulerId(id) && !scheduled.has(id)) {
         await deps.scheduleQueue.removeCron(id);
         logger.info(`[Pipeline] removed orphan scheduler: ${id}`, { component: COMPONENT });
       }

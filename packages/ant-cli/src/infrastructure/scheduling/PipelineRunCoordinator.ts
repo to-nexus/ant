@@ -31,6 +31,7 @@ import { InAppChannel, type NotificationChannelPort } from '../../core/pipelines
 import { logger } from '../../utils/logger';
 import { COMPONENT, type HitlRecord, type PipelineCoordinatorDeps, type PipelineRunOps } from './pipelineRun/types';
 import { handleFire } from './pipelineRun/fire';
+import { handleFetchPoll } from './pipelineRun/fetch';
 import { dispatchJobStep, executeDispatches, handleStepRetry } from './pipelineRun/dispatch';
 import { failStepOrRetry, handleJobStatusUpdate, handleOutcomeRetry, handleStepTimeout } from './pipelineRun/outcome';
 import { applyClarifyAnswer, enterAwaitingClarify, enterAwaitingToolApproval } from './pipelineRun/hitl';
@@ -94,6 +95,8 @@ export class PipelineRunCoordinator {
     switch (data.kind) {
       case 'fire':
         return handleFire(this.ctx, data, intendedFireAt);
+      case 'fetch-poll':
+        return handleFetchPoll(this.ctx, data);
       case 'gate-timeout':
         return handleGateTimeout(this.ctx, data.gateId);
       case 'gate-remind':

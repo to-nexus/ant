@@ -147,7 +147,7 @@ export async function dispatchJobStep(
         owner,
         undefined,
         'universal',
-        { pipelineId, runId: run.runId, stepId: step.id, firedBy: run.firedBy },
+        { pipelineId, runId: run.runId, stepId: step.id, firedBy: run.firedBy, ...(run.item && { itemKey: run.item.key }) },
       );
     } catch (e) {
       logger.warn(`[Pipeline] failed to append step user_turn: ${run.runId}/${step.id}`, { component: COMPONENT }, e);
@@ -203,7 +203,9 @@ export async function dispatchJobStep(
       ? `🔁 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
       : run.firedBy === 'event'
         ? `🔗 선행 파이프라인 완료로 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
-        : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
+        : run.firedBy === 'fetch'
+          ? `📥 항목 "${run.item?.key ?? run.runId}"에 대해 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
+          : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
     ctx.deps.chatService
       .appendAssistantMessage(run.projectId, UNIVERSAL_FEATURE, startedText, {
         jobId,

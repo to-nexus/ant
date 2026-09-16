@@ -478,7 +478,11 @@ debugging session.
   sequences) is never declared — it is prose in `base/`, intent `prompt.md`,
   and `on-demand/**` docs (paths-only index rendered into the system block —
   the bodies never inline, so the channel costs no prompt budget). No
-  per-endpoint tool schemas, no OpenAPI→tools import.
+  per-endpoint tool schemas, no OpenAPI→tools import. The ONE declared
+  request outside prose is a pipeline's `on.fetch.request` — trigger
+  CONFIGURATION (the cron expression's sibling) executed by the control-plane
+  poller, never rendered to a model and never a tool; it rides the same
+  `buildRestRequest` admission as the tools (doc 46 §2).
 - An `apis` entry takes one of two mutually exclusive forms: external
   (`baseUrl` + `headers`) or `self: true`, which targets Ant's own API and
   carries NEITHER — the runtime resolves the origin from `ANT_API_URL` and the

@@ -142,6 +142,41 @@ export interface McpConnectOptions {
   knownBad?: ReadonlySet<string>;
 }
 
+/**
+ * Resolve declared values: `${secret:KEY}` references go through the
+ * encrypted store, everything else passes verbatim as authored plain text.
+ * Shared by `env` (stdio child env) and `headers` (http request headers), and
+ * by the pipeline fetch poller (API process) — one rule, and process.env is
+ * never consulted (a reference naming a host secret resolves to a store miss,
+ * not a leak).
+ */
+export async function resolveDeclaredCredentials(
+  declared: Record<string, string> | undefined,
+  field: 'env' | 'headers',
+  serverName: string,
+  resolver: McpCredentialResolver,
+  label: 'MCP server' | 'API server' = 'MCP server',
+): Promise<Record<string, string>> {
+  const resolved: Record<string, string> = {};
+  for (const [key, declaredValue] of Object.entries(declared ?? {})) {
+    const credentialKey = parseSecretRef(declaredValue);
+    if (credentialKey === null) {
+      resolved[key] = declaredValue;
+      continue;
+    }
+    const value = await resolver.resolve(credentialKey);
+    if (value === undefined) {
+      throw new McpConfigError(
+        `${label} "${serverName}" ${field} "${key}" references credential key "${credentialKey}" which is not registered — ` +
+          `register it via PUT /api/credentials/mcp (or the agent settings UI) before starting the job`,
+        { serverName },
+      );
+    }
+    resolved[key] = value;
+  }
+  return resolved;
+}
+
 export class McpConnectionManager {
   private clients = new Map<string, Client>();
   private restServers = new Map<string, CompiledRestServer>();
@@ -157,37 +192,13 @@ export class McpConnectionManager {
     private readonly sandboxRoots: ChildSandboxRoots = { rwRoots: [] },
   ) {}
 
-  /**
-   * Resolve declared values: `${secret:KEY}` references go through the
-   * encrypted store, everything else passes verbatim as authored plain text.
-   * Shared by `env` (stdio child env) and `headers` (http request headers) —
-   * one rule, and process.env is never consulted (a reference naming a host
-   * secret resolves to a store miss, not a leak).
-   */
-  private async resolveCredentials(
+  private resolveCredentials(
     declared: Record<string, string> | undefined,
     field: 'env' | 'headers',
     serverName: string,
     label: 'MCP server' | 'API server' = 'MCP server',
   ): Promise<Record<string, string>> {
-    const resolved: Record<string, string> = {};
-    for (const [key, declaredValue] of Object.entries(declared ?? {})) {
-      const credentialKey = parseSecretRef(declaredValue);
-      if (credentialKey === null) {
-        resolved[key] = declaredValue;
-        continue;
-      }
-      const value = await this.resolver.resolve(credentialKey);
-      if (value === undefined) {
-        throw new McpConfigError(
-          `${label} "${serverName}" ${field} "${key}" references credential key "${credentialKey}" which is not registered — ` +
-            `register it via PUT /api/credentials/mcp (or the agent settings UI) before starting the job`,
-          { serverName },
-        );
-      }
-      resolved[key] = value;
-    }
-    return resolved;
+    return resolveDeclaredCredentials(declared, field, serverName, this.resolver, label);
   }
 
   /**

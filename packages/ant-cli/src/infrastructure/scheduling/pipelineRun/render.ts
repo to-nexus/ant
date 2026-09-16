@@ -15,7 +15,11 @@ export function renderStaticVars(template: string, run: RunRecord): string {
     .replace(/\{\{\s*run\.id\s*\}\}/g, run.runId)
     // Cross-run watermark — the first run renders empty.
     .replace(/\{\{\s*run\.prevSuccess\.fireDate\s*\}\}/g, prev !== undefined ? new Date(prev).toISOString() : '')
-    .replace(/\{\{\s*run\.prevSuccess\.fireEpoch\s*\}\}/g, prev !== undefined ? String(prev) : '');
+    .replace(/\{\{\s*run\.prevSuccess\.fireEpoch\s*\}\}/g, prev !== undefined ? String(prev) : '')
+    // The claimed item (fetch-fired runs) — key + declared fields; a run
+    // without an item renders empty (validator-refused without a fetch trigger).
+    .replace(/\{\{\s*trigger\.item\.([a-zA-Z0-9]+)\s*\}\}/g, (_, name: string) =>
+      name === 'key' ? run.item?.key ?? '' : run.item?.fields?.[name] ?? '');
 }
 
 export function renderDirective(template: string, run: RunRecord): string {

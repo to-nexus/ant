@@ -9,6 +9,7 @@ import {
   MEMBERSHIP_REQUIRED,
   UNIVERSAL_FEATURE,
   validatePipelineActivation,
+  parsePipelineDuration,
   type PipelineActivation,
   type PipelineDef,
   resolveRunConcurrency,
@@ -30,7 +31,8 @@ import {
 } from '../../../../../core/pipelines/store';
 import { resolveDefRoot } from '../../../../../core/pipelines/scopeRoots';
 import { findDuplicateActiveJob } from '../../../../../core/scheduling/UniversalDispatchGate';
-import { schedulerIdFor } from '../../../../../infrastructure/scheduling/PipelineReconciler';
+import { fetchSchedulerIdFor, schedulerIdFor } from '../../../../../infrastructure/scheduling/PipelineReconciler';
+import { ensureItemLedger } from '../../../../../infrastructure/scheduling/pipelineRun/itemLedger';
 import { deactivatePipelineBinding } from '../../../../../infrastructure/scheduling/deactivateBinding';
 import { isSingleSegment, reject400 } from './context';
 import { ownerOf, type PipelinesRouteContext } from './context';
@@ -52,6 +54,7 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         req.params.pipelineId,
         nextFireOf(def),
         enabled,
+        def.on?.fetch,
       );
       res.json({ activations });
     } catch (error) {
@@ -233,6 +236,22 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
           firedBy: 'cron',
         });
       }
+      // A fetch activation polls on its own `every` scheduler; the claim
+      // projection is rebuilt from the (possibly pre-existing) disk ledger so
+      // a re-activation never re-fires cases that already ran.
+      if (def.on?.fetch) {
+        const everyMs = parsePipelineDuration(def.on.fetch.every);
+        if (everyMs) {
+          await deps.scheduleQueue.upsertEvery(fetchSchedulerIdFor(owner, projectId), everyMs, {
+            kind: 'fetch-poll',
+            owner,
+            pipelineId,
+            pipelineScope: activation.pipelineScope,
+            projectId,
+          });
+        }
+        await ensureItemLedger(deps.stateStore, actRoot, owner, projectId).catch(() => false);
+      }
       const nextFireAt = nextFireOf(def);
       await publishPipelineEvent(owner, {
         cause: 'activationChanged',
@@ -332,10 +351,26 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
       // activation is at cap, so a burst of Run now starts N independent runs.
       // `existingRunId` stays one release for API callers.
       let cap = 1;
+      let def: PipelineDef | null = null;
       try {
-        cap = resolveRunConcurrency(loadPipeline(resolveDefRoot(ctxOf(owner), activation.pipelineScope), pipelineId));
+        def = loadPipeline(resolveDefRoot(ctxOf(owner), activation.pipelineScope), pipelineId);
+        cap = resolveRunConcurrency(def);
       } catch {
         /* unresolvable def: the fire path skips; refuse at the default cap */
+      }
+      // Run-now on a FETCH activation is Poll-now: the poll admits items up to
+      // the room under `concurrency` itself, so there is no cap refusal here.
+      if (def?.on?.fetch) {
+        await deps.scheduleQueue.addNow({
+          kind: 'fetch-poll',
+          owner,
+          pipelineId,
+          pipelineScope: activation.pipelineScope,
+          projectId,
+          manual: true,
+        });
+        res.status(202).json({ accepted: true, polled: true });
+        return;
       }
       const existingRunIds = await deps.coordinator.listActiveRunIds(owner, projectId);
       if (existingRunIds.length >= cap) {
