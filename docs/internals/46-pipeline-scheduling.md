@@ -787,8 +787,14 @@ Caps are first-class (`DEFAULT_PIPELINE_CAPS` in shared): `maxPipelines` 20
 (enforced by sampling the next 10 fires — the expression is judged by what it
 does), `maxConcurrentRuns` 3 (enforced at fire — skip + log — the account
 slot set, member = run), `maxLiveRunsPerActivation` 3 (the ceiling a
-definition's `concurrency` may declare once the key opens; the validator
-refuses the key today, so every activation holds one live run).
+definition's `concurrency` may declare — the validator bounds the key to
+`1..cap`; absent = 1). `concurrency` is trigger-agnostic: a burst of Run now,
+a cron fire over a live run, and a chain fire all reserve against the same
+per-activation slot set, and run-now's 409 fires only at cap. Under N > 1 the
+`{{run.prevSuccess.*}}` watermark races (save advisory
+`prev-success-under-concurrency`). Sealed run session files are retained
+newest-K (20) per `(agent, job)` stem by the reconciler
+(`pruneRunSessionFiles`, judged against the healed live set).
 
 ---
 

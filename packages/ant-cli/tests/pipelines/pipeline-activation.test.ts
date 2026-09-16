@@ -23,6 +23,7 @@ import {
   PipelineValidationError,
 } from '../../src/core/pipelines/store';
 import { reconcilePipelines } from '../../src/infrastructure/scheduling/PipelineReconciler';
+import { RUN_SESSION_FILE_RETENTION } from '../../src/infrastructure/scheduling/pipelineRun/sessionRetention';
 import { deactivatePipelineBinding } from '../../src/infrastructure/scheduling/deactivateBinding';
 
 let tmp: string;
@@ -411,6 +412,40 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     await reconcilePipelines(deps as any);
     expect(keys.has('ant:pipe:active:local:user:proj-a')).toBe(false);
     expect(slots.get('ant:pipe:actruns:local:user:proj-a')?.size ?? 0).toBe(0);
+  });
+
+  // Every run seals into its own session file (§5b); the reconciler is the ONE
+  // retention owner — newest K per (agent, job) stem, judged against the healed
+  // live set, so a live run's file is never a candidate whatever its age.
+  it('keeps the newest K sealed run session files per stem and never touches a live run\'s', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    const { deps, keys, slots } = makeDeps();
+    deps.workspacesPath = tmp;
+    const container = path.join(tmp, 'local', 'user', 'proj-a', 'universal');
+    const dir = path.join(container, 'sessions', 'ops');
+    fs.mkdirSync(dir, { recursive: true });
+    const t0 = Date.now() - 100_000;
+    for (let i = 0; i < RUN_SESSION_FILE_RETENTION + 5; i++) {
+      const f = path.join(dir, `author@run-${String(i).padStart(2, '0')}.json`);
+      fs.writeFileSync(f, '{}');
+      fs.utimesSync(f, new Date(t0 + i * 1000), new Date(t0 + i * 1000));
+    }
+    // The live run's file is the OLDEST of all; the shared interactive file is never a candidate.
+    const liveFile = path.join(dir, 'author@run-live.json');
+    fs.writeFileSync(liveFile, '{}');
+    fs.utimesSync(liveFile, new Date(t0 - 50_000), new Date(t0 - 50_000));
+    fs.writeFileSync(path.join(dir, 'author.json'), '{}');
+    keys.set('ant:pipe:run:run-live', JSON.stringify({ runId: 'run-live', status: 'running' }));
+    slots.set('ant:pipe:actruns:local:user:proj-a', new Map([['run-live', Date.now() + 60_000]]));
+    (deps as any).containerPathOf = () => container;
+    await reconcilePipelines(deps as any);
+    const left = fs.readdirSync(dir).sort();
+    expect(left).toContain('author@run-live.json');
+    expect(left).toContain('author.json');
+    const sealed = left.filter((n) => /^author@run-\d\d\.json$/.test(n));
+    expect(sealed).toHaveLength(RUN_SESSION_FILE_RETENTION);
+    expect(sealed[0]).toBe('author@run-05.json');
   });
 
   it('rebuilds the approver-of discovery index from activation rosters (gate-agnostic union)', async () => {

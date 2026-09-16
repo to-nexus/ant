@@ -24,6 +24,7 @@ import { approverIndexEntry, approverUnion, replaceApproverIndex } from '../../c
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import { loadActivationByProject, loadAvailability, loadPipeline } from '../../core/pipelines/store';
+import { pruneRunSessionFiles } from './pipelineRun/sessionRetention';
 
 const COMPONENT = 'PipelineReconciler';
 const RECONCILE_LOCK_KEY = 'ant:lock:pipeline-reconcile';
@@ -71,6 +72,12 @@ export interface PipelineReconcilerDeps {
   stateStore: StateStorePort;
   scheduleQueue: ScheduleQueuePort;
   workspacesPath: string;
+  /**
+   * The activation project's universal container (`WorkspacePathResolver`
+   * derivation, never re-spelled here). Absent = no session-file retention
+   * pass (tests that only exercise scheduling).
+   */
+  containerPathOf?: (owner: PipelineOwner, projectId: string) => string;
 }
 
 export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<void> {
@@ -155,7 +162,16 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
       );
       // Overlap-guard healing: a coordinator crash between acquire and
       // finalize would otherwise block the activation until the 30d TTL.
-      await healOverlapGuard(deps.stateStore, owner, projectId);
+      const liveRunIds = await healOverlapGuard(deps.stateStore, owner, projectId);
+      // Sealed run files accumulate one per run — keep the newest K per stem,
+      // judged against the healed live set so a live run's file is never touched.
+      if (deps.containerPathOf) {
+        try {
+          pruneRunSessionFiles(deps.containerPathOf(owner, projectId), liveRunIds);
+        } catch (e) {
+          logger.warn(`[Pipeline] run session retention failed for ${projectId} (non-fatal)`, { component: COMPONENT }, e);
+        }
+      }
     }
 
     // Approver-of index refresh (TTL-bounded like ACTIVATION — a roster whose
@@ -184,13 +200,14 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
 /**
  * Release slot memberships whose run doc is missing or terminal — a
  * coordinator crash between reserve and finalize would otherwise hold the
- * activation's (and the account's) slot until the 30d TTL.
+ * activation's (and the account's) slot until the 30d TTL. Returns the
+ * activation's live run ids after healing.
  */
 async function healOverlapGuard(
   stateStore: StateStorePort,
   owner: PipelineOwner,
   projectId: string,
-): Promise<void> {
+): Promise<Set<string>> {
   const { organizationId, userId } = owner;
   const activeRunsKey = REDIS_KEYS.PIPE.ACTIVE_RUNS(organizationId, userId, projectId);
   const slotsKey = REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId);
@@ -199,8 +216,12 @@ async function healOverlapGuard(
     const run = raw ? (JSON.parse(raw) as RunRecord) : null;
     return !!run && !['completed', 'failed', 'partial', 'cancelled'].includes(run.status);
   };
+  const live = new Set<string>();
   for (const runId of await stateStore.listSlots(activeRunsKey)) {
-    if (await isLive(runId)) continue;
+    if (await isLive(runId)) {
+      live.add(runId);
+      continue;
+    }
     await stateStore.releaseSlot(activeRunsKey, runId).catch(() => {});
     await stateStore.releaseSlot(slotsKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
     logger.info(`[Pipeline] healed stale live-run slot: ${projectId} (run ${runId})`, { component: COMPONENT });
@@ -221,6 +242,7 @@ async function healOverlapGuard(
   const legacyRunId = await stateStore.getKey(legacyKey);
   if (legacyRunId) {
     if (await isLive(legacyRunId)) {
+      live.add(legacyRunId);
       await stateStore.reserveSlot(activeRunsKey, legacyRunId, Number.MAX_SAFE_INTEGER, REDIS_TTL.PIPE.ACTIVE);
       await stateStore.reserveSlot(
         slotsKey,
@@ -232,6 +254,7 @@ async function healOverlapGuard(
     await stateStore.deleteKey(legacyKey).catch(() => {});
     logger.info(`[Pipeline] migrated legacy overlap guard: ${projectId} (run ${legacyRunId})`, { component: COMPONENT });
   }
+  return live;
 }
 
 function scanActivationDirs(

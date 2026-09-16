@@ -45,6 +45,7 @@ import { getInfrastructureFactory } from '../../../../infrastructure/adapters/In
 import { registerChatLogLock } from '../../session/FileSessionAdapter';
 import { resolveRedisUrl } from '../../../../core/config/redisUrl';
 import { PipelineQueue, PipelineRunCoordinator, reconcilePipelines } from '../../../../infrastructure/scheduling';
+import type { PipelineOwner } from '../../../../core/ports/scheduler';
 import { checkApproval, checkTeamMembership } from '../routes/helpers/approvalGate';
 
 // Service Initialization
@@ -347,6 +348,8 @@ export class ExpressServerAdapter implements
           stateStore: getInfrastructureFactory().getStateStore(),
           scheduleQueue: queue,
           workspacesPath: this.deps.workspaceResolver.getPhysicalWorkspacesPath(),
+          containerPathOf: (owner: PipelineOwner, projectId: string) =>
+            this.deps.workspaceResolver.getUniversalContainerPath(owner, projectId),
         };
         await reconcilePipelines(reconcileDeps);
         this.pipelineReconcileTimer = setInterval(() => {

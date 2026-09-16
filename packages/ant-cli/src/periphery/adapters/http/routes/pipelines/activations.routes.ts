@@ -11,6 +11,7 @@ import {
   validatePipelineActivation,
   type PipelineActivation,
   type PipelineDef,
+  resolveRunConcurrency,
   runSummaryOf,
   type PipelineRunSummary,
 } from '@ant/shared';
@@ -27,6 +28,7 @@ import {
   saveActivationRecord,
   PipelineValidationError,
 } from '../../../../../core/pipelines/store';
+import { resolveDefRoot } from '../../../../../core/pipelines/scopeRoots';
 import { findDuplicateActiveJob } from '../../../../../core/scheduling/UniversalDispatchGate';
 import { schedulerIdFor } from '../../../../../infrastructure/scheduling/PipelineReconciler';
 import { deactivatePipelineBinding } from '../../../../../infrastructure/scheduling/deactivateBinding';
@@ -325,14 +327,23 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         });
         return;
       }
-      // Admission is the fire path's slot cap; this is the early, readable
-      // refusal for the button. `existingRunId` stays one release for API callers.
+      // Admission is the fire path's slot cap (the definition's `concurrency`);
+      // this is the early, readable refusal for the button — only when the
+      // activation is at cap, so a burst of Run now starts N independent runs.
+      // `existingRunId` stays one release for API callers.
+      let cap = 1;
+      try {
+        cap = resolveRunConcurrency(loadPipeline(resolveDefRoot(ctxOf(owner), activation.pipelineScope), pipelineId));
+      } catch {
+        /* unresolvable def: the fire path skips; refuse at the default cap */
+      }
       const existingRunIds = await deps.coordinator.listActiveRunIds(owner, projectId);
-      if (existingRunIds.length > 0) {
+      if (existingRunIds.length >= cap) {
         res.status(409).json({
-          error: 'A run is already live for this activation',
+          error: cap > 1 ? `This activation already holds ${existingRunIds.length} live runs (concurrency ${cap})` : 'A run is already live for this activation',
           existingRunIds,
           existingRunId: existingRunIds[0],
+          concurrency: cap,
         });
         return;
       }

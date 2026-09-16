@@ -178,8 +178,11 @@ export interface PipelineDef {
   /**
    * Live runs one ACTIVATION may hold at once — the per-activation slot cap the
    * fire path reserves against, whatever fired (run-now, cron, chain, fetch).
-   * Read only through {@link resolveRunConcurrency}. Reserved (validator
-   * refuses the key) until the multi-run surfaces land; absent = 1.
+   * Read only through {@link resolveRunConcurrency}. Absent = 1; the validator
+   * bounds it by `PipelineCaps.maxLiveRunsPerActivation`. Runs of one
+   * activation are independent (own session file, gates, timeline); the
+   * `{{run.prevSuccess.*}}` watermark is the only cross-run channel and races
+   * under N > 1 (save advisory `prev-success-under-concurrency`).
    */
   concurrency?: number;
   defaults?: { onStepFailure?: StepFailurePolicy };
@@ -836,13 +839,12 @@ export interface PipelinePendingApproval {
 // ============================================
 
 const STEP_ID_HINT = 'lowercase letters, digits and hyphens (e.g. "collect-sources")';
-const DEF_KEYS = ['version', 'name', 'on', 'defaults', 'steps', 'acknowledged'];
+const DEF_KEYS = ['version', 'name', 'on', 'concurrency', 'defaults', 'steps', 'acknowledged'];
 const ACK_KEYS = ['code', 'step', 'reason'];
 /** Keys that existed in def v1 or belong to future axes — reject loudly, never ignore. */
 const RESERVED_DEF_KEYS: Record<string, string> = {
   enabled: '"enabled" lives in the availability sidecar — use POST /api/pipelines/{id}/enable|disable, not the definition',
   projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
-  concurrency: '"concurrency" is not supported yet (multi-run per activation lands with the live-runs surfaces) — an activation holds one live run',
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
 const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout', 'onMissingVerdict'];
@@ -984,7 +986,7 @@ function isAcyclic(steps: Array<{ id: string; needs?: string[] }>): boolean {
  */
 export function validatePipelineDef(
   raw: unknown,
-  caps: Pick<PipelineCaps, 'maxStepsPerPipeline'> = DEFAULT_PIPELINE_CAPS,
+  caps: Pick<PipelineCaps, 'maxStepsPerPipeline' | 'maxLiveRunsPerActivation'> = DEFAULT_PIPELINE_CAPS,
 ): string[] {
   if (!isPlainObject(raw)) return ['pipeline definition must be a mapping (YAML object)'];
   const errors: string[] = [];
@@ -997,6 +999,14 @@ export function validatePipelineDef(
     errors.push('name must be a non-empty string');
   } else if (raw.name.length > 100) {
     errors.push('name must be at most 100 characters');
+  }
+
+  // Per-activation live-run cap — trigger-agnostic (run-now bursts, cron, chain fires all reserve against it).
+  if (raw.concurrency !== undefined) {
+    const cap = caps.maxLiveRunsPerActivation;
+    if (typeof raw.concurrency !== 'number' || !Number.isInteger(raw.concurrency) || raw.concurrency < 1 || raw.concurrency > cap) {
+      errors.push(`concurrency must be an integer from 1 to ${cap} (live runs one activation may hold at once; got: ${String(raw.concurrency)})`);
+    }
   }
 
   // Trigger — absent `on` = manual-only (run-now is the only fire source).
@@ -1447,6 +1457,7 @@ export const PIPELINE_ADVISORY_CODES = [
   'chained-pinless-consumer',
   'unrouted-verdict-no-fallback',
   'entry-no-case-channel',
+  'prev-success-under-concurrency',
 ] as const;
 export type PipelineAdvisoryCode = (typeof PIPELINE_ADVISORY_CODES)[number];
 
@@ -1515,6 +1526,27 @@ function needsClosureOf(def: PipelineDef): (id: string) => Set<string> {
  */
 export function collectPipelineDefAdvisoryItems(def: PipelineDef): PipelineAdvisory[] {
   const out: PipelineAdvisory[] = [];
+  // `run.prevSuccess.*` is "the newest COMPLETED run of this activation" frozen
+  // at fire — with N live runs that watermark races (a sibling may complete
+  // between two fires), so the cross-run channel is advisory under concurrency.
+  if (resolveRunConcurrency(def) > 1) {
+    const refersPrevSuccess = (s: string) => /\{\{\s*run\.prevSuccess\./.test(s);
+    for (const step of def.steps) {
+      if (isApprovalStep(step)) continue;
+      const field: PipelineAdvisoryField | undefined = refersPrevSuccess(step.directive ?? '')
+        ? 'directive'
+        : (step.context ?? []).some(refersPrevSuccess)
+          ? 'context'
+          : undefined;
+      if (!field) continue;
+      out.push({
+        code: 'prev-success-under-concurrency',
+        stepId: step.id,
+        field,
+        message: `step "${step.id}" reads {{run.prevSuccess.*}} while concurrency is ${resolveRunConcurrency(def)}: the watermark is the newest completed run at fire time, and sibling runs complete in any order — a run may see a watermark newer than the work it should follow. Keep concurrency at 1 for watermark-driven flows, or carry the case identity in the directive instead`,
+      });
+    }
+  }
   const dependedOn = new Set<string>();
   def.steps.forEach((step, i) => {
     const needs = step.needs ?? (i > 0 ? [def.steps[i - 1].id] : []);

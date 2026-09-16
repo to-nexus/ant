@@ -153,6 +153,7 @@ describe('validatePipelineDef — structural rules', () => {
         { id: 'c', customJobRef: 'x/c', directive: '{{steps.a.artifacts}}', needs: ['b'] },
       ],
     })],
+    ['concurrency within the per-activation cap (N live runs, every trigger)', baseDef({ concurrency: 3 })],
   ];
 
   it.each(valid)('accepts: %s', (_label, def) => {
@@ -164,7 +165,11 @@ describe('validatePipelineDef — structural rules', () => {
     ['wrong version', baseDef({ version: 3 }), /version must be 2/],
     ['v1 enabled key (lives in the availability sidecar)', baseDef({ enabled: true }), /"enabled" lives in the availability sidecar/],
     ['v1 projectId key (moved to activation)', baseDef({ projectId: 'proj-x' }), /"projectId" moved to activation/],
-    ['reserved concurrency key (multi-run per activation is a future surface)', baseDef({ concurrency: 3 }), /"concurrency" is not supported yet/],
+    // The knob is open; its range is the tenant cap (`maxLiveRunsPerActivation`).
+    ['concurrency 0', baseDef({ concurrency: 0 }), /concurrency must be an integer from 1 to 3/],
+    ['concurrency above the per-activation cap', baseDef({ concurrency: 4 }), /concurrency must be an integer from 1 to 3/],
+    ['fractional concurrency', baseDef({ concurrency: 1.5 }), /concurrency must be an integer/],
+    ['concurrency as a string', baseDef({ concurrency: '2' }), /concurrency must be an integer/],
     ['reserved step key jobType (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', jobType: 'code' }] }), /"jobType" is not supported yet/],
     ['reserved step key feature (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', feature: 'main' }] }), /"feature" is not supported yet/],
     ['empty name', baseDef({ name: '' }), /name/],
@@ -711,6 +716,27 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
       ...collectPipelineDefAdvisories(pipeline),
       ...collectPipelineCatalogAdvisories(pipeline, CATALOG),
     ]);
+  });
+
+  // The cross-run watermark is "newest COMPLETED run at fire" — exact under one
+  // live run, a race under N: sibling runs complete in any order.
+  it('prev-success-under-concurrency: the watermark turns advisory once an activation may hold N live runs', () => {
+    const watermark = (concurrency?: number): PipelineDef =>
+      ({
+        version: PIPELINE_DEF_VERSION,
+        name: 'n',
+        ...(concurrency !== undefined && { concurrency }),
+        steps: [
+          { id: 'a', customJobRef: 'x/a', directive: 'Since {{run.prevSuccess.fireDate}}' },
+          { id: 'b', customJobRef: 'x/b', directive: 'b', context: ['reports/{{run.prevSuccess.fireEpoch}}.md'] },
+          { id: 'c', customJobRef: 'x/c', directive: 'no watermark' },
+        ],
+      }) as unknown as PipelineDef;
+    const only = (d: PipelineDef) => collectPipelineDefAdvisoryItems(d).filter((a) => a.code === 'prev-success-under-concurrency');
+    expect(only(watermark())).toEqual([]);
+    expect(only(watermark(1))).toEqual([]);
+    expect(only(watermark(2)).map((a) => [a.stepId, a.field])).toEqual([['a', 'directive'], ['b', 'context']]);
+    expect(validatePipelineDef(watermark(2))).toEqual([]);
   });
 
   // The F34 shape (chained pipelines only): the chain restriction over-applied,

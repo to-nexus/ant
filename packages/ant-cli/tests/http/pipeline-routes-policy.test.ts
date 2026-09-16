@@ -398,6 +398,24 @@ describe('activation — one per project, many per pipeline', () => {
     expect(body.existingRunId).toBe('sandy-mending-cabin');
   });
 
+  // The refusal is the definition's `concurrency` — a burst of Run now starts
+  // N independent runs and only the (N+1)th is refused, naming the cap.
+  it('run-now admits up to the definition\'s concurrency and refuses only at cap', async () => {
+    const created = await api('', { method: 'POST', body: JSON.stringify({ id: 'burst', def: { ...DEF('Burst'), concurrency: 2 } }) });
+    expect(created.status).toBe(201);
+    await enable('burst');
+    makeUniversalProject('proj-a');
+    await activate('burst', 'proj-a');
+    liveRunIds = ['sandy-mending-cabin'];
+    expect((await api('/burst/run-now', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) })).status).toBe(202);
+    liveRunIds = ['sandy-mending-cabin', 'brisk-folding-lamp'];
+    const res = await api('/burst/run-now', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.existingRunIds).toEqual(['sandy-mending-cabin', 'brisk-folding-lamp']);
+    expect(body.concurrency).toBe(2);
+  });
+
   it('an orphan activation (deleted def) is surfaced in the list, never auto-deleted', async () => {
     const orphanDir = path.join(userDir, '.ant/pipeline-activations/proj-x');
     fs.mkdirSync(orphanDir, { recursive: true });
