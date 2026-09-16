@@ -103,7 +103,7 @@ export async function captureStepOutput(
   runId: string,
   stepId: string,
   jobId: string,
-): Promise<{ output?: StepOutputRecord; verdict?: string; missingVerdict?: boolean }> {
+): Promise<{ output?: StepOutputRecord; verdict?: string; missingVerdict?: boolean; assignee?: string }> {
   const run = await getRun(deps, runId).catch(() => null);
   const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
   if (!run || !stepDef || isApprovalStep(stepDef)) return {};
@@ -114,6 +114,8 @@ export async function captureStepOutput(
   let answer: string | undefined;
   let answerTruncated = false;
   let sealVerdict: string | undefined;
+  // Sealed reviewer nomination (raw; the gate validates it against candidates).
+  let sealAssignee: string | undefined;
   // The seal's own write evidence — set only when the seal is this job's.
   let sealedArtifacts: string[] | undefined;
   try {
@@ -125,6 +127,7 @@ export async function captureStepOutput(
       // every step of the same run.
       if (state?.jobId === jobId) {
         if (typeof state.verdict === 'string') sealVerdict = state.verdict;
+        if (typeof state.assignee === 'string' && state.assignee.length > 0) sealAssignee = state.assignee;
         const main = selectSealedConversation<any>(state);
         if (Array.isArray(main)) {
           for (let i = main.length - 1; i >= 0; i -= 1) {
@@ -185,12 +188,13 @@ export async function captureStepOutput(
           capturedAt: new Date().toISOString(),
         };
 
+  const base = { ...(output && { output }), ...(sealAssignee && { assignee: sealAssignee }) };
   // Verdict contract — only when the pinned intent declares a vocabulary.
-  if (declaredOutcomes.length === 0) return { ...(output && { output }) };
+  if (declaredOutcomes.length === 0) return base;
   let verdict = sealVerdict && declaredOutcomes.includes(sealVerdict) ? sealVerdict : undefined;
   if (!verdict) {
     const fallback = stepDef.onMissingVerdict;
     if (fallback && fallback !== 'fail' && declaredOutcomes.includes(fallback)) verdict = fallback;
   }
-  return { ...(output && { output }), ...(verdict ? { verdict } : { missingVerdict: true }) };
+  return { ...base, ...(verdict ? { verdict } : { missingVerdict: true }) };
 }

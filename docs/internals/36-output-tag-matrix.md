@@ -84,6 +84,8 @@ marker and never the round's answer. Guard:
 | `<tasks>` | metadata | stream-action (`task_added`) | kanban | non-blocking | decompose |
 | `<checklist>` | metadata | consumed-suppressed + post-stream | sealed-state + kanban | non-blocking | universal agent (never rendered to chat — feeds the Checklist board; parse SSOT `core/customAgents/universalChecklist.ts`) |
 | `<contract-deferred>` | control | consumed-suppressed + post-stream | sealed-state | non-blocking | universal agent under an armed Turn Completion Contract (the declared exit from a stop-hook contract; parse SSOT `core/customAgents/stopHooks.ts::parseContractDeferral`; respond prints the reason on the carried-contract line — doc 44 hooks rule 4) |
+| `<verdict>` | control | consumed-formatted | chat-line | non-blocking | universal agent under a declared `outcomes` vocabulary — respond lifts the LAST tag into the seal (`verdict`); the pipeline coordinator validates it against the intent's outcomes and `on: verdict:<name>` edges route on it (doc 46 §4) |
+| `<assignee>` | metadata | consumed-formatted + post-stream | chat-line + sealed-state | non-blocking | universal agent on a pipeline (unattended) step — reviewer nomination for the gate that follows; parse SSOT `core/pipelines/assignees.ts::parseAssigneeNomination`, sealed as `assignee`, kept by the gate only when it names a candidate (doc 46 §5a-ii) |
 | `<references>` | metadata | consumed-formatted | chat-line | non-blocking | decompose / learn |
 | `<detect>` | metadata | consumed-formatted | chat-line | non-blocking | detect / decompose-final |
 | `<learn_command>` | metadata | consumed-formatted | chat-line | non-blocking | learn |

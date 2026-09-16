@@ -306,6 +306,7 @@ Activation, runs, and the human gates:
 | GET  | `/api/definitions/pipelines/:pipelineId/runs` · `/api/definitions/pipelines/runs/:runId` | Run index and one run's history. |
 | POST | `/api/definitions/pipelines/runs/:runId/cancel` | Cancel a live run. |
 | POST | `/api/definitions/pipelines/runs/:runId/steps/:stepId/clarify` | Answer a step parked on `awaiting_clarify`; the step re-dispatches under a new job id. |
+| PUT  | `/api/definitions/pipelines/runs/:runId/gates/:stepId/assignee` | Body `{ userId \| null }`. Route one run's armed gate to a candidate (activator or a rostered approver of that gate); `null` calls everyone. Routing only — any candidate may still decide. |
 | GET  | `/api/definitions/pipelines/approvals` · POST `/approvals/:gateId` | The approvals inbox. Resolving is idempotent and shares one funnel with the chat card and the timeout arm, so a gate settles exactly once. |
 | GET  | `/api/projects/:id/active-pipeline` | The one project-scoped read: which pipeline, if any, currently owns this project. |
 

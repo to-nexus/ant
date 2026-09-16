@@ -47,7 +47,9 @@ import { parseClarifyTags } from '../../agents/common/clarify/tags';
 import { parseExecutionTierTag } from '../executionTier/parseExecutionTierTag';
 import { parseChecklistTag } from '../customAgents/universalChecklist';
 import { parseContractDeferral } from '../customAgents/stopHooks';
+import { parseAssigneeNomination } from '../pipelines/assignees';
 import {
+  transformAssignee,
   transformDone,
   transformVerdict,
   transformReply,
@@ -604,6 +606,22 @@ register({
   transform: transformVerdict,
   promptContract:
     'When the active intent declares an outcomes vocabulary, end the turn\'s FINAL reply with exactly one `<verdict>one-of-the-declared-outcomes</verdict>` naming your conclusion — downstream automation (pipeline verdict edges) routes on it.',
+});
+
+register({
+  name: 'assignee',
+  pattern: /<assignee>\s*([^<\s]{1,254})\s*<\/assignee>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['consumed-formatted', 'post-stream'],
+    persistence: ['chat-line', 'sealed-state'],
+    blocking: 'non-blocking',
+  },
+  chatLineKind: 'rendered_payload',
+  transform: transformAssignee,
+  extract: (text) => parseAssigneeNomination(text),
+  promptContract:
+    'On an unattended pipeline step, when the approval gate that follows should reach one specific reviewer, end the turn\'s FINAL reply with exactly one `<assignee>member-id</assignee>` — the id must be on that gate\'s roster (an unknown id is ignored); omit it when no one specific should be called.',
 });
 
 register({

@@ -27,6 +27,7 @@ import { REDIS_KEYS, REDIS_TTL, getRealtimeBroadcastChannel } from '../../../cor
 import { logger } from '../../../utils/logger';
 import type { StepDispatch } from '../../../core/pipelines/ChainExecutor';
 import { parseApproverIndexEntry, readApproverIndex } from '../../../core/pipelines/approverIndex';
+import { gateCandidates } from '../../../core/pipelines/assignees';
 import { deriveActivationsRoot, type PipelineTenantContext } from '../../../core/pipelines/paths';
 import { appendRunEvent, hasRunLog, listAccountActivations, loadActivationByProject, readRunEvents } from '../../../core/pipelines/store';
 import { COMPONENT, type HitlRecord, type PipelineCoordinatorDeps } from './types';
@@ -175,7 +176,8 @@ export async function listPendingApprovals(
   owner: PipelineOwner,
 ): Promise<PipelinePendingApproval[]> {
   const out: PipelinePendingApproval[] = [];
-  for (const { projectId } of listAccountActivations(deriveActivationsRoot(tenantCtx(deps, owner)))) {
+  for (const activation of listAccountActivations(deriveActivationsRoot(tenantCtx(deps, owner)))) {
+    const { projectId } = activation;
     for (const runId of await listActiveRunIds(deps, owner, projectId)) {
     const run = await getRun(deps, runId);
     if (!run) continue;
@@ -202,6 +204,8 @@ export async function listPendingApprovals(
           timeoutAt: s.gate.timeoutAt,
           ...(s.gate.onTimeout && { onTimeout: s.gate.onTimeout }),
           ...(isTool && s.jobId && { jobId: s.jobId }),
+          ...(!isTool && s.gate.assignees && { assignees: s.gate.assignees }),
+          ...(!isTool && { candidates: gateCandidates(owner.userId, activation, s.stepId) }),
         });
       } else if (s.status === 'awaiting_clarify' && s.clarify) {
         out.push({
@@ -288,6 +292,8 @@ export async function listApproverPendingApprovals(
         armedAt: s.gate.armedAt,
         timeoutAt: s.gate.timeoutAt,
         ...(s.gate.onTimeout && { onTimeout: s.gate.onTimeout }),
+        ...(s.gate.assignees && { assignees: s.gate.assignees }),
+        candidates: gateCandidates(owner.userId, { approvers: approversByGate }, s.stepId),
         role: 'approver',
         ownerUserId: owner.userId,
       });

@@ -15,6 +15,7 @@ import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import { isUnderPlanDir } from '../../../../core/customAgents/universalToolPolicy';
 import { hasConnectionFailures } from '../../../../core/customAgents/connectionReport';
+import { parseAssigneeNomination } from '../../../../core/pipelines/assignees';
 import {
   activeStopHooksOf,
   buildStopHookLedger,
@@ -233,6 +234,9 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         ? [...finalAssistantText.matchAll(/<verdict>\s*([a-z0-9-]+)\s*<\/verdict>/g)]
         : [];
       const verdict = verdictMatches.length > 0 ? verdictMatches[verdictMatches.length - 1][1] : undefined;
+      // Reviewer nomination — same lift shape; the pipeline gate that follows
+      // validates it against its candidates (doc 46 §5a-ii).
+      const assignee = parseAssigneeNomination(finalAssistantText);
       // The stored channel is run-scoped under a pipeline (F22) while the
       // graph works on session:main; siblings ride through untouched because
       // this state object replaces the file's whole state.
@@ -244,6 +248,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         },
         conversationChannel: channel,
         ...(verdict && !state._clarifyPause && !state._approvalPause && { verdict }),
+        ...(assignee && !state._clarifyPause && !state._approvalPause && { assignee }),
         tokenUsage: state.tokenUsage,
         tokenUsageByModel: state.tokenUsageByModel,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,

@@ -255,6 +255,14 @@ approval STEP gates the transition BETWEEN steps.
   Only compose verdict edges against intents that actually declare every named
   outcome — a typo'd name, in a single edge or one `|` member, is a branch (or
   half a branch) that always skips.
+- **Gate routing** (reviewer nomination): the step a gate directly `needs` may
+  end its reply with one `<assignee>member-id</assignee>` naming who that
+  gate should reach for THIS run; the runtime keeps it only when the id is on
+  the gate's approver roster (set on the activation, never in this file) and
+  otherwise calls every approver. It routes attention only — any approver may
+  still decide, and any approver can reassign from the inbox. Author it as
+  prose in the agent's definition ("payments cases go to …"), not as a field
+  here: there is no `assignee:` key.
 - `defaults.onStepFailure: abort` cancels everything still pending on the
   first failure — including an already-armed gate whose `on` consumes success,
   because the work it guarded is cancelled and the run must be free to seal;

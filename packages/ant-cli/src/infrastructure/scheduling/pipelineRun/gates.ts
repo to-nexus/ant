@@ -23,35 +23,48 @@ import { deriveRunStatus, effectiveNeeds } from '../../../core/pipelines/ChainEx
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { loadActivationByProject } from '../../../core/pipelines/store';
 import { pipelineGateDeepLink, type PipelineNotice, type PipelineNoticeRecipient } from '../../../core/pipelines/notifications';
+import { gateCandidates, narrowAudience, nominatedAssigneeFor, resolveGateAssignees } from '../../../core/pipelines/assignees';
 import { appendEvent, getRun, isTerminal, listActiveRunIds, mutateRun, publish, tenantCtx } from './runStore';
 import { COMPONENT, type HitlRecord, type PipelineRunOps } from './types';
 
 /**
- * Gate-notice audience: {activator} ∪ approvers[stepId], the roster re-read
- * LIVE from the owner's activation.json at every emission (disk SSOT — an S9
- * roster edit takes effect on the very next notice). Unreadable sidecar =
- * owner-only, never a dropped notice.
+ * The gate's live roster, re-read from the owner's activation.json at every
+ * emission (disk SSOT — an S9 roster edit takes effect on the very next
+ * notice). Unreadable sidecar = empty roster (owner-only), never a throw.
+ */
+function gateRosterOf(ctx: PipelineRunOps, owner: PipelineOwner, projectId: string, stepId: string): string[] {
+  try {
+    const activation = loadActivationByProject(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), projectId);
+    return activation?.approvers?.[stepId] ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Activator ∪ the gate's roster — the decide-authorized set (doc 46 §5a). */
+export function gateCandidatesOf(ctx: PipelineRunOps, owner: PipelineOwner, projectId: string, stepId: string): string[] {
+  return gateCandidates(owner.userId, { approvers: { [stepId]: gateRosterOf(ctx, owner, projectId, stepId) } }, stepId);
+}
+
+/**
+ * Gate-notice audience: {activator} ∪ approvers[stepId], NARROWED to the run's
+ * assignees when the caller passes them (request/reminder legs) — an assignee
+ * the roster has since dropped falls back to the whole roster. The resolved
+ * leg passes none: everyone who could have acted learns it is settled.
  */
 export function gateAudience(
   ctx: PipelineRunOps,
   owner: PipelineOwner,
   projectId: string,
   stepId: string,
+  assignees?: readonly string[],
 ): PipelineNoticeRecipient[] {
-  const recipients: PipelineNoticeRecipient[] = [
-    { userId: owner.userId, organizationId: owner.organizationId, role: 'owner' },
-  ];
-  try {
-    const activation = loadActivationByProject(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), projectId);
-    for (const userId of activation?.approvers?.[stepId] ?? []) {
-      if (userId !== owner.userId) {
-        recipients.push({ userId, organizationId: owner.organizationId, role: 'approver' });
-      }
-    }
-  } catch {
-    /* unreadable sidecar: the owner still gets the notice */
-  }
-  return recipients;
+  const roster = gateRosterOf(ctx, owner, projectId, stepId);
+  return narrowAudience(owner.userId, roster, assignees).map((userId) => ({
+    userId,
+    organizationId: owner.organizationId,
+    role: userId === owner.userId ? 'owner' : 'approver',
+  }));
 }
 
 /** One notice per audience member through the channel port (fire-and-forget each). */
@@ -59,8 +72,10 @@ async function notifyGateAudience(
   ctx: PipelineRunOps,
   owner: PipelineOwner,
   notice: Omit<PipelineNotice, 'recipient' | 'ownerUserId' | 'deepLink'>,
+  opts: { narrowToAssignees?: boolean } = {},
 ): Promise<void> {
-  for (const recipient of gateAudience(ctx, owner, notice.projectId, notice.stepId)) {
+  const audience = gateAudience(ctx, owner, notice.projectId, notice.stepId, opts.narrowToAssignees ? notice.assignees : undefined);
+  for (const recipient of audience) {
     await ctx.notify({
       ...notice,
       recipient,
@@ -89,6 +104,13 @@ export async function armGate(
     return;
   }
 
+  // Per-run routing: the first direct upstream step's sealed nomination, kept
+  // only when it names a candidate (activator ∪ this gate's roster).
+  const candidates = gateCandidatesOf(ctx, owner, run.projectId, step.id);
+  const nominated = nominatedAssigneeFor(def, run, step.id);
+  const resolvedAssignees = resolveGateAssignees(nominated, candidates);
+  const assignees = resolvedAssignees.assignees;
+
   const hitl: HitlRecord = {
     gateId,
     cardId,
@@ -101,6 +123,7 @@ export async function armGate(
     timeoutAt,
     anchorJobId,
     prompt: step.prompt,
+    ...(assignees && { assignees }),
   };
   await ctx.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.HITL(gateId), JSON.stringify(hitl), REDIS_TTL.PIPE.HITL);
   await ctx.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.CARD(cardId), gateId, REDIS_TTL.PIPE.HITL);
@@ -112,7 +135,15 @@ export async function armGate(
             ...s,
             status: 'awaiting_gate',
             startedAt: new Date().toISOString(),
-            gate: { gateId, cardId, prompt: step.prompt, armedAt: new Date().toISOString(), timeoutAt, onTimeout: hitl.onTimeout },
+            gate: {
+              gateId,
+              cardId,
+              prompt: step.prompt,
+              armedAt: new Date().toISOString(),
+              timeoutAt,
+              onTimeout: hitl.onTimeout,
+              ...(assignees && { assignees, assigneeSource: 'step' as const }),
+            },
           }
         : s,
     );
@@ -137,6 +168,7 @@ export async function armGate(
           pipelineName: def.name,
           ...(run.item && { itemKey: run.item.key }),
           ...(timeoutAt && { timeoutAt, onTimeout: hitl.onTimeout }),
+          ...(assignees && { assignees }),
         },
         userContext: owner,
       });
@@ -177,22 +209,105 @@ export async function armGate(
     runId: run.runId,
     stepId: step.id,
     gateId,
+    ...((assignees || resolvedAssignees.unresolved) && {
+      detail: {
+        ...(assignees && { assignees, assigneeSource: 'step' }),
+        // A nomination outside the candidates is dropped, not widened — audited here.
+        ...(resolvedAssignees.unresolved && { assigneeUnresolved: resolvedAssignees.unresolved }),
+      },
+    }),
   });
-  await notifyGateAudience(ctx, owner, {
+  await notifyGateAudience(
+    ctx,
+    owner,
+    {
+      kind: 'approvalRequested',
+      gateId,
+      cardId,
+      runId: run.runId,
+      pipelineId,
+      pipelineName: def.name,
+      ...(run.item && { itemKey: run.item.key }),
+      projectId: run.projectId,
+      stepId: step.id,
+      prompt: step.prompt,
+      armedAt,
+      timeoutAt,
+      ...(timeoutAt && { onTimeout: hitl.onTimeout }),
+      ...(assignees && { assignees }),
+      candidates,
+    },
+    { narrowToAssignees: true },
+  );
+}
+
+/**
+ * Reassign an ARMED approval-step gate for this run — a candidate's routing
+ * decision (`null` = call everyone again). Authority (activator ∨ candidate)
+ * and target ∈ candidates are the route's checks; this is the one write.
+ * The request notice re-fires to the FULL roster so every held inbox row
+ * updates its badge, not only the new assignee's.
+ */
+export async function reassignGate(
+  ctx: PipelineRunOps,
+  gateId: string,
+  assignee: string | null,
+  by: string,
+): Promise<boolean> {
+  const raw = await ctx.deps.stateStore.getKey(REDIS_KEYS.PIPE.HITL(gateId));
+  if (!raw) return false;
+  const hitl = JSON.parse(raw) as HitlRecord;
+  if (hitl.kind === 'tool') return false;
+  const assignees = assignee ? [assignee] : undefined;
+  const at = new Date().toISOString();
+  let applied = false;
+  const result = await mutateRun(ctx.deps, hitl.owner, hitl.runId, async (live) => {
+    const step = live.steps.find((s) => s.stepId === hitl.stepId);
+    if (!step || isTerminal(live.status) || step.status !== 'awaiting_gate' || !step.gate || step.gate.gateId !== gateId || step.gate.decision) {
+      return { run: live, dispatches: [] };
+    }
+    applied = true;
+    const steps = live.steps.map((s): StepRecord => {
+      if (s.stepId !== hitl.stepId || !s.gate) return s;
+      const { assignees: _prev, ...gate } = s.gate;
+      return { ...s, gate: { ...gate, ...(assignees && { assignees }), assigneeSource: 'human', assignedBy: by } };
+    });
+    return { run: { ...live, steps }, dispatches: [] };
+  });
+  if (!result || !applied) return false;
+  const { assignees: _prev, ...rest } = hitl;
+  await ctx.deps.stateStore.setKeyWithTTL(
+    REDIS_KEYS.PIPE.HITL(gateId),
+    JSON.stringify({ ...rest, ...(assignees && { assignees }) }),
+    REDIS_TTL.PIPE.HITL,
+  );
+  await appendEvent(ctx.deps, hitl.owner, hitl.projectId, {
+    ts: at,
+    event: 'gate_reassigned',
+    runId: hitl.runId,
+    stepId: hitl.stepId,
+    gateId,
+    detail: { ...(assignees ? { assignees } : { assignees: [] }), by, via: 'api' },
+  });
+  const gate = result.run.steps.find((s) => s.stepId === hitl.stepId)?.gate;
+  await notifyGateAudience(ctx, hitl.owner, {
     kind: 'approvalRequested',
     gateId,
-    cardId,
-    runId: run.runId,
-    pipelineId,
-    pipelineName: def.name,
-    ...(run.item && { itemKey: run.item.key }),
-    projectId: run.projectId,
-    stepId: step.id,
-    prompt: step.prompt,
-    armedAt,
-    timeoutAt,
-    ...(timeoutAt && { onTimeout: hitl.onTimeout }),
+    cardId: hitl.cardId,
+    runId: hitl.runId,
+    pipelineId: hitl.pipelineId,
+    pipelineName: result.run.defSnapshot?.name ?? hitl.pipelineId,
+    ...(result.run.item && { itemKey: result.run.item.key }),
+    projectId: hitl.projectId,
+    stepId: hitl.stepId,
+    prompt: hitl.prompt,
+    armedAt: gate?.armedAt ?? at,
+    timeoutAt: gate?.timeoutAt,
+    ...(gate?.onTimeout && { onTimeout: gate.onTimeout }),
+    ...(assignees && { assignees }),
+    candidates: gateCandidatesOf(ctx, hitl.owner, hitl.projectId, hitl.stepId),
   });
+  return true;
 }
 
 /** Nearest upstream job step that actually ran — the gate card's turn anchor. */
@@ -400,20 +515,27 @@ export async function handleGateRemind(ctx: PipelineRunOps, data: PipelineGateRe
   if (!run || !record || record.status !== 'awaiting_gate' || !record.gate || record.gate.decision) return;
   const stepDef = run.defSnapshot?.steps.find((s) => s.id === data.stepId);
   const remindAfter = stepDef && isApprovalStep(stepDef) ? stepDef.remindAfter : undefined;
-  await notifyGateAudience(ctx, data.owner, {
-    kind: 'approvalReminder',
-    gateId: record.gate.gateId,
-    cardId: record.gate.cardId,
-    runId: run.runId,
-    pipelineId: run.pipelineId,
-    pipelineName: run.defSnapshot?.name ?? run.pipelineId,
-    ...(run.item && { itemKey: run.item.key }),
-    projectId: run.projectId,
-    stepId: data.stepId,
-    prompt: record.gate.prompt,
-    armedAt: record.gate.armedAt,
-    timeoutAt: record.gate.timeoutAt,
-  });
+  await notifyGateAudience(
+    ctx,
+    data.owner,
+    {
+      kind: 'approvalReminder',
+      gateId: record.gate.gateId,
+      cardId: record.gate.cardId,
+      runId: run.runId,
+      pipelineId: run.pipelineId,
+      pipelineName: run.defSnapshot?.name ?? run.pipelineId,
+      ...(run.item && { itemKey: run.item.key }),
+      projectId: run.projectId,
+      stepId: data.stepId,
+      prompt: record.gate.prompt,
+      armedAt: record.gate.armedAt,
+      timeoutAt: record.gate.timeoutAt,
+      ...(record.gate.assignees && { assignees: record.gate.assignees }),
+      candidates: gateCandidatesOf(ctx, data.owner, run.projectId, data.stepId),
+    },
+    { narrowToAssignees: true },
+  );
   const anchor = [...run.steps].reverse().find((s) => s.turnId && s.jobId);
   if (ctx.deps.chatService && anchor) {
     ctx.deps.chatService
@@ -445,6 +567,8 @@ export async function republishArmedGates(ctx: PipelineRunOps, owner: PipelineOw
   for (const step of run.steps) {
     if (step.status !== 'awaiting_gate' || !step.gate || step.gate.decision) continue;
     if (!step.gate.gateId.startsWith('gate-')) continue;
+    // Roster edits re-fire to the CURRENT roster — a new approver gets the
+    // row now (S9), so this leg is never narrowed to the run's assignees.
     await notifyGateAudience(ctx, owner, {
       kind: 'approvalRequested',
       gateId: step.gate.gateId,
@@ -459,6 +583,8 @@ export async function republishArmedGates(ctx: PipelineRunOps, owner: PipelineOw
       armedAt: step.gate.armedAt,
       timeoutAt: step.gate.timeoutAt,
       ...(step.gate.onTimeout && { onTimeout: step.gate.onTimeout }),
+      ...(step.gate.assignees && { assignees: step.gate.assignees }),
+      candidates: gateCandidatesOf(ctx, owner, run.projectId, step.stepId),
     });
   }
   }

@@ -62,6 +62,24 @@ export function transformVerdict(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// <assignee>
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `<assignee>member-id</assignee>` — a pipeline step's reviewer nomination for
+ * the gate that follows it (doc 46 §5a-ii). Rendered as one audit line; the
+ * seal lift and the gate's candidate check are the consumers.
+ */
+export function transformAssignee(
+  match: RegExpMatchArray,
+  ctx: TransformContext,
+): TransformResult {
+  const who = (match[1] ?? '').trim();
+  if (!who) return { consumed: true };
+  return { text: ctx.language === 'ko' ? `\n👤 검토 지정: **${who}**` : `\n👤 Reviewer nominated: **${who}**`, consumed: true };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // <reply>
 // ────────────────────────────────────────────────────────────────────────────
 

@@ -133,6 +133,9 @@ async function buildSystemPrompt(
       turnStopHooks: turnStopHooks.length > 0 ? turnStopHooks : undefined,
       // Verdict band — rendered only when the pinned intent declares outcomes.
       turnOutcomes,
+      // Reviewer-nomination band — pipeline (unattended) steps only: the gate
+      // that follows reads the sealed `<assignee>` (doc 46 §5a-ii).
+      pipelineStep: state._unattended === true && state.turnContext?.planTurn !== true,
     },
     // Custom definition rides as an inert system-suffix — after template injections,
     // before policy (guardrail-first / policy-last invariants intact).

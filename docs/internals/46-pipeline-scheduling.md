@@ -649,8 +649,52 @@ the map = activator-only, exactly the pre-approver behavior.
   runs-list live row and the FE `runUpdate` fold all derive it, so a run never
   changes shape between live and sealed.
 
+#### 5a-ii. Candidate / assignee — routing is per RUN, authority stays per gate
+
+The roster answers WHO MAY decide (**candidates** = activator ∪
+`approvers[stepId]`). With N cases in flight and a roster of several business
+owners, "whoever approves first" calls the wrong exception handler — the
+failure is "the right person was not called", never "the wrong person could
+approve". So the run carries a second, weaker notion: **assignees** =
+`GateRecord.assignees` (⊆ candidates), a routing hint that narrows the request
+notice and sorts the inbox, and nothing else. There is no `approverFrom`, no
+role system, and no `assigneeOnly` knob — D3 (doc 48) stays intact; the knob
+is added only if the hint is observed to fail.
+
+- **Sources, highest first**: ① a candidate's reassign — `PUT
+  /definitions/pipelines/runs/:runId/gates/:stepId/assignee { userId | null }`,
+  activator ∨ candidate of THAT gate (live roster + live membership, the
+  resolve leg's posture), target ∈ candidates (400 `assignee-not-candidate`),
+  `null` = everyone; self-claim is picking yourself. ② the sealed `<assignee>`
+  of the first DIRECT `needs` step (definition order) that nominated one —
+  the model's choice, because the right reviewer is often a judgment over the
+  case, not a declared field (the `<verdict>` precedent: `OutputTagRegistry`
+  entry → respond seal lift → `captureStepOutput` jobId-guarded →
+  `StepRecord.assignee`). ③ none → every candidate, exactly the pre-assignee
+  behaviour. A nomination naming a non-candidate is DROPPED and audited
+  (`awaiting_human.detail.assigneeUnresolved`), never widened into authority.
+- **Audience per leg** (`gateAudience(…, assignees?)`): request + reminder
+  narrow to activator ∪ (assignees ∩ live roster), falling back to the whole
+  roster when no assignee survives a roster edit — a stale hint never silences
+  a gate. Resolved, the S9 roster re-fire, and the reassign re-fire go to the
+  FULL roster: everyone who could have acted learns it is settled / re-routed,
+  and the FE `approvalRequested` fold is an UPSERT so the held row takes the
+  fresher `assignees` in place. Non-assigned candidates still list the row on
+  `GET /approvals` (permission-visible) with the "assigned to X" badge —
+  friction, not a wall.
+- **Where it rides**: `HitlRecord.assignees`, `GateRecord.{assignees,
+  assigneeSource, assignedBy}`, the card payload, `PipelinePendingApproval.
+  {assignees, candidates}` (candidates = the reassign select's options; the
+  roster is org-visible by design), `gate_reassigned` run event. Tool gates
+  (`tga-…`) never route. The prompt band (`## Reviewer Nomination`) renders on
+  the unattended lane only — an attended chat turn has no gate to route.
+- **Self-api**: `runs/**` is a reserved literal under the deny-except rule, so
+  the reassign route is refused to a job-minted token by omission.
+
 Guards: `tests/http/pipeline-routes-policy.test.ts` (resolve decision table
-S2/S6/S7/S8/S9 + roster ingresses), `tests/pipelines/pipeline-activation.test.ts`
+S2/S6/S7/S8/S9 + roster ingresses + the reassign table),
+`tests/pipelines/pipeline-assignee.test.ts` (tag, candidates, nomination,
+∈-check, audience narrowing), `tests/pipelines/pipeline-activation.test.ts`
 (index sync/rebuild + `InAppChannel`), `tests/pipelines/pipeline-def-validation.test.ts`
 (approver-map rows), `tests/http/account-agent-routes.test.ts` (self-api pin).
 
@@ -1588,9 +1632,15 @@ The obligations live at authoring time, in the pipeline builder's contract:
   path, the disk claim ledger + rebuildable projection, `preview-fetch`,
   Poll-now, and the FE `fetch` trigger mode. MCP-source polling and webhook
   push stay out of scope (the claim ledger is where a webhook would land).
+- **Phase D — candidate / assignee (shipped 2026-09-16)**: per-run gate
+  routing (§5a-ii) — the `<assignee>` tag (registry entry, seal lift, step
+  capture), `GateRecord.assignees` resolved at arm against the candidates,
+  audience narrowing on the request/reminder legs with whole-roster fallback,
+  the candidate reassign route (`PUT …/runs/:runId/gates/:stepId/assignee`),
+  `gate_reassigned`, and the FE: assigned-first inbox with badge + reassign
+  select, panel/card/timeline/chip attribution. Authority is unchanged.
 - **Phase 3**: parallel branches/fan-in inside a run, free-DAG canvas editing,
-  `cancelPrevious`, caps admin surface. The candidate/assignee approval model
-  (Phase D) is designed in `.claude/plans/resilient-stirring-nova.md`.
+  `cancelPrevious`, caps admin surface.
 - **Backlog (user-locked)**: Slack/email channels, webhook triggers.
 
 ---

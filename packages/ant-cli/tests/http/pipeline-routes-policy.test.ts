@@ -980,6 +980,9 @@ describe('gate resolve authority — owner ∨ per-gate approver', () => {
       run?: Record<string, unknown> | null;
       resolved?: boolean;
       approverRows?: unknown[];
+      /** Reassign leg: the coordinator's candidate set and whether the write lands. */
+      candidates?: string[];
+      reassignOk?: boolean;
     } = {},
   ) {
     process.env.ANT_LOCAL_ORG = 'localorg';
@@ -987,6 +990,7 @@ describe('gate resolve authority — owner ∨ per-gate approver', () => {
     const applied: unknown[][] = [];
     const choiceCalls: unknown[] = [];
     const republished: string[] = [];
+    const reassigned: unknown[][] = [];
     const keys = new Map<string, string>();
     const resolver = {
       getPhysicalWorkspacesPath: () => wsRoot,
@@ -1017,6 +1021,11 @@ describe('gate resolve authority — owner ∨ per-gate approver', () => {
             return true;
           },
           republishArmedGates: async (_owner: unknown, projectId: string) => void republished.push(projectId),
+          gateCandidates: () => opts.candidates ?? ['alice', 'bob'],
+          reassignGate: async (...args: unknown[]) => {
+            reassigned.push(args);
+            return opts.reassignOk ?? true;
+          },
           cancelRun: async () => false,
           readRunFromDisk: () => null,
           deactivate: async () => {},
@@ -1059,10 +1068,18 @@ describe('gate resolve authority — owner ∨ per-gate approver', () => {
       applied,
       choiceCalls,
       republished,
+      reassigned,
       keys,
       close: () => new Promise<void>((resolve, reject) => srv.close((e) => (e ? reject(e) : resolve()))),
     };
   }
+
+  const reassign = (url: string, userId: string | null, stepId = 'budget-gate') =>
+    fetch(`${url}/runs/r1/gates/${stepId}/assignee`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
 
   const resolveGate = (url: string, body: Record<string, unknown> = { decision: 'approve' }) =>
     fetch(`${url}/approvals/gate-r1-budget-gate`, {
@@ -1160,6 +1177,68 @@ describe('gate resolve authority — owner ∨ per-gate approver', () => {
       expect(bob.applied).toHaveLength(0);
     } finally {
       await bob.close();
+    }
+  });
+
+  // ── Gate reassign — routing is a CANDIDATE's decision; authority never moves (doc 46 §5a-ii) ──
+  it('reassign: the owner routes the gate to a rostered candidate; the coordinator write carries who did it', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const alice = await approverApp('alice', { hitl: HITL(), run: RUN() });
+    try {
+      const res = await reassign(alice.url, 'Bob');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ success: true, gateId: 'gate-r1-budget-gate', assignees: ['bob'] });
+      expect(alice.reassigned).toEqual([['gate-r1-budget-gate', 'bob', 'alice']]);
+    } finally {
+      await alice.close();
+    }
+  });
+
+  it('reassign: a candidate self-claims, and null hands the gate back to everyone', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const bob = await approverApp('bob', { hitl: HITL(), run: RUN() });
+    try {
+      expect((await reassign(bob.url, 'bob')).status).toBe(200);
+      expect((await reassign(bob.url, null)).status).toBe(200);
+      expect(bob.reassigned).toEqual([
+        ['gate-r1-budget-gate', 'bob', 'bob'],
+        ['gate-r1-budget-gate', null, 'bob'],
+      ]);
+    } finally {
+      await bob.close();
+    }
+  });
+
+  it('reassign: a non-candidate gets 404 (existence non-disclosure), a non-candidate TARGET gets 400 with the candidates', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const carol = await approverApp('carol', { hitl: HITL(), run: RUN() });
+    const alice = await approverApp('alice', { hitl: HITL(), run: RUN() });
+    try {
+      expect((await reassign(carol.url, 'carol')).status).toBe(404);
+      expect(carol.reassigned).toHaveLength(0);
+      const res = await reassign(alice.url, 'dave');
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 'assignee-not-candidate', candidates: ['alice', 'bob'] });
+      expect(alice.reassigned).toHaveLength(0);
+    } finally {
+      await carol.close();
+      await alice.close();
+    }
+  });
+
+  it('reassign: tool gates never route (404); a decided gate is 404; a lost write is 409', async () => {
+    writeOwnerActivation({ 'budget-gate': ['bob'] });
+    const tool = await approverApp('alice', { hitl: HITL({ kind: 'tool', tool: 'run_command', jobId: 'job-1' }), run: RUN() });
+    const decided = await approverApp('alice', { hitl: HITL(), run: RUN({ decision: 'approved', decidedBy: 'bob' }) });
+    const lost = await approverApp('alice', { hitl: HITL(), run: RUN(), reassignOk: false });
+    try {
+      expect((await reassign(tool.url, 'bob')).status).toBe(404);
+      expect((await reassign(decided.url, 'bob')).status).toBe(404);
+      expect((await reassign(lost.url, 'bob')).status).toBe(409);
+    } finally {
+      await tool.close();
+      await decided.close();
+      await lost.close();
     }
   });
 

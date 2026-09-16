@@ -149,6 +149,8 @@ export interface HitlRecord {
   timeoutAt?: string;
   anchorJobId: string;
   prompt: string;
+  /** Gate steps: this run's routed recipients (⊆ candidates; absent = every candidate). Mirrors `GateRecord.assignees`. */
+  assignees?: string[];
   /** kind:'tool' — the approval-gated tool name (the approve re-dispatch grant). */
   tool?: string;
   /** kind:'tool' — the paused job (stale-arm guard on resume). */

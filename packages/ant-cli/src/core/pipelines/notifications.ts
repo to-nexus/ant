@@ -43,6 +43,9 @@ export interface PipelineNotice {
   timeoutAt?: string;
   /** Which way the gate's timeout decides — rides with `timeoutAt`. */
   onTimeout?: GateTimeoutAction;
+  /** Gate notices: this run's routed recipients (⊆ candidates) and the decide-authorized set — inbox badge + reassign options. */
+  assignees?: string[];
+  candidates?: string[];
   /** In-app routing token today; Phase C promotes it to a magic-link. */
   deepLink: string;
   /** approvalResolved only. */
@@ -96,6 +99,8 @@ export class InAppChannel implements NotificationChannelPort {
               ...(notice.timeoutAt && { timeoutAt: notice.timeoutAt }),
               ...(notice.onTimeout && { onTimeout: notice.onTimeout }),
               ...(notice.itemKey && { itemKey: notice.itemKey }),
+              ...(notice.assignees && notice.assignees.length > 0 && { assignees: notice.assignees }),
+              ...(notice.candidates && notice.candidates.length > 0 && { candidates: notice.candidates }),
               ...(recipient.role === 'approver' && { role: 'approver' as const, ownerUserId: notice.ownerUserId }),
             },
           };

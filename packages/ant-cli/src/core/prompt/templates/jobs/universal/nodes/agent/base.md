@@ -99,6 +99,12 @@ This intent declares a decision vocabulary. End your FINAL reply of the turn wit
 Pick the single verdict the observed evidence supports. The tag must appear exactly once, at the end of the final reply — downstream automation routes on it, so a missing or made-up verdict fails the run's routing.
 {{/if}}
 
+{{#if pipelineStep}}
+## 👤 Reviewer Nomination
+
+This turn runs as a pipeline step. If the approval gate that follows this step should reach ONE specific reviewer — decided from the case at hand and the reviewer assignments your definition documents — end your FINAL reply with exactly one `<assignee>member-id</assignee>` naming that person's member id. The id must be on that gate's approver roster: an id the roster does not hold is ignored and every approver is called instead. Omit the tag when no one specific should be called. It routes attention only — any approver may still decide.
+{{/if}}
+
 ## Definition Files (read-only)
 
 Your definition — including each intent's prompt file (`intents/{id}/prompt.md`) — is mounted read-only under `{{definitionMount}}`.

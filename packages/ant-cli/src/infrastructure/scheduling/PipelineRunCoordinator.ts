@@ -35,7 +35,7 @@ import { handleFetchPoll } from './pipelineRun/fetch';
 import { dispatchJobStep, executeDispatches, handleStepRetry } from './pipelineRun/dispatch';
 import { failStepOrRetry, handleJobStatusUpdate, handleOutcomeRetry, handleStepTimeout } from './pipelineRun/outcome';
 import { applyClarifyAnswer, enterAwaitingClarify, enterAwaitingToolApproval } from './pipelineRun/hitl';
-import { applyResolvedGate, armGate, handleGateRemind, handleGateTimeout, republishArmedGates } from './pipelineRun/gates';
+import { applyResolvedGate, armGate, gateCandidatesOf, handleGateRemind, handleGateTimeout, reassignGate, republishArmedGates } from './pipelineRun/gates';
 import { applyOutcome, cancelRun, deactivate, finalizeRun, killStepJob } from './pipelineRun/lifecycle';
 import {
   approverRunAccess,
@@ -199,5 +199,15 @@ export class PipelineRunCoordinator {
 
   async getHitlByGateId(gateId: string): Promise<HitlRecord | null> {
     return getHitlByGateId(this.deps, gateId);
+  }
+
+  /** Activator ∪ the gate's live roster — the reassign target universe and the resolve authority set. */
+  gateCandidates(owner: PipelineOwner, projectId: string, stepId: string): string[] {
+    return gateCandidatesOf(this.ctx, owner, projectId, stepId);
+  }
+
+  /** Route an armed approval-step gate to one candidate (`null` = everyone). False = not armed / tool gate. */
+  async reassignGate(gateId: string, assignee: string | null, by: string): Promise<boolean> {
+    return reassignGate(this.ctx, gateId, assignee, by);
   }
 }

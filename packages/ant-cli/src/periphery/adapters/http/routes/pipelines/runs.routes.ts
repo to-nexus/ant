@@ -1,12 +1,12 @@
 /**
  * Run surface — detail read (Redis projection with disk fallback), cancel,
- * and the clarify-answer API channel.
+ * the clarify-answer API channel, and the per-run gate reassign.
  */
 
 import type { Router, Request, Response } from 'express';
 import { sendErrorResponse } from '../helpers/errorResponse';
 import { directiveTooLarge } from '../helpers/submitUserTurn';
-import { hasRunLog } from '../../../../../core/pipelines/store';
+import { hasRunLog, loadActivationByProject } from '../../../../../core/pipelines/store';
 import { isSingleSegment, reject400 } from './context';
 import { ownerOf, type PipelinesRouteContext } from './context';
 
@@ -61,6 +61,65 @@ export function registerRunRoutes(router: Router, ctx: PipelinesRouteContext): v
       res.json({ success: true });
     } catch (error) {
       sendErrorResponse(res, 500, error, 'PipelinesRunCancel');
+    }
+  });
+
+  // ── Gate reassign — a CANDIDATE's routing decision on an armed approval-step gate ──
+  // Authority = activator ∨ candidate of THIS gate (same live-roster read as the
+  // resolve leg; tool gates never route). Target ∈ candidates or null (call
+  // everyone). Routing only — the resolve authority is untouched (doc 46 §5a-ii).
+  router.put('/runs/:runId/gates/:stepId/assignee', async (req: Request, res: Response) => {
+    try {
+      const caller = ownerOf(req);
+      if (!isSingleSegment(req.params.runId)) return void reject400(res, 'runId');
+      if (!isSingleSegment(req.params.stepId)) return void reject400(res, 'stepId');
+      const target = req.body?.userId;
+      if (target !== null && (typeof target !== 'string' || !target.trim())) {
+        res.status(400).json({ error: 'userId must be a member id or null', code: 'invalid-assignee' });
+        return;
+      }
+      const run = await deps.coordinator.getRun(req.params.runId);
+      const step = run?.steps.find((s) => s.stepId === req.params.stepId);
+      const hitl = step?.gate && !step.gate.decision ? await deps.coordinator.getHitlByGateId(step.gate.gateId) : null;
+      if (!run || !step || !hitl || hitl.kind === 'tool' || hitl.owner.organizationId !== caller.organizationId) {
+        res.status(404).json({ error: 'gate not found', runId: req.params.runId, stepId: req.params.stepId });
+        return;
+      }
+      const isOwner = hitl.owner.userId === caller.userId;
+      let roster: string[] = [];
+      try {
+        roster = loadActivationByProject(actRootOf(hitl.owner), hitl.projectId)?.approvers?.[hitl.stepId] ?? [];
+      } catch {
+        roster = [];
+      }
+      let isCandidate = isOwner || roster.includes(caller.userId);
+      if (isCandidate && !isOwner) {
+        // Live membership re-check, fail-open on a repo error (the resolve leg's posture).
+        try {
+          const membership = await deps.organizationRepository.getMembership(caller.userId, caller.organizationId);
+          if (!membership) isCandidate = false;
+        } catch {
+          /* fail-open */
+        }
+      }
+      if (!isCandidate) {
+        res.status(404).json({ error: 'gate not found', runId: req.params.runId, stepId: req.params.stepId });
+        return;
+      }
+      const candidates = deps.coordinator.gateCandidates(hitl.owner, hitl.projectId, hitl.stepId);
+      const assignee = target === null ? null : target.trim().toLowerCase();
+      if (assignee !== null && !candidates.includes(assignee)) {
+        res.status(400).json({ error: `"${assignee}" is not a candidate of this gate`, code: 'assignee-not-candidate', candidates });
+        return;
+      }
+      const ok = await deps.coordinator.reassignGate(hitl.gateId, assignee, caller.userId);
+      if (!ok) {
+        res.status(409).json({ error: 'gate already resolved', runId: req.params.runId, stepId: req.params.stepId });
+        return;
+      }
+      res.json({ success: true, gateId: hitl.gateId, assignees: assignee ? [assignee] : [], candidates });
+    } catch (error) {
+      sendErrorResponse(res, 500, error, 'PipelinesGateReassign');
     }
   });
 

@@ -1543,6 +1543,8 @@ describe('self-api scope pin', () => {
     ['GET', '/api/definitions/pipelines/runs/run-1'],
     ['POST', '/api/definitions/pipelines/runs/run-1/cancel'],
     ['POST', '/api/definitions/pipelines/runs/run-1/steps/step-1/clarify'],
+    // Routing a gate to a person is a candidate's decision (doc 46 §5a-ii).
+    ['PUT', '/api/definitions/pipelines/runs/run-1/gates/step-1/assignee'],
     ['GET', '/api/definitions/pipelines/weekly-report/runs'],
     // Granting approval rights is the activator's decision, never a job's.
     ['PUT', '/api/definitions/pipelines/activations/proj-a/approvers'],

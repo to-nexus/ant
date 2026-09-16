@@ -73,6 +73,7 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
   // until the answer funnels through `applyClarifyAnswer`.
   let output: StepOutputRecord | undefined;
   let verdict: string | undefined;
+  let assignee: string | undefined;
   if (outcome === 'succeeded') {
     const clarify = await detectClarifySeal(ctx.deps, owner, runId, stepId, data.jobId);
     if (clarify) {
@@ -113,6 +114,7 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
     const captured = await captureStepOutput(ctx.deps, owner, runId, stepId, data.jobId);
     output = captured.output;
     verdict = captured.verdict;
+    assignee = captured.assignee;
     // An outcome-declaring intent that sealed no valid verdict fails loudly
     // (retryable — a re-run can decide) unless onMissingVerdict fell back.
     if (captured.missingVerdict) {
@@ -167,7 +169,7 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
     jobId: data.jobId,
     detail: { outcome, ...(error && { error }), ...(output && { outputCaptured: true }) },
   });
-  const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }) };
+  const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }), ...(assignee && { assignee }) };
   const applied = await ctx.applyOutcome(owner, runId, stepId, outcome, Object.keys(patch).length > 0 ? patch : undefined, undefined, data.jobId);
   if (applied) {
     await ctx.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);

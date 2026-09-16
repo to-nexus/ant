@@ -411,9 +411,9 @@ describe('step output capture ({{steps.*}} source)', () => {
   });
 
   it('the captured answer is prose — canonical tags are stripped before it can ride a directive', () => {
-    const final = '<checklist>\n- [x] 1. done\n</checklist>\n\n## 결과\n\n고지 기간 30일로 확정.\n\n<verdict>needs-review</verdict>';
+    const final = '<checklist>\n- [x] 1. done\n</checklist>\n\n## 결과\n\n고지 기간 30일로 확정.\n\n<verdict>needs-review</verdict>\n<assignee>bob@corp.com</assignee>';
     const answer = stepAnswerFromText(final);
-    expect(answer).not.toMatch(/<checklist>|<verdict>/);
+    expect(answer).not.toMatch(/<checklist>|<verdict>|<assignee>/);
     expect(answer).toMatch(/^## 결과/);
     expect(answer).toMatch(/30일로 확정\.$/);
   });
