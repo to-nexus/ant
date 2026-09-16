@@ -885,7 +885,8 @@ publishes, and a RE-enable after disable re-judges too) + `disable` (409
 ACTIVATOR's catalog — the one dispatch resolves against; catches the
 enabled-then-agent-deleted drift window) / `deactivate` / `run-now` (all
 `{projectId}`-addressed; run-now 409 `pipeline-not-activated` /
-`existingRunIds` (+ the singular `existingRunId` for one release); run-now
+`existingRunIds` + `concurrency`, only when the live set is AT the
+definition's cap (+ the singular `existingRunId` for one release); run-now
 is NOT catalog-gated — dispatch stays the backstop) · `activatable-projects` · `preview-fires` · `download`
 (rate-limited definition-folder ZIP; `owner.json` excluded) ·
 `runs?projectId=&userId=` (per-activation history; a
@@ -1116,8 +1117,29 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
   "not supported yet" validation error.
 - **Judging per-activation liveness anywhere but the `ant:pipe:actruns` slot
   set** — no NX string, no read-then-compare, no second cap reader beside
-  `resolveRunConcurrency`. `listActiveRunIds` is the read; `getActiveRunId` is
-  a shim over it for the single-`currentRunId` view types.
+  `resolveRunConcurrency`. `listActiveRunIds` is the liveness read,
+  `listLiveRuns` the view read (shared `liveRunOf` / `foldLiveRun` /
+  `activationStateOf` are the ONLY derivations of a live-run view, its fold and
+  the activation state).
+- **A scalar that names ONE run** — a `currentRunId` field, a `state`-derived
+  "is running" test, an `activeJobs` map keyed by job TYPE. Each collapses N
+  live runs onto one and was the reason `getActiveRunId` / `activeJobs.universal`
+  had to go. Views carry `liveRuns[]`, the chat lock reads `liveRuns.length`,
+  `activeJobs` is keyed by jobId (`selectActiveJobByType` is the one per-type
+  read), and the chat's Stop resolves its run from the viewed job's
+  `pipelineRunId` — with N runs and no attribution it disables rather than
+  cancel an arbitrary sibling.
+- **Drawing the workflow N times for N live runs** — the wiring is drawn ONCE;
+  a step node lists the runs AT it as chips and the trigger carries a count
+  (`runOverlay.ts`). N copies read as "the trigger fires N times", which is
+  exactly wrong for a cron or fetch trigger. Every card reserves the chip row
+  (`RUN_CHIP_ROW_HEIGHT`) so a run arriving never re-fits the canvas.
+- **Calling a live run a "worker"** in pipeline code, API or UI. The unit is
+  Run (`RunRecord`, `runId`, `runs/*.jsonl`, `runUpdate`); N live runs of one
+  activation are what an operator would call workers, and the code never says
+  so — `workerId` / `workerScope` stay the code job's intra-job lanes. Run
+  identity on screen (`runLabel` = case key or run id, `runHue`) has ONE owner,
+  `Pipelines/runIdentity.ts`.
 - **Reading or writing a universal session by any path other than
   `getUniversalSessionFilePath`.** A pipeline step's turn lives in its RUN file
   (`{customJobId}@{runId}.json`); a caller on the shared `getSessionFilePath`
@@ -1184,9 +1206,13 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
 
 - New trigger kinds = new `on.*` fields compiled to the same fire path;
   `runNow` already proves the path is trigger-agnostic.
-- Raising per-activation concurrency = open the `concurrency` definition key
-  (+ `maxLiveRunsPerActivation`) and the view types; the gate, both slot
-  sets, the session file and the buffer clear are already per run.
+- Per-activation concurrency is the definition's `concurrency` (validator-
+  bounded by `maxLiveRunsPerActivation`, trigger-agnostic); the gate, both slot
+  sets, the session file, the buffer clear, the `liveRuns[]` contract and the
+  one-canvas chips are all per run — a new trigger inherits N for free.
+- A run's label everywhere = `runLabel` (case key when the trigger carries
+  one, else the run id); the canvas chips, execution rows, chat chips, run
+  dock, inbox rows and approval cards all call it.
 - New chain edge predicates = executor-only changes (`planAdvance` judges
   conditions; the coordinator never inspects step semantics).
 - New approval channels = a new outbound presenter + the SAME resolve funnel.
@@ -1483,11 +1509,22 @@ The obligations live at authoring time, in the pipeline builder's contract:
   grant re-dispatch), the OPTIONAL trigger block (manual-only pipelines, §2),
   and `on.runCompleted` event triggers (pipeline→pipeline chaining, §2 —
   `firedBy: 'event'`, chain-depth bound). Phase 2 is complete.
-- **Phase 3**: open the `concurrency` definition key (N live runs per
-  activation for EVERY trigger — run-now, cron, chain, fetch) with the
-  `liveRuns[]` view contract and the one-canvas / per-node run chips FE,
-  parallel branches/fan-in inside a run, free-DAG canvas editing,
-  `cancelPrevious`, caps admin surface.
+- **Phase B — multi-run open (shipped 2026-09-16)**: the `concurrency`
+  definition key (1..`maxLiveRunsPerActivation`, every trigger — a Run now
+  burst starts N independent runs, 409 only at cap), the
+  `prev-success-under-concurrency` save advisory, newest-20 run session-file
+  retention (reconciler), the `liveRuns[]` view contract (`PipelineLiveRun`,
+  `liveRunOf` / `foldLiveRun` / `activationStateOf` in shared; `listLiveRuns`
+  replaces `getActiveRunId`), and the FE: one canvas with per-node run chips
+  + trigger live count (`runOverlay.ts`), live-run rows in the execution view
+  sharing the per-activation selection, jobId-keyed `activeJobs`
+  (`selectActiveJobByType`), the chat `PipelineRunDock`, run labels on the
+  origin chip / inbox / approval card / banner (`runIdentity.ts`). The two
+  Phase A shims stay until one release has shipped with them.
+- **Phase 3**: parallel branches/fan-in inside a run, free-DAG canvas editing,
+  `cancelPrevious`, caps admin surface. `on.fetch` (Phase C) and the
+  candidate/assignee approval model (Phase D) are designed in
+  `.claude/plans/resilient-stirring-nova.md`.
 - **Backlog (user-locked)**: Slack/email channels, webhook triggers.
 
 ---

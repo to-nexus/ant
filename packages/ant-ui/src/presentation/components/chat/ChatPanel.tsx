@@ -12,6 +12,7 @@ import { ChatHeaderBar } from './ChatHeaderBar';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { WorkerGroupDock } from './WorkerGroupDock';
+import { PipelineRunDock } from './PipelineRunDock';
 import { Slot } from '@/presentation/extensions/slots';
 import { QueueStatusBanner } from './QueueStatusBanner';
 import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
@@ -224,6 +225,8 @@ export function ChatPanel({
 
         {/* Worker-group dock — latest parallel turn's groups, always reachable */}
         {turnCount > 0 && <WorkerGroupDock turns={turns} />}
+        {/* Live pipeline runs of this project — store-driven, so a run with no turn yet still shows */}
+        <PipelineRunDock turns={turns} />
       </div>
 
       {/* Input Area - Fixed at bottom */}

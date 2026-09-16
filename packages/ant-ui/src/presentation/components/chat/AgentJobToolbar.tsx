@@ -593,7 +593,7 @@ export function AgentJobToolbar({
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium">{job.label}</span>
-                      {activeJobs[job.value] && (
+                      {Object.values(activeJobs).some((e) => e.jobType === job.value) && (
                         <span
                           className="w-1.5 h-1.5 rounded-full animate-status-pulse flex-shrink-0"
                           style={{ background: 'var(--emerald-500)' }}

@@ -91,7 +91,8 @@
     "self": "(you)"
   },
   "chip": {
-    "firedByPipeline": "Started by pipeline \"{{name}}\""
+    "firedByPipeline": "Started by pipeline \"{{name}}\"",
+    "firedByPipelineRun": "Started by pipeline \"{{name}}\" — run {{run}}"
   },
   "inbox": {
     "title": "Waiting for you",

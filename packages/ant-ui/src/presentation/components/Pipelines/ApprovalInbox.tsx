@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { FolderOpen, MessageCircleQuestion, ShieldCheck, Wrench } from 'lucide-react';
 import type { PipelinePendingApproval } from '@ant/shared';
 import { useStore } from '@/domain/store';
+import { activationRunsKey } from '@/domain/store/slices/pipelineSlice';
 import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { Badge, Button, Textarea } from '../aurora';
@@ -22,6 +23,7 @@ import { FieldHint } from '../ConfigEditor/aurora';
 import { FileTreePicker } from '../common/FileTreePicker';
 import { RailGroup } from '../shared/rail';
 import { GateDecisionForm } from './GateDecisionForm';
+import { runHue, runLabel, runTintFg } from './runIdentity';
 
 export function ApprovalInbox() {
   const { t } = useTranslation('pipelines');
@@ -70,7 +72,10 @@ function ApprovalRow({ approval: a, onNotice }: { approval: PipelinePendingAppro
   const openApproverPanel = useStore((s) => s.openApproverPanel);
   const selectPipeline = useStore((s) => s.selectPipeline);
   const setPipelinePanelView = useStore((s) => s.setPipelinePanelView);
+  const selectActivationRun = useStore((s) => s.selectActivationRun);
   const [busy, setBusy] = useState(false);
+  const label = runLabel(a);
+  const accent = runTintFg(runHue(a.runId));
 
   const decide = async (decision: 'approve' | 'reject', withNote?: string) => {
     if (busy) return;
@@ -98,6 +103,8 @@ function ApprovalRow({ approval: a, onNotice }: { approval: PipelinePendingAppro
     : () => {
         void selectPipeline(a.pipelineId);
         setPipelinePanelView('execution');
+        // "Open run" opens THIS run: the execution view's rows, chips and timeline share this selection.
+        selectActivationRun(activationRunsKey(a.pipelineId, a.projectId), a.runId, a.projectId);
       };
 
   return (
@@ -108,6 +115,11 @@ function ApprovalRow({ approval: a, onNotice }: { approval: PipelinePendingAppro
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.pipelineName}</span>
         {/* Inbox is account-wide — the project label keeps a "foreign" gate legible. */}
         <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-3)', flexShrink: 0 }}>{a.projectId}</span>
+        {/* Which run asks — same label + hue as everywhere else (N live runs share one inbox). */}
+        <span title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-mono)', color: accent, flexShrink: 0, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ width: 6, height: 6, borderRadius: 3, background: accent, flexShrink: 0 }} />
+          {label}
+        </span>
       </div>
       {a.role === 'approver' && a.ownerUserId && (
         <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 2 }}>{t('inbox.ownerLine', "{{who}}'s activation", { who: a.ownerUserId })}</div>

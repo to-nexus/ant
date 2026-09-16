@@ -91,7 +91,8 @@
     "self": "(나)"
   },
   "chip": {
-    "firedByPipeline": "파이프라인 \"{{name}}\"이(가) 시작한 작업"
+    "firedByPipeline": "파이프라인 \"{{name}}\"이(가) 시작한 작업",
+    "firedByPipelineRun": "파이프라인 \"{{name}}\"의 런 {{run}}이(가) 시작한 작업"
   },
   "inbox": {
     "title": "승인 대기",

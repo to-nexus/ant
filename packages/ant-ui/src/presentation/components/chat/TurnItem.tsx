@@ -151,7 +151,7 @@ const UserBubble = memo(function UserBubble({
     >
       {user.pipeline && (
         <div className="pb-1.5">
-          <PipelineOriginChip pipelineId={user.pipeline.pipelineId} />
+          <PipelineOriginChip pipelineId={user.pipeline.pipelineId} runId={user.pipeline.runId} firedBy={user.pipeline.firedBy} itemKey={user.pipeline.itemKey} />
         </div>
       )}
       {user.actionMetadata && Object.keys(user.actionMetadata).length > 0 && (

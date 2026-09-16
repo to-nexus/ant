@@ -79,6 +79,7 @@ export interface InlineAskContext {
 
 export interface ActiveJobEntry {
   jobId: string;
+  jobType: string;
   status: string;
   agent?: string;
   /** Pipeline attribution — the run this job is a step of. */
@@ -108,7 +109,11 @@ export interface JobState {
   sseReconnectGrace: boolean;
   // ✅ Inline Ask: Context for handling ask during interrupted jobs
   inlineAskContext: InlineAskContext | null;
-  // N concurrent jobs: per-jobType tracking within current feature
+  /**
+   * Live jobs of the current feature, keyed by JOB ID (N universal jobs of one
+   * project — N pipeline runs — coexist). Per-type reads go through
+   * `selectActiveJobByType`; never index this map by a job type.
+   */
   activeJobs: Record<string, ActiveJobEntry>;
 }
 

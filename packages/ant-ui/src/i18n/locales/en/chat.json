@@ -391,5 +391,13 @@
       "universal-resume-ref-unresolvable": "This job's record has expired, so it can no longer be resumed. Send the request again as a new job.",
       "universal-resume-no-turn": "Nothing was left to resume — neither the saved conversation nor the interrupted request could be recovered. Send it again."
     }
+  },
+  "pipelineDock": {
+    "label": "Live pipeline runs",
+    "jumpTo": "Jump to the latest turn of run {{label}}",
+    "noTurnYet": "Run {{label}} has not posted a turn yet",
+    "awaiting": "Waiting on a person",
+    "cancel": "Cancel run {{label}}",
+    "cancelConfirm": "Cancel pipeline run {{label}}? Its steps stop and the run is marked cancelled."
   }
 }

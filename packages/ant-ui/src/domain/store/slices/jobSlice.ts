@@ -15,7 +15,9 @@ export interface JobActions {
   setCurrentJob: (job: JobExecution | null) => void;
   setQueuePosition: (position: QueuePosition | null) => void;
   setInlineAskContext: (context: InlineAskContext | null) => void;
-  setActiveJob: (jobType: string, entry: ActiveJobEntry) => void;
+  /** Upsert one live job (keyed by its jobId; `jobType` is stamped from the first argument). */
+  setActiveJob: (jobType: string, entry: Omit<ActiveJobEntry, 'jobType'>) => void;
+  /** Remove EVERY live entry of a job type. Prefer `clearActiveJobByJobId` when the id is known. */
   clearActiveJob: (jobType: string) => void;
   /**
    * Remove whichever `activeJobs` entry owns `jobId`, regardless of its type.
@@ -241,23 +243,29 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
 
   setActiveJob: (jobType, entry) => {
     const activeJobs = { ...get().activeJobs };
-    activeJobs[jobType] = entry;
+    activeJobs[entry.jobId] = { ...entry, jobType };
     set({ activeJobs });
   },
 
   clearActiveJob: (jobType) => {
     const activeJobs = { ...get().activeJobs };
-    delete activeJobs[jobType];
-    set({ activeJobs });
+    let mutated = false;
+    for (const [jobId, entry] of Object.entries(activeJobs)) {
+      if ((entry as ActiveJobEntry | undefined)?.jobType === jobType) {
+        delete activeJobs[jobId];
+        mutated = true;
+      }
+    }
+    if (mutated) set({ activeJobs });
   },
 
   clearActiveJobByJobId: (jobId) => {
     if (!jobId) return;
     const activeJobs = { ...get().activeJobs };
     let mutated = false;
-    for (const [type, entry] of Object.entries(activeJobs)) {
+    for (const [key, entry] of Object.entries(activeJobs)) {
       if ((entry as ActiveJobEntry | undefined)?.jobId === jobId) {
-        delete activeJobs[type];
+        delete activeJobs[key];
         mutated = true;
       }
     }
@@ -374,8 +382,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
   },
 
   syncViewToJobType: (jobType) => {
-    const { activeJobs, currentJobId: prevJobId, kanban } = get();
-    const activeJob = activeJobs[jobType];
+    const { currentJobId: prevJobId, kanban } = get();
+    const activeJob = selectActiveJobByType(get(), jobType);
 
     if (prevJobId) {
       sseManager.disconnectWorkflow(prevJobId);
@@ -418,5 +426,30 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
  * Both preview and deploy read THIS selector — do not inline `activeJobs.code`.
  */
 export const selectHasActiveCodeJob = (s: { activeJobs?: Record<string, ActiveJobEntry> }): boolean =>
-  Boolean(s.activeJobs?.code);
+  selectActiveJobByType(s, 'code') !== undefined;
+
+/** running > paused > queued; ties keep the later-inserted entry (the bootstrap's former "last wins"). */
+const ACTIVE_STATUS_RANK: Record<string, number> = { running: 0, paused: 1, queued: 2 };
+
+/**
+ * The ONE per-type read over the jobId-keyed map — for the surfaces that still
+ * think in job types (view sync, toolbar dots, deploy gate). With N live jobs
+ * of one type it names the most actionable one; callers needing a specific
+ * job read `activeJobs[jobId]` directly.
+ */
+export const selectActiveJobByType = (
+  s: { activeJobs?: Record<string, ActiveJobEntry> },
+  jobType: string,
+): ActiveJobEntry | undefined => {
+  let best: ActiveJobEntry | undefined;
+  for (const entry of Object.values(s.activeJobs ?? {})) {
+    if (!entry || entry.jobType !== jobType) continue;
+    if (!best || (ACTIVE_STATUS_RANK[entry.status] ?? 9) <= (ACTIVE_STATUS_RANK[best.status] ?? 9)) best = entry;
+  }
+  return best;
+};
+
+/** Is this exact job live (in the SSE-fed map)? */
+export const selectIsJobLive = (s: { activeJobs?: Record<string, ActiveJobEntry> }, jobId: string | undefined): boolean =>
+  Boolean(jobId && s.activeJobs?.[jobId]);
 

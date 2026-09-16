@@ -1,10 +1,15 @@
 import { isNonTaskJob } from '@ant/shared';
 import type { KanbanData } from '@/infrastructure/http/api';
 
+type ActiveEntry = { status: string; agent?: string; jobType?: string };
 type ReconvergeState = {
   selectedJobType?: string;
-  activeJobs: Record<string, { status: string; agent?: string }>;
+  /** jobId-keyed (jobSlice); read per TYPE through the entry's `jobType`. */
+  activeJobs: Record<string, ActiveEntry>;
 };
+
+const entriesOfType = (map: Record<string, ActiveEntry>, jobType: string | undefined): ActiveEntry[] =>
+  Object.values(map).filter((e) => e?.jobType === jobType);
 
 /**
  * Decide whether the live running job should re-converge the view identity
@@ -28,8 +33,8 @@ export function shouldReconvergeJobType(
   if (!data.jobType) return false;
   if (data.dataSource !== 'live' && data.dataSource !== 'estimating') return false;
   if (data.jobType === state.selectedJobType) return false;
-  const current = state.activeJobs[state.selectedJobType ?? ''];
-  if (current?.status === 'paused' && isNonTaskJob(state.selectedJobType ?? '')) return false;
+  const selectedType = state.selectedJobType ?? '';
+  if (isNonTaskJob(selectedType) && entriesOfType(state.activeJobs, selectedType).some((e) => e.status === 'paused')) return false;
   return true;
 }
 
@@ -41,6 +46,6 @@ export function shouldReconvergeJobType(
 export function reconvergeJobType(data: KanbanData, get: any): void {
   const state = get();
   if (!shouldReconvergeJobType(data, state)) return;
-  const agent = state.activeJobs[data.jobType!]?.agent;
+  const agent = entriesOfType(state.activeJobs, data.jobType).find((e) => e.agent)?.agent;
   get().applyJobIdentity({ jobType: data.jobType, agent });
 }

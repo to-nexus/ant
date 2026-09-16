@@ -32,7 +32,7 @@ vi.mock('../../src/domain/store/storage', async (orig) => {
   return { ...actual, saveToStorage: () => {}, removeFromStorage: () => {} };
 });
 
-import { createJobSlice, selectHasActiveCodeJob, type JobSlice } from '../../src/domain/store/slices/jobSlice';
+import { createJobSlice, selectActiveJobByType, selectHasActiveCodeJob, selectIsJobLive, type JobSlice } from '../../src/domain/store/slices/jobSlice';
 
 function makeStore() {
   return create<any>()((set, get, store) => ({
@@ -47,10 +47,58 @@ function makeStore() {
 
 describe('selectHasActiveCodeJob', () => {
   it('is true only when a code job is active', () => {
-    expect(selectHasActiveCodeJob({ activeJobs: { code: { jobId: 'j1', status: 'running' } } })).toBe(true);
-    expect(selectHasActiveCodeJob({ activeJobs: { plan: { jobId: 'j2', status: 'running' } } })).toBe(false);
+    expect(selectHasActiveCodeJob({ activeJobs: { j1: { jobType: 'code', jobId: 'j1', status: 'running' } } })).toBe(true);
+    expect(selectHasActiveCodeJob({ activeJobs: { j2: { jobType: 'plan', jobId: 'j2', status: 'running' } } })).toBe(false);
     expect(selectHasActiveCodeJob({ activeJobs: {} })).toBe(false);
     expect(selectHasActiveCodeJob({})).toBe(false);
+  });
+});
+
+/**
+ * The map is keyed by JOB ID: N universal jobs of one project (N pipeline
+ * runs) coexist instead of collapsing onto one `activeJobs.universal` slot.
+ * Per-type surfaces read through ONE selector.
+ */
+describe('activeJobs is keyed by jobId', () => {
+  let s: ReturnType<typeof makeStore>;
+  beforeEach(() => { s = makeStore(); });
+
+  it('two live universal jobs coexist, each with its own run attribution', () => {
+    s.getState().setActiveJob('universal', { jobId: 'j1', status: 'running', pipelineRunId: 'run-a' });
+    s.getState().setActiveJob('universal', { jobId: 'j2', status: 'running', pipelineRunId: 'run-b' });
+    const map = s.getState().activeJobs;
+    expect(Object.keys(map).sort()).toEqual(['j1', 'j2']);
+    expect(map.j1).toMatchObject({ jobType: 'universal', pipelineRunId: 'run-a' });
+    expect(map.j2).toMatchObject({ jobType: 'universal', pipelineRunId: 'run-b' });
+    expect(selectIsJobLive(s.getState(), 'j1')).toBe(true);
+    expect(selectIsJobLive(s.getState(), 'ghost')).toBe(false);
+  });
+
+  it('selectActiveJobByType ranks running > paused > queued and ignores other types', () => {
+    const state = {
+      activeJobs: {
+        q: { jobType: 'universal', jobId: 'q', status: 'queued' },
+        p: { jobType: 'universal', jobId: 'p', status: 'paused' },
+        r: { jobType: 'universal', jobId: 'r', status: 'running' },
+        c: { jobType: 'code', jobId: 'c', status: 'running' },
+      },
+    };
+    expect(selectActiveJobByType(state, 'universal')?.jobId).toBe('r');
+    expect(selectActiveJobByType(state, 'code')?.jobId).toBe('c');
+    expect(selectActiveJobByType(state, 'plan')).toBeUndefined();
+    expect(selectActiveJobByType({}, 'code')).toBeUndefined();
+  });
+
+  it('clearActiveJob(type) removes every entry of that type and nothing else', () => {
+    s.setState({
+      activeJobs: {
+        j1: { jobType: 'universal', jobId: 'j1', status: 'running' },
+        j2: { jobType: 'universal', jobId: 'j2', status: 'running' },
+        j3: { jobType: 'code', jobId: 'j3', status: 'running' },
+      },
+    });
+    s.getState().clearActiveJob('universal');
+    expect(Object.keys(s.getState().activeJobs)).toEqual(['j3']);
   });
 });
 
@@ -63,16 +111,16 @@ describe('activeJobs terminal owner', () => {
       currentJobId: 'j1',
       isRunning: true,
       activeJobs: {
-        code: { jobId: 'j1', status: 'running' },
-        plan: { jobId: 'j2', status: 'running' },
+        j1: { jobType: 'code', jobId: 'j1', status: 'running' },
+        j2: { jobType: 'plan', jobId: 'j2', status: 'running' },
       },
     });
 
     s.getState().setRunning(false);
 
     expect(s.getState().isRunning).toBe(false);
-    expect(s.getState().activeJobs.code).toBeUndefined(); // deploy/preview unblock
-    expect(s.getState().activeJobs.plan).toBeDefined();    // concurrent plan survives
+    expect(s.getState().activeJobs.j1).toBeUndefined(); // deploy/preview unblock
+    expect(s.getState().activeJobs.j2).toBeDefined();    // concurrent plan survives
     expect(selectHasActiveCodeJob(s.getState())).toBe(false);
   });
 
@@ -80,29 +128,29 @@ describe('activeJobs terminal owner', () => {
     s.setState({
       currentJobId: 'jX',
       isRunning: true,
-      activeJobs: { code: { jobId: 'j1', status: 'running' } },
+      activeJobs: { j1: { jobType: 'code', jobId: 'j1', status: 'running' } },
     });
     s.getState().setRunning(false);
-    expect(s.getState().activeJobs.code).toBeDefined();
+    expect(s.getState().activeJobs.j1).toBeDefined();
   });
 
   it('clearActiveJobByJobId removes only the matching entry, any type', () => {
     s.setState({
       activeJobs: {
-        code: { jobId: 'j1', status: 'running' },
-        plan: { jobId: 'j2', status: 'running' },
+        j1: { jobType: 'code', jobId: 'j1', status: 'running' },
+        j2: { jobType: 'plan', jobId: 'j2', status: 'running' },
       },
     });
 
     s.getState().clearActiveJobByJobId('j2');
-    expect(s.getState().activeJobs.plan).toBeUndefined();
-    expect(s.getState().activeJobs.code).toBeDefined();
+    expect(s.getState().activeJobs.j2).toBeUndefined();
+    expect(s.getState().activeJobs.j1).toBeDefined();
 
     s.getState().clearActiveJobByJobId(''); // guard: empty is a no-op
-    expect(s.getState().activeJobs.code).toBeDefined();
+    expect(s.getState().activeJobs.j1).toBeDefined();
 
     s.getState().clearActiveJobByJobId('nope'); // no match is a no-op
-    expect(s.getState().activeJobs.code).toBeDefined();
+    expect(s.getState().activeJobs.j1).toBeDefined();
   });
 });
 
@@ -157,21 +205,21 @@ describe('clearJobTabView', () => {
     s.setState({
       currentJobId: 'j1',
       activeJobs: {
-        code: { jobId: 'j1', status: 'completed' },
-        plan: { jobId: 'j2', status: 'running' },
+        j1: { jobType: 'code', jobId: 'j1', status: 'completed' },
+        j2: { jobType: 'plan', jobId: 'j2', status: 'running' },
       },
     });
 
     s.getState().clearJobTabView();
 
-    expect(s.getState().activeJobs.code).toBeUndefined();
-    expect(s.getState().activeJobs.plan).toBeDefined();
+    expect(s.getState().activeJobs.j1).toBeUndefined();
+    expect(s.getState().activeJobs.j2).toBeDefined();
   });
 
   it('is a no-op-safe when no job is being viewed', () => {
-    s.setState({ currentJobId: undefined, activeJobs: { plan: { jobId: 'j2', status: 'running' } } });
+    s.setState({ currentJobId: undefined, activeJobs: { j2: { jobType: 'plan', jobId: 'j2', status: 'running' } } });
     s.getState().clearJobTabView();
     expect(s.getState().currentJobId).toBeUndefined();
-    expect(s.getState().activeJobs.plan).toBeDefined();
+    expect(s.getState().activeJobs.j2).toBeDefined();
   });
 });

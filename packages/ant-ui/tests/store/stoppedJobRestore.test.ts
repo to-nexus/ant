@@ -93,7 +93,7 @@ describe('F2 — syncViewToJobType keeps the last known same-type jobId', () => 
   it('adopts the live job when one exists', () => {
     s.setState({
       currentJobId: undefined,
-      activeJobs: { design: { jobId: 'design-live', status: 'running' } },
+      activeJobs: { 'design-live': { jobType: 'design', jobId: 'design-live', status: 'running' } },
       kanban: { jobId: 'design-old', jobType: 'design', todo: [], inProgress: [], completed: [] },
     });
     s.getState().syncViewToJobType('design' as any);
@@ -178,8 +178,8 @@ describe('F3 — bootstrap history fallback when activeJobs is empty', () => {
   });
 
   // Attribution rides the bootstrap so a pipeline step's job is distinguishable
-  // from an interactive one (and, once the map is jobId-keyed, from a sibling
-  // run's) — the SSE row carries it, the entry must not drop it.
+  // from an interactive one and from a sibling run's (the map is jobId-keyed) —
+  // the SSE row carries it, the entry must not drop it.
   it('keeps pipelineRunId and customJobRef on the active-job entry', () => {
     const s = makeStore();
     handleInitialActiveJobs(
@@ -187,7 +187,8 @@ describe('F3 — bootstrap history fallback when activeJobs is empty', () => {
       s.setState.bind(s),
       s.getState.bind(s),
     );
-    expect(s.getState().activeJobs.universal).toEqual({
+    expect(s.getState().activeJobs['j-step']).toEqual({
+      jobType: 'universal',
       jobId: 'j-step',
       status: 'running',
       agent: 'universal',

@@ -32,8 +32,9 @@ export interface PausedNonTaskJob {
 export function selectPausedNonTaskJob(state: StoreState): PausedNonTaskJob | null {
   const map = state.activeJobs;
   if (!map) return null;
-  for (const [jobType, entry] of Object.entries(map)) {
+  for (const entry of Object.values(map)) {
     if (!entry || entry.status !== 'paused') continue;
+    const jobType = entry.jobType;
     if (!isNonTaskJob(jobType)) continue;
     return {
       jobType,

@@ -282,7 +282,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         if (isActive) {
           get().setActiveJob(data.jobType, { jobId: data.jobId, status: 'running' });
         } else {
-          get().clearActiveJob(data.jobType);
+          get().clearActiveJobByJobId(data.jobId);
         }
       }
 

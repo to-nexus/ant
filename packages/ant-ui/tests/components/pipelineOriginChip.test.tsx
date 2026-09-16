@@ -19,10 +19,10 @@ vi.mock('react-i18next', () => ({
 
 import { PipelineOriginChip } from '../../src/presentation/components/Pipelines/PipelineOriginChip';
 
-function render(pipelineId: string): ReactTestRenderer {
+function render(pipelineId: string, run?: { runId: string; itemKey?: string; firedBy?: 'cron' | 'manual' | 'event' }): ReactTestRenderer {
   let tree: ReactTestRenderer | undefined;
   act(() => {
-    tree = create(<PipelineOriginChip pipelineId={pipelineId} />);
+    tree = create(<PipelineOriginChip pipelineId={pipelineId} runId={run?.runId} itemKey={run?.itemKey} firedBy={run?.firedBy} />);
   });
   return tree!;
 }
@@ -38,5 +38,22 @@ describe('PipelineOriginChip', () => {
     storeState.pipelines = [];
     const dump = JSON.stringify(render('ghost-pipe').toJSON());
     expect(dump).toContain('ghost-pipe');
+  });
+
+  // N live runs post turns into ONE flat chat — the chip names the run.
+  it('names the run by its id when given one, and the case key wins over the id', () => {
+    storeState.pipelines = [{ id: 'p1', name: 'Refunds' }];
+    const byId = JSON.stringify(render('p1', { runId: 'sandy-mending-cabin', firedBy: 'manual' }).toJSON());
+    expect(byId).toContain('sandy-mending-cabin');
+    const byKey = JSON.stringify(render('p1', { runId: 'sandy-mending-cabin', itemKey: 'REF-7' }).toJSON());
+    expect(byKey).toContain('REF-7');
+    expect(byKey).not.toContain('sandy-mending-cabin');
+  });
+
+  it('renders no run part without a runId (the board chip before attribution lands)', () => {
+    storeState.pipelines = [{ id: 'p1', name: 'Refunds' }];
+    const dump = JSON.stringify(render('p1').toJSON());
+    expect(dump).toContain('Refunds');
+    expect(dump).not.toContain('font-mono');
   });
 });

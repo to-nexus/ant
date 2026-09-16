@@ -1,4 +1,5 @@
 import { removeFromStorage, STORAGE_KEYS } from '../../storage';
+import { selectActiveJobByType } from '../jobSlice';
 
 /**
  * Configures SSEManager connection lifecycle callbacks:
@@ -38,7 +39,7 @@ export function setupConnectionPolicy(manager: any, set: any, get: any): void {
         const { kanban, isRunning, activeJobs, jobStartPending, selectedJobType } = get();
         if (kanban && isRunning && !jobStartPending) {
           const stillRunning = kanban.dataSource === 'live' || kanban.dataSource === 'estimating';
-          const activeJobEntry = activeJobs?.[selectedJobType];
+          const activeJobEntry = selectActiveJobByType({ activeJobs }, selectedJobType);
           const hasActiveJob = activeJobEntry &&
               (activeJobEntry.status === 'running' || activeJobEntry.status === 'queued');
           if (!stillRunning && !hasActiveJob) {

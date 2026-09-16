@@ -46,7 +46,10 @@ export function ChecklistBoard({ kanbanData }: ChecklistBoardProps) {
   // The work tab marks pipeline-driven work: while the project's active
   // pipeline is running, the current job IS a pipeline step.
   const activePipeline = useStore((state) => selectActivePipelineForSelectedProject(state));
-  const pipelineRunning = activePipeline && (activePipeline.state === 'running' || activePipeline.state === 'awaiting_human');
+  // The project-level lock only says SOME run is live; the board's own job
+  // carries which run (jobId-keyed activeJobs attribution).
+  const attributedRunId = useStore((state) => (kanbanData.jobId ? state.activeJobs[kanbanData.jobId]?.pipelineRunId : undefined));
+  const pipelineRunning = !!activePipeline && (activePipeline.liveRuns?.length ?? 0) > 0;
   const checklist = kanbanData.checklist;
   const items = checklist?.items ?? [];
   const doneCount = items.filter((i) => i.state === 'done').length;
@@ -73,7 +76,7 @@ export function ChecklistBoard({ kanbanData }: ChecklistBoardProps) {
       scrollBody
       titleActions={
         <>
-          {pipelineRunning && <PipelineOriginChip pipelineId={activePipeline!.pipelineId} />}
+          {pipelineRunning && <PipelineOriginChip pipelineId={activePipeline!.pipelineId} runId={attributedRunId} />}
           <ElapsedTimeBadge jobTiming={kanbanData.jobTiming} completedTasks={[]} inProgressTasks={[]} />
           <TokenUsageBadge
             jobId={kanbanData.jobId}

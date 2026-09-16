@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { ShieldCheck } from 'lucide-react';
 import type { VariantProps } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, THEMES } from './shared';
+import { runLabel } from '@/presentation/components/Pipelines/runIdentity';
 
 /**
  * Pipeline approval gate card — a scheduled run is suspended on a human
@@ -17,6 +18,8 @@ export function PipelineApprovalVariant({ presented, resolved }: VariantProps) {
   const payload = (presented.payload ?? {}) as Record<string, any>;
   const pipelineName = payload.pipelineName as string | undefined;
   const stepId = payload.stepId as string | undefined;
+  const runId = payload.runId as string | undefined;
+  const itemKey = payload.itemKey as string | undefined;
   const timeoutAt = payload.timeoutAt as string | undefined;
   const onTimeout = payload.onTimeout as string | undefined;
 
@@ -33,8 +36,10 @@ export function PipelineApprovalVariant({ presented, resolved }: VariantProps) {
     }
   };
 
+  // Which run asks — N live runs post N cards into one chat.
+  const runPart = runId ? runLabel({ runId, itemKey }) : undefined;
   const subtitleParts = [
-    pipelineName && stepId ? `${pipelineName} · ${stepId}` : pipelineName,
+    [pipelineName && stepId ? `${pipelineName} · ${stepId}` : pipelineName, runPart].filter(Boolean).join(' · ') || undefined,
     timeoutAt
       ? onTimeout === 'approve'
         ? t('card.timeoutApprove', 'auto-approves {{when}}', { when: new Date(timeoutAt).toLocaleString() })

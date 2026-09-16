@@ -26,7 +26,7 @@ describe('selectPausedNonTaskJob — Invariant I1', () => {
   it('returns the paused plan job with planner agent', () => {
     const result = selectPausedNonTaskJob(
       fakeState({
-        plan: { jobId: 'lunar-braking-onion', status: 'paused', agent: 'planner' },
+        'lunar-braking-onion': { jobType: 'plan', jobId: 'lunar-braking-onion', status: 'paused', agent: 'planner' },
       }),
     );
     expect(result).toEqual({
@@ -39,7 +39,7 @@ describe('selectPausedNonTaskJob — Invariant I1', () => {
   it('returns the paused visual job with creator agent', () => {
     const result = selectPausedNonTaskJob(
       fakeState({
-        visual: { jobId: 'paused-visual-1', status: 'paused', agent: 'creator' },
+        'paused-visual-1': { jobType: 'visual', jobId: 'paused-visual-1', status: 'paused', agent: 'creator' },
       }),
     );
     expect(result).toEqual({
@@ -52,7 +52,7 @@ describe('selectPausedNonTaskJob — Invariant I1', () => {
   it('falls back to resolveAgentForJobType when the entry omits agent', () => {
     const result = selectPausedNonTaskJob(
       fakeState({
-        plan: { jobId: 'no-agent-job', status: 'paused' },
+        'no-agent-job': { jobType: 'plan', jobId: 'no-agent-job', status: 'paused' },
       }),
     );
     expect(result?.agent).toBe('planner');
@@ -61,7 +61,7 @@ describe('selectPausedNonTaskJob — Invariant I1', () => {
   it('returns null when only a paused decomposable job exists (code)', () => {
     const result = selectPausedNonTaskJob(
       fakeState({
-        code: { jobId: 'paused-code', status: 'paused', agent: 'architect' },
+        'paused-code': { jobType: 'code', jobId: 'paused-code', status: 'paused', agent: 'architect' },
       }),
     );
     expect(result).toBeNull();
@@ -70,7 +70,7 @@ describe('selectPausedNonTaskJob — Invariant I1', () => {
   it('returns null when the non-task job is running, not paused', () => {
     const result = selectPausedNonTaskJob(
       fakeState({
-        plan: { jobId: 'running-plan', status: 'running', agent: 'planner' },
+        'running-plan': { jobType: 'plan', jobId: 'running-plan', status: 'running', agent: 'planner' },
       }),
     );
     expect(result).toBeNull();
@@ -85,8 +85,8 @@ describe('selectPausedNonTaskJob — Invariant I1', () => {
     const result = selectPausedNonTaskJob(
       fakeState({
         // Object key insertion order matters — plan first.
-        plan: { jobId: 'plan-1', status: 'paused', agent: 'planner' },
-        visual: { jobId: 'visual-1', status: 'paused', agent: 'creator' },
+        'plan-1': { jobType: 'plan', jobId: 'plan-1', status: 'paused', agent: 'planner' },
+        'visual-1': { jobType: 'visual', jobId: 'visual-1', status: 'paused', agent: 'creator' },
       }),
     );
     // Either is correct from an Invariant I1 standpoint (both win over
@@ -98,8 +98,8 @@ describe('selectPausedNonTaskJob — Invariant I1', () => {
   it('skips a running non-task job and returns the paused one', () => {
     const result = selectPausedNonTaskJob(
       fakeState({
-        plan: { jobId: 'plan-running', status: 'running', agent: 'planner' },
-        visual: { jobId: 'visual-paused', status: 'paused', agent: 'creator' },
+        'plan-running': { jobType: 'plan', jobId: 'plan-running', status: 'running', agent: 'planner' },
+        'visual-paused': { jobType: 'visual', jobId: 'visual-paused', status: 'paused', agent: 'creator' },
       }),
     );
     expect(result?.jobType).toBe('visual');

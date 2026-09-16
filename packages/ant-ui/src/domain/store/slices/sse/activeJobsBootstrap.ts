@@ -18,12 +18,12 @@ export function handleInitialActiveJobs(
   set: any,
   get: any,
 ): void {
-  // Keyed by jobType: N jobs of one type collapse to the last one (the
-  // multi-run surfaces re-key this by jobId); attribution rides along so the
-  // survivor can still be told apart.
+  // Keyed by jobId: N universal jobs of one project (N pipeline runs) coexist;
+  // per-type reads go through `selectActiveJobByType`.
   const map: Record<string, ActiveJobEntry> = {};
   for (const j of jobs) {
-    map[j.jobType] = {
+    map[j.jobId] = {
+      jobType: j.jobType,
       jobId: j.jobId,
       status: j.status,
       agent: j.agent,
@@ -36,7 +36,7 @@ export function handleInitialActiveJobs(
   const currentType = get().selectedJobType;
   const shouldAutoSelect = (get() as any).pendingAutoSelect;
 
-  if (shouldAutoSelect && !map[currentType] && jobs.length > 0) {
+  if (shouldAutoSelect && !jobs.some((j) => j.jobType === currentType) && jobs.length > 0) {
     set({ pendingAutoSelect: false } as any);
     // Priority order (Invariant I4):
     //   1. Paused non-task job (plan / visual awaiting a clarify answer)

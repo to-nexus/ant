@@ -55,7 +55,7 @@ describe('shouldReconvergeJobType', () => {
     expect(
       shouldReconvergeJobType(
         { jobType: 'code', dataSource: 'live' },
-        { selectedJobType: 'plan', activeJobs: { plan: { status: 'paused' } } },
+        { selectedJobType: 'plan', activeJobs: { p1: { jobType: 'plan', status: 'paused' } } },
       ),
     ).toBe(false);
   });
@@ -65,7 +65,7 @@ describe('shouldReconvergeJobType', () => {
     expect(
       shouldReconvergeJobType(
         { jobType: 'code', dataSource: 'live' },
-        { selectedJobType: 'plan', activeJobs: { plan: { status: 'running' } } },
+        { selectedJobType: 'plan', activeJobs: { p1: { jobType: 'plan', status: 'running' } } },
       ),
     ).toBe(true);
   });
