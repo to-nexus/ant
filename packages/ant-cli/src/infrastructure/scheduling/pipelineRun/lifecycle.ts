@@ -6,7 +6,7 @@
 
 import { UNIVERSAL_FEATURE, runSummaryOf, type RunRecord, type StepRecord } from '@ant/shared';
 import type { PipelineOwner } from '../../../core/ports/scheduler';
-import { REDIS_KEYS, REDIS_CHANNELS } from '../../../core/constants/redis';
+import { REDIS_KEYS, REDIS_CHANNELS, REDIS_TTL } from '../../../core/constants/redis';
 import { logger } from '../../../utils/logger';
 import { applyStepOutcome } from '../../../core/pipelines/ChainExecutor';
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
@@ -18,7 +18,7 @@ import {
   loadAvailability,
   loadPipeline,
 } from '../../../core/pipelines/store';
-import { appendEvent, commitRun, getActiveRunId, getRun, isTerminal, mutateRun, publicRun, tenantCtx } from './runStore';
+import { appendEvent, commitRun, getRun, isTerminal, listActiveRunIds, mutateRun, publicRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
 /**
@@ -150,11 +150,38 @@ export async function killStepJob(ctx: PipelineRunOps, jobId: string, projectId:
  * responsibility — this method never touches activation state.
  */
 export async function deactivate(ctx: PipelineRunOps, owner: PipelineOwner, projectId: string): Promise<void> {
-  const runId = await getActiveRunId(ctx.deps, owner, projectId);
-  if (!runId) return;
-  const run = await getRun(ctx.deps, runId);
-  if (run && !isTerminal(run.status)) {
-    await cancelRun(ctx, owner, runId);
+  for (const runId of await listActiveRunIds(ctx.deps, owner, projectId)) {
+    const run = await getRun(ctx.deps, runId);
+    if (run && !isTerminal(run.status)) {
+      await cancelRun(ctx, owner, runId);
+    }
+  }
+}
+
+const INDEX_LOCK_RETRY_MS = 20;
+const INDEX_LOCK_MAX_RETRIES = 50; // ≈ 1s worst case
+
+/**
+ * `runs/index.jsonl` is one file per activation appended by whichever pod
+ * finalizes a run; O_APPEND atomicity across EFS clients is not guaranteed,
+ * and `readJsonlSafe` silently drops a torn line — the run then vanishes from
+ * history AND from the `prevSuccess` watermark. Best-effort lock: an append is
+ * never refused (AGENTS.md — retention, not rejection), a timeout only warns.
+ */
+async function appendRunIndexLocked(ctx: PipelineRunOps, owner: PipelineOwner, run: RunRecord): Promise<void> {
+  const lockKey = REDIS_KEYS.PIPE.INDEX_LOCK(owner.organizationId, owner.userId, run.projectId);
+  let held = false;
+  for (let i = 0; i < INDEX_LOCK_MAX_RETRIES && !held; i += 1) {
+    held = await ctx.deps.stateStore.acquireLock(lockKey, REDIS_TTL.PIPE.INDEX_LOCK).catch(() => false);
+    if (!held) await new Promise((r) => setTimeout(r, INDEX_LOCK_RETRY_MS));
+  }
+  if (!held) {
+    logger.warn(`[Pipeline] run-index lock unavailable — appending anyway: ${run.projectId}`, { component: COMPONENT });
+  }
+  try {
+    await appendRunIndex(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), run.projectId, runSummaryOf(run));
+  } finally {
+    if (held) await ctx.deps.stateStore.releaseLock(lockKey).catch(() => {});
   }
 }
 
@@ -177,18 +204,17 @@ export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run
   });
   // The index line is the shared summary shape — gate decisions (approval
   // STEPS only) ride it as the org observer's "who opened this gate" channel.
-  await appendRunIndex(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), run.projectId, runSummaryOf(sealed));
-  const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, run.projectId);
-  const holder = await ctx.deps.stateStore.getKey(activeKey);
-  if (holder === run.runId) {
-    await ctx.deps.stateStore.deleteKey(activeKey).catch(() => {});
-    // The concurrency slot shares the ACTIVE key's lifetime — one reservation
-    // per live activation. Releasing only under the same holder check keeps a
-    // late seal from freeing a slot a newer run already holds.
-    await ctx.deps.stateStore
-      .releaseSlot(REDIS_KEYS.PIPE.RUN_SLOTS(owner.organizationId, owner.userId), run.projectId)
-      .catch(() => {});
-  }
+  await appendRunIndexLocked(ctx, owner, sealed);
+  // Both slot memberships are THIS run's (member = runId), so releasing them
+  // is idempotent and can never free a sibling run's reservation — the holder
+  // check the single-value guard needed is structural here.
+  const { organizationId, userId } = owner;
+  await ctx.deps.stateStore
+    .releaseSlot(REDIS_KEYS.PIPE.ACTIVE_RUNS(organizationId, userId, run.projectId), run.runId)
+    .catch(() => {});
+  await ctx.deps.stateStore
+    .releaseSlot(REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId), REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(run.projectId, run.runId))
+    .catch(() => {});
   await emitRunFinishedNotice(ctx, owner, sealed);
   await fireChainedPipelines(ctx, owner, sealed);
 }

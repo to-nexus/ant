@@ -101,11 +101,14 @@ export async function dispatchJobStep(
   );
   if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
 
-  // Project-level duplicate gate — with the pipeline-owned project gate on
-  // the interactive side AND the executor's one-job-in-flight rule, the only
-  // collision left is the seal race between a finishing step's job (status
-  // record lagging the pub/sub event) and this dispatch: 1–2 re-arms absorb it.
-  const duplicate = await findDuplicateActiveJob(ctx.deps.stateStore as any, owner, run.projectId, UNIVERSAL_FEATURE, 'universal');
+  // RUN-scoped duplicate gate — a sibling run's live job in the same project
+  // is not a collision (each run seals into its own session file), so with
+  // the executor's one-job-in-flight-per-run rule the only collision left is
+  // THIS run's seal race: a finishing step's status record lagging its
+  // pub/sub event. 1–2 re-arms absorb it.
+  const duplicate = await findDuplicateActiveJob(
+    ctx.deps.stateStore as any, owner, run.projectId, UNIVERSAL_FEATURE, 'universal', { pipelineRunId: run.runId },
+  );
   if (duplicate) {
     if (retries >= MAX_DUPLICATE_RETRIES) return void (await fail('duplicate-job-timeout'));
     await ctx.deps.scheduleQueue.armDelayed(

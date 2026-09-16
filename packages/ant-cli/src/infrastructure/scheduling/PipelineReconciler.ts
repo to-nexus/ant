@@ -19,7 +19,7 @@ import { INDIVIDUAL_ORG_ID, type OrganizationKind, type RunRecord } from '@ant/s
 import { logger } from '../../utils/logger';
 import type { StateStorePort } from '../../core/ports/stateStore';
 import type { ScheduleQueuePort, PipelineOwner, PipelineFireJobData } from '../../core/ports/scheduler';
-import { REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
+import { REDIS_DOMAINS, REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
 import { approverIndexEntry, approverUnion, replaceApproverIndex } from '../../core/pipelines/approverIndex';
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
@@ -181,22 +181,56 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
   }
 }
 
-/** DEL the `ant:pipe:active` guard when its runId's doc is missing or terminal. */
+/**
+ * Release slot memberships whose run doc is missing or terminal — a
+ * coordinator crash between reserve and finalize would otherwise hold the
+ * activation's (and the account's) slot until the 30d TTL.
+ */
 async function healOverlapGuard(
   stateStore: StateStorePort,
   owner: PipelineOwner,
   projectId: string,
 ): Promise<void> {
-  const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, projectId);
-  const runId = await stateStore.getKey(activeKey);
-  if (!runId) return;
-  const raw = await stateStore.getKey(REDIS_KEYS.PIPE.RUN(runId));
-  const run = raw ? (JSON.parse(raw) as RunRecord) : null;
-  const terminal =
-    !run || ['completed', 'failed', 'partial', 'cancelled'].includes(run.status);
-  if (terminal) {
-    await stateStore.deleteKey(activeKey).catch(() => {});
-    logger.info(`[Pipeline] healed stale overlap guard: ${projectId} (run ${runId})`, { component: COMPONENT });
+  const { organizationId, userId } = owner;
+  const activeRunsKey = REDIS_KEYS.PIPE.ACTIVE_RUNS(organizationId, userId, projectId);
+  const slotsKey = REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId);
+  const isLive = async (runId: string): Promise<boolean> => {
+    const raw = await stateStore.getKey(REDIS_KEYS.PIPE.RUN(runId));
+    const run = raw ? (JSON.parse(raw) as RunRecord) : null;
+    return !!run && !['completed', 'failed', 'partial', 'cancelled'].includes(run.status);
+  };
+  for (const runId of await stateStore.listSlots(activeRunsKey)) {
+    if (await isLive(runId)) continue;
+    await stateStore.releaseSlot(activeRunsKey, runId).catch(() => {});
+    await stateStore.releaseSlot(slotsKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
+    logger.info(`[Pipeline] healed stale live-run slot: ${projectId} (run ${runId})`, { component: COMPONENT });
+  }
+  const prefix = `${projectId}:`;
+  for (const member of await stateStore.listSlots(slotsKey)) {
+    if (!member.startsWith(prefix)) continue;
+    const runId = member.slice(prefix.length);
+    if (await isLive(runId)) continue;
+    await stateStore.releaseSlot(slotsKey, member).catch(() => {});
+    logger.info(`[Pipeline] healed stale account slot: ${member}`, { component: COMPONENT });
+  }
+  // Migration shim (2026-09-16, delete after one release): the single-value
+  // `ant:pipe:active:*` guard that preceded the slot set. A run live across the
+  // deploy is admitted into both sets so the next fire cannot start a second
+  // run on top of it; a terminal holder is simply dropped.
+  const legacyKey = `${REDIS_DOMAINS.PIPE}:active:${organizationId}:${userId}:${projectId}`;
+  const legacyRunId = await stateStore.getKey(legacyKey);
+  if (legacyRunId) {
+    if (await isLive(legacyRunId)) {
+      await stateStore.reserveSlot(activeRunsKey, legacyRunId, Number.MAX_SAFE_INTEGER, REDIS_TTL.PIPE.ACTIVE);
+      await stateStore.reserveSlot(
+        slotsKey,
+        REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, legacyRunId),
+        Number.MAX_SAFE_INTEGER,
+        REDIS_TTL.PIPE.ACTIVE,
+      );
+    }
+    await stateStore.deleteKey(legacyKey).catch(() => {});
+    logger.info(`[Pipeline] migrated legacy overlap guard: ${projectId} (run ${legacyRunId})`, { component: COMPONENT });
   }
 }
 

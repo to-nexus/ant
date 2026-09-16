@@ -6,6 +6,7 @@
 import {
   DEFAULT_PIPELINE_CAPS,
   MAX_CHAIN_DEPTH,
+  resolveRunConcurrency,
   type PipelineActivation,
   type PipelineDef,
   type RunRecord,
@@ -95,35 +96,21 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   const firedKey = REDIS_KEYS.PIPE.FIRED(owner.organizationId, owner.userId, projectId, fireEpoch);
   if (!(await ctx.deps.stateStore.acquireLock(firedKey, REDIS_TTL.PIPE.FIRED))) return;
 
-  // Cap: bound the activator's simultaneously-live runs across all of their
-  // activations. Counted and reserved in ONE step — the previous shape read a
-  // count, compared it, and only reserved much later, so two activations
-  // firing at once both passed an N-1 cap (L-031). Same primitive, same
-  // reasoning as the SSE connection slot (M-005). Member is the projectId, so
-  // a retry of the same activation refreshes rather than double-counting.
-  const slotKey = REDIS_KEYS.PIPE.RUN_SLOTS(owner.organizationId, owner.userId);
-  const reserved = await ctx.deps.stateStore.reserveSlot(
-    slotKey,
-    projectId,
-    DEFAULT_PIPELINE_CAPS.maxConcurrentRuns,
+  const runId = generateHumanId();
+
+  // Per-ACTIVATION live-run slot — the definition's `concurrency` (1 today) is
+  // the cap, judged and reserved in ONE step on a ZSET whose member is the run
+  // (the same pipeline may run concurrently on other projects). Slots full ⇒
+  // the overlap policy: `skip` drops the fire, `queue` re-arms it. Reserved
+  // BEFORE the account slot so a queued re-arm never churns the account set.
+  const activeRunsKey = REDIS_KEYS.PIPE.ACTIVE_RUNS(owner.organizationId, owner.userId, projectId);
+  const admitted = await ctx.deps.stateStore.reserveSlot(
+    activeRunsKey,
+    runId,
+    resolveRunConcurrency(def),
     REDIS_TTL.PIPE.ACTIVE,
   );
-  if (!reserved) {
-    logger.warn(
-      `[Pipeline] fire skipped — maxConcurrentRuns reached (${DEFAULT_PIPELINE_CAPS.maxConcurrentRuns}): ${pipelineId}`,
-      { component: COMPONENT },
-    );
-    await ctx.deps.stateStore.releaseLock(firedKey).catch(() => {});
-    return;
-  }
-
-  // Overlap guard — one live run per ACTIVATION (the same pipeline may run
-  // concurrently on other projects).
-  const runId = generateHumanId();
-  const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, projectId);
-  const acquired = await ctx.deps.stateStore.tryAcquireLock(activeKey, runId, REDIS_TTL.PIPE.ACTIVE);
-  if (!acquired) {
-    await ctx.deps.stateStore.releaseSlot(slotKey, projectId).catch(() => {});
+  if (!admitted) {
     const overlap = def.on?.schedule?.overlap ?? 'skip';
     // Release the fire NX so a queued re-arm (same fireEpoch) can pass it.
     await ctx.deps.stateStore.releaseLock(firedKey).catch(() => {});
@@ -136,6 +123,29 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     } else {
       logger.info(`[Pipeline] overlap skip: ${pipelineId} on ${projectId}`, { component: COMPONENT });
     }
+    return;
+  }
+
+  // Cap: bound the activator's simultaneously-live runs across all of their
+  // activations. Counted and reserved in ONE step — the previous shape read a
+  // count, compared it, and only reserved much later, so two activations
+  // firing at once both passed an N-1 cap (L-031). Same primitive, same
+  // reasoning as the SSE connection slot (M-005). Member is the RUN, so N live
+  // runs of one activation each hold a slot (a projectId member let them share one).
+  const slotKey = REDIS_KEYS.PIPE.RUN_SLOTS(owner.organizationId, owner.userId);
+  const reserved = await ctx.deps.stateStore.reserveSlot(
+    slotKey,
+    REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId),
+    DEFAULT_PIPELINE_CAPS.maxConcurrentRuns,
+    REDIS_TTL.PIPE.ACTIVE,
+  );
+  if (!reserved) {
+    logger.warn(
+      `[Pipeline] fire skipped — maxConcurrentRuns reached (${DEFAULT_PIPELINE_CAPS.maxConcurrentRuns}): ${pipelineId}`,
+      { component: COMPONENT },
+    );
+    await ctx.deps.stateStore.releaseSlot(activeRunsKey, runId).catch(() => {});
+    await ctx.deps.stateStore.releaseLock(firedKey).catch(() => {});
     return;
   }
 

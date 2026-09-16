@@ -325,9 +325,15 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         });
         return;
       }
-      const existingRunId = await deps.coordinator.getActiveRunId(owner, projectId);
-      if (existingRunId) {
-        res.status(409).json({ error: 'A run is already live for this activation', existingRunId });
+      // Admission is the fire path's slot cap; this is the early, readable
+      // refusal for the button. `existingRunId` stays one release for API callers.
+      const existingRunIds = await deps.coordinator.listActiveRunIds(owner, projectId);
+      if (existingRunIds.length > 0) {
+        res.status(409).json({
+          error: 'A run is already live for this activation',
+          existingRunIds,
+          existingRunId: existingRunIds[0],
+        });
         return;
       }
       await deps.scheduleQueue.addNow({

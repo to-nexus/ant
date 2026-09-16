@@ -175,6 +175,13 @@ export interface PipelineDef {
    * `runCompleted` may coexist.
    */
   on?: { schedule?: PipelineScheduleTrigger; runCompleted?: PipelineRunCompletedTrigger };
+  /**
+   * Live runs one ACTIVATION may hold at once — the per-activation slot cap the
+   * fire path reserves against, whatever fired (run-now, cron, chain, fetch).
+   * Read only through {@link resolveRunConcurrency}. Reserved (validator
+   * refuses the key) until the multi-run surfaces land; absent = 1.
+   */
+  concurrency?: number;
   defaults?: { onStepFailure?: StepFailurePolicy };
   steps: PipelineStepDef[];
   /**
@@ -494,7 +501,10 @@ export interface PipelineCaps {
   maxPipelines: number;
   maxStepsPerPipeline: number;
   minCronIntervalMinutes: number;
+  /** Account-wide live runs across every activation (member = `{projectId}:{runId}`). */
   maxConcurrentRuns: number;
+  /** Ceiling for a definition's `concurrency` — live runs per ACTIVATION. */
+  maxLiveRunsPerActivation: number;
   maxApproversPerGate: number;
 }
 
@@ -503,8 +513,20 @@ export const DEFAULT_PIPELINE_CAPS: PipelineCaps = {
   maxStepsPerPipeline: 20,
   minCronIntervalMinutes: 5,
   maxConcurrentRuns: 3,
+  maxLiveRunsPerActivation: 3,
   maxApproversPerGate: 10,
 };
+
+/**
+ * The ONE reader of a definition's per-activation run concurrency — the fire
+ * path's slot cap and every "is there room for another run" judgment call
+ * this, never `def.concurrency` directly. Absent = 1 (today's one live run
+ * per activation).
+ */
+export function resolveRunConcurrency(def: Pick<PipelineDef, 'concurrency'> | null | undefined): number {
+  const n = def?.concurrency;
+  return typeof n === 'number' && Number.isInteger(n) && n >= 1 ? n : 1;
+}
 
 /** Ceiling for a gate decision note (reject-reason channel) — audit line + run history. */
 export const PIPELINE_GATE_NOTE_MAX_CHARS = 500;
@@ -820,6 +842,7 @@ const ACK_KEYS = ['code', 'step', 'reason'];
 const RESERVED_DEF_KEYS: Record<string, string> = {
   enabled: '"enabled" lives in the availability sidecar — use POST /api/pipelines/{id}/enable|disable, not the definition',
   projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
+  concurrency: '"concurrency" is not supported yet (multi-run per activation lands with the live-runs surfaces) — an activation holds one live run',
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
 const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout', 'onMissingVerdict'];

@@ -49,7 +49,7 @@ unique per `{org}/{user}`, and an activation binds a project):
 ```
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/activation.json
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl
-{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/index.jsonl ← 1 line per terminal run
+{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/index.jsonl ← 1 line per terminal run, appended under `ant:lock:pipe-index:*`
 ```
 
 A pipeline cannot live inside an agent directory because its steps cross
@@ -182,8 +182,9 @@ structural), so one pipeline runs concurrently on many projects:
 | Key | Role |
 |---|---|
 | `ant:pipe:run:{runId}` | live RunRecord JSON (single writer under the run lock; 7d past terminal) |
-| `ant:pipe:active:{org}:{user}:{projectId}` | per-ACTIVATION overlap guard, value = runId (NX; released at terminal; reconciler heals a crash-orphaned guard) |
-| `ant:pipe:runslots:{org}:{user}` | account-wide concurrent-run slot ZSET (member = projectId) — the `maxConcurrentRuns` fire gate (`reserveSlot`, count+reserve in one step; released at terminal under the holder check) |
+| `ant:pipe:actruns:{org}:{user}:{projectId}` | per-ACTIVATION live-run slot ZSET (member = runId) — cap = the definition's `concurrency` via `resolveRunConcurrency` (1 today); `reserveSlot` at fire, the run's own member released at terminal; reconciler heals members whose run is gone/terminal. Replaced the single-value `ant:pipe:active` NX (a one-release migration shim in `healOverlapGuard` carries a live holder over) |
+| `ant:pipe:runslots:{org}:{user}` | account-wide live-run slot ZSET (member = `{projectId}:{runId}`) — the `maxConcurrentRuns` fire gate (`reserveSlot`, count+reserve in one step; the run's own member released at terminal). The member is the RUN: a projectId member let N runs of one activation share one slot |
+| `ant:lock:pipe-index:{org}:{user}:{projectId}` | best-effort cross-pod lock around the `runs/index.jsonl` append (5s; a timeout warns and appends anyway — an append is never refused) |
 | `ant:pipe:fired:{org}:{user}:{projectId}:{fireEpoch}` | fire idempotency NX (48h) |
 | `ant:pipe:job:{jobId}` | jobId → (runId, stepId, projectId, owner) reverse mapping for the status consumer |
 | `ant:pipe:hitl:{gateId}` / `ant:pipe:card:{cardId}` | armed gate record / card → gate reverse mapping |
@@ -261,14 +262,21 @@ Fire semantics (`scheduling/pipelineRun/fire.ts::handleFire`, addressed by
   a disabled or unresolvable definition skips (defensive — the availability
   machine forbids reaching this live). The run's `projectId` and
   `activationSnapshot` are frozen at fire time, exactly like `defSnapshot`.
-- `maxConcurrentRuns` is enforced at fire (skip + log, caps doctrine) by
-  counting the activator's live runs across their activations.
+- **Per-activation liveness is a slot set**: the fire reserves the run's
+  member in `ant:pipe:actruns` with cap `resolveRunConcurrency(def)` (the ONE
+  reader of the definition's `concurrency`; absent = 1), then the account slot
+  (`maxConcurrentRuns`, member = `{projectId}:{runId}`) — activation slot
+  first, so an overlap `queue` re-arm never churns the account set. Both are
+  count+reserve in one step; both are released at terminal by member identity
+  (no holder check needed — a member is one run's). Raising concurrency is a
+  definition knob, not an executor change.
 - `fireEpoch` = the intended slot (job creation time + delay, minute-rounded).
 - **Missed fires** (worker downtime > 10 min): `onMissed: skip` drops,
   `runOnce` executes once on recovery.
-- **Overlap**: the `ant:pipe:active` NX is the guard. `skip` drops the fire;
-  `queue` releases the fire-NX and re-arms itself every 60s (bounded).
-  `cancelPrevious` is reserved (validator rejects).
+- **Overlap**: judged on "the activation's slots are full". `skip` drops the
+  fire; `queue` releases the fire-NX and re-arms itself every 60s (bounded).
+  `cancelPrevious` is reserved (validator rejects). With cap 1 this is the old
+  one-run-per-activation guard verbatim.
 - `runNow` rides the same fire path with `firedBy: 'manual'` — the test
   button and the cron path cannot diverge.
 
@@ -342,15 +350,23 @@ exclusion is total and three-directional:
    projections cleared → SSE.
 
 The coordinator itself never calls the exclusion gate — the pipeline is
-exempt from its own lock. The project-level duplicate gate's **bounded
-re-arm** (60s × 60) survives as a safety net only: with interactive starts
-rejected, the one remaining collision is the seal race between a finishing
-step's job and the next dispatch.
+exempt from its own lock. The duplicate gate stays ONE predicate
+(`findDuplicateActiveJob`), but the coordinator passes a RUN scope
+(`{ pipelineRunId: run.runId }`): a sibling run's live job in the same project
+is not a collision (each run seals into its own session file, §5b), so the
+**bounded re-arm** (60s × 60) survives only as this run's seal-race net — a
+finishing step's status record lagging its pub/sub event. Interactive starts
+and the activate quiet-project gate stay unscoped. A step's end clears ITS
+turn's streaming buffers (`clearTurnBuffersForJob`), never the feature's.
 
 `JobPayload` carries attribution: `firedBy?: 'user'|'schedule'|'chain'`,
 `pipelineRunId?`, `pipelineStepId?` — persisted onto `JobStatusData` and
-`JobProjectMapping` so kanban/chat surfaces can badge pipeline work. Run
-history is owned by the run JSONL — never duplicated into job records.
+`JobProjectMapping` so kanban/chat surfaces can badge pipeline work; the
+status record also carries a display copy of `customJobRef` (the mapping stays
+the resume authority), and the SSE initial kanban's `ActiveJobInfo` rows carry
+`pipelineRunId` + `customJobRef` so N universal jobs of one project are
+distinguishable. Run history is owned by the run JSONL — never duplicated into
+job records.
 
 ### Chat parity — a step is a first-class turn
 
@@ -769,8 +785,10 @@ the agents model.
 Caps are first-class (`DEFAULT_PIPELINE_CAPS` in shared): `maxPipelines` 20
 (personal creations), `maxStepsPerPipeline` 20, `minCronIntervalMinutes` 5
 (enforced by sampling the next 10 fires — the expression is judged by what it
-does), `maxConcurrentRuns` 3 (enforced at fire — skip + log — by counting the
-activator's live runs across their activations).
+does), `maxConcurrentRuns` 3 (enforced at fire — skip + log — the account
+slot set, member = run), `maxLiveRunsPerActivation` 3 (the ceiling a
+definition's `concurrency` may declare once the key opens; the validator
+refuses the key today, so every activation holds one live run).
 
 ---
 
@@ -861,8 +879,8 @@ publishes, and a RE-enable after disable re-judges too) + `disable` (409
 ACTIVATOR's catalog — the one dispatch resolves against; catches the
 enabled-then-agent-deleted drift window) / `deactivate` / `run-now` (all
 `{projectId}`-addressed; run-now 409 `pipeline-not-activated` /
-`existingRunId`; run-now is NOT catalog-gated — dispatch stays the
-backstop) · `activatable-projects` · `preview-fires` · `download`
+`existingRunIds` (+ the singular `existingRunId` for one release); run-now
+is NOT catalog-gated — dispatch stays the backstop) · `activatable-projects` · `preview-fires` · `download`
 (rate-limited definition-folder ZIP; `owner.json` excluded) ·
 `runs?projectId=&userId=` (per-activation history; a
 member's `userId` is readable for org-scope pipelines by live members,
@@ -1090,6 +1108,10 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
   `applyResolvedGate`. Two paths = double-applied gates.
 - **Silently ignoring a definition key.** Reserved knobs get an explicit
   "not supported yet" validation error.
+- **Judging per-activation liveness anywhere but the `ant:pipe:actruns` slot
+  set** — no NX string, no read-then-compare, no second cap reader beside
+  `resolveRunConcurrency`. `listActiveRunIds` is the read; `getActiveRunId` is
+  a shim over it for the single-`currentRunId` view types.
 - **Reading or writing a universal session by any path other than
   `getUniversalSessionFilePath`.** A pipeline step's turn lives in its RUN file
   (`{customJobId}@{runId}.json`); a caller on the shared `getSessionFilePath`
@@ -1156,6 +1178,9 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
 
 - New trigger kinds = new `on.*` fields compiled to the same fire path;
   `runNow` already proves the path is trigger-agnostic.
+- Raising per-activation concurrency = open the `concurrency` definition key
+  (+ `maxLiveRunsPerActivation`) and the view types; the gate, both slot
+  sets, the session file and the buffer clear are already per run.
 - New chain edge predicates = executor-only changes (`planAdvance` judges
   conditions; the coordinator never inspects step semantics).
 - New approval channels = a new outbound presenter + the SAME resolve funnel.
@@ -1431,6 +1456,14 @@ The obligations live at authoring time, in the pipeline builder's contract:
 - **Phase 1.7 (shipped)**: clarify-await (§5b — `awaiting_clarify` step
   state, jobId re-pointing, open-ended wait, two-channel answer funnel) and
   the read-only `pipeline-runs` artifacts-tree graft.
+- **Phase A — multi-run foundation (shipped 2026-09-16, cap unchanged at 1)**:
+  run-scoped session files (`{customJobId}@{runId}.json`, §5b), CAS guards on
+  the two session read-modify-write writers, the run-scoped duplicate gate,
+  the per-activation live-run slot set replacing the single-value overlap
+  guard (+ run-member account slots, reconciler heal, legacy-key migration
+  shim), the cross-pod `runs/index.jsonl` append lock, and the job-scoped
+  turn-buffer clear. Two deletable shims (runner restore adoption, legacy key
+  heal) are dated 2026-09-16.
 - **Phase 2 (in progress)**: SHIPPED — `{{steps.*}}` output substitution (§1
   step-output capture; `steps.<id>.verdict` stays reserved), per-step `retry`
   (coordinator re-dispatch, NEW jobId per round with an idempotency preamble —
@@ -1444,9 +1477,11 @@ The obligations live at authoring time, in the pipeline builder's contract:
   grant re-dispatch), the OPTIONAL trigger block (manual-only pipelines, §2),
   and `on.runCompleted` event triggers (pipeline→pipeline chaining, §2 —
   `firedBy: 'event'`, chain-depth bound). Phase 2 is complete.
-- **Phase 3**: per-(project, customJobRef) duplicate-gate relaxation +
-  tenant concurrency slots, parallel branches/fan-in + FE turn grouping,
-  free-DAG canvas editing, `cancelPrevious`, caps admin surface.
+- **Phase 3**: open the `concurrency` definition key (N live runs per
+  activation for EVERY trigger — run-now, cron, chain, fetch) with the
+  `liveRuns[]` view contract and the one-canvas / per-node run chips FE,
+  parallel branches/fan-in inside a run, free-DAG canvas editing,
+  `cancelPrevious`, caps admin surface.
 - **Backlog (user-locked)**: Slack/email channels, webhook triggers.
 
 ---

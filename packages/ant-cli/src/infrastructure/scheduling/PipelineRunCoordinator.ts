@@ -39,6 +39,7 @@ import { applyOutcome, cancelRun, deactivate, finalizeRun, killStepJob } from '.
 import {
   approverRunAccess,
   getActiveRunId,
+  listActiveRunIds,
   getHitlByGateId,
   getRun,
   listApproverPendingApprovals,
@@ -168,7 +169,12 @@ export class PipelineRunCoordinator {
     return readRunFromDisk(this.deps, owner, projectId, runId);
   }
 
-  /** Overlap-guard holder for one ACTIVATION (projectId-keyed). */
+  /** Live runs of one ACTIVATION (the slot set's members). */
+  async listActiveRunIds(owner: PipelineOwner, projectId: string): Promise<string[]> {
+    return listActiveRunIds(this.deps, owner, projectId);
+  }
+
+  /** Singular shim over {@link listActiveRunIds} for the single-`currentRunId` view types. */
   async getActiveRunId(owner: PipelineOwner, projectId: string): Promise<string | null> {
     return getActiveRunId(this.deps, owner, projectId);
   }

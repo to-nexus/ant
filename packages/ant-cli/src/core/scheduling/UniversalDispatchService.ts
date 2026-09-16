@@ -159,6 +159,8 @@ export class UniversalDispatchService {
       ...(params.firedBy && { firedBy: params.firedBy }),
       ...(params.pipelineRunId && { pipelineRunId: params.pipelineRunId }),
       ...(params.pipelineStepId && { pipelineStepId: params.pipelineStepId }),
+      // Display copy of the ref for the active-jobs projection (mapping = authority).
+      ...(params.customJobRef && { customJobRef: params.customJobRef }),
     });
 
     // Cross-pod SSE broadcast needs the job → project/feature mapping.

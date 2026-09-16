@@ -164,6 +164,7 @@ describe('validatePipelineDef — structural rules', () => {
     ['wrong version', baseDef({ version: 3 }), /version must be 2/],
     ['v1 enabled key (lives in the availability sidecar)', baseDef({ enabled: true }), /"enabled" lives in the availability sidecar/],
     ['v1 projectId key (moved to activation)', baseDef({ projectId: 'proj-x' }), /"projectId" moved to activation/],
+    ['reserved concurrency key (multi-run per activation is a future surface)', baseDef({ concurrency: 3 }), /"concurrency" is not supported yet/],
     ['reserved step key jobType (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', jobType: 'code' }] }), /"jobType" is not supported yet/],
     ['reserved step key feature (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', feature: 'main' }] }), /"feature" is not supported yet/],
     ['empty name', baseDef({ name: '' }), /name/],

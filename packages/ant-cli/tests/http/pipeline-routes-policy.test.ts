@@ -28,6 +28,7 @@ let userDir: string;
 let server: http.Server;
 let baseUrl: string;
 let liveJobs: Array<{ jobId: string; status: string; type?: string }> = [];
+let liveRunIds: string[] = [];
 const cronUpserts: string[] = [];
 const cronRemoved: string[] = [];
 
@@ -91,7 +92,8 @@ beforeAll(async () => {
     getProjectPath: (_uc: unknown, projectId: string) => path.join(userDir, projectId),
   };
   const coordinator = {
-    getActiveRunId: async () => null,
+    getActiveRunId: async () => liveRunIds[0] ?? null,
+    listActiveRunIds: async () => liveRunIds,
     getRun: async () => null,
     listPendingApprovals: async () => [],
     getHitlByGateId: async () => null,
@@ -147,6 +149,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   liveJobs = [];
+  liveRunIds = [];
   cronUpserts.length = 0;
   cronRemoved.length = 0;
   fs.rmSync(path.join(userDir, '.ant'), { recursive: true, force: true });
@@ -380,6 +383,21 @@ describe('activation — one per project, many per pipeline', () => {
     expect((await res.json()).code).toBe('pipeline-not-activated');
   });
 
+  // Liveness is the slot SET, so the refusal names every live run; the singular
+  // field stays one release for API callers.
+  it('run-now refuses while the activation holds a live run, naming the live runs', async () => {
+    await createPipeline();
+    await enable();
+    makeUniversalProject('proj-a');
+    await activate('digest', 'proj-a');
+    liveRunIds = ['sandy-mending-cabin'];
+    const res = await api('/digest/run-now', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.existingRunIds).toEqual(['sandy-mending-cabin']);
+    expect(body.existingRunId).toBe('sandy-mending-cabin');
+  });
+
   it('an orphan activation (deleted def) is surfaced in the list, never auto-deleted', async () => {
     const orphanDir = path.join(userDir, '.ant/pipeline-activations/proj-x');
     fs.mkdirSync(orphanDir, { recursive: true });
@@ -420,6 +438,7 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
         workspaceResolver: resolver as any,
         coordinator: {
           getActiveRunId: async () => null,
+          listActiveRunIds: async () => [],
           getRun: async () => null,
           listPendingApprovals: async () => [],
           getHitlByGateId: async () => null,
@@ -878,6 +897,7 @@ describe('gate resolve authority — owner ∨ per-gate approver', () => {
         workspaceResolver: resolver as any,
         coordinator: {
           getActiveRunId: async () => null,
+          listActiveRunIds: async () => [],
           getRun: async () => opts.run ?? null,
           listPendingApprovals: async () => [],
           listApproverPendingApprovals: async () => opts.approverRows ?? [],
@@ -1087,6 +1107,7 @@ describe('activation approver rosters — activate body + the approvers PUT (act
         workspaceResolver: resolver as any,
         coordinator: {
           getActiveRunId: async () => null,
+          listActiveRunIds: async () => [],
           getRun: async () => null,
           listPendingApprovals: async () => [],
           listApproverPendingApprovals: async () => [],

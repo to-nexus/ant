@@ -378,17 +378,25 @@ export async function findDuplicateActiveJob(
       userContext: { userId: string; organizationId: string },
       projectId: string,
       featureName: string,
-    ): Promise<Array<{ jobId: string; status: string; type?: string }>>;
+    ): Promise<Array<{ jobId: string; status: string; type?: string; pipelineRunId?: string }>>;
   },
   userContext: { userId: string; organizationId: string },
   projectId: string,
   featureName: string,
   jobType?: string,
+  /**
+   * Narrow the judgment to ONE pipeline run: only a live job of that run is a
+   * duplicate. The coordinator passes it — a run's session file is its own,
+   * so a sibling run's job in the same project is not a collision. Interactive
+   * callers and the activate quiet-project gate stay unscoped.
+   */
+  scope?: { pipelineRunId: string },
 ): Promise<{ jobId: string; isInterrupted: boolean } | undefined> {
   const jobs = await stateStore.listJobsByFeature(userContext, projectId, featureName);
   const active = jobs.find((j) =>
     (j.status === 'running' || j.status === 'paused') &&
-    (!jobType || j.type === jobType),
+    (!jobType || j.type === jobType) &&
+    (!scope || j.pipelineRunId === scope.pipelineRunId),
   );
   if (!active) return undefined;
   return { jobId: active.jobId, isInterrupted: active.status === 'paused' };

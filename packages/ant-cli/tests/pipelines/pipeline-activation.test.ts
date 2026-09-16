@@ -249,10 +249,18 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     const upserts: string[] = [];
     const removed: string[] = [];
     const keys = new Map<string, string>();
+    /** Slot sets (ZSET member → expiry) — the live-run and account caps. */
+    const slots = new Map<string, Map<string, number>>();
+    const setOf = (k: string) => {
+      const set = slots.get(k) ?? new Map<string, number>();
+      slots.set(k, set);
+      return set;
+    };
     return {
       upserts,
       removed,
       keys,
+      slots,
       deps: {
         stateStore: {
           acquireLock: async () => true,
@@ -260,6 +268,15 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
           getKey: async (k: string) => keys.get(k) ?? null,
           setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
           deleteKey: async (k: string) => void keys.delete(k),
+          reserveSlot: async (k: string, member: string, limit: number, ttl: number) => {
+            const set = setOf(k);
+            if (!set.has(member) && set.size >= limit) return false;
+            set.set(member, Date.now() + ttl * 1000);
+            return true;
+          },
+          releaseSlot: async (k: string, member: string) => void slots.get(k)?.delete(member),
+          listSlots: async (k: string) => [...(slots.get(k)?.keys() ?? [])],
+          countSlots: async (k: string) => slots.get(k)?.size ?? 0,
         } as any,
         scheduleQueue: {
           upsertCron: async (id: string) => void upserts.push(id),
@@ -352,15 +369,48 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
   });
 
-  it('heals a stale overlap guard whose run doc is terminal (projectId key)', async () => {
+  // Liveness is a slot SET (member = runId) on both the activation and the
+  // account; the heal releases the members whose run is gone or terminal and
+  // leaves a live sibling's alone.
+  it('heals stale live-run slots (activation + account) and keeps a live run\'s', async () => {
     writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
     writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
-    const { deps, keys } = makeDeps();
+    const { deps, keys, slots } = makeDeps();
     deps.workspacesPath = tmp;
-    keys.set('ant:pipe:active:local:user:proj-a', 'run-dead');
-    // No ant:pipe:run:run-dead doc → the guard is stale and must be deleted.
+    keys.set('ant:pipe:run:run-live', JSON.stringify({ runId: 'run-live', status: 'running' }));
+    keys.set('ant:pipe:run:run-done', JSON.stringify({ runId: 'run-done', status: 'completed' }));
+    const far = Date.now() + 60_000;
+    slots.set('ant:pipe:actruns:local:user:proj-a', new Map([['run-live', far], ['run-done', far], ['run-dead', far]]));
+    slots.set('ant:pipe:runslots:local:user', new Map([['proj-a:run-live', far], ['proj-a:run-done', far], ['proj-b:run-x', far]]));
+    await reconcilePipelines(deps as any);
+    expect([...slots.get('ant:pipe:actruns:local:user:proj-a')!.keys()]).toEqual(['run-live']);
+    // The other project's member is not this activation's to judge.
+    expect([...slots.get('ant:pipe:runslots:local:user')!.keys()].sort()).toEqual(['proj-a:run-live', 'proj-b:run-x']);
+  });
+
+  it('migrates a live legacy single-value guard into both slot sets and drops the key', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    const { deps, keys, slots } = makeDeps();
+    deps.workspacesPath = tmp;
+    keys.set('ant:pipe:active:local:user:proj-a', 'run-live');
+    keys.set('ant:pipe:run:run-live', JSON.stringify({ runId: 'run-live', status: 'awaiting_human' }));
     await reconcilePipelines(deps as any);
     expect(keys.has('ant:pipe:active:local:user:proj-a')).toBe(false);
+    expect([...slots.get('ant:pipe:actruns:local:user:proj-a')!.keys()]).toEqual(['run-live']);
+    expect([...slots.get('ant:pipe:runslots:local:user')!.keys()]).toEqual(['proj-a:run-live']);
+  });
+
+  it('drops a terminal legacy guard without reserving anything', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    const { deps, keys, slots } = makeDeps();
+    deps.workspacesPath = tmp;
+    keys.set('ant:pipe:active:local:user:proj-a', 'run-dead');
+    // No ant:pipe:run:run-dead doc → nothing to carry over.
+    await reconcilePipelines(deps as any);
+    expect(keys.has('ant:pipe:active:local:user:proj-a')).toBe(false);
+    expect(slots.get('ant:pipe:actruns:local:user:proj-a')?.size ?? 0).toBe(0);
   });
 
   it('rebuilds the approver-of discovery index from activation rosters (gate-agnostic union)', async () => {

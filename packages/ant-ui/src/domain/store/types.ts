@@ -81,6 +81,10 @@ export interface ActiveJobEntry {
   jobId: string;
   status: string;
   agent?: string;
+  /** Pipeline attribution — the run this job is a step of. */
+  pipelineRunId?: string;
+  /** Universal only — the `{agentId}/{jobId}` definition this job runs. */
+  customJobRef?: string;
 }
 
 export interface JobState {

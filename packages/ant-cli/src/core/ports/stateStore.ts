@@ -50,6 +50,12 @@ export interface JobStatusData {
   firedBy?: 'user' | 'schedule' | 'chain';
   pipelineRunId?: string;
   pipelineStepId?: string;
+  /**
+   * Universal only — the definition ref, stamped so the SSE active-jobs
+   * projection can name it without a mapping read per job. The MAPPING stays
+   * the resume authority for the ref; this copy is display-only.
+   */
+  customJobRef?: string;
 }
 
 // ============================================
@@ -927,6 +933,9 @@ export interface StateStorePort {
 
   /** Live holders (expired members excluded). Diagnostics and tests. */
   countSlots(setKey: string): Promise<number>;
+
+  /** Live holders' members (expired members pruned first). */
+  listSlots(setKey: string): Promise<string[]>;
   
   // ============================================
   // Distributed Locking

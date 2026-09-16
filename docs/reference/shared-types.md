@@ -53,6 +53,7 @@ key types and their meaning.
 | `PipelineActivation` / `ActivePipelineInfo` | `pipeline.ts` | The scheduling unit: one pipeline bound to one project, self-describing, pinning the scope its definition resolves from. |
 | `RunRecord` / `StepRecord` / `GateRecord` / `ClarifyRecord` | `pipeline.ts` | Run history shapes, including the `awaiting_clarify` step state. |
 | `PipelineRunEvent` | `pipeline.ts` | The SSE payload the Pipelines tab renders live. |
+| `ActiveJobInfo` | `task.ts` | One live job of a feature on the SSE initial kanban (`jobType`, `jobId`, `status`, `agent?`) plus attribution — `pipelineRunId?` (the run this job is a step of) and `customJobRef?` (universal) — so N universal jobs of one project stay distinguishable. |
 | `validatePipelineDef` | `pipeline.ts` | Every definition rule as plain messages (empty = valid), the `validateMcpServers` precedent. Reserved knobs fail loudly instead of no-opping. |
 | `PIPELINE_TEMPLATE_VARS` / `PIPELINE_STEP_OUTPUT_FIELDS` / `DEFAULT_PIPELINE_CAPS` | `pipeline.ts` | The CLOSED template surface — 5 static directive/pin variables (`trigger.fireDate`, `trigger.fireEpoch`, `run.id`, `run.prevSuccess.fireDate|fireEpoch`) plus the 2 step-output fields (`answer`, `artifacts`) — and the default caps. The FE keys its human-label tables as `Record` over these unions (`Pipelines/templateTokens.ts`), so growing the list without labelling it fails typecheck. |
 

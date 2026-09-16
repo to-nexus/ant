@@ -512,6 +512,10 @@ export interface ActiveJobInfo {
   jobId: string;
   status: 'running' | 'paused' | 'queued';
   agent?: string;
+  /** Pipeline attribution — the run this job is a step of; absent on interactive starts. */
+  pipelineRunId?: string;
+  /** Universal only — the `{agentId}/{jobId}` definition this job runs. */
+  customJobRef?: string;
 }
 
 // ============================================

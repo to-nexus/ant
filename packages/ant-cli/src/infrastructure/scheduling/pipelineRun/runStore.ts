@@ -140,13 +140,27 @@ export async function mutateRun(
   return null;
 }
 
-/** Overlap-guard holder for one ACTIVATION (projectId-keyed). */
+/** Live runs of one ACTIVATION — the slot set's members (expired pruned). */
+export async function listActiveRunIds(
+  deps: PipelineCoordinatorDeps,
+  owner: PipelineOwner,
+  projectId: string,
+): Promise<string[]> {
+  return deps.stateStore.listSlots(REDIS_KEYS.PIPE.ACTIVE_RUNS(owner.organizationId, owner.userId, projectId));
+}
+
+/**
+ * Singular view of {@link listActiveRunIds} for the HTTP consumers whose SHARED
+ * types still carry one `currentRunId` (`ActivePipelineInfo`,
+ * `PipelineActivationView`). Exact while the cap is 1; the multi-run contract
+ * change retires it.
+ */
 export async function getActiveRunId(
   deps: PipelineCoordinatorDeps,
   owner: PipelineOwner,
   projectId: string,
 ): Promise<string | null> {
-  return deps.stateStore.getKey(REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, projectId));
+  return (await listActiveRunIds(deps, owner, projectId))[0] ?? null;
 }
 
 /** Pending gates across the caller's own activations (disk-derived scan). */
@@ -156,8 +170,7 @@ export async function listPendingApprovals(
 ): Promise<PipelinePendingApproval[]> {
   const out: PipelinePendingApproval[] = [];
   for (const { projectId } of listAccountActivations(deriveActivationsRoot(tenantCtx(deps, owner)))) {
-    const runId = await getActiveRunId(deps, owner, projectId);
-    if (!runId) continue;
+    for (const runId of await listActiveRunIds(deps, owner, projectId)) {
     const run = await getRun(deps, runId);
     if (!run) continue;
     for (const s of run.steps) {
@@ -198,6 +211,7 @@ export async function listPendingApprovals(
           jobId: s.clarify.jobId,
         });
       }
+    }
     }
   }
   return out;
@@ -244,8 +258,7 @@ export async function listApproverPendingApprovals(
       continue; // unreadable/gone activation — stale index entry
     }
     if (!approversByGate) continue;
-    const runId = await getActiveRunId(deps, owner, parsed.projectId);
-    if (!runId) continue;
+    for (const runId of await listActiveRunIds(deps, owner, parsed.projectId)) {
     const run = await getRun(deps, runId);
     if (!run) continue;
     for (const s of run.steps) {
@@ -269,6 +282,7 @@ export async function listApproverPendingApprovals(
         role: 'approver',
         ownerUserId: owner.userId,
       });
+    }
     }
   }
   return out;

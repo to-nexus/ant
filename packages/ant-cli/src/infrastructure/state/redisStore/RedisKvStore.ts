@@ -151,6 +151,11 @@ export class RedisKvStore extends RedisJobStore {
     return this.redis.zcard(setKey);
   }
 
+  async listSlots(setKey: string): Promise<string[]> {
+    await this.redis.zremrangebyscore(setKey, '-inf', Date.now());
+    return this.redis.zrange(setKey, 0, -1);
+  }
+
   // ============================================
   // Distributed Locking
   // ============================================

@@ -176,6 +176,9 @@ export function createSSERoutes(deps: {
             jobId: j.jobId,
             status: j.status as ActiveJobInfo['status'],
             agent: getAgentForJobSafe(j.type),
+            // Attribution lets the FE tell N universal jobs of one project apart.
+            ...(j.pipelineRunId && { pipelineRunId: j.pipelineRunId }),
+            ...(j.customJobRef && { customJobRef: j.customJobRef }),
           }));
         if (activeJobs.length > 0) {
           logger.debug(`Active jobs for feature: ${activeJobs.map(j => `${j.jobType}(${j.status})`).join(', ')}`, { component: 'SSE', projectId, featureName });

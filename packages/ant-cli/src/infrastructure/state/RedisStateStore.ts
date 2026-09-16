@@ -15,7 +15,7 @@
 
 import type { StateStorePort } from '../../core/ports/stateStore';
 import type { PortRegistryPort } from '../../core/ports/portRegistry';
-import { REDIS_KEYS } from './redisConstants';
+import { REDIS_DOMAINS, REDIS_KEYS } from './redisConstants';
 import { createDeployKey, parseDeployKey, parseIDEKey, parsePreviewKey } from './redisKeyUtils';
 import { logger } from '../../utils/logger';
 import { RedisSessionStateStore } from './redisStore/RedisSessionStateStore';
@@ -263,6 +263,10 @@ export class RedisStateStore extends RedisSessionStateStore implements StateStor
       const key = REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId);
       deleted += await this.redis.del(key);
     });
+
+    await arm('activeRuns', () =>
+      scanDel(`${REDIS_DOMAINS.PIPE}:actruns:${organizationId}:${userId}:*`),
+    );
 
     await arm('baselines', () =>
       scanDel(`${REDIS_KEYS.BASELINE}:${organizationId}:${userId}:*`),

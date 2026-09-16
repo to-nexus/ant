@@ -431,12 +431,20 @@ export const REDIS_KEYS = {
   PIPE: {
     /** Live run state document (JSON RunRecord) - ant:pipe:run:{runId} */
     RUN: (runId: string): string => `${REDIS_DOMAINS.PIPE}:run:${runId}`,
-    /** Overlap guard (NX, value = runId), per activation - ant:pipe:active:{orgId}:{userId}:{projectId} */
-    ACTIVE: (org: string, user: string, projectId: string): string =>
-      `${REDIS_DOMAINS.PIPE}:active:${org}:${user}:${projectId}`,
-    /** Account-wide concurrent-run slot set (ZSET, member = projectId) - ant:pipe:runslots:{orgId}:{userId} */
+    /**
+     * Live runs of one ACTIVATION (ZSET, member = runId) — the per-activation
+     * concurrency slot set; its cap is the definition's `concurrency`
+     * (`resolveRunConcurrency`). Replaced the single-value NX overlap guard:
+     * liveness is judged ONLY through `reserveSlot` / `listSlots` on this set.
+     * - ant:pipe:actruns:{orgId}:{userId}:{projectId}
+     */
+    ACTIVE_RUNS: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:actruns:${org}:${user}:${projectId}`,
+    /** Account-wide live-run slot set (ZSET, member = `{projectId}:{runId}`) - ant:pipe:runslots:{orgId}:{userId} */
     RUN_SLOTS: (org: string, user: string): string =>
       `${REDIS_DOMAINS.PIPE}:runslots:${org}:${user}`,
+    /** Member of RUN_SLOTS for one run — one reservation per RUN, never per activation. */
+    RUN_SLOT_MEMBER: (projectId: string, runId: string): string => `${projectId}:${runId}`,
     /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{projectId}:{fireEpoch} */
     FIRED: (org: string, user: string, projectId: string, fireEpoch: number): string =>
       `${REDIS_DOMAINS.PIPE}:fired:${org}:${user}:${projectId}:${fireEpoch}`,
@@ -448,6 +456,9 @@ export const REDIS_KEYS = {
     CARD: (cardId: string): string => `${REDIS_DOMAINS.PIPE}:card:${cardId}`,
     /** Per-run coordinator mutation lock - ant:lock:pipe-run:{runId} */
     RUN_LOCK: (runId: string): string => `${REDIS_DOMAINS.LOCK}:pipe-run:${runId}`,
+    /** Cross-pod lock around the per-activation `runs/index.jsonl` append - ant:lock:pipe-index:{orgId}:{userId}:{projectId} */
+    INDEX_LOCK: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.LOCK}:pipe-index:${org}:${user}:${projectId}`,
     /** Activation record projection (JSON PipelineActivation) - ant:pipe:actv:{orgId}:{userId}:{projectId} */
     ACTIVATION: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.PIPE}:actv:${org}:${user}:${projectId}`,
@@ -549,7 +560,7 @@ export const REDIS_TTL = {
   PIPE: {
     /** Live run doc; refreshed on every coordinator write, kept 7d past terminal. */
     RUN: 7 * 24 * 60 * 60,
-    /** Overlap guard — bounds a single run (incl. human waits) to 30 days. */
+    /** A live run's slot memberships (incl. human waits) — bounds one run to 30 days. */
     ACTIVE: 30 * 24 * 60 * 60,
     /** Fire idempotency window. */
     FIRED: 48 * 60 * 60,
@@ -559,6 +570,8 @@ export const REDIS_TTL = {
     HITL: 30 * 24 * 60 * 60,
     /** Coordinator per-run mutation lock. */
     RUN_LOCK: 30,
+    /** Run-index append lock — a crash bound, not a hold time. */
+    INDEX_LOCK: 5,
     /**
      * Activation + project reverse-map projections. Refreshed by the
      * reconciler (90s) and the activate route; must comfortably exceed the

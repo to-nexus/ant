@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { stepAnswerFromText, stepArtifactsFromSeal } from '../../src/core/pipelines/stepOutput';
+import { findDuplicateActiveJob } from '../../src/core/scheduling/UniversalDispatchGate';
 
 const SRC = path.join(__dirname, '../../src');
 const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8');
@@ -533,6 +534,120 @@ describe('account concurrent-run cap is reserved atomically', () => {
     const releases = coordinator.match(/releaseSlot\(/g) ?? [];
     expect(releases.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('the account member is the RUN, so N live runs of one activation each hold a slot', () => {
+    const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
+    expect(fire).toMatch(/reserveSlot\(\s*slotKey,\s*REDIS_KEYS\.PIPE\.RUN_SLOT_MEMBER\(projectId, runId\)/);
+  });
+});
+
+/**
+ * Per-activation liveness is a slot SET (`ACTIVE_RUNS`, member = runId) whose
+ * cap is the definition's `concurrency` — never a single-value NX string and
+ * never a read-then-compare. Cap 1 reproduces the old one-run-per-activation
+ * guard; raising it is a definition knob, not an executor change.
+ */
+/**
+ * `ActiveJobInfo` carries attribution so the FE can tell N universal jobs of
+ * one project apart: `pipelineRunId` (the run) and `customJobRef` (the
+ * definition). The ref is stamped on the STATUS record at dispatch as a
+ * display copy — the mapping stays the resume authority — so the SSE
+ * projection needs no mapping read per job.
+ */
+describe('active-jobs attribution', () => {
+  it('the dispatch owner stamps customJobRef beside the pipeline attribution on the status record', () => {
+    const svc = read('core/scheduling/UniversalDispatchService.ts');
+    const statusBlock = svc.slice(svc.indexOf('setJobStatus('), svc.indexOf('setJobMapping('));
+    expect(statusBlock).toMatch(/pipelineRunId: params\.pipelineRunId/);
+    expect(statusBlock).toMatch(/customJobRef: params\.customJobRef/);
+  });
+
+  it('the SSE initial kanban maps both fields onto ActiveJobInfo', () => {
+    const sse = read('periphery/adapters/http/routes/sse.routes.ts');
+    expect(sse).toMatch(/pipelineRunId: j\.pipelineRunId/);
+    expect(sse).toMatch(/customJobRef: j\.customJobRef/);
+  });
+});
+
+describe('per-activation liveness is a slot set', () => {
+  const coordinator = coordinatorAll();
+  const reconciler = read('infrastructure/scheduling/PipelineReconciler.ts');
+  const routes = pipeRoutesAll();
+
+  it('the fire path reserves the activation slot with the ONE concurrency reader, before the account slot', () => {
+    const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
+    expect(fire).not.toMatch(/tryAcquireLock\(/);
+    expect(fire).toMatch(/reserveSlot\(\s*activeRunsKey,\s*runId,\s*resolveRunConcurrency\(def\)/);
+    expect(fire.indexOf('ACTIVE_RUNS(')).toBeLessThan(fire.indexOf('RUN_SLOTS('));
+    // No bare literal cap — the knob has one reader.
+    expect(fire).not.toMatch(/reserveSlot\([^)]*,\s*1,/);
+  });
+
+  it('the single-value guard is gone from the scheduler, the reconciler and the routes (tombstone)', () => {
+    expect(coordinator).not.toMatch(/PIPE\.ACTIVE\(/);
+    expect(reconciler).not.toMatch(/PIPE\.ACTIVE\(/);
+    expect(routes).not.toMatch(/PIPE\.ACTIVE\(/);
+  });
+
+  it('finalizeRun releases both of the run\'s members unconditionally (member identity replaces the holder check)', () => {
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    expect(lifecycle).toMatch(/releaseSlot\(REDIS_KEYS\.PIPE\.ACTIVE_RUNS\([^)]*\), run\.runId\)/);
+    expect(lifecycle).toMatch(/releaseSlot\(REDIS_KEYS\.PIPE\.RUN_SLOTS\([^)]*\), REDIS_KEYS\.PIPE\.RUN_SLOT_MEMBER\(run\.projectId, run\.runId\)\)/);
+    expect(lifecycle).not.toMatch(/holder === run\.runId/);
+  });
+
+  it('every liveness read goes through listActiveRunIds (the singular is a shim over it)', () => {
+    const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
+    expect(runStore).toMatch(/export async function listActiveRunIds/);
+    expect(runStore).toMatch(/return \(await listActiveRunIds\(deps, owner, projectId\)\)\[0\] \?\? null/);
+    // Coordinator-internal consumers loop over the set — no `getActiveRunId` left there.
+    const internal = ['lifecycle.ts', 'gates.ts'].map((f) => read(`infrastructure/scheduling/pipelineRun/${f}`)).join('\n');
+    expect(internal).not.toMatch(/getActiveRunId\(/);
+    expect(internal.match(/listActiveRunIds\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('the run-index append is bracketed by the cross-pod INDEX_LOCK and has ONE caller', () => {
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    expect(lifecycle).toMatch(/INDEX_LOCK\(/);
+    expect(lifecycle.indexOf('acquireLock(lockKey')).toBeLessThan(lifecycle.indexOf('await appendRunIndex('));
+    expect(lifecycle.indexOf('await appendRunIndex(')).toBeLessThan(lifecycle.indexOf('releaseLock(lockKey'));
+    expect(coordinator.match(/appendRunIndex\(/g)?.length).toBe(1);
+  });
+});
+
+/**
+ * The duplicate gate stays ONE predicate; the coordinator narrows it to the
+ * run it dispatches for (a sibling run's live job in the same project is not
+ * a collision — each run seals into its own session file), while interactive
+ * starts and the activate quiet-project gate stay unscoped.
+ */
+describe('duplicate gate — run-scoped for the coordinator, unscoped elsewhere', () => {
+  it('the coordinator passes the run scope; the interactive route and the activate gate do not', () => {
+    const dispatch = read('infrastructure/scheduling/pipelineRun/dispatch.ts');
+    expect(dispatch).toMatch(/findDuplicateActiveJob\([\s\S]*?\{ pipelineRunId: run\.runId \}/);
+    const jobRoutes = read('periphery/adapters/http/routes/job.routes.ts');
+    const activations = read('periphery/adapters/http/routes/pipelines/activations.routes.ts');
+    expect(jobRoutes).not.toMatch(/pipelineRunId: /);
+    expect(activations).not.toMatch(/findDuplicateActiveJob\([^)]*pipelineRunId/);
+  });
+
+  const jobs = [
+    { jobId: 'j-a', status: 'running', type: 'universal', pipelineRunId: 'run-a' },
+    { jobId: 'j-b', status: 'paused', type: 'universal', pipelineRunId: 'run-b' },
+    { jobId: 'j-c', status: 'completed', type: 'universal', pipelineRunId: 'run-c' },
+  ];
+  const store = { listJobsByFeature: async () => jobs };
+  const ctx = { userId: 'u', organizationId: 'o' };
+
+  it.each([
+    ['unscoped → the first live job of the project', undefined, 'j-a'],
+    ['scoped to a run with a live job → that job', { pipelineRunId: 'run-b' }, 'j-b'],
+    ['scoped to a run whose job is terminal → not a duplicate', { pipelineRunId: 'run-c' }, undefined],
+    ['scoped to a run with no job at all → not a duplicate', { pipelineRunId: 'run-z' }, undefined],
+  ] as const)('%s', async (_label, scope, expected) => {
+    const hit = await findDuplicateActiveJob(store, ctx, 'proj', 'universal', 'universal', scope);
+    expect(hit?.jobId).toBe(expected);
+  });
 });
 
 describe('self-re-arming control jobs', () => {
@@ -581,7 +696,7 @@ describe('run-record write → publish has ONE owner (runStore)', () => {
 
   it('the run summary line has ONE shape (shared runSummaryOf) — index line, live runs row, no inline gate filter', () => {
     const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
-    expect(lifecycle).toMatch(/appendRunIndex\([\s\S]*?runSummaryOf\(sealed\)\)/);
+    expect(lifecycle).toMatch(/appendRunIndex\([\s\S]*?runSummaryOf\((?:sealed|run)\)\)/);
     expect(lifecycle).not.toMatch(/startsWith\('gate-'\)/);
     expect(read('periphery/adapters/http/routes/pipelines/activations.routes.ts')).toMatch(/live = runSummaryOf\(run\)/);
     // The list entry no longer carries a second pending-count owner — the FE reads its inbox rows.

@@ -177,6 +177,25 @@ describe('F3 — bootstrap history fallback when activeJobs is empty', () => {
     expect(selectJobId).toHaveBeenCalledWith('design-old', { live: false, jobType: 'design' });
   });
 
+  // Attribution rides the bootstrap so a pipeline step's job is distinguishable
+  // from an interactive one (and, once the map is jobId-keyed, from a sibling
+  // run's) — the SSE row carries it, the entry must not drop it.
+  it('keeps pipelineRunId and customJobRef on the active-job entry', () => {
+    const s = makeStore();
+    handleInitialActiveJobs(
+      [{ jobType: 'universal', jobId: 'j-step', status: 'running', agent: 'universal', pipelineRunId: 'sandy-mending-cabin', customJobRef: 'ops/author' }],
+      s.setState.bind(s),
+      s.getState.bind(s),
+    );
+    expect(s.getState().activeJobs.universal).toEqual({
+      jobId: 'j-step',
+      status: 'running',
+      agent: 'universal',
+      pipelineRunId: 'sandy-mending-cabin',
+      customJobRef: 'ops/author',
+    });
+  });
+
   it('is a no-op when the selection is backed by a same-type board (initial board won)', async () => {
     const selectJobId = vi.fn(async () => {});
     const s = makeStore({ selectJobId });

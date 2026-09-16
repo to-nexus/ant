@@ -23,7 +23,7 @@ import { deriveRunStatus, effectiveNeeds } from '../../../core/pipelines/ChainEx
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { loadActivationByProject } from '../../../core/pipelines/store';
 import { pipelineGateDeepLink, type PipelineNotice, type PipelineNoticeRecipient } from '../../../core/pipelines/notifications';
-import { appendEvent, getRun, isTerminal, mutateRun, publish, tenantCtx } from './runStore';
+import { appendEvent, getRun, isTerminal, listActiveRunIds, mutateRun, publish, tenantCtx } from './runStore';
 import { COMPONENT, type HitlRecord, type PipelineRunOps } from './types';
 
 /**
@@ -435,10 +435,9 @@ export async function handleGateRemind(ctx: PipelineRunOps, data: PipelineGateRe
  * activator-scoped.
  */
 export async function republishArmedGates(ctx: PipelineRunOps, owner: PipelineOwner, projectId: string): Promise<void> {
-  const runId = await ctx.deps.stateStore.getKey(REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, projectId));
-  if (!runId) return;
+  for (const runId of await listActiveRunIds(ctx.deps, owner, projectId)) {
   const run = await getRun(ctx.deps, runId);
-  if (!run || isTerminal(run.status)) return;
+  if (!run || isTerminal(run.status)) continue;
   for (const step of run.steps) {
     if (step.status !== 'awaiting_gate' || !step.gate || step.gate.decision) continue;
     if (!step.gate.gateId.startsWith('gate-')) continue;
@@ -456,5 +455,6 @@ export async function republishArmedGates(ctx: PipelineRunOps, owner: PipelineOw
       timeoutAt: step.gate.timeoutAt,
       ...(step.gate.onTimeout && { onTimeout: step.gate.onTimeout }),
     });
+  }
   }
 }

@@ -1,4 +1,5 @@
 import { isNonTaskJob } from '@ant/shared';
+import type { ActiveJobEntry } from '../../types';
 import { restoresLatestRunFromHistory } from './restoresLatestRun';
 
 /**
@@ -13,13 +14,22 @@ import { restoresLatestRunFromHistory } from './restoresLatestRun';
  * (zonal-dreaming-novel regression).
  */
 export function handleInitialActiveJobs(
-  jobs: Array<{ jobType: string; jobId: string; status: string; agent?: string }>,
+  jobs: Array<{ jobType: string; jobId: string; status: string; agent?: string; pipelineRunId?: string; customJobRef?: string }>,
   set: any,
   get: any,
 ): void {
-  const map: Record<string, { jobId: string; status: string; agent?: string }> = {};
+  // Keyed by jobType: N jobs of one type collapse to the last one (the
+  // multi-run surfaces re-key this by jobId); attribution rides along so the
+  // survivor can still be told apart.
+  const map: Record<string, ActiveJobEntry> = {};
   for (const j of jobs) {
-    map[j.jobType] = { jobId: j.jobId, status: j.status, agent: j.agent };
+    map[j.jobType] = {
+      jobId: j.jobId,
+      status: j.status,
+      agent: j.agent,
+      ...(j.pipelineRunId && { pipelineRunId: j.pipelineRunId }),
+      ...(j.customJobRef && { customJobRef: j.customJobRef }),
+    };
   }
   set({ activeJobs: map });
 
