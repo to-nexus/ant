@@ -710,6 +710,12 @@ export type PipelineFiredBy = 'cron' | 'manual' | 'event' | 'fetch';
 
 export type GateDecision = 'approved' | 'rejected' | 'expired_approve' | 'expired_reject';
 
+/**
+ * Where a gate's per-run assignee came from: `step` = an upstream step's
+ * sealed `<assignee>` nomination; `human` = a candidate's reassign (PUT).
+ */
+export type GateAssigneeSource = 'step' | 'human';
+
 export interface GateRecord {
   gateId: string;
   cardId: string;
@@ -717,6 +723,16 @@ export interface GateRecord {
   armedAt: string;
   timeoutAt?: string;
   onTimeout?: GateTimeoutAction;
+  /**
+   * Per-RUN recipients of this gate — a routing hint, never a permission.
+   * Candidates (activator ∪ the activation's roster for this gate) keep the
+   * resolve authority whatever this says; absent/empty = every candidate is
+   * called. Always ⊆ candidates (validated at arm and at reassign).
+   */
+  assignees?: string[];
+  assigneeSource?: GateAssigneeSource;
+  /** `assigneeSource: 'human'` — who reassigned. */
+  assignedBy?: string;
   decision?: GateDecision;
   decidedBy?: string;
   decidedAt?: string;
@@ -784,6 +800,12 @@ export interface StepRecord {
   output?: StepOutputRecord;
   /** Sealed decision of an outcome-declaring intent — `on: verdict:<name>` routes on it. */
   verdict?: string;
+  /**
+   * Sealed `<assignee>` nomination (lowercased member id, unvalidated) — the
+   * next gate that `needs` this step reads it and keeps it only when it names
+   * a candidate.
+   */
+  assignee?: string;
   /** Retry rounds already consumed (`retry.max` bound). */
   retriesUsed?: number;
   /** Failed rounds that were retried — the terminal failure stays on `error`. */
@@ -963,6 +985,7 @@ export interface PipelineRunEvent {
     | 'step_retry'
     | 'awaiting_human'
     | 'human_resolved'
+    | 'gate_reassigned'
     | 'gate_expired'
     | 'run_finished';
   runId: string;
@@ -1062,6 +1085,14 @@ export interface PipelinePendingApproval {
   role?: 'approver';
   /** role:'approver' rows only — the activation's owner (run/context reads key off it). */
   ownerUserId?: string;
+  /**
+   * Gate rows: who this run's gate is routed to (⊆ candidates). Absent =
+   * everyone on the roster is called. Sorting/badge only — any candidate may
+   * still decide.
+   */
+  assignees?: string[];
+  /** Gate rows: the decide-authorized set (activator first, then the gate's roster) — the reassign select's options. */
+  candidates?: string[];
 }
 
 // ============================================
