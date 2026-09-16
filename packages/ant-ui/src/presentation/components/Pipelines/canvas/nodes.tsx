@@ -9,7 +9,7 @@
 
 import { memo, useState, type ReactNode } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { Clock, Bot, ShieldCheck, Plus, Zap, Ban, Link2, type LucideIcon } from 'lucide-react';
+import { Clock, Bot, ShieldCheck, Plus, Zap, Ban, Link2, Inbox, type LucideIcon } from 'lucide-react';
 import { AgentIcon } from '@/presentation/components/AgentIcon';
 import { useTranslation } from 'react-i18next';
 import type { GateDecision, PipelineStepStatus } from '@ant/shared';
@@ -32,7 +32,7 @@ export const NODE_KIND_STYLE: Record<NodeKind, { accent: string; silhouette: Nod
   gate: { accent: 'var(--amber-500)', silhouette: 'chamfer', icon: ShieldCheck },
 };
 
-export const TRIGGER_MODE_ICON: Record<TriggerMode, LucideIcon> = { schedule: Clock, manual: Zap, runCompleted: Link2 };
+export const TRIGGER_MODE_ICON: Record<TriggerMode, LucideIcon> = { schedule: Clock, manual: Zap, runCompleted: Link2, fetch: Inbox };
 
 /** Corner cut of the gate octagon, px. */
 export const CHAMFER = 12;

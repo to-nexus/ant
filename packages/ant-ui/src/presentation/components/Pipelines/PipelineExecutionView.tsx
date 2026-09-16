@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Pencil, Play, PowerOff, ShieldCheck, User, XCircle, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, Inbox, Pencil, Play, PowerOff, ShieldCheck, User, XCircle, Zap } from 'lucide-react';
 import { isApprovalStep, resolveRunConcurrency, type PipelineActivationView, type PipelineDef, type PipelineListEntry, type PipelineLiveRun } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
@@ -182,7 +182,11 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
               // instead of a note promising it will appear somewhere below.
               setExpanded(a.projectId);
               void loadActivationRuns(pipelineId, a.projectId);
-              setRunNowNote(t('execution.runNowAccepted', 'Run started — follow it in the history below.'));
+              setRunNowNote(
+                def.on?.fetch
+                  ? t('execution.pollNowAccepted', 'Poll requested — new items start runs below as they are claimed.')
+                  : t('execution.runNowAccepted', 'Run started — follow it in the history below.'),
+              );
               window.setTimeout(() => setRunNowNote((cur) => (cur === null ? cur : null)), 4000);
             }}
             onDeactivate={async () => {
@@ -345,7 +349,9 @@ function ActivationSection({
   const { t } = useTranslation('pipelines');
   const liveRuns: PipelineLiveRun[] = view.liveRuns ?? [];
   const concurrency = resolveRunConcurrency(def);
-  const atCap = liveRuns.length >= concurrency;
+  // A fetch activation's button polls — the poll judges room itself, so the cap never disables it.
+  const isFetch = !!def.on?.fetch;
+  const atCap = !isFetch && liveRuns.length >= concurrency;
   // Run selection is per activation and SHARED between the live-run rows, the
   // canvas chips and the history timeline — one selection, three views.
   const runsKey = activationRunsKey(view.pipelineId, view.projectId, view.mine ? undefined : view.activatedBy);
@@ -446,7 +452,23 @@ function ActivationSection({
         )}
         {view.nextFireAt && !live && (
           <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
-            {t('execution.nextFire', 'Next fire: {{when}}', { when: new Date(view.nextFireAt).toLocaleString() })}
+            {isFetch
+              ? t('execution.nextPoll', 'Next poll: {{when}}', { when: new Date(view.nextFireAt).toLocaleString() })
+              : t('execution.nextFire', 'Next fire: {{when}}', { when: new Date(view.nextFireAt).toLocaleString() })}
+          </span>
+        )}
+        {isFetch && view.lastPoll && (
+          <span
+            style={{ fontSize: 11, color: view.lastPoll.error ? 'var(--red-500)' : 'var(--text-3)' }}
+            title={view.lastPoll.error ?? new Date(view.lastPoll.polledAt).toLocaleString()}
+          >
+            {view.lastPoll.error
+              ? t('execution.lastPollError', 'Last poll failed: {{error}}', { error: view.lastPoll.error })
+              : t('execution.lastPoll', 'Last poll: {{seen}} seen · {{unclaimed}} waiting · {{started}} started', {
+                  seen: view.lastPoll.seen,
+                  unclaimed: view.lastPoll.unclaimed,
+                  started: view.lastPoll.enqueued,
+                })}
           </span>
         )}
         <div style={{ flex: 1 }} />
@@ -459,7 +481,7 @@ function ActivationSection({
               title={atCap ? t('execution.runNowAtCap', 'This activation is at its cap of {{n}} live run(s) — Run now opens up when one finishes.', { n: concurrency }) : undefined}
               onClick={onRunNow}
             >
-              <Play size={12} /> {t('editor.runNow', 'Run now')}
+              {isFetch ? <Inbox size={12} /> : <Play size={12} />} {isFetch ? t('editor.pollNow', 'Poll now') : t('editor.runNow', 'Run now')}
             </Button>
           </span>
         )}

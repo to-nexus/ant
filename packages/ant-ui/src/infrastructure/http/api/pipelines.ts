@@ -9,6 +9,8 @@
 import { API_BASE, apiGet, apiPost, apiPut, apiDelete } from './client';
 import { downloadAttachment } from './download';
 import type {
+  PipelineFetchTrigger,
+  PipelineRunItem,
   ActivePipelineInfo,
   PipelineActivation,
   PipelineActivationView,
@@ -168,8 +170,22 @@ export function previewPipelineFires(cron: string, tz?: string): Promise<{ ok: b
   return apiPost(`${base()}/preview-fires`, { cron, tz });
 }
 
-export function runPipelineNow(pipelineId: string, projectId: string): Promise<{ accepted: boolean }> {
+/** On a fetch activation the server polls instead of starting a run (`polled: true`). */
+export function runPipelineNow(pipelineId: string, projectId: string): Promise<{ accepted: boolean; polled?: boolean }> {
   return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/run-now`, { projectId });
+}
+
+export interface PipelineFetchPreview {
+  ok: boolean;
+  error?: string;
+  items: Array<PipelineRunItem & { claimed: boolean }>;
+  seen: number;
+  skipped: number;
+}
+
+/** Dry-run a fetch trigger with the caller's own credentials — no claim, no fire. */
+export function previewPipelineFetch(fetch: PipelineFetchTrigger, projectId?: string): Promise<PipelineFetchPreview> {
+  return apiPost(`${base()}/preview-fetch`, { fetch, ...(projectId && { projectId }) });
 }
 
 /** Runs of ONE activation (pipeline × project); `userId` reads an org member's history read-only. */

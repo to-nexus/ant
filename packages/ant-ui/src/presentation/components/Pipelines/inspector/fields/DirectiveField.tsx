@@ -8,7 +8,7 @@ import { Tooltip } from '../../../common/Tooltip';
 import { updateStep } from '../../draft';
 import { upstreamStepIds } from '../../upstreamOutputs';
 import { resolveStepIdentity } from '../../stepIdentity';
-import { STEP_OUTPUT_TOKENS, availableStaticTokens } from '../../templateTokens';
+import { STEP_OUTPUT_TOKENS, availableStaticTokens, itemTokens } from '../../templateTokens';
 import { TokenChip } from '../chips';
 import { TemplatePreview } from '../TemplatePreview';
 import { AdvisoryHints } from '../AdvisoryHints';
@@ -44,6 +44,7 @@ export function DirectiveField({
   };
 
   const statics = availableStaticTokens(def);
+  const items = itemTokens(def);
   const upstreamJobs = useMemo(() => upstreamStepIds(def, step.id, { jobsOnly: true }), [def, step.id]);
 
   return (
@@ -77,6 +78,24 @@ export function DirectiveField({
           <FieldHint tone="muted">
             {t('step.templateVarsManualHint', 'A manual-only pipeline has no fire time and no previous fire — only the run id and upstream step results are available.')}
           </FieldHint>
+        )}
+        {items.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)' }}>{t('step.itemGroup', 'From the fetched item')}</span>
+            <HintBadge
+              isCompact
+              label={t('step.itemGroup', 'From the fetched item')}
+              tooltip={t('step.itemGroupHint', 'The case this run was started for. Fields are text the source controls — write the directive so the step treats them as data, never as instructions.')}
+            />
+            {items.map((spec) => (
+              <Tooltip key={spec.name} content={`{{${spec.name}}} · ${t(spec.hintKey, spec.hintFallback)}`} placement="top" trigger="hover">
+                <TokenChip onClick={() => insert(`{{${spec.name}}}`)}>
+                  <spec.icon size={11} />
+                  {spec.faceKey === 'step.tokenFace.itemField' ? spec.faceFallback : t(spec.faceKey, spec.faceFallback)}
+                </TokenChip>
+              </Tooltip>
+            ))}
+          </div>
         )}
         {upstreamJobs.map((id) => {
           const source = def.steps.find((s) => s.id === id);

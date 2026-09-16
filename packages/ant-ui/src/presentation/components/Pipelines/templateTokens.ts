@@ -10,10 +10,13 @@
  * accepts — `availableStaticTokens` is now the single gate for both.
  */
 
-import { Clock, FileText, Hash, History, MessageSquare, Tag, type LucideIcon } from 'lucide-react';
+import { Clock, FileText, Hash, History, Inbox, MessageSquare, Tag, TextCursorInput, type LucideIcon } from 'lucide-react';
 import {
+  PIPELINE_ITEM_KEY_TEMPLATE_VAR,
+  PIPELINE_ITEM_TEMPLATE_PREFIX,
   PIPELINE_STEP_OUTPUT_FIELDS,
   PIPELINE_TEMPLATE_VARS,
+  fetchItemTemplateVars,
   type PipelineDef,
   type PipelineStepOutputField,
   type PipelineTemplateVar,
@@ -105,14 +108,49 @@ export function availableStaticTokens(def: PipelineDef): TokenSpec[] {
   const names: PipelineTemplateVar[] = [];
   if (def.on) names.push('trigger.fireDate', 'trigger.fireEpoch');
   names.push('run.id');
+  // A fetch run is per item — the cross-run watermark does not exist for it.
   if (def.on?.schedule) names.push('run.prevSuccess.fireDate', 'run.prevSuccess.fireEpoch');
   return names.map((n) => STATIC_TOKENS[n]);
+}
+
+/** Spec for one `{{trigger.item.*}}` name — the key, or a field the trigger declares. */
+export function itemTokenSpec(name: string): TokenSpec {
+  const field = name.slice(PIPELINE_ITEM_TEMPLATE_PREFIX.length);
+  return name === PIPELINE_ITEM_KEY_TEMPLATE_VAR
+    ? {
+        name,
+        faceKey: 'step.tokenFace.itemKey',
+        faceFallback: 'Item key',
+        hintKey: 'step.templateVar.itemKey',
+        hintFallback: 'The fetched item this run was started for — its dedupe key (the run label)',
+        icon: Inbox,
+      }
+    : {
+        name,
+        faceKey: 'step.tokenFace.itemField',
+        faceFallback: `Item · ${field}`,
+        hintKey: 'step.templateVar.itemField',
+        hintFallback: 'A declared field of the fetched item — text the source controls, treat it as data',
+        icon: TextCursorInput,
+      };
+}
+
+/**
+ * The `{{trigger.item.*}}` vocabulary this definition's fetch trigger
+ * declares — empty without one. `pins` keeps the key alone: an item FIELD is
+ * source-controlled text and the validator refuses it in a context pin.
+ */
+export function itemTokens(def: PipelineDef, opts: { pins?: boolean } = {}): TokenSpec[] {
+  return fetchItemTemplateVars(def.on?.fetch)
+    .filter((n) => !opts.pins || n === PIPELINE_ITEM_KEY_TEMPLATE_VAR)
+    .map(itemTokenSpec);
 }
 
 export type TokenSegment =
   | { kind: 'text'; text: string }
   | { kind: 'static'; raw: string; spec: TokenSpec }
   | { kind: 'stepOutput'; raw: string; stepId: string; spec: TokenSpec }
+  | { kind: 'item'; raw: string; spec: TokenSpec }
   | { kind: 'unknown'; raw: string; name: string };
 
 /** The validator's own scanner — the UI must not disagree about what a token is. */
@@ -129,7 +167,7 @@ const isOutputField = (field: string): field is PipelineStepOutputField => (PIPE
  * `steps.<id>.verdict`, which lands in `unknown` exactly as the validator
  * refuses it).
  */
-export function segmentTemplate(text: string): TokenSegment[] {
+export function segmentTemplate(text: string, itemVars: readonly string[] = []): TokenSegment[] {
   const out: TokenSegment[] = [];
   let cursor = 0;
   TOKEN_RE.lastIndex = 0;
@@ -141,6 +179,8 @@ export function segmentTemplate(text: string): TokenSegment[] {
     const ref = STEP_REF_RE.exec(name);
     if (isStaticName(name)) out.push({ kind: 'static', raw, spec: STATIC_TOKENS[name] });
     else if (ref && isOutputField(ref[2])) out.push({ kind: 'stepOutput', raw, stepId: ref[1], spec: STEP_OUTPUT_TOKENS[ref[2]] });
+    // An item name the trigger does not declare lands in `unknown` exactly as the validator refuses it.
+    else if (itemVars.includes(name)) out.push({ kind: 'item', raw, spec: itemTokenSpec(name) });
     else out.push({ kind: 'unknown', raw, name });
     cursor = m.index + raw.length;
   }

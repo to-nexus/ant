@@ -24,6 +24,10 @@ import {
   updateSchedule,
   withAcknowledgement,
   withoutAcknowledgement,
+  DEFAULT_FETCH_TRIGGER,
+  setTriggerMode,
+  triggerModeOf,
+  updateFetch,
 } from '../../src/presentation/components/Pipelines/draft';
 import { upstreamStepIds } from '../../src/presentation/components/Pipelines/upstreamOutputs';
 
@@ -245,5 +249,29 @@ describe('withAcknowledgement / withoutAcknowledgement', () => {
     const one = withoutAcknowledgement(acked, 'gate-waits-forever', 'g');
     expect(one.acknowledged).toEqual([{ code: 'gate-holds-nothing', step: 'g', reason: 'r2' }]);
     expect('acknowledged' in withoutAcknowledgement(one, 'gate-holds-nothing', 'g')).toBe(false);
+  });
+});
+
+describe('trigger modes — fetch stands alone, and the mode is read from the one trigger the def carries', () => {
+  it('triggerModeOf: fetch > schedule > runCompleted > manual', () => {
+    expect(triggerModeOf(def([job('a')]))).toBe('schedule');
+    expect(triggerModeOf({ ...def([job('a')]), on: { fetch: DEFAULT_FETCH_TRIGGER } })).toBe('fetch');
+    expect(triggerModeOf({ ...def([job('a')]), on: { runCompleted: { pipelineId: 'up' } } })).toBe('runCompleted');
+    expect(triggerModeOf({ ...def([job('a')]), on: undefined })).toBe('manual');
+  });
+
+  it('setTriggerMode(fetch) replaces the whole `on` block with a blank fetch trigger; switching away drops it', () => {
+    const fetched = setTriggerMode(def([job('a')]), 'fetch');
+    expect(fetched.on).toEqual({ fetch: DEFAULT_FETCH_TRIGGER });
+    expect(setTriggerMode(fetched, 'schedule').on?.fetch).toBeUndefined();
+    expect(setTriggerMode(fetched, 'manual').on).toBeUndefined();
+    // A second switch to fetch keeps what was authored.
+    const authored = updateFetch(fetched, { api: 'jira', every: '1h' });
+    expect(setTriggerMode(setTriggerMode(authored, 'fetch'), 'fetch').on?.fetch).toMatchObject({ api: 'jira', every: '1h' });
+  });
+
+  it('updateFetch patches onto the defaults and never re-introduces another trigger half', () => {
+    const d = updateFetch({ ...def([job('a')]), on: undefined }, { items: '$.rows', batch: 3 });
+    expect(d.on).toEqual({ fetch: { ...DEFAULT_FETCH_TRIGGER, items: '$.rows', batch: 3 } });
   });
 });

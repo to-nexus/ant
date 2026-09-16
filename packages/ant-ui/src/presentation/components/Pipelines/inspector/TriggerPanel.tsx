@@ -1,10 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { DEFAULT_PIPELINE_CAPS, resolveRunConcurrency, type PipelineDef, type PipelineRunStatus } from '@ant/shared';
+import { DEFAULT_PIPELINE_CAPS, resolveRunConcurrency, type CustomAgentSummary, type PipelineDef, type PipelineRunStatus } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { AuroraSelect, FieldLabel } from '../../ConfigEditor/aurora';
 import { CronBuilder } from '../CronBuilder';
 import { setTriggerMode, triggerModeOf, updateRunCompleted, updateSchedule, type TriggerMode } from '../draft';
 import { ToggleChip } from './chips';
+import { FetchPanel } from './FetchPanel';
 
 const TERMINAL_STATUSES = ['completed', 'failed', 'partial', 'cancelled'] as const;
 /** `1..maxLiveRunsPerActivation` — the validator's range, offered as a closed list. */
@@ -16,7 +17,7 @@ function setConcurrency(def: PipelineDef, n: number): PipelineDef {
   return n > 1 ? { ...rest, concurrency: n } : rest;
 }
 
-export function TriggerPanel({ def, onChange, onCronValidity }: { def: PipelineDef; onChange: (d: PipelineDef) => void; onCronValidity: (ok: boolean) => void }) {
+export function TriggerPanel({ def, onChange, onCronValidity, customAgents }: { def: PipelineDef; onChange: (d: PipelineDef) => void; onCronValidity: (ok: boolean) => void; customAgents: CustomAgentSummary[] }) {
   const { t } = useTranslation('pipelines');
   const sched = def.on?.schedule;
   const runCompleted = def.on?.runCompleted;
@@ -37,10 +38,12 @@ export function TriggerPanel({ def, onChange, onCronValidity }: { def: PipelineD
           options={[
             { value: 'schedule', label: t('trigger.modeSchedule', 'Cron schedule') },
             { value: 'runCompleted', label: t('trigger.modeRunCompleted', 'After another pipeline') },
+            { value: 'fetch', label: t('trigger.modeFetch', 'Poll an external queue (fetch)') },
             { value: 'manual', label: t('trigger.modeManual', 'Manual only (Run now)') },
           ]}
         />
       </div>
+      {mode === 'fetch' && <FetchPanel def={def} onChange={onChange} customAgents={customAgents} />}
       {mode === 'runCompleted' && (
         <>
           <div>

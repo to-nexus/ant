@@ -38,11 +38,12 @@ export function ToggleChip({ children, active, onClick, disabled, title }: ChipB
 }
 
 /** Read-only pill tones — a token's role, never its identity. */
-export type TokenPillTone = 'static' | 'stepOutput' | 'unknown';
+export type TokenPillTone = 'static' | 'stepOutput' | 'item' | 'unknown';
 
 const PILL_TONE: Record<TokenPillTone, { accent: string }> = {
   static: { accent: 'var(--violet-500)' },
   stepOutput: { accent: 'var(--teal-500)' },
+  item: { accent: 'var(--amber-500)' },
   unknown: { accent: 'var(--red-500)' },
 };
 

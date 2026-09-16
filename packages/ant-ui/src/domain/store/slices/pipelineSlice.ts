@@ -13,7 +13,7 @@ import type {
   PipelineScope,
   RunRecord,
 } from '@ant/shared';
-import { PIPELINE_DEF_VERSION, activationStateOf, foldLiveRun, liveRunOf, runSummaryOf } from '@ant/shared';
+import { parsePipelineDuration, PIPELINE_DEF_VERSION, activationStateOf, foldLiveRun, liveRunOf, runSummaryOf } from '@ant/shared';
 import {
   activatePipeline,
   createPipeline,
@@ -895,6 +895,24 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       }
       case 'defChanged': {
         void get().loadPipelines();
+        break;
+      }
+      case 'fetchPolled': {
+        // Own-channel telemetry: the activation row's lastPoll and its next poll (polledAt + every).
+        set({
+          pipelines: state.pipelines.map((p: PipelineListEntry) => {
+            if (p.id !== event.pipelineId) return p;
+            const everyMs = parsePipelineDuration(p.every);
+            const nextFireAt = everyMs ? new Date(Date.parse(event.lastPoll.polledAt) + everyMs).toISOString() : undefined;
+            return {
+              ...p,
+              ...(nextFireAt && { nextFireAt }),
+              activations: p.activations.map((a) =>
+                a.mine && a.projectId === event.projectId ? { ...a, lastPoll: event.lastPoll, ...(nextFireAt && { nextFireAt }) } : a,
+              ),
+            };
+          }),
+        });
         break;
       }
     }

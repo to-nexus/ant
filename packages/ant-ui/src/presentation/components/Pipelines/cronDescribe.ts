@@ -86,6 +86,7 @@ export function describeCron(cron: string, tz: string | undefined, t: DescribeT,
 
 /** The trigger summary the canvas trigger node and the activation rows share. */
 export function describeTrigger(def: PipelineDef, t: DescribeT, locale: string): string {
+  if (def.on?.fetch) return t('trigger.fetchSummary', 'Polls "{{api}}" every {{every}}', { api: def.on.fetch.api || '…', every: def.on.fetch.every });
   if (def.on?.schedule) return describeCron(def.on.schedule.cron, def.on.schedule.tz, t, locale);
   if (def.on?.runCompleted) return t('trigger.chainedSummary', 'After "{{id}}"', { id: def.on.runCompleted.pipelineId || '…' });
   return t('trigger.manualOnly', 'Manual only');

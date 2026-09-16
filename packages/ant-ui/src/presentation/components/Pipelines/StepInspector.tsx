@@ -46,7 +46,7 @@ export function StepInspector({ def, nodeId, onChange, onClose, onCronValidity, 
   return (
     <InspectorShell title={title} icon={isTrigger ? TRIGGER_MODE_ICON[triggerModeOf(def)] : look.icon} accent={look.accent} onClose={onClose}>
       {isTrigger ? (
-        <TriggerPanel def={def} onChange={onChange} onCronValidity={onCronValidity} />
+        <TriggerPanel customAgents={customAgents} def={def} onChange={onChange} onCronValidity={onCronValidity} />
       ) : step && isApprovalStep(step) ? (
         <GatePanel def={def} step={step} stepIndex={stepIndex} onChange={onChange} advisories={advisories} onStepRenamed={onStepRenamed} />
       ) : step ? (

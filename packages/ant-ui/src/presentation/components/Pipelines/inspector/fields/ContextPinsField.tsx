@@ -10,7 +10,7 @@ import { FileTreePicker } from '../../../common/FileTreePicker';
 import { updateStep } from '../../draft';
 import { upstreamOutputSuggestions } from '../../upstreamOutputs';
 import { resolveStepIdentity } from '../../stepIdentity';
-import { availableStaticTokens } from '../../templateTokens';
+import { availableStaticTokens, itemTokens } from '../../templateTokens';
 import { Tooltip } from '../../../common/Tooltip';
 import { TokenChip } from '../chips';
 import { AdvisoryHints } from '../AdvisoryHints';
@@ -65,7 +65,8 @@ export function ContextPinsField({
   // `pinTemplateErrors` accepts the WHOLE static whitelist in a pin, so the
   // offer is the same gate the directive uses — a second local list is how the
   // `run.prevSuccess.*` pair went missing here while the validator took it.
-  const pinVars = availableStaticTokens(def);
+  // A pin may name the fetched item's KEY (`cases/{{trigger.item.key}}/**`), never a field — source text must not name a path.
+  const pinVars = [...availableStaticTokens(def), ...itemTokens(def, { pins: true })];
 
   return (
     <div>

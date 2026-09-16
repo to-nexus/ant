@@ -136,7 +136,7 @@ function PipelineCanvasInner({ def, cronSummary, customAgents, liveRuns = NO_RUN
         position: { x: 0, y: 0 },
         data: {
           nodeId: TRIGGER_NODE_ID,
-          primary: t(`canvas.triggerMode.${triggerMode}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain' }[triggerMode]),
+          primary: t(`canvas.triggerMode.${triggerMode}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain', fetch: 'Fetch' }[triggerMode]),
           caption: cronSummary,
           selected: false,
           flowDir: 'ltr',

@@ -13,6 +13,7 @@ import {
   STEP_OUTPUT_TOKENS,
   availableStaticTokens,
   hasTokens,
+  itemTokens,
   segmentTemplate,
 } from '../../src/presentation/components/Pipelines/templateTokens';
 
@@ -49,6 +50,26 @@ describe('availableStaticTokens gates on what the trigger actually provides', ()
 
   it('schedule: the whole whitelist, prevSuccess pair included', () => {
     expect(names(def({ schedule: { cron: '0 9 * * 1' } } as PipelineDef['on']))).toEqual([...PIPELINE_TEMPLATE_VARS].sort());
+  });
+
+  const FETCH = { fetch: { customJobRef: 'ops/tickets', api: 'jira', request: { method: 'GET', path: '/x' }, items: '$.issues', key: '$.key', fields: { summary: '$.s' }, every: '5m' } } as PipelineDef['on'];
+
+  it('fetch: a fire time, but no cross-run watermark (runs are per item — the validator refuses prevSuccess there)', () => {
+    expect(names(def(FETCH))).toEqual(['run.id', 'trigger.fireDate', 'trigger.fireEpoch']);
+  });
+
+  it('itemTokens: key + declared fields for directives, the key alone for pins, nothing without a fetch trigger', () => {
+    expect(itemTokens(def(FETCH)).map((s) => s.name)).toEqual(['trigger.item.key', 'trigger.item.summary']);
+    expect(itemTokens(def(FETCH), { pins: true }).map((s) => s.name)).toEqual(['trigger.item.key']);
+    expect(itemTokens(def({ schedule: { cron: '0 9 * * 1' } } as PipelineDef['on']))).toEqual([]);
+    expect(itemTokens(def(undefined))).toEqual([]);
+  });
+
+  it('segmentTemplate labels a declared item var as `item` and an undeclared one as `unknown` — exactly as the validator judges', () => {
+    const segs = segmentTemplate('{{trigger.item.key}} {{trigger.item.summary}} {{trigger.item.ghost}}', ['trigger.item.key', 'trigger.item.summary']);
+    expect(segs.filter((s) => s.kind !== 'text').map((s) => s.kind)).toEqual(['item', 'item', 'unknown']);
+    // Without the vocabulary (no fetch trigger) every item name is unknown.
+    expect(segmentTemplate('{{trigger.item.key}}').map((s) => s.kind)).toEqual(['unknown']);
   });
 
   it('offers the same set the pin validator accepts — one gate, two surfaces', () => {

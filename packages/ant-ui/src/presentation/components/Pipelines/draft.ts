@@ -22,7 +22,8 @@ import {
   type JobStepDef,
   type PipelineAdvisoryCode,
   type PipelineDef,
-  type PipelineRunCompletedTrigger,
+  type PipelineFetchTrigger,
+  PipelineRunCompletedTrigger,
   type PipelineScheduleTrigger,
   type PipelineStepDef,
 } from '@ant/shared';
@@ -213,18 +214,29 @@ export function updateSchedule(def: PipelineDef, patch: Partial<PipelineSchedule
   return { ...def, on: { ...def.on, schedule: { cron: DEFAULT_SCHEDULE_CRON, ...def.on?.schedule, ...patch } } };
 }
 
-export type TriggerMode = 'schedule' | 'runCompleted' | 'manual';
+export type TriggerMode = 'schedule' | 'runCompleted' | 'fetch' | 'manual';
 
 export function triggerModeOf(def: PipelineDef): TriggerMode {
+  if (def.on?.fetch) return 'fetch';
   if (def.on?.schedule) return 'schedule';
   if (def.on?.runCompleted) return 'runCompleted';
   return 'manual';
 }
 
+/** A blank fetch trigger — every field the validator requires, none filled with a guess an author would keep. */
+export const DEFAULT_FETCH_TRIGGER: PipelineFetchTrigger = {
+  customJobRef: '',
+  api: '',
+  request: { method: 'GET', path: '/' },
+  items: '$',
+  key: '$.id',
+  every: '5m',
+};
+
 /**
  * Switch the trigger kind. The inspector edits ONE trigger at a time (a
- * hand-authored def carrying both still validates and fires on both; the UI
- * shows its schedule half).
+ * hand-authored def carrying schedule + runCompleted still validates and fires
+ * on both; the UI shows its schedule half). `fetch` stands alone by contract.
  */
 export function setTriggerMode(def: PipelineDef, mode: TriggerMode): PipelineDef {
   if (mode === 'manual') {
@@ -234,11 +246,19 @@ export function setTriggerMode(def: PipelineDef, mode: TriggerMode): PipelineDef
   if (mode === 'schedule') {
     return { ...def, on: { schedule: def.on?.schedule ?? { cron: DEFAULT_SCHEDULE_CRON } } };
   }
+  if (mode === 'fetch') {
+    return { ...def, on: { fetch: def.on?.fetch ?? DEFAULT_FETCH_TRIGGER } };
+  }
   return { ...def, on: { runCompleted: def.on?.runCompleted ?? { pipelineId: '' } } };
 }
 
 export function updateRunCompleted(def: PipelineDef, patch: Partial<PipelineRunCompletedTrigger>): PipelineDef {
   return { ...def, on: { ...def.on, runCompleted: { pipelineId: '', ...def.on?.runCompleted, ...patch } } };
+}
+
+/** Patch the fetch trigger (a fetch def has no other trigger half to preserve). */
+export function updateFetch(def: PipelineDef, patch: Partial<PipelineFetchTrigger>): PipelineDef {
+  return { ...def, on: { fetch: { ...DEFAULT_FETCH_TRIGGER, ...def.on?.fetch, ...patch } } };
 }
 
 /** The validator's step-id shape — ids are the handles `needs` and `{{steps.<id>.*}}` refer to. */
