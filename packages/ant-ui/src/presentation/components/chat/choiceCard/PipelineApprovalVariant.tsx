@@ -22,6 +22,7 @@ export function PipelineApprovalVariant({ presented, resolved }: VariantProps) {
   const itemKey = payload.itemKey as string | undefined;
   const timeoutAt = payload.timeoutAt as string | undefined;
   const onTimeout = payload.onTimeout as string | undefined;
+  const assignees = Array.isArray(payload.assignees) ? (payload.assignees as string[]) : [];
 
   const decide = async (choice: 'approve' | 'reject') => {
     if (state.isSelected || state.isLoading) return;
@@ -40,6 +41,7 @@ export function PipelineApprovalVariant({ presented, resolved }: VariantProps) {
   const runPart = runId ? runLabel({ runId, itemKey }) : undefined;
   const subtitleParts = [
     [pipelineName && stepId ? `${pipelineName} · ${stepId}` : pipelineName, runPart].filter(Boolean).join(' · ') || undefined,
+    assignees.length > 0 ? t('card.assignedTo', 'assigned to {{who}}', { who: assignees.join(', ') }) : undefined,
     timeoutAt
       ? onTimeout === 'approve'
         ? t('card.timeoutApprove', 'auto-approves {{when}}', { when: new Date(timeoutAt).toLocaleString() })

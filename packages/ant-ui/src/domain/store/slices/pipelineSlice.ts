@@ -30,6 +30,7 @@ import {
   fetchPipelines,
   promotePipeline,
   resolvePipelineApproval,
+  reassignPipelineGate,
   answerPipelineClarify,
   runPipelineNow,
   updateActivationApprovers,
@@ -208,6 +209,8 @@ export interface PipelineSliceActions {
   selectActivationRun: (activationKey: string, runId: string | null, projectId: string) => void;
   loadPipelineApprovals: () => Promise<void>;
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject', note?: string) => Promise<void>;
+  /** Route one run's armed gate to a candidate (`null` = everyone) — a candidate's routing hint, never authority. */
+  reassignPipelineGateTo: (approval: PipelinePendingApproval, userId: string | null) => Promise<void>;
   answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
   /** The ONE reconnect refresh — re-reads every held projection (list → approvals, histories, live details, chat lock). */
   resyncPipelineProjections: () => void;
@@ -703,6 +706,29 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
 
   closeApproverPanel: () => set({ approverPanel: null, approverPanelRun: null }),
 
+  reassignPipelineGateTo: async (approval: PipelinePendingApproval, userId: string | null) => {
+    const gateId = approval.gateId;
+    let assignees: string[];
+    try {
+      ({ assignees } = await reassignPipelineGate(approval.runId, approval.stepId, userId));
+    } catch (e) {
+      // 409 (decided meanwhile) / 404 (gate gone or authority revoked): the row is dead.
+      if (e instanceof ApiError && (e.status === 409 || e.status === 404)) {
+        set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== gateId) });
+      }
+      throw e;
+    }
+    // Local fold; the server's re-fired approvalRequested upserts every other holder's row.
+    const patch = (a: PipelinePendingApproval): PipelinePendingApproval => {
+      if (a.gateId !== gateId) return a;
+      const { assignees: _prev, ...rest } = a;
+      return assignees.length > 0 ? { ...rest, assignees } : rest;
+    };
+    set({ pipelineApprovals: get().pipelineApprovals.map(patch) });
+    const panel = get().approverPanel;
+    if (panel?.gateId === gateId) set({ approverPanel: patch(panel) });
+  },
+
   answerPipelineClarifyById: async (clarifyId: string, runId: string, stepId: string, answer: string) => {
     const fold = () =>
       set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== clarifyId) });
@@ -816,8 +842,16 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
         break;
       }
       case 'approvalRequested': {
+        // Upsert: a reminder or a reassign re-fires the same gateId with fresher
+        // routing (`assignees`) — the held row takes it in place, never a duplicate.
         const exists = state.pipelineApprovals.some((a: PipelinePendingApproval) => a.gateId === event.approval.gateId);
-        if (!exists) set({ pipelineApprovals: [event.approval, ...state.pipelineApprovals] });
+        set({
+          pipelineApprovals: exists
+            ? state.pipelineApprovals.map((a: PipelinePendingApproval) => (a.gateId === event.approval.gateId ? { ...a, ...event.approval } : a))
+            : [event.approval, ...state.pipelineApprovals],
+        });
+        const panel = state.approverPanel;
+        if (panel?.gateId === event.approval.gateId) set({ approverPanel: { ...panel, ...event.approval } });
         break;
       }
       case 'approvalResolved': {

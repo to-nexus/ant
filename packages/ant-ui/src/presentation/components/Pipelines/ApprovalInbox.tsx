@@ -8,11 +8,13 @@
  * clarify answer is TEXT — a file arrives as the artifacts path it was
  * uploaded to, which the form can pick. SSE `approvalResolved` /
  * `clarifyAnswered` fold every surface; 409/404 fold the row and name why.
+ * Gate rows routed to the viewer (`assignees`) sort first and carry the
+ * badge; any candidate may reassign — routing, never authority.
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, MessageCircleQuestion, ShieldCheck, Wrench } from 'lucide-react';
+import { FolderOpen, MessageCircleQuestion, ShieldCheck, UserRound, Wrench } from 'lucide-react';
 import type { PipelinePendingApproval } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { activationRunsKey } from '@/domain/store/slices/pipelineSlice';
@@ -23,18 +25,19 @@ import { FieldHint } from '../ConfigEditor/aurora';
 import { FileTreePicker } from '../common/FileTreePicker';
 import { RailGroup } from '../shared/rail';
 import { GateDecisionForm } from './GateDecisionForm';
-import { runHue, runLabel, runTintFg } from './runIdentity';
+import { runHue, runLabel, runTintFg, sortAssignedFirst } from './runIdentity';
 
 export function ApprovalInbox() {
   const { t } = useTranslation('pipelines');
   const approvals = useStore((s) => s.pipelineApprovals);
+  const currentUser = useStore((s) => s.userEmail as string | null | undefined);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
   if (approvals.length === 0) return null;
 
-  const asApprover = approvals.filter((a) => a.role === 'approver');
-  const mine = approvals.filter((a) => a.role !== 'approver');
+  const asApprover = sortAssignedFirst(approvals.filter((a) => a.role === 'approver'), currentUser);
+  const mine = sortAssignedFirst(approvals.filter((a) => a.role !== 'approver'), currentUser);
 
   return (
     <RailGroup
@@ -61,12 +64,77 @@ export function ApprovalInbox() {
   );
 }
 
+/**
+ * Gate routing line — who this run's gate calls, and the reassign select every
+ * candidate may use (self-claim = pick yourself; "Anyone" clears).
+ */
+function AssigneeLine({
+  approval: a,
+  currentUser,
+  onNotice,
+}: {
+  approval: PipelinePendingApproval;
+  currentUser: string | null | undefined;
+  onNotice: (msg: string | null) => void;
+}) {
+  const { t } = useTranslation('pipelines');
+  const reassign = useStore((s) => s.reassignPipelineGateTo);
+  const [busy, setBusy] = useState(false);
+  const candidates = a.candidates ?? [];
+  const assignee = a.assignees?.[0];
+  if (a.kind === 'clarify' || a.kind === 'tool' || (candidates.length === 0 && !assignee)) return null;
+  const mine = !!currentUser && !!assignee && assignee === currentUser;
+  const canReassign = candidates.length > 1 && (!currentUser || candidates.includes(currentUser));
+  const change = async (value: string) => {
+    if (busy) return;
+    setBusy(true);
+    onNotice(null);
+    try {
+      await reassign(a, value === '' ? null : value);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) onNotice(t('inbox.alreadyDecided', 'This gate was already decided.'));
+      else if (e instanceof ApiError && e.status === 404) onNotice(t('inbox.authorityRevoked', 'Your approval authority for this gate was revoked.'));
+      else onNotice(e instanceof Error ? e.message : String(e));
+    }
+    setBusy(false);
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: mine ? 'var(--amber-500)' : 'var(--text-3)', marginBottom: 6, flexWrap: 'wrap' }}>
+      <UserRound size={11} style={{ flexShrink: 0 }} />
+      <span style={{ fontWeight: mine ? 700 : 500 }}>
+        {mine
+          ? t('inbox.assignedToYou', 'Assigned to you')
+          : assignee
+            ? t('inbox.assignedTo', 'Assigned to {{who}}', { who: assignee })
+            : t('inbox.assignedAnyone', 'Any approver')}
+      </span>
+      {canReassign && (
+        <select
+          aria-label={t('inbox.reassign', 'Reassign')}
+          value={assignee ?? ''}
+          disabled={busy}
+          onChange={(e) => void change(e.target.value)}
+          style={{ fontSize: 10.5, padding: '1px 4px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border-1)', background: 'var(--bg-surface)', color: 'var(--text-2)', maxWidth: 180 }}
+        >
+          <option value="">{t('inbox.assignedAnyone', 'Any approver')}</option>
+          {candidates.map((c) => (
+            <option key={c} value={c}>
+              {c === currentUser ? t('inbox.candidateYou', '{{who}} (you)', { who: c }) : c}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 function GroupLabel({ label }: { label: string }) {
   return <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}</div>;
 }
 
 function ApprovalRow({ approval: a, onNotice }: { approval: PipelinePendingApproval; onNotice: (msg: string | null) => void }) {
   const { t } = useTranslation('pipelines');
+  const currentUser = useStore((s) => s.userEmail as string | null | undefined);
   const resolve = useStore((s) => s.resolvePipelineApprovalById);
   const answerClarify = useStore((s) => s.answerPipelineClarifyById);
   const openApproverPanel = useStore((s) => s.openApproverPanel);
@@ -125,6 +193,7 @@ function ApprovalRow({ approval: a, onNotice }: { approval: PipelinePendingAppro
         <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 2 }}>{t('inbox.ownerLine', "{{who}}'s activation", { who: a.ownerUserId })}</div>
       )}
       <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{a.prompt}</div>
+      <AssigneeLine approval={a} currentUser={currentUser} onNotice={onNotice} />
       {a.timeoutAt && (
         <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
           {a.onTimeout === 'approve'

@@ -17,6 +17,8 @@ export interface RunChip {
   label: string;
   hue: number;
   status: PipelineStepStatus;
+  /** Gate steps: who this run's gate is routed to (from the held detail). */
+  assignees?: string[];
 }
 
 /**
@@ -31,10 +33,12 @@ export function stepRunChips(def: PipelineDef, liveRuns: readonly PipelineLiveRu
   for (const run of liveRuns) {
     const detail = detailOf(run.runId);
     for (const stepId of run.currentStepIds) {
-      const recorded = detail?.steps.find((s) => s.stepId === stepId)?.status;
+      const record = detail?.steps.find((s) => s.stepId === stepId);
+      const recorded = record?.status;
       const status: PipelineStepStatus =
         recorded ?? (run.status === 'awaiting_human' ? (gateIds.has(stepId) ? 'awaiting_gate' : 'awaiting_clarify') : 'running');
-      (out[stepId] ??= []).push({ runId: run.runId, label: runLabel(run), hue: runHue(run.runId), status });
+      const assignees = record?.gate?.assignees;
+      (out[stepId] ??= []).push({ runId: run.runId, label: runLabel(run), hue: runHue(run.runId), status, ...(assignees && assignees.length > 0 && { assignees }) });
     }
   }
   return out;

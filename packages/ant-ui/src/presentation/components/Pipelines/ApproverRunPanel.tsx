@@ -121,6 +121,13 @@ export function ApproverRunPanel() {
               : t('approverPanel.gateHeading', 'Approval gate · {{step}}', { step: panel.stepId })}
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--text-1)', whiteSpace: 'pre-wrap', marginBottom: 8 }}>{panel.prompt}</div>
+          {!decision && panel.assignees && panel.assignees.length > 0 && (
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--amber-500)', marginBottom: 8 }}>
+              {currentUser && panel.assignees.includes(currentUser)
+                ? t('inbox.assignedToYou', 'Assigned to you')
+                : t('inbox.assignedTo', 'Assigned to {{who}}', { who: panel.assignees.join(', ') })}
+            </div>
+          )}
           {panel.timeoutAt && !decision && (
             <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 8 }}>
               {panel.onTimeout === 'approve'

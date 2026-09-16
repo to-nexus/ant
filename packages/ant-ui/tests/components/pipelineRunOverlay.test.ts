@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { PipelineDef, PipelineFiredBy, PipelineLiveRun } from '@ant/shared';
 import { focusRunId, selectedPath, stepRunChips, triggerBadge } from '../../src/presentation/components/Pipelines/canvas/runOverlay';
-import { FIRED_BY_ICON, FIRED_BY_LABEL, runHue, runLabel } from '../../src/presentation/components/Pipelines/runIdentity';
+import { FIRED_BY_ICON, FIRED_BY_LABEL, runHue, runLabel, sortAssignedFirst } from '../../src/presentation/components/Pipelines/runIdentity';
 
 const DEF = {
   version: 2,
@@ -99,5 +99,20 @@ describe('runIdentity — one vocabulary for every surface', () => {
       expect(FIRED_BY_ICON[k]).toBeDefined();
       expect(FIRED_BY_LABEL[k].key).toMatch(/^runs\./);
     }
+  });
+});
+
+describe('gate assignee on the surfaces (doc 46 §5a-ii) — routing hint, never authority', () => {
+  it('a chip at a gate carries the held detail\'s assignees; a step without them carries none', () => {
+    const detail = { steps: [{ stepId: 'gate', status: 'awaiting_gate', gate: { gateId: 'g', cardId: 'c', prompt: '?', armedAt: 'now', assignees: ['bob@x.io'] } }] } as any;
+    const chips = stepRunChips(DEF, [live('r1', ['gate'], 'awaiting_human'), live('r2', ['calc'])], (id) => (id === 'r1' ? detail : undefined));
+    expect(chips.gate[0]).toMatchObject({ runId: 'r1', assignees: ['bob@x.io'] });
+    expect(chips.calc[0]).not.toHaveProperty('assignees');
+  });
+
+  it('sortAssignedFirst lifts the viewer\'s rows and keeps every other order; unknown viewer = untouched', () => {
+    const rows = [{ gateId: 'a' }, { gateId: 'b', assignees: ['me@x.io'] }, { gateId: 'c', assignees: ['peer@x.io'] }, { gateId: 'd', assignees: ['me@x.io'] }];
+    expect(sortAssignedFirst(rows, 'me@x.io').map((r) => r.gateId)).toEqual(['b', 'd', 'a', 'c']);
+    expect(sortAssignedFirst(rows, null).map((r) => r.gateId)).toEqual(['a', 'b', 'c', 'd']);
   });
 });

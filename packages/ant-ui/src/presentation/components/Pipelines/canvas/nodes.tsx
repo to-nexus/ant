@@ -352,7 +352,11 @@ function RunChipRow({ data }: { data: PipelineNodeData }) {
           <button
             key={chip.runId}
             type="button"
-            title={t('canvas.selectRun', 'Show run {{label}}', { label: chip.label })}
+            title={
+              chip.assignees && chip.assignees.length > 0
+                ? `${t('canvas.selectRun', 'Show run {{label}}', { label: chip.label })} · ${t('runs.gateAssignedTo', 'assigned to {{who}}', { who: chip.assignees.join(', ') })}`
+                : t('canvas.selectRun', 'Show run {{label}}', { label: chip.label })
+            }
             onClick={(e) => {
               e.stopPropagation();
               data.onSelectRun?.(chip.runId);

@@ -218,6 +218,15 @@ export function resolvePipelineApproval(
   });
 }
 
+/** Route an armed gate of ONE run to a candidate (`null` = everyone) — a routing hint, never authority. */
+export function reassignPipelineGate(
+  runId: string,
+  stepId: string,
+  userId: string | null,
+): Promise<{ success: boolean; gateId: string; assignees: string[]; candidates: string[] }> {
+  return apiPut(`${base()}/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(stepId)}/assignee`, { userId });
+}
+
 export function answerPipelineClarify(runId: string, stepId: string, answer: string): Promise<{ success: boolean }> {
   return apiPost(`${base()}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/clarify`, { answer });
 }

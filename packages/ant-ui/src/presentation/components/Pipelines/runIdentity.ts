@@ -15,6 +15,16 @@ export function runLabel(run: { runId: string; itemKey?: string }): string {
   return run.itemKey ?? run.runId;
 }
 
+/**
+ * Routed-to-me rows first (stable otherwise) — the assignee is who a gate is
+ * calling; sorting is the whole effect (any candidate may still decide).
+ */
+export function sortAssignedFirst<T extends { assignees?: string[] }>(rows: readonly T[], me: string | null | undefined): T[] {
+  if (!me) return [...rows];
+  const isMine = (r: T) => (r.assignees ?? []).includes(me);
+  return [...rows.filter(isMine), ...rows.filter((r) => !isMine(r))];
+}
+
 /** Exhaustive over `PipelineFiredBy` — a new trigger kind fails to compile here. */
 export const FIRED_BY_ICON: Record<PipelineFiredBy, LucideIcon> = {
   cron: Clock,

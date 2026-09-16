@@ -33,6 +33,7 @@ const api = vi.hoisted(() => ({
   cancelPipelineRun: vi.fn(),
   fetchPipelineApprovals: vi.fn().mockResolvedValue({ approvals: [] }),
   resolvePipelineApproval: vi.fn(),
+  reassignPipelineGate: vi.fn(),
   answerPipelineClarify: vi.fn(),
   updateActivationApprovers: vi.fn(),
 }));
@@ -355,5 +356,44 @@ describe('approver rosters + role-aware inbox rows (doc 48 in-app approver)', ()
     useStore.getState().closeApproverPanel();
     expect(useStore.getState().approverPanel).toBeNull();
     expect(useStore.getState().approverPanelRun).toBeNull();
+  });
+});
+
+describe('gate assignee — inbox rows fold routing, never duplicate (doc 46 §5a-ii)', () => {
+  const ROW = {
+    gateId: 'gate-r1-g',
+    cardId: 'pipe-gate-r1-g',
+    runId: 'r1',
+    pipelineId: 'p1',
+    pipelineName: 'Digest',
+    projectId: 'proj-a',
+    stepId: 'g',
+    prompt: 'ok?',
+    armedAt: '2026-09-16T00:00:00.000Z',
+    candidates: ['me@x.io', 'bob@x.io'],
+  };
+
+  it('approvalRequested UPSERTS a held row — a reassign re-fire updates assignees in place', () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelineApprovals: [ROW as any] });
+    useStore.getState().applyPipelineEvent({ cause: 'approvalRequested', projectId: 'proj-a', approval: { ...ROW, assignees: ['bob@x.io'] } } as any);
+    const rows = useStore.getState().pipelineApprovals;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].assignees).toEqual(['bob@x.io']);
+    // A fresh gate still prepends.
+    useStore.getState().applyPipelineEvent({ cause: 'approvalRequested', projectId: 'proj-a', approval: { ...ROW, gateId: 'gate-r2-g', runId: 'r2' } } as any);
+    expect(useStore.getState().pipelineApprovals.map((r) => r.gateId)).toEqual(['gate-r2-g', 'gate-r1-g']);
+  });
+
+  it('reassignPipelineGateTo PUTs and folds the row locally; null clears the hint', async () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelineApprovals: [{ ...ROW, assignees: ['bob@x.io'] } as any] });
+    api.reassignPipelineGate.mockResolvedValueOnce({ success: true, gateId: ROW.gateId, assignees: ['me@x.io'], candidates: ROW.candidates });
+    await useStore.getState().reassignPipelineGateTo(ROW as any, 'me@x.io');
+    expect(api.reassignPipelineGate).toHaveBeenCalledWith('r1', 'g', 'me@x.io');
+    expect(useStore.getState().pipelineApprovals[0].assignees).toEqual(['me@x.io']);
+    api.reassignPipelineGate.mockResolvedValueOnce({ success: true, gateId: ROW.gateId, assignees: [], candidates: ROW.candidates });
+    await useStore.getState().reassignPipelineGateTo(ROW as any, null);
+    expect(useStore.getState().pipelineApprovals[0]).not.toHaveProperty('assignees');
   });
 });

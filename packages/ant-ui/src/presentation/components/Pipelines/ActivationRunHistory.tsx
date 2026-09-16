@@ -255,6 +255,12 @@ export function RunTimeline({
                     )}
                   </div>
                 )}
+                {step.gate?.assignees && step.gate.assignees.length > 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
+                    {t('runs.gateAssignedTo', 'assigned to {{who}}', { who: step.gate.assignees.join(', ') })}
+                    {step.gate.assigneeSource === 'human' && step.gate.assignedBy && ` · ${t('runs.gateAssignedBy', 'by {{who}}', { who: step.gate.assignedBy })}`}
+                  </div>
+                )}
                 {step.gate?.decision && (
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
                     {gateDecisionLabel(t, step.gate.decision, step.gate.decidedBy)}

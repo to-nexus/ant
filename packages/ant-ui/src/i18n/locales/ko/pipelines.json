@@ -124,7 +124,12 @@
     "clarifyKind": "스텝의 질문",
     "clarifyFileHint": "파일은 답변에 담을 수 없습니다 — 프로젝트 아티팩트에 업로드하고 그 경로를 답하세요.",
     "clarifyBrowse": "파일 경로 넣기",
-    "clarifyBrowseTitle": "아티팩트 경로 넣기 — {{project}}"
+    "clarifyBrowseTitle": "아티팩트 경로 넣기 — {{project}}",
+    "assignedToYou": "나에게 배정됨",
+    "assignedTo": "{{who}}에게 배정됨",
+    "assignedAnyone": "승인자 누구나",
+    "reassign": "재지정",
+    "candidateYou": "{{who}} (나)"
   },
   "editor": {
     "pollNow": "지금 폴링",
@@ -406,7 +411,9 @@
     "retries": "재시도 {{n}}회",
     "unresolvedTemplates": "빈 값으로 치환됨: {{refs}} — 디스패치 시점에 참조한 스텝의 출력이 없었습니다",
     "openArtifact": "편집기에서 열기",
-    "loadError": "실행 이력을 불러오지 못했습니다."
+    "loadError": "실행 이력을 불러오지 못했습니다.",
+    "gateAssignedTo": "{{who}}에게 배정",
+    "gateAssignedBy": "{{who}} 지정"
   },
   "danger": {
     "title": "이 파이프라인 삭제",
@@ -422,7 +429,8 @@
     "approved": "승인됨",
     "rejected": "거절됨",
     "timeoutApprove": "{{when}} 자동 승인",
-    "timeoutReject": "{{when}} 자동 거절"
+    "timeoutReject": "{{when}} 자동 거절",
+    "assignedTo": "{{who}}에게 배정"
   },
   "time": {
     "inMinutes": "{{n}}분 후",

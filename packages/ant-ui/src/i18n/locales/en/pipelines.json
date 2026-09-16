@@ -124,7 +124,12 @@
     "clarifyKind": "Question from a step",
     "clarifyFileHint": "A file cannot travel in the answer — upload it to the project's artifacts and answer with its path.",
     "clarifyBrowse": "Insert a file path",
-    "clarifyBrowseTitle": "Insert artifact paths — {{project}}"
+    "clarifyBrowseTitle": "Insert artifact paths — {{project}}",
+    "assignedToYou": "Assigned to you",
+    "assignedTo": "Assigned to {{who}}",
+    "assignedAnyone": "Any approver",
+    "reassign": "Reassign",
+    "candidateYou": "{{who}} (you)"
   },
   "editor": {
     "pollNow": "Poll now",
@@ -406,7 +411,9 @@
     "retries": "{{n}} retr(y/ies)",
     "unresolvedTemplates": "Rendered empty: {{refs}} — the referenced step had no output at dispatch",
     "openArtifact": "Open in the editor",
-    "loadError": "Could not load the run history."
+    "loadError": "Could not load the run history.",
+    "gateAssignedTo": "assigned to {{who}}",
+    "gateAssignedBy": "by {{who}}"
   },
   "danger": {
     "title": "Delete this pipeline",
@@ -422,7 +429,8 @@
     "approved": "Approved",
     "rejected": "Rejected",
     "timeoutApprove": "auto-approves {{when}}",
-    "timeoutReject": "auto-rejects {{when}}"
+    "timeoutReject": "auto-rejects {{when}}",
+    "assignedTo": "assigned to {{who}}"
   },
   "time": {
     "inMinutes": "in {{n}}m",
