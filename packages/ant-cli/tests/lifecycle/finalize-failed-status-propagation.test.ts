@@ -115,7 +115,7 @@ function makeDeps(appendCancelledSpy: Mock<AppendChoicePresentedCancelled>) {
       })),
     },
     chatService: {
-      clearAllTurnBuffers: vi.fn(async () => {}),
+      clearTurnBuffersForJob: vi.fn(async () => {}),
       appendChoicePresentedCancelled: appendCancelledSpy,
     },
     workspaceService: {},
@@ -262,7 +262,10 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
   // a clarify-paused non-task job keeps its buffers (the awaiting surface
   // must outlive the job).
 
-  it('finalStatus="completed" → turn buffers are swept feature-wide', async () => {
+  // JOB-scoped, not feature-wide: two universal jobs of one project (pipeline
+  // runs) may be live at once, and a feature-wide sweep on one job's end
+  // blanked the other's in-flight streaming.
+  it('finalStatus="completed" → the finished job\'s turn buffers are swept (job-scoped)', async () => {
     const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({ emitted: true, cardId: 'card-4' }));
     const tracker = makeTracker('sweep-clean');
     const deps = makeDeps(appendCancelledSpy);
@@ -270,8 +273,8 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
 
     await jcm.cleanupJobState('sweep-clean', 'proj-test', 'feat-test', undefined, 'code', undefined, 'completed');
 
-    expect(deps.chatService.clearAllTurnBuffers).toHaveBeenCalledTimes(1);
-    expect(deps.chatService.clearAllTurnBuffers).toHaveBeenCalledWith('proj-test', 'feat-test', expect.anything());
+    expect(deps.chatService.clearTurnBuffersForJob).toHaveBeenCalledTimes(1);
+    expect(deps.chatService.clearTurnBuffersForJob).toHaveBeenCalledWith('proj-test', 'feat-test', 'sweep-clean', expect.anything());
   });
 
   it('interruption present → turn buffers are swept (existing backstop preserved)', async () => {
@@ -290,7 +293,7 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
       'failed',
     );
 
-    expect(deps.chatService.clearAllTurnBuffers).toHaveBeenCalledTimes(1);
+    expect(deps.chatService.clearTurnBuffersForJob).toHaveBeenCalledTimes(1);
   });
 
   it('clarify-paused non-task job → NO sweep and NO cancelled card', async () => {
@@ -322,7 +325,7 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
       'paused' as any,
     );
 
-    expect(deps.chatService.clearAllTurnBuffers).not.toHaveBeenCalled();
+    expect(deps.chatService.clearTurnBuffersForJob).not.toHaveBeenCalled();
     expect(appendCancelledSpy).not.toHaveBeenCalled();
   });
 });

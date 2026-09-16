@@ -17,6 +17,7 @@ import {
   buildClarifyToolResultTurn,
 } from '../../src/agents/common/clarify/toolResume';
 import { UNIVERSAL_CLARIFY_BUDGET } from '../../src/core/customAgents/universalToolPolicy';
+import { universalSessionStem, parseUniversalSessionStem } from '../../src/core/utils/sessionPaths';
 import {
   activateCustomJob,
   _resetActiveCustomJobForTests,
@@ -258,6 +259,17 @@ describe('conversation channels — a pipeline run is a memory boundary', () => 
     ['an interactive turn stays on the shared channel', undefined, 'session:main'],
   ] as const)('%s', (_label, runId, expected) => {
     expect(universalConversationChannel(runId)).toBe(expected);
+  });
+
+  // The FILE is run-scoped too (`{job}@{runId}.json`): stem and channel derive
+  // from the same runId, so the stamp inside the file is a self-check.
+  it.each([
+    ['pipeline run', 'sandy-mending-cabin'],
+    ['interactive turn', undefined],
+  ] as const)('the session stem and the stored channel agree on the run — %s', (_label, runId) => {
+    const parsed = parseUniversalSessionStem(universalSessionStem('ops', runId));
+    expect(parsed.pipelineRunId).toBe(runId);
+    expect(universalConversationChannel(runId)).toBe(universalConversationChannel(parsed.pipelineRunId));
   });
 
   it('a run seal carries the interactive channel and drops finished runs', () => {

@@ -283,6 +283,55 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
       expect(read(path.join(process.cwd(), file))).toMatch(/writeSessionBounded\(/);
     });
   }
+
+  /**
+   * The two read-modify-write writers CAS on the bytes they read. The per-job
+   * mutex lives on the adapter INSTANCE, so a worker seal and an API-side
+   * finalize on the same file were never ordered against each other — the
+   * guard is what turns that race into a typed conflict (re-applied once)
+   * instead of a silent clobber. Adoption is judged on the CALL: every
+   * `writeSessionBounded(` in these two files carries `expect`.
+   */
+  const CAS_WRITERS = [
+    'src/periphery/adapters/session/FileSessionAdapter.ts',
+    'src/periphery/adapters/http/routes/helpers/sessionCleanup.ts',
+  ];
+  for (const file of CAS_WRITERS) {
+    it(`${file} guards every session write on the bytes it read`, () => {
+      const src = read(path.join(process.cwd(), file));
+      const calls = src.match(/writeSessionBounded\(/g) ?? [];
+      expect(calls.length).toBeGreaterThan(0);
+      // The adapter forwards `opts` from save(); the helper passes the literal.
+      expect(src).toMatch(/expect:\s*(?:guard|sessionWriteGuardOf\()/);
+      expect(src).toMatch(/SessionWriteConflictError/);
+    });
+  }
+
+  /**
+   * A universal session path has ONE owner: `getUniversalSessionFilePath`
+   * (run-aware — `{job}@{runId}.json` under a pipeline run). The runner and
+   * every out-of-process reader compose it there; a caller on the shared
+   * `getSessionFilePath` or a hand-rolled `@` stem would read a file the
+   * child never wrote.
+   */
+  it('universal session paths are composed by the run-aware owner only', () => {
+    const OWNER = 'src/core/utils/sessionPaths.ts';
+    const UNIVERSAL_DIRS = [
+      'src/agents/universal/',
+      'src/infrastructure/scheduling/',
+      'src/periphery/adapters/http/routes/helpers/universalRuns.ts',
+      'src/periphery/adapters/http/express/managers/JobCleanupManager.ts',
+    ];
+    const inScope = ALL_TS.filter((p) => UNIVERSAL_DIRS.some((d) => rel(p).startsWith(d)));
+    expect(inScope.length).toBeGreaterThan(0);
+    const offenders = inScope.filter((p) => {
+      const src = read(p);
+      return /\bgetSessionFilePath\(/.test(src) || /\$\{[^}]+\}@\$\{/.test(src) || /'@'/.test(src);
+    }).map(rel);
+    expect(offenders).toEqual([]);
+    const definitions = ALL_TS.filter((p) => /export function (?:universalSessionStem|getUniversalSessionFilePath|parseUniversalSessionStem)\(/.test(read(p))).map(rel);
+    expect(definitions).toEqual([OWNER]);
+  });
 });
 
 /**

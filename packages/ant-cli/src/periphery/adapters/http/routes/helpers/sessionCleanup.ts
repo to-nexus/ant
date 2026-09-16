@@ -15,7 +15,11 @@ import {
   DEBUG_SUBDIRS,
   readSessionTextContained,
 } from '../../../../../core/utils/sessionPaths';
-import { writeSessionBounded } from '../../../../../core/session/stateBudget';
+import {
+  writeSessionBounded,
+  sessionWriteGuardOf,
+  SessionWriteConflictError,
+} from '../../../../../core/session/stateBudget';
 import { removeRunFromSessionFile } from '../../../../../core/session/runRemoval';
 import { wouldRegressRun } from '../../../../../core/utils/sessionRunGuard';
 import { deleteArchivedState } from '../../../../../core/session/archive';
@@ -69,6 +73,8 @@ export async function appendRunToSessionFile(
     runExtras?: Partial<SessionRun>;
     /** Seed a schema-valid skeleton when the file is missing. */
     createIfMissing?: { project: string; feature: string };
+    /** Internal: set on the one re-run after a CAS conflict. */
+    retriedOnConflict?: boolean;
   },
 ): Promise<void> {
   let session: any;
@@ -164,11 +170,24 @@ export async function appendRunToSessionFile(
   session.runs = runs;
   session.updatedAt = completedAt;
   try {
-    await writeSessionBounded(sessionPath, session);
+    // CAS on the bytes read above (null = the file was absent): a worker seal
+    // landing between our read and this write is a typed conflict, re-run as a
+    // fresh read-modify-write exactly once — never a silent clobber of either.
+    await writeSessionBounded(sessionPath, session, { expect: sessionWriteGuardOf(raw) });
     logger.debug(
       `[SessionCleanup] Appended kanban snapshot for jobId=${jobId} (${runJob})`,
     );
   } catch (err) {
+    if (err instanceof SessionWriteConflictError && !opts?.retriedOnConflict) {
+      logger.info(
+        `[SessionCleanup] Session changed under the snapshot append; re-reading once (jobId=${jobId})`,
+        { component: 'SessionCleanup' },
+      );
+      return appendRunToSessionFile(sessionPath, runJob, jobId, kanbanSnapshot, status, {
+        ...opts,
+        retriedOnConflict: true,
+      });
+    }
     logger.warn(
       `[SessionCleanup] Failed to write session with appended snapshot`,
       { component: 'SessionCleanup' },

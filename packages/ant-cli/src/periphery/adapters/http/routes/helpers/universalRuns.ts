@@ -3,8 +3,9 @@
  * universal container session files.
  *
  * Universal sessions are keyed per (agentId, customJobId) at
- * `{container}/sessions/{agentId}/{customJobId}.json` and owned by the
- * runner (conversation memory). Run history rides the same file's `runs[]`
+ * `{container}/sessions/{agentId}/{customJobId}.json` — or per pipeline run at
+ * `{customJobId}@{runId}.json` — and owned by the runner (conversation
+ * memory). Run history rides the same file's `runs[]`
  * (already part of the Session schema), keyed by the per-run BullMQ jobId —
  * finalize appends via `appendRunToSessionFile`, the helpers below read and
  * locate. Deletion policy is shared with the canonical plane — see
@@ -19,7 +20,7 @@ import type { KanbanService } from '../../services';
 import type { SessionRun } from '../../../../../core/types/session';
 import { sessionWriteGuardOf, type SessionWriteGuard } from '../../../../../core/session/stateBudget';
 import { removeRunFromSessionFile } from '../../../../../core/session/runRemoval';
-import { readSessionTextContained } from '../../../../../core/utils/sessionPaths';
+import { parseUniversalSessionStem, readSessionTextContained } from '../../../../../core/utils/sessionPaths';
 import { readBoundedEntries, type TraversalBudget } from '../../../../../core/customAgents/universalContainer';
 import { logger } from '../../../../../utils/logger';
 
@@ -27,6 +28,8 @@ export interface UniversalSessionFileRef {
   path: string;
   agentId: string;
   customJobId: string;
+  /** Set when the file is a pipeline run's (`{customJobId}@{runId}.json`). */
+  pipelineRunId?: string;
 }
 
 /**
@@ -49,10 +52,12 @@ export async function listUniversalSessionFiles(containerPath: string): Promise<
     if (!agentDir.isDirectory) continue;
     for (const file of readBoundedEntries(path.join(sessionsDir, agentDir.name), budget)) {
       if (!file.isFile || !file.name.endsWith('.json')) continue;
+      const stem = parseUniversalSessionStem(file.name.slice(0, -'.json'.length));
       refs.push({
         path: path.join(sessionsDir, agentDir.name, file.name),
         agentId: agentDir.name,
-        customJobId: file.name.slice(0, -'.json'.length),
+        customJobId: stem.customJobId,
+        ...(stem.pipelineRunId && { pipelineRunId: stem.pipelineRunId }),
       });
     }
   }

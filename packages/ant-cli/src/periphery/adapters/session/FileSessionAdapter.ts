@@ -32,7 +32,12 @@ import {
   JSONL_LINE_MAX_BYTES,
   JsonlLineTooLargeError,
 } from "../../../core/utils/sessionPaths";
-import { writeSessionBounded } from "../../../core/session/stateBudget";
+import {
+  writeSessionBounded,
+  sessionWriteGuardOf,
+  SessionWriteConflictError,
+  type SessionWriteGuard,
+} from "../../../core/session/stateBudget";
 
 
 /**
@@ -254,8 +259,24 @@ export class FileSessionAdapter implements SessionPort {
    * Rejects legacy format (pre-rename files with "turns" field) with an explicit error.
    */
   async load(project: string, feature: string, job: SessionableJobType): Promise<Session> {
+    return (await this.loadGuarded(project, feature, job)).session;
+  }
+
+  /**
+   * `load` plus the CAS guard of the bytes it read — what a read-modify-write
+   * hands to `save({ expect })`. The per-job `FileMutex` below is per adapter
+   * INSTANCE, so it orders nothing across processes (a worker seal vs an
+   * API-side finalize on the same file); the guard is what turns that race
+   * into a typed conflict instead of a silent clobber.
+   */
+  private async loadGuarded(
+    project: string,
+    feature: string,
+    job: SessionableJobType,
+  ): Promise<{ session: Session; guard: SessionWriteGuard }> {
     const sessionPath = this.getSessionPath(project, feature, job);
-    
+    const absent = sessionWriteGuardOf(null);
+
     try {
       // Bound the read on its own descriptor (M-NEW-029): a session grown past
       // the budget must not be materialised and JSON-parsed on the load path.
@@ -263,13 +284,14 @@ export class FileSessionAdapter implements SessionPort {
 
       if (content === null) {
         console.log(`📝 Missing session file detected, creating new session`);
-        return this.createNewSession(project, feature);
+        return { session: this.createNewSession(project, feature), guard: absent };
       }
+      const guard = sessionWriteGuardOf(content);
       if (content.trim() === "") {
         console.log(`📝 Empty session file detected, creating new session`);
-        return this.createNewSession(project, feature);
+        return { session: this.createNewSession(project, feature), guard };
       }
-      
+
       const rawData = JSON.parse(content);
       
       // Reject legacy format (pre-rename "turns" field)
@@ -294,22 +316,25 @@ export class FileSessionAdapter implements SessionPort {
         } catch (unlinkError) {
           // Ignore if file doesn't exist
         }
-        
-        return this.createNewSession(project, feature);
+
+        return { session: this.createNewSession(project, feature), guard: absent };
       }
-      
-      return session;
+
+      return { session, guard };
     } catch (error: any) {
       if (error.code === "ENOENT") {
-        return this.createNewSession(project, feature);
+        return { session: this.createNewSession(project, feature), guard: absent };
       }
-      
+
       if (error instanceof SyntaxError) {
         console.warn(`⚠️  Session file has invalid JSON: ${sessionPath}`);
         console.warn(`Error: ${error.message}`);
-        return this.createNewSession(project, feature);
+        // The unparseable bytes stay on disk until our write replaces them —
+        // guard on them so a concurrent repair is not clobbered either.
+        const current = await readSessionTextBoundedAsync(sessionPath).catch(() => null);
+        return { session: this.createNewSession(project, feature), guard: sessionWriteGuardOf(current) };
       }
-      
+
       throw error;
     }
   }
@@ -332,7 +357,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Save the entire session (atomic write: temp file + rename).
    */
-  async save(session: Session, job: SessionableJobType): Promise<void> {
+  async save(session: Session, job: SessionableJobType, opts?: { expect?: SessionWriteGuard }): Promise<void> {
     await this.ensureDirectory(session.project, session.feature);
     const sessionPath = this.getSessionPath(session.project, session.feature, job);
     
@@ -351,8 +376,8 @@ export class FileSessionAdapter implements SessionPort {
     // The seam sheds first (compaction before failure) and refuses without
     // touching the previous valid file; it also owns the atomic tmp+rename, so
     // there is exactly one copy of that sequence.
-    await writeSessionBounded(sessionPath, session);
-    
+    await writeSessionBounded(sessionPath, session, opts);
+
     if (this.fileTreeUpdate) {
       this.fileTreeUpdate.notifyFileTreeUpdate(this.projectId, this.featureName);
     }
@@ -371,9 +396,13 @@ export class FileSessionAdapter implements SessionPort {
    * call and surface it as a phantom job. Nothing is deleted — the bytes stay
    * on disk for recovery — and the live path continues from a fresh session.
    */
-  private async loadForMutation(project: string, feature: string, job: SessionableJobType): Promise<Session> {
+  private async loadForMutation(
+    project: string,
+    feature: string,
+    job: SessionableJobType,
+  ): Promise<{ session: Session; guard: SessionWriteGuard }> {
     try {
-      return await this.load(project, feature, job);
+      return await this.loadGuarded(project, feature, job);
     } catch (err: any) {
       if (err?.code !== 'SESSION_TOO_LARGE') throw err;
       const sessionPath = this.getSessionPath(project, feature, job);
@@ -388,50 +417,75 @@ export class FileSessionAdapter implements SessionPort {
         console.error(`❌ [Session] Could not set aside oversized session ${sessionPath}:`, renameErr);
         throw err;
       }
-      return this.createNewSession(project, feature);
+      return { session: this.createNewSession(project, feature), guard: sessionWriteGuardOf(null) };
     }
+  }
+
+  /**
+   * One read-modify-write under the per-job mutex, CAS-guarded on the bytes it
+   * read. A concurrent writer from another process (worker seal vs API-side
+   * finalize) surfaces as `SessionWriteConflictError`; the mutation is then
+   * re-applied ONCE on a fresh read — a new RMW, not a re-read inside the
+   * failed one — so both writers' fields land. A second conflict propagates.
+   */
+  private async mutateGuarded(
+    project: string,
+    feature: string,
+    job: SessionableJobType,
+    mutate: (session: Session) => void,
+  ): Promise<void> {
+    const lock = this.getFileLock(job);
+    await lock.runExclusive(async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        const { session, guard } = await this.loadForMutation(project, feature, job);
+        mutate(session);
+        try {
+          await this.save(session, job, { expect: guard });
+          return;
+        } catch (err) {
+          if (!(err instanceof SessionWriteConflictError) || attempt >= 1) throw err;
+          console.warn(`♻️  [Session] Concurrent write landed under a read-modify-write; re-applying once: ${err.sessionPath}`);
+        }
+      }
+    });
   }
 
   /**
    * Add a new run to the session (serialized with per-job lock)
    */
   async addRun(project: string, feature: string, job: SessionableJobType, run: SessionRun): Promise<void> {
-    const lock = this.getFileLock(job);
-    await lock.runExclusive(async () => {
-      const session = await this.loadForMutation(project, feature, job);
-
-      if (!run.timestamp) {
-        run.timestamp = new Date().toISOString();
-      }
+    await this.mutateGuarded(project, feature, job, (session) => {
+      // A fresh copy per attempt: the retry must not inherit a runId computed
+      // against the stale length.
+      const entry: SessionRun = { ...run, timestamp: run.timestamp || new Date().toISOString() };
 
       // Upsert by jobId when the run carries an identity (architect code/design
       // terminal runs). This keeps exactly one run per jobId so the Job-tab
       // restore (`runs.find(r => r.jobId === jobId)`) and the snapshot writer
       // converge on the same entry. Legacy callers that omit `jobId` (planner,
       // design learn) always append, preserving their behavior.
-      const idx = run.jobId ? session.runs.findIndex((r) => r.jobId === run.jobId) : -1;
+      const idx = entry.jobId ? session.runs.findIndex((r) => r.jobId === entry.jobId) : -1;
       if (idx >= 0) {
         const existing = session.runs[idx];
         // Monotonicity guard (shared SSOT): never let an upsert regress an
         // existing run's terminal state / completed count. Merge the I/O
         // fields regardless, but keep the existing snapshot+status when the
         // incoming would be a regression.
-        if (run.kanbanSnapshot && wouldRegressRun(existing, run.status, run.kanbanSnapshot)) {
-          const { kanbanSnapshot: _drop, status: _dropStatus, ...nonRegressing } = run;
+        if (entry.kanbanSnapshot && wouldRegressRun(existing, entry.status, entry.kanbanSnapshot)) {
+          const { kanbanSnapshot: _drop, status: _dropStatus, ...nonRegressing } = entry;
           session.runs[idx] = { ...existing, ...nonRegressing, runId: existing.runId };
         } else {
-          session.runs[idx] = { ...existing, ...run, runId: existing.runId };
+          session.runs[idx] = { ...existing, ...entry, runId: existing.runId };
         }
       } else {
-        if (!run.runId) {
-          run.runId = session.runs.length + 1;
+        if (!entry.runId) {
+          entry.runId = session.runs.length + 1;
         }
-        session.runs.push(run);
+        session.runs.push(entry);
       }
-      await this.save(session, job);
     });
   }
-  
+
   /**
    * Update session artifacts (serialized with per-job lock)
    */
@@ -441,19 +495,16 @@ export class FileSessionAdapter implements SessionPort {
     job: SessionableJobType,
     artifacts: Partial<SessionArtifacts> & { state?: Partial<SessionState> }
   ): Promise<void> {
-    const lock = this.getFileLock(job);
-    await lock.runExclusive(async () => {
-      const session = await this.loadForMutation(project, feature, job);
-      
+    await this.mutateGuarded(project, feature, job, (session) => {
       const { state, ...actualArtifacts } = artifacts as any;
-      
+
       session.artifacts = { ...session.artifacts, ...actualArtifacts };
-      
+
+      // Wholesale replace — which is exactly why the CAS matters here: a stale
+      // writer would otherwise erase whatever `runs[]`/`artifacts` landed since.
       if (state !== undefined) {
         session.state = state;
       }
-      
-      await this.save(session, job);
     });
   }
   

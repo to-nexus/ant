@@ -318,7 +318,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
           lastConnectionReport: state.connectionReport,
         }),
       };
-      await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });
+      await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, state._sessionStem ?? resolved.jobId, { state: sessionState });
       console.log('💾 [Universal:Respond] Session sealed');
     } catch (e) {
       // Over-budget here means this turn's memory was not persisted, so the

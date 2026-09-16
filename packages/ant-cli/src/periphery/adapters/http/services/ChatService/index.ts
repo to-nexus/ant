@@ -642,6 +642,50 @@ export class ChatService {
     featureName: string,
     userContext?: UserContext,
   ): Promise<void> {
+    await this.clearTurnBuffersWhere(projectId, featureName, () => true, userContext);
+  }
+
+  /**
+   * The job-scoped form of the sweep above: clears only the turn the finished
+   * job owns (every `workerScope` of it). A feature-wide sweep on any job's
+   * end blanked a CONCURRENT job's in-flight streaming — two universal jobs of
+   * one project (pipeline runs) may be live at once. The job's turn is the
+   * `seedTurnId` persisted on its status record; the durable `user_turn`
+   * lookup is the second source. Neither resolving degrades to the
+   * feature-wide sweep (the pre-existing behavior), logged.
+   */
+  async clearTurnBuffersForJob(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    userContext?: UserContext,
+  ): Promise<void> {
+    const ctx = userContext ?? this.defaultUserContext;
+    if (!ctx || !this.stateStore) return;
+    let turnId: string | null = null;
+    try {
+      turnId = (await this.stateStore.getJobStatus(jobId))?.turnId ?? null;
+    } catch { /* fall through to the durable lookup */ }
+    if (!turnId) {
+      turnId = await this.findTurnIdForJobWithFallback(projectId, featureName, jobId, ctx).catch(() => null);
+    }
+    if (!turnId) {
+      logger.warn(
+        `clearTurnBuffersForJob: no turn resolves for ${jobId} — sweeping the feature (degraded)`,
+        { component: COMPONENT },
+      );
+      await this.clearTurnBuffersWhere(projectId, featureName, () => true, ctx);
+      return;
+    }
+    await this.clearTurnBuffersWhere(projectId, featureName, (snap) => snap.turnId === turnId, ctx);
+  }
+
+  private async clearTurnBuffersWhere(
+    projectId: string,
+    featureName: string,
+    keep: (snap: { turnId: string; workerScope?: string }) => boolean,
+    userContext?: UserContext,
+  ): Promise<void> {
     const ctx = userContext ?? this.defaultUserContext;
     if (!ctx || !this.stateStore) return;
     const sessionKey = getSessionKey(projectId, featureName, ctx);
@@ -656,6 +700,7 @@ export class ChatService {
     if (active.length === 0) return;
 
     for (const snap of active) {
+      if (!keep(snap)) continue;
       // `_main_` round-trips as `undefined` over the wire (see
       // `LLMResponseService.workerScopeForLine`), keeping the FE's
       // bufferKey scheme consistent across worker / HTTP emitters.

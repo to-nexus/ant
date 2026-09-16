@@ -328,6 +328,31 @@ describe('POST /jobs/:jobId/resume — universal: the server owns the resume tar
     }));
   });
 
+  // A pipeline step's turn seals into its RUN file (`{job}@{runId}.json`); the
+  // probe re-opens it through the mapping's `universalTurnMeta.runId` — the
+  // same meta the re-dispatch replays — never the shared interactive file.
+  it('a pipeline-dispatched job\'s session probe reads the run stem, not the shared file', async () => {
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author', universalTurnMeta: { runId: 'sandy-mending-cabin' } };
+    writeUniversalSession('agent-builder', 'author@sandy-mending-cabin', { jobId: 'crashed-run' });
+    fakeDeps.chatService.findInterruptedTurn.mockResolvedValueOnce(null);
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(200);
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({ customJobRef: 'agent-builder/author' }));
+  });
+
+  it('a pipeline-dispatched job whose only seal is in the SHARED file has nothing to resume', async () => {
+    makeUniversalProject();
+    jobMapping = { customJobRef: 'agent-builder/author', universalTurnMeta: { runId: 'sandy-mending-cabin' } };
+    writeUniversalSession('agent-builder', 'author', { jobId: 'crashed-run' });
+    fakeDeps.chatService.findInterruptedTurn.mockResolvedValueOnce(null);
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(409);
+    expect((await res.json() as any).code).toBe('universal-resume-no-turn');
+  });
+
   it('resumes the REQUESTED job, not the previous run sealed in state.jobId', async () => {
     // `state.jobId` is written by the end-of-turn seal, so after a crash it
     // names the run BEFORE the interrupted one. Resuming under it re-queued an

@@ -111,7 +111,7 @@ function makeDeps(appendCancelledSpy: Mock<AppendChoicePresentedCancelled>) {
       })),
     },
     chatService: {
-      clearAllTurnBuffers: vi.fn(async () => {}),
+      clearTurnBuffersForJob: vi.fn(async () => {}),
       appendChoicePresentedCancelled: appendCancelledSpy,
     },
     workspaceService: {},

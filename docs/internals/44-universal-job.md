@@ -1654,7 +1654,9 @@ so no surface words a turn resume as continuing a checkpoint.
 
 The request carries **no** definition ref. `resolveUniversalResumeTarget`
 recovers it server-side — the job mapping stamped at enqueue, else the session
-file whose sealed `state.jobId` / `runs[]` names the run — because a
+file whose sealed `state.jobId` / `runs[]` names the run (the `sessions/`
+scanner parses run stems, `{customJobId}@{runId}.json`, so a pipeline step's
+run file is found too) — because a
 client-held ref is the composer's CURRENT selection, which after a reload or an
 agent switch is a different `(agentId, jobId)` pair than the paused job. The
 route is entered by PROJECT TYPE, not by what the body remembered, and resumes
@@ -1668,7 +1670,13 @@ SIGTERM persists the pre-graph turn (the in-graph conversation is unobservable
 break node blindness). `isTurnAlreadyOpened` then keys on the runner's own
 `metadata.jobId` stamp: a sealed turn is CONTINUED, an unsealed one
 (SIGKILL, first turn) is re-dispatched from the recovered directive. Neither
-path duplicates the user's request.
+path duplicates the user's request. Which FILE a turn seals into is decided
+once, by `universalSessionStem(customJobId, pipelineRunId)`: a pipeline step
+seals into its run's file (`{customJobId}@{runId}.json` — a run is a file
+boundary, doc 46 §5b) and the resume probe re-opens the same stem from the
+mapping's `universalTurnMeta.runId`; an interactive turn keeps the shared
+`{customJobId}.json`. The clarify budget follows the file: per run for
+pipeline turns, per shared file for interactive ones.
 
 Refusals are typed (`job-lock-active`, `universal-resume-ref-unresolvable`,
 `universal-resume-no-turn`) and the durable cancelled card carries

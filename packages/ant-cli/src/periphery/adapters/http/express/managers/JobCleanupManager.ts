@@ -9,7 +9,7 @@ import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
-import { getSessionFilePath, getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, getUniversalSessionFilePath } from '../../../../../core/utils/sessionPaths';
 import { writeSessionBounded } from '../../../../../core/session/stateBudget';
 import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../routes/helpers/sessionCleanup';
 import { findUniversalSessionFileByJobId, readUniversalRunOverlay, readUniversalRunExtras } from '../../routes/helpers/universalRuns';
@@ -590,8 +590,8 @@ export class JobCleanupManager {
       sessionData?.state,
     );
 
-    // Backstop for the terminal-turn streaming overlay: sweep every active
-    // TURN_BUFFER for this feature and broadcast empty snapshots so the FE
+    // Backstop for the terminal-turn streaming overlay: clear THIS job's turn
+    // buffers (every worker scope) and broadcast empty snapshots so the FE
     // projector clears its `streamingBuffers` mirror. Runs on interruption
     // (covers the SIGTERM 1.8s race where a parallel worker exits before
     // `LLMResponseService.finalizeMessage(true)` can run) AND on clean
@@ -607,14 +607,15 @@ export class JobCleanupManager {
       (cleanCompletion || (cardInterruption && !suppressedByClarify))
     ) {
       try {
-        await this.deps.chatService.clearAllTurnBuffers(
+        await this.deps.chatService.clearTurnBuffersForJob(
           mapping.projectId,
           mapping.featureName,
+          jobId,
           effectiveUserContext,
         );
       } catch (err) {
         logger.warn(
-          `clearAllTurnBuffers backstop failed`,
+          `clearTurnBuffersForJob backstop failed`,
           { component: 'JobCleanupManager', jobId },
           err,
         );
@@ -703,7 +704,7 @@ export class JobCleanupManager {
    * even after Redis state has expired.
    */
   private async broadcastFinalUpdate(
-    mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext; customJobRef?: string },
+    mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext; customJobRef?: string; pipelineRunId?: string },
     jobType: SessionableJobType,
     userContext: UserContext,
     jobId: string,
@@ -854,7 +855,7 @@ export class JobCleanupManager {
    *   3. neither → warn + skip (pre-stamp jobs; equals prior behavior)
    */
   private async appendUniversalRunSnapshot(
-    mapping: { projectId: string; featureName: string; customJobRef?: string },
+    mapping: { projectId: string; featureName: string; customJobRef?: string; pipelineRunId?: string },
     userContext: UserContext,
     jobId: string,
     kanbanData: KanbanData,
@@ -872,9 +873,13 @@ export class JobCleanupManager {
       return;
     }
     let ref = parseCustomJobRef(mapping.customJobRef);
+    let pipelineRunId = mapping.pipelineRunId;
     if (!ref) {
       const found = await findUniversalSessionFileByJobId(container, jobId);
-      if (found) ref = { agentId: found.agentId, jobId: found.customJobId };
+      if (found) {
+        ref = { agentId: found.agentId, jobId: found.customJobId };
+        pipelineRunId = found.pipelineRunId;
+      }
     }
     if (!ref) {
       logger.warn(
@@ -883,7 +888,9 @@ export class JobCleanupManager {
       );
       return;
     }
-    const sessionPath = getSessionFilePath(container, ref.agentId, ref.jobId);
+    // A pipeline step's run sealed into its RUN file — the overlay/extras and
+    // the run row must land there, not in the shared interactive file.
+    const sessionPath = getUniversalSessionFilePath(container, ref, pipelineRunId);
     // The board handed to us is the synthesized empty non-task one; the run's
     // checklist / token usage live in the sealed session state next to it —
     // and so do the run record's audit fields (hookReport, input summary).

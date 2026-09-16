@@ -597,6 +597,36 @@ S2/S6/S7/S8/S9 + roster ingresses), `tests/pipelines/pipeline-activation.test.ts
 > this contract recommends (the consuming step asks for the person's product
 > through clarify).
 >
+> **A run is a FILE boundary (2026-09-16).** The channel split below was the
+> first half; the second is that every run seals into its OWN session file,
+> `sessions/{agentId}/{customJobId}@{runId}.json`, composed by ONE owner —
+> `getUniversalSessionFilePath(container, ref, runId)` in
+> `core/utils/sessionPaths.ts`, which the runner (from `universalTurnMeta.runId`)
+> and every out-of-process reader (`pipelineRun/seals.ts`, the finalize
+> snapshot, the resume probe, the `sessions/` scanner via
+> `parseUniversalSessionStem`) all call. Two concurrent runs of one definition
+> used to read-modify-write the same `{customJobId}.json` with no guard (the
+> adapter's mutex is per instance), and `carriedSealChannels` keeps at most one
+> run channel — so run B's transcript was deleted by run A's seal, and every
+> scalar seal slot (`verdict`, `lastTurnHooks`, `clarifyRoundsUsed`, the pause
+> markers) was last-writer-wins. Inside a run file the `session:run:{runId}`
+> stamp stays as the in-file label and a self-check (stem and channel derive
+> from the same id); the interactive file keeps `session:main`; the
+> `carriedSealChannels` run branch is reachable only on legacy shared files.
+> The flat `@` sibling (never a `runs/` subdir) is what keeps the one-level
+> `listUniversalSessionFiles` scan, the finalize fallback and DELETE working.
+> Two hardenings ride along: the adapter's `addRun` / `updateArtifacts` and
+> `appendRunToSessionFile` now pass `writeSessionBounded` the CAS guard of the
+> bytes they read and re-apply ONCE on `SessionWriteConflictError` (a fresh
+> read-modify-write, no lock, no re-read inside the failed attempt), and a
+> finished job clears ITS turn's streaming buffers
+> (`ChatService.clearTurnBuffersForJob`, keyed on the status record's
+> `turnId`) rather than sweeping the feature — a concurrent run's live stream
+> survives its sibling's end. Deploy-edge shim (delete after one release): a
+> run parked `awaiting_human` before this landed sealed its dangling
+> `tool_use` into the shared file, so the runner adopts that state once when
+> the run file has no channel and the shared stamp names this run.
+>
 > **A run is a memory boundary (fixed 2026-09-05).** The shared session had a
 > second half: a step job inherited every previous RUN's conversation, so a new
 > case's intake skipped its questions because the answers to a *different* case
@@ -1060,6 +1090,10 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
   `applyResolvedGate`. Two paths = double-applied gates.
 - **Silently ignoring a definition key.** Reserved knobs get an explicit
   "not supported yet" validation error.
+- **Reading or writing a universal session by any path other than
+  `getUniversalSessionFilePath`.** A pipeline step's turn lives in its RUN file
+  (`{customJobId}@{runId}.json`); a caller on the shared `getSessionFilePath`
+  or a hand-rolled `@` stem reads a file the child never wrote (§5b).
 - **Cron parsing in the FE or in `@ant/shared`.** Server-side only
   (`core/pipelines/cron.ts`); the FE round-trips `preview-fires`. A
   presentational describer (`ant-ui Pipelines/cronDescribe.ts`) that

@@ -51,9 +51,9 @@ const JOB_TO_AGENT: Record<string, string> = {
   ask: 'architect',      // ask debug logs go under architect
   plan: 'planner',
   visual: 'creator',
-  // universal session FILES are per-(agentId, jobId) and resolved by the
-  // universal runtime directly via getSessionFilePath — this row exists only
-  // for jobType-keyed naming consumers (getAgentForJobSafe, cleanup).
+  // universal session FILES are per-(agentId, jobId[@runId]) and resolved by
+  // the universal runtime via getUniversalSessionFilePath — this row exists
+  // only for jobType-keyed naming consumers (getAgentForJobSafe, cleanup).
   universal: 'universal',
 };
 
@@ -372,6 +372,47 @@ export class SessionTooLargeError extends Error {
  */
 export function getSessionFilePath(featurePath: string, agent: string, job: string): string {
   return path.join(featurePath, 'sessions', agent, `${job}.json`);
+}
+
+// ============================================
+// Universal Session Files — run-scoped stems
+// ============================================
+
+/**
+ * A universal session file is `{container}/sessions/{agentId}/{stem}.json`,
+ * where the stem is the custom job id for an interactive turn and
+ * `{customJobId}@{pipelineRunId}` for a pipeline-dispatched one. A run is a
+ * FILE boundary (doc 46 §5b): every step of one run shares one file, and two
+ * concurrent runs of the same definition never touch each other's seal.
+ *
+ * Flat sibling, never a subdirectory — the universal run scanner reads exactly
+ * one level below `sessions/`, so a `runs/` folder would hide pipeline jobs
+ * from the job-tab history, the finalize fallback and DELETE. `@` is outside
+ * both id alphabets (`[a-z0-9-]`), so the split is unambiguous.
+ */
+export const UNIVERSAL_RUN_STEM_SEPARATOR = '@';
+const UNIVERSAL_STEM_PART = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function universalSessionStem(customJobId: string, pipelineRunId?: string): string {
+  return pipelineRunId ? `${customJobId}${UNIVERSAL_RUN_STEM_SEPARATOR}${pipelineRunId}` : customJobId;
+}
+
+/** Inverse of {@link universalSessionStem}; a stem that is not a well-formed run stem is a plain job id. */
+export function parseUniversalSessionStem(stem: string): { customJobId: string; pipelineRunId?: string } {
+  const parts = stem.split(UNIVERSAL_RUN_STEM_SEPARATOR);
+  if (parts.length === 2 && UNIVERSAL_STEM_PART.test(parts[0]) && UNIVERSAL_STEM_PART.test(parts[1])) {
+    return { customJobId: parts[0], pipelineRunId: parts[1] };
+  }
+  return { customJobId: stem };
+}
+
+/** The ONE owner of a universal session path — runner and every out-of-process reader compose it here. */
+export function getUniversalSessionFilePath(
+  containerPath: string,
+  ref: { agentId: string; jobId: string },
+  pipelineRunId?: string,
+): string {
+  return getSessionFilePath(containerPath, ref.agentId, universalSessionStem(ref.jobId, pipelineRunId));
 }
 
 /**

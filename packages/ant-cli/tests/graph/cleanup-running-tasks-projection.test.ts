@@ -106,7 +106,7 @@ function makeDeps() {
       getFinalSnapshotKanbanData: vi.fn(async () => ({ todo: [], inProgress: [], completed: [] })),
     },
     chatService: {
-      clearAllTurnBuffers: vi.fn(async () => {}),
+      clearTurnBuffersForJob: vi.fn(async () => {}),
       appendChoicePresentedCancelled: vi.fn(async () => ({ ok: true })),
     },
     // Minimal stubs for fields touched indirectly.

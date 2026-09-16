@@ -1090,7 +1090,7 @@ export function createJobRoutes(deps: {
       // definition ref comes from job-scoped durable records.
       const universalProject = await isUniversalProjectOf(deps.workspaceResolver, userContext, projectId);
       if (universalProject) {
-        const { getSessionFilePath } = await import('../../../../core/utils/sessionPaths');
+        const { getUniversalSessionFilePath } = await import('../../../../core/utils/sessionPaths');
         const { UNIVERSAL_FEATURE } = await import('@ant/shared');
         const { findUniversalSessionFileByJobId } = await import('./helpers/universalRuns');
         let containerPath: string | null = null;
@@ -1126,8 +1126,10 @@ export function createJobRoutes(deps: {
         // durable chat log BEFORE the graph runs, so it survives a kill that
         // sealed nothing — which is why a session file is no longer required
         // to resume (a first-turn crash used to 404 forever here).
-        const universalSessionPath = getSessionFilePath(
-          resolvedUniversal.containerPath, resolvedUniversal.ref.agentId, resolvedUniversal.ref.jobId,
+        // A pipeline step's turn sealed into its RUN file (`turnMeta.runId`),
+        // which the re-dispatch below re-opens through the same meta.
+        const universalSessionPath = getUniversalSessionFilePath(
+          resolvedUniversal.containerPath, resolvedUniversal.ref, target.turnMeta?.runId,
         );
         const hasSession = readSessionTextBounded(universalSessionPath) !== null;
         const interrupted = await deps.chatService?.findInterruptedTurn(

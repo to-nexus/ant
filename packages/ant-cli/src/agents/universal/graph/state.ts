@@ -236,6 +236,12 @@ export interface UniversalGraphState extends ResolvableState {
    */
   _sessionChannel?: string;
   /**
+   * The session FILE stem this turn seals into — `{customJobId}@{runId}` under
+   * a pipeline run, the bare custom job id otherwise. Like `_sessionChannel`,
+   * only restore and seal know it (core/utils/sessionPaths.ts is the owner).
+   */
+  _sessionStem?: string;
+  /**
    * Sibling channels the seal must re-emit unchanged — the session state is
    * replaced wholesale, so an omitted channel is deleted from disk.
    */
@@ -281,6 +287,7 @@ export const UniversalAnnotation = Annotation.Root({
   _approvalGrantTool: Annotation<string | undefined>,
   _approvalPause: Annotation<{ toolUseId: string; toolName: string; argsSummary: string } | undefined>,
   _sessionChannel: Annotation<string | undefined>,
+  _sessionStem: Annotation<string | undefined>,
   _carriedChannels: Annotation<Record<string, ConversationMessage[]> | undefined>,
 } as const);
 
@@ -314,6 +321,8 @@ export function createInitialUniversalState(params: {
   approvalGrantTool?: string;
   /** Stored conversation channel for this turn (run-scoped under a pipeline). */
   sessionChannel?: string;
+  /** Session file stem this turn seals into (run-scoped under a pipeline). */
+  sessionStem?: string;
   /** Sibling channels the seal carries through untouched. */
   carriedChannels?: Record<string, ConversationMessage[]>;
   /** This turn's extension-connection attempts (attended-lane degrade). */
@@ -355,6 +364,7 @@ export function createInitialUniversalState(params: {
     _unattended: params.unattended,
     _approvalGrantTool: params.approvalGrantTool,
     _sessionChannel: params.sessionChannel,
+    _sessionStem: params.sessionStem,
     _carriedChannels: params.carriedChannels,
     connectionReport: params.connectionReport,
   } as unknown as UniversalGraphState;

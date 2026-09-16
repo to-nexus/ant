@@ -27,6 +27,7 @@ import { buildClarifyToolResultTurn, buildToolResultTurn, findDanglingToolUse } 
 import { CLARIFY_TOOL_NAME } from '../../common/clarify/tool';
 import { parseSealedHookLedger, type StopHookCheck, type StopHookLedger } from '../../../core/customAgents/stopHooks';
 import { carriedSealChannels, universalConversationChannel } from '../../../core/customAgents/universalConversation';
+import { universalSessionStem } from '../../../core/utils/sessionPaths';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
 import {
@@ -118,12 +119,29 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   // The stored channel for this turn; the graph works on session:main in
   // memory and the seal maps back (nodes stay channel-blind).
   const sessionChannel = universalConversationChannel(params.pipelineRunId);
+  // The session FILE is run-scoped under a pipeline run (`{job}@{runId}`), so
+  // concurrent runs of one definition never overwrite each other's seal. The
+  // stem and the channel derive from the same runId — the stamp doubles as a
+  // self-check on restore.
+  const sessionStem = universalSessionStem(resolved.jobId, params.pipelineRunId);
   let carriedChannels: Record<string, ConversationMessage[]> = {};
   if (params.deps.session) {
     try {
-      const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
-      const sessionState = session?.state;
+      const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, sessionStem);
+      let sessionState = session?.state;
       carriedChannels = carriedSealChannels<ConversationMessage>(sessionState?.conversations, sessionChannel);
+      // Deploy-edge shim (2026-09-16, delete after one release): a run parked
+      // `awaiting_human` before run-scoped files shipped sealed its dangling
+      // clarify/approval tool_use into the SHARED file. Adopt that state once
+      // when the run file has nothing, keyed on the channel stamp; the run
+      // file holds only its own channel, so nothing is carried from there.
+      if (params.pipelineRunId && !sessionState?.conversations?.[sessionChannel]?.length) {
+        const shared = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
+        if (shared?.state?.conversationChannel === sessionChannel) {
+          sessionState = shared.state;
+          carriedChannels = {};
+        }
+      }
       if (sessionState?.conversations?.[sessionChannel]?.length) {
         restoredConversations = { [CONV_KEYS.SESSION_MAIN]: sessionState.conversations[sessionChannel] };
         restoredTokenUsage = sessionState.tokenUsage;
@@ -260,7 +278,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     main.push(buildRuntimeFailureNote(error) as ConversationMessage);
     if (!params.deps.session) return;
     try {
-      await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
+      await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, sessionStem, {
         state: sealTurnState(),
       });
     } catch { /* best-effort — the thrown error stays the loud signal */ }
@@ -346,6 +364,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     unattended: unattendedLane,
     approvalGrantTool: params.approvalGrantTool,
     sessionChannel,
+    sessionStem,
     carriedChannels,
     connectionReport: connectionReport.length > 0 ? connectionReport : undefined,
   });
@@ -377,7 +396,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     handleInterruption: async (reason: string) => {
       if (!params.deps.session) return;
       try {
-        await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
+        await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, sessionStem, {
           state: sealTurnState(),
         });
         console.log(`💾 [Universal] Turn sealed on shutdown (reason: ${reason})`);
@@ -415,7 +434,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         // NOTE: this save can never contain a dangling clarify tool_use —
         // `main` is the pre-graph history; only respond's seal persists one.
         main.push(buildRuntimeFailureNote(error) as ConversationMessage);
-        await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
+        await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, sessionStem, {
           state: sealTurnState(),
         });
       } catch (e) {

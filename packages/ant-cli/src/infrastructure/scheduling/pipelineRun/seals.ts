@@ -11,7 +11,7 @@ import {
   type StepOutputRecord,
 } from '@ant/shared';
 import type { PipelineOwner } from '../../../core/ports/scheduler';
-import { getSessionFilePath, readSessionTextBounded } from '../../../core/utils/sessionPaths';
+import { getUniversalSessionFilePath, readSessionTextBounded } from '../../../core/utils/sessionPaths';
 import { selectSealedConversation } from '../../../core/customAgents/universalConversation';
 import {
   resolveUniversalExecuteContext,
@@ -35,7 +35,8 @@ export async function detectClarifySeal(
     const ref = parseCustomJobRef(stepDef.customJobRef);
     if (!ref) return null;
     const containerPath = deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
-    const sessionPath = getSessionFilePath(containerPath, ref.agentId, ref.jobId);
+    // Run-scoped file: every step of THIS run seals here, no other run does.
+    const sessionPath = getUniversalSessionFilePath(containerPath, ref, runId);
     // Bound the read on its own descriptor (M-NEW-029): the scheduler hot path
     // must not sync-read and JSON-parse an unbounded session. Oversize throws
     // and is swallowed by the catch below (treated as "no clarify seal").
@@ -68,7 +69,7 @@ export async function detectApprovalSeal(
     const ref = parseCustomJobRef(stepDef.customJobRef);
     if (!ref) return null;
     const containerPath = deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
-    const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
+    const raw = readSessionTextBounded(getUniversalSessionFilePath(containerPath, ref, runId));
     if (raw === null) return null;
     const session = JSON.parse(raw);
     const state = session?.state ?? session;
@@ -116,12 +117,12 @@ export async function captureStepOutput(
   // The seal's own write evidence — set only when the seal is this job's.
   let sealedArtifacts: string[] | undefined;
   try {
-    const raw = readSessionTextBounded(getSessionFilePath(containerPath, ref.agentId, ref.jobId));
+    const raw = readSessionTextBounded(getUniversalSessionFilePath(containerPath, ref, runId));
     if (raw !== null) {
       const session = JSON.parse(raw);
       const state = session?.state ?? session;
-      // The seal must belong to THIS step's job — the session is shared by
-      // every step of the same customJobRef.
+      // The seal must belong to THIS step's job — the run file is shared by
+      // every step of the same run.
       if (state?.jobId === jobId) {
         if (typeof state.verdict === 'string') sealVerdict = state.verdict;
         const main = selectSealedConversation<any>(state);

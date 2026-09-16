@@ -19,7 +19,7 @@
  *       `events_cleared` SSE.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -937,6 +937,38 @@ describe('ChatService — Phase 9 emission contract', () => {
       .map((l) => JSON.parse(l))
       .find((p: any) => p.type === 'choice_resolved');
     expect(persisted?.answer).toEqual({ primary: 'A', notes: 'looks good' });
+  });
+
+  // JOB-scoped clear — two universal jobs of one project (pipeline runs) may
+  // be live at once; a feature-wide sweep on one job's end blanked the other's
+  // in-flight streaming. The job's turn is its status record's seedTurnId.
+  it('clearTurnBuffersForJob clears only the finished job\'s turn (every scope) and leaves a concurrent job\'s buffers', async () => {
+    store.activeBuffers = [
+      { turnId: 't-a', workerScope: '_main_', text: 'a', thinking: '', pendingCards: {} },
+      { turnId: 't-a', workerScope: 'worker-1#task-1', text: 'a1', thinking: '', pendingCards: {} },
+      { turnId: 't-b', workerScope: '_main_', text: 'b', thinking: '', pendingCards: {} },
+    ] as any;
+    store.jobStatus.set('job-a', { jobId: 'job-a', turnId: 't-a' });
+    const cleared = vi.spyOn(store, 'clearTurnBuffer');
+
+    await service.clearTurnBuffersForJob('proj', 'feat-a', 'job-a', USER_CTX);
+
+    expect(cleared).toHaveBeenCalledTimes(2);
+    expect(cleared.mock.calls.every((c: unknown[]) => c[1] === 't-a')).toBe(true);
+    const snapshots = broadcastDataByType(store, 'streaming_buffer_snapshot');
+    expect(snapshots.map((s: any) => s.turnId)).toEqual(['t-a', 't-a']);
+  });
+
+  it('clearTurnBuffersForJob degrades to the feature-wide sweep when no turn resolves for the job', async () => {
+    store.activeBuffers = [
+      { turnId: 't-a', workerScope: '_main_', text: 'a', thinking: '', pendingCards: {} },
+      { turnId: 't-b', workerScope: '_main_', text: 'b', thinking: '', pendingCards: {} },
+    ] as any;
+    const cleared = vi.spyOn(store, 'clearTurnBuffer');
+
+    await service.clearTurnBuffersForJob('proj', 'feat-a', 'unknown-job', USER_CTX);
+
+    expect(cleared.mock.calls.map((c: unknown[]) => c[1]).sort()).toEqual(['t-a', 't-b']);
   });
 
   it('findTurnIdForJob resolves via feature.jsonl user_turn lines', async () => {

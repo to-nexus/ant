@@ -238,8 +238,11 @@ describe('clarify funnel', () => {
     const coordinator = coordinatorAll();
     expect(coordinator).not.toMatch(/awaiting_clarify_unsupported/);
     expect(coordinator).toMatch(/enterAwaitingClarify/);
-    // Session seal read goes through the sessionPaths SSOT, never a hand-rolled join.
-    expect(coordinator).toMatch(/getSessionFilePath\(/);
+    // Session seal read goes through the RUN-aware sessionPaths owner — every
+    // step of a run seals into `{job}@{runId}.json`, so the coordinator never
+    // composes the shared (interactive) path, let alone a hand-rolled join.
+    expect(coordinator).toMatch(/getUniversalSessionFilePath\(/);
+    expect(coordinator).not.toMatch(/\bgetSessionFilePath\(/);
     expect(coordinator).not.toMatch(/join\(containerPath, 'sessions'/);
   });
 

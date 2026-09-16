@@ -28,6 +28,9 @@ import {
   JSONL_MAX_LINES,
   JSONL_COMPACT_TRIGGER_BYTES,
   JSONL_LINE_MAX_BYTES,
+  universalSessionStem,
+  parseUniversalSessionStem,
+  getUniversalSessionFilePath,
 } from '../../src/core/utils/sessionPaths';
 import { FileSessionAdapter, setChatLogLockProvider } from '../../src/periphery/adapters/session/FileSessionAdapter';
 import {
@@ -93,6 +96,35 @@ describe('isReservedSessionRelativePath (M-NEW-029)', () => {
 });
 
 // ── (d) JSONL logs are read through a descriptor-bound newest-window ────────
+/**
+ * A universal session file is run-scoped under a pipeline run — every step of
+ * one run seals into `{customJobId}@{runId}.json`, so two concurrent runs of
+ * one definition never overwrite each other's seal (doc 46 §5b). The stem has
+ * ONE owner; `@` sits outside both id alphabets, so the split is unambiguous
+ * and a malformed stem fails SAFE to the shared file.
+ */
+describe('universal session stem — a run is a file boundary', () => {
+  it.each([
+    ['interactive turn → the bare job id', 'author', undefined, 'author'],
+    ['pipeline run → job@run', 'author', 'sandy-mending-cabin', 'author@sandy-mending-cabin'],
+  ] as const)('%s', (_label, job, runId, expected) => {
+    expect(universalSessionStem(job, runId)).toBe(expected);
+    expect(getUniversalSessionFilePath('/c', { agentId: 'ops', jobId: job }, runId)).toBe(
+      path.join('/c', 'sessions', 'ops', `${expected}.json`),
+    );
+  });
+
+  it.each([
+    ['round-trips a run stem', 'author@sandy-mending-cabin', { customJobId: 'author', pipelineRunId: 'sandy-mending-cabin' }],
+    ['a bare job id has no run', 'author', { customJobId: 'author' }],
+    ['two separators are not a run stem (fail-safe to shared)', 'a@b@c', { customJobId: 'a@b@c' }],
+    ['a non-id run segment is not a run stem', 'author@Run_1', { customJobId: 'author@Run_1' }],
+    ['an empty run segment is not a run stem', 'author@', { customJobId: 'author@' }],
+  ] as const)('parseUniversalSessionStem — %s', (_label, stem, expected) => {
+    expect(parseUniversalSessionStem(stem)).toEqual(expected);
+  });
+});
+
 describe('readJsonlTailBounded (M-NEW-029)', () => {
   const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'jsonl-'));
   afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -484,6 +516,82 @@ describe('session write budget (M-NEW-029)', () => {
     await expect(writeSessionBounded(target, { v: 99 }, { expect: guard }))
       .rejects.toBeInstanceOf(SessionWriteConflictError);
     expect(JSON.parse(fs.readFileSync(target, 'utf-8'))).toEqual({ v: 2 });
+  });
+
+  /**
+   * The adapter's two read-modify-write mutators pass the guard of the bytes
+   * they loaded. The per-job mutex is per adapter INSTANCE, so a worker seal
+   * and an API-side finalize on the same file were never ordered; with the
+   * guard, the loser re-applies its mutation on a fresh read exactly once,
+   * so BOTH writers' fields land instead of the last one erasing the first.
+   */
+  describe('FileSessionAdapter read-modify-write is CAS-guarded', () => {
+    const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'ant-adapter-cas-'));
+    afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+    // The adapter's `job` is an opaque file stem for universal (`author`,
+    // `author@run`), not a canonical job type — hence the cast.
+    const JOB = 'author' as unknown as Parameters<FileSessionAdapter['addRun']>[2];
+    const seed = (name: string) => {
+      const featurePath = path.join(root, name);
+      fs.mkdirSync(featurePath, { recursive: true });
+      const adapter = new FileSessionAdapter(featurePath, 'ops', 'p', 'universal');
+      const target = path.join(featurePath, 'sessions', 'ops', 'author.json');
+      return { adapter, target };
+    };
+    const foreignRun = (runId: number) => ({
+      runId, job: 'universal', timestamp: new Date().toISOString(), input: { type: 'text', summary: 'elsewhere' }, output: {},
+    });
+    /** Land a foreign write between the adapter's load and its save, `times` times. */
+    const interpose = (adapter: FileSessionAdapter, target: string, times: number) => {
+      const orig = (adapter as any).loadForMutation.bind(adapter);
+      let left = times;
+      (adapter as any).loadForMutation = async (...a: unknown[]) => {
+        const loaded = await orig(...a);
+        if (left > 0) {
+          left -= 1;
+          const disk = JSON.parse(fs.readFileSync(target, 'utf-8'));
+          disk.runs.push(foreignRun(90 + left));
+          fs.writeFileSync(target, JSON.stringify(disk), 'utf-8');
+        }
+        return loaded;
+      };
+    };
+
+    it('updateArtifacts survives one concurrent overwrite — both writers\' fields land', async () => {
+      const { adapter, target } = seed('one');
+      await adapter.updateArtifacts('p', 'universal', JOB, { state: { conversations: {} } });
+      interpose(adapter, target, 1);
+
+      await adapter.updateArtifacts('p', 'universal', JOB, { state: { customJobRef: 'ops/author' } as any });
+
+      const disk = JSON.parse(fs.readFileSync(target, 'utf-8'));
+      expect(disk.state).toEqual({ customJobRef: 'ops/author' });
+      expect(disk.runs.map((r: any) => r.runId)).toEqual([90]);
+    });
+
+    it('addRun re-applies once and keeps the foreign run', async () => {
+      const { adapter, target } = seed('two');
+      await adapter.updateArtifacts('p', 'universal', JOB, { state: {} });
+      interpose(adapter, target, 1);
+
+      await adapter.addRun('p', 'universal', JOB, { ...foreignRun(1), jobId: 'mine', input: { type: 'text', summary: 'mine' } } as any);
+
+      const disk = JSON.parse(fs.readFileSync(target, 'utf-8'));
+      expect(disk.runs.map((r: any) => r.input.summary).sort()).toEqual(['elsewhere', 'mine']);
+    });
+
+    it('a second consecutive conflict propagates as the typed error, never a clobber', async () => {
+      const { adapter, target } = seed('three');
+      await adapter.updateArtifacts('p', 'universal', JOB, { state: {} });
+      interpose(adapter, target, 2);
+
+      await expect(adapter.updateArtifacts('p', 'universal', JOB, { state: { customJobRef: 'ops/x' } as any }))
+        .rejects.toBeInstanceOf(SessionWriteConflictError);
+      const disk = JSON.parse(fs.readFileSync(target, 'utf-8'));
+      expect(disk.state).toEqual({});
+      expect(disk.runs).toHaveLength(2);
+    });
   });
 });
 

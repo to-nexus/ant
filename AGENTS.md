@@ -594,6 +594,8 @@ rg -n "createSelfApiScopeGuard\(" packages/ant-cli/src                          
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0
 # The resume verdict has ONE owner; nobody re-derives it from the job type.
 rg -n "isMidGraphResumable\(" packages/ant-cli/src packages/ant-shared/src          # Expected: 2 (the definition + its ONE call, inside resumeGranularityOf)
+# A universal session path has ONE run-aware owner (getUniversalSessionFilePath); the runtime and the scheduler never compose the shared one.
+rg -n "\bgetSessionFilePath\(" packages/ant-cli/src/infrastructure/scheduling packages/ant-cli/src/agents/universal  # Expected: 0
 ```
 
 Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-container,universal-tool-policy,universal-prompt-injection,universal-checklist,universal-turn-context,universal-mcp-runtime,mcp-credential-store}.test.ts`,
