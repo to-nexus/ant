@@ -36,9 +36,11 @@ import {
   API_TOOL_PREFIX,
   MCP_TOOL_PREFIX,
   DEFINITION_ICON_NAMES,
+  isSelfApiConfig,
   type CustomAgentIconRef,
   type CustomAgentScope,
   type CustomAgentSummary,
+  type CustomApiConnectionSummary,
   type CustomJobSummary,
 } from '@ant/shared';
 import {
@@ -273,7 +275,26 @@ function listAgentDirs(root: string): string[] {
     .sort();
 }
 
-function summarizeJobs(agentDir: string): CustomJobSummary[] {
+/**
+ * Catalog projection of a merged `apis` map — `self` / `allow` meta only.
+ * A baseUrl or a header never leaves the definition through discovery.
+ */
+function summarizeApis(
+  agentApis: Record<string, RestApiServerConfig> | undefined,
+  jobApis: Record<string, RestApiServerConfig> | undefined,
+): Record<string, CustomApiConnectionSummary> {
+  const out: Record<string, CustomApiConnectionSummary> = {};
+  for (const [name, cfg] of Object.entries({ ...(agentApis ?? {}), ...(jobApis ?? {}) })) {
+    if (!cfg || typeof cfg !== 'object') continue;
+    out[name] = {
+      ...(isSelfApiConfig(cfg) && { self: true }),
+      ...(Array.isArray(cfg.allow) && { allow: cfg.allow.filter((l): l is string => typeof l === 'string') }),
+    };
+  }
+  return out;
+}
+
+function summarizeJobs(agentDir: string, agentApis?: Record<string, RestApiServerConfig>): CustomJobSummary[] {
   const jobsDir = path.join(agentDir, 'jobs');
   if (!fs.existsSync(jobsDir)) return [];
   const summaries: CustomJobSummary[] = [];
@@ -291,6 +312,7 @@ function summarizeJobs(agentDir: string): CustomJobSummary[] {
           id: job.id,
           name: job.name ?? job.id,
           ...(intents ? { intents } : {}),
+          apis: summarizeApis(agentApis, job.apis),
         });
       }
     } catch {
@@ -340,7 +362,7 @@ export function discoverAgents(scopeRoots: CustomAgentScopeRoot[]): CustomAgentS
           // flips it per caller after resolving the org ACL + live role.
           readonly: aclGoverned ? true : readonly,
           icon: detectDefinitionIcon(agentDir),
-          jobs: summarizeJobs(agentDir),
+          jobs: summarizeJobs(agentDir, agent.apis),
         });
       } catch {
         // lenient — see summarizeJobs

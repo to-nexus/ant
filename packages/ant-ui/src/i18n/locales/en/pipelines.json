@@ -319,6 +319,7 @@
     "cron": "Scheduled",
     "manual": "Manual",
     "event": "Chained",
+    "fetch": "Fetched",
     "running": "Running",
     "awaiting": "Awaiting input",
     "completed": "Completed",

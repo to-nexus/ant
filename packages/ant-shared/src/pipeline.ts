@@ -94,6 +94,67 @@ export interface PipelineRunCompletedTrigger {
   statuses?: PipelineRunStatus[];
 }
 
+/**
+ * Pull trigger: a DETERMINISTIC poller in the control plane (no LLM) calls a
+ * declared REST connection (`apis`) of one of the activator's jobs, selects
+ * the items of the response, and fires ONE run per not-yet-claimed item —
+ * the external system is the queue, Ant keeps the claim ledger. Items are
+ * admitted only while the activation has room under `concurrency`; an item
+ * left unclaimed is simply seen again by the next poll (backpressure).
+ * `request` is trigger CONFIGURATION (the cron expression's sibling) — it is
+ * never rendered to a model and never becomes a tool, so the `apis` doctrine
+ * ("connectivity only, knowledge is prose") is intact.
+ */
+export interface PipelineFetchTrigger {
+  /** `{agentId}/{jobId}` whose merged `apis` map names the connection — resolved in the ACTIVATOR's scope roots. */
+  customJobRef: string;
+  /** Connection name in that job's `apis` map. `self: true` entries are refused. */
+  api: string;
+  request: {
+    /** A poll READS: GET, or POST for search endpoints. Writes are refused. */
+    method: 'GET' | 'POST';
+    /** `/`-rooted, relative to the connection's baseUrl (same containment as the tools). */
+    path: string;
+    query?: Record<string, string | number | boolean>;
+    /** POST only — JSON body. */
+    body?: Record<string, unknown>;
+  };
+  /** Item-path from the response root to the item array (`$.issues`). */
+  items: string;
+  /** Item-path from each item to its dedupe key (`$.key`) — the run's case label. */
+  key: string;
+  /** name → item-path; each becomes `{{trigger.item.<name>}}` (directive-only). */
+  fields?: Record<string, string>;
+  /** Poll interval, `{n}m|h|d` (server floor `PipelineCaps.minFetchIntervalMinutes`). */
+  every: string;
+  /** Items admitted per poll (1..`PipelineCaps.maxFetchBatch`). Default 1. */
+  batch?: number;
+}
+
+/** The claimed case a fetch-fired run carries — frozen at fire (`{{trigger.item.*}}`). */
+export interface PipelineRunItem {
+  key: string;
+  fields?: Record<string, string>;
+}
+
+/**
+ * Last poll of a fetch activation — TELEMETRY the view surfaces, never a
+ * judgment input (the poller re-derives everything from the source + ledger).
+ */
+export interface PipelineFetchStatus {
+  polledAt: string;
+  /** Items the response carried (after key filtering). */
+  seen: number;
+  /** Items not yet claimed at poll time. */
+  unclaimed: number;
+  /** Items handed to the fire path by this poll. */
+  enqueued: number;
+  /** Set when the poll ended without a usable response (status line / policy reason — never a body). */
+  error?: string;
+  /** True for a Poll-now. */
+  manual?: boolean;
+}
+
 export interface JobStepDef {
   id: string;
   /** `{agentId}/{jobId}` — cross-agent chaining is the point. */
@@ -172,9 +233,10 @@ export interface PipelineDef {
    * Trigger block. ABSENT = manual-only: the pipeline fires only via run-now
    * (the same fire path — activation, overlap and caps gates unchanged).
    * When declared it must carry at least one trigger; `schedule` and
-   * `runCompleted` may coexist.
+   * `runCompleted` may coexist. `fetch` stands alone in v1 — a polled
+   * activation fires per item, never on a clock or a chain.
    */
-  on?: { schedule?: PipelineScheduleTrigger; runCompleted?: PipelineRunCompletedTrigger };
+  on?: { schedule?: PipelineScheduleTrigger; runCompleted?: PipelineRunCompletedTrigger; fetch?: PipelineFetchTrigger };
   /**
    * Live runs one ACTIVATION may hold at once — the per-activation slot cap the
    * fire path reserves against, whatever fired (run-now, cron, chain, fetch).
@@ -439,6 +501,85 @@ export interface ActivePipelineInfo {
   liveRuns: PipelineLiveRun[];
 }
 
+// ============================================
+// Item paths — the fetch trigger's selector grammar (dependency-free)
+// ============================================
+
+/**
+ * One step of an item-path: `$` root, `.name` / `['name']` member, `[n]`
+ * index. No wildcards, filters or recursion — a poller must be deterministic
+ * and cheap, and anything richer belongs to the source's own query language.
+ */
+export type ItemPathSegment = { kind: 'key'; name: string } | { kind: 'index'; index: number };
+
+export const ITEM_PATH_MAX_SEGMENTS = 16;
+
+/**
+ * Parse an item-path. Returns the segments, or a plain error message (the
+ * `cronShapeError` precedent — the validator prefixes `where`).
+ */
+export function parseItemPath(raw: unknown, where: string): ItemPathSegment[] | string {
+  if (typeof raw !== 'string' || raw.trim().length === 0) return `${where} must be an item-path string starting with "$" (e.g. "$.issues")`;
+  const src = raw.trim();
+  if (src[0] !== '$') return `${where} must start with "$" (got: ${src})`;
+  const out: ItemPathSegment[] = [];
+  let i = 1;
+  while (i < src.length) {
+    if (out.length >= ITEM_PATH_MAX_SEGMENTS) return `${where} has more than ${ITEM_PATH_MAX_SEGMENTS} segments`;
+    const ch = src[i];
+    if (ch === '.') {
+      const m = /^[A-Za-z_$][A-Za-z0-9_$-]*/.exec(src.slice(i + 1));
+      if (!m) return `${where}: expected a member name after "." at position ${i}`;
+      out.push({ kind: 'key', name: m[0] });
+      i += 1 + m[0].length;
+      continue;
+    }
+    if (ch === '[') {
+      const rest = src.slice(i);
+      const idx = /^\[(0|[1-9]\d{0,5})\]/.exec(rest);
+      if (idx) {
+        out.push({ kind: 'index', index: Number(idx[1]) });
+        i += idx[0].length;
+        continue;
+      }
+      const quoted = /^\[(?:'([^'\\]*)'|"([^"\\]*)")\]/.exec(rest);
+      if (quoted) {
+        const name = quoted[1] ?? quoted[2] ?? '';
+        if (name.length === 0) return `${where}: a bracketed member name must not be empty`;
+        out.push({ kind: 'key', name });
+        i += quoted[0].length;
+        continue;
+      }
+      return `${where}: expected [n] or ['name'] at position ${i}`;
+    }
+    return `${where}: unexpected "${ch}" at position ${i} (segments are ".name", "['name']" or "[n]")`;
+  }
+  return out;
+}
+
+/** Template variable prefix of the claimed item's key and declared fields. */
+export const PIPELINE_ITEM_TEMPLATE_PREFIX = 'trigger.item.';
+export const PIPELINE_ITEM_KEY_TEMPLATE_VAR = `${PIPELINE_ITEM_TEMPLATE_PREFIX}key`;
+/** Declared field name — a lowerCamel identifier; `key` is reserved for the dedupe key. */
+export const PIPELINE_FETCH_FIELD_NAME_PATTERN = /^[a-z][a-zA-Z0-9]{0,31}$/;
+export const PIPELINE_FETCH_MAX_FIELDS = 20;
+/** Item keys outside this shape are skipped by the poller (Redis key + path-segment hygiene). */
+export const PIPELINE_ITEM_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
+/** Items a poll inspects at most (the source's page size is the real bound). */
+export const PIPELINE_FETCH_ITEMS_SCAN_MAX = 200;
+/** A captured item field is cut here — it rides a directive, not a record store. */
+export const PIPELINE_ITEM_FIELD_MAX_CHARS = 2_000;
+
+/**
+ * The `{{trigger.item.*}}` vocabulary a fetch trigger declares — the ONE
+ * derivation the validator, the renderer and the editor's token picker share.
+ * Empty when the definition has no fetch trigger.
+ */
+export function fetchItemTemplateVars(fetch: PipelineFetchTrigger | undefined | null): string[] {
+  if (!fetch) return [];
+  return [PIPELINE_ITEM_KEY_TEMPLATE_VAR, ...Object.keys(fetch.fields ?? {}).map((f) => `${PIPELINE_ITEM_TEMPLATE_PREFIX}${f}`)];
+}
+
 /**
  * Directive template whitelist — the ONLY substitutions the dispatcher
  * performs. No general template engine, no user code path. Step-output
@@ -510,6 +651,10 @@ export interface PipelineCaps {
   /** Ceiling for a definition's `concurrency` — live runs per ACTIVATION. */
   maxLiveRunsPerActivation: number;
   maxApproversPerGate: number;
+  /** Floor for `on.fetch.every` — one authenticated egress per activation per interval. */
+  minFetchIntervalMinutes: number;
+  /** Ceiling for `on.fetch.batch` — items admitted per poll. */
+  maxFetchBatch: number;
 }
 
 export const DEFAULT_PIPELINE_CAPS: PipelineCaps = {
@@ -519,6 +664,8 @@ export const DEFAULT_PIPELINE_CAPS: PipelineCaps = {
   maxConcurrentRuns: 3,
   maxLiveRunsPerActivation: 3,
   maxApproversPerGate: 10,
+  minFetchIntervalMinutes: 1,
+  maxFetchBatch: 5,
 };
 
 /**
@@ -558,7 +705,8 @@ export type PipelineStepStatus =
   | 'skipped'
   | 'cancelled';
 
-export type PipelineFiredBy = 'cron' | 'manual' | 'event';
+/** `fetch` = one claimed item of a polled source (`RunRecord.item` carries which). */
+export type PipelineFiredBy = 'cron' | 'manual' | 'event' | 'fetch';
 
 export type GateDecision = 'approved' | 'rejected' | 'expired_approve' | 'expired_reject';
 
@@ -668,6 +816,8 @@ export interface RunRecord {
   prevSuccessFireEpoch?: number;
   /** runCompleted chain position (0/absent = not event-fired). Bounded by MAX_CHAIN_DEPTH. */
   chainDepth?: number;
+  /** The claimed case of a fetch-fired run (`firedBy: 'fetch'` ⇔ present). */
+  item?: PipelineRunItem;
 }
 
 /** One approval-gate decision on a terminal run's summary line — the org observer's "who opened this gate" channel. */
@@ -692,6 +842,8 @@ export interface PipelineRunSummary {
   error?: string;
   /** Approval-gate decisions (approval STEPS only — tool gates stay off the summary). */
   gates?: PipelineRunGateSummary[];
+  /** The run's case label (fetch-fired runs) — the history row's `runLabel`. */
+  itemKey?: string;
 }
 
 /**
@@ -715,7 +867,7 @@ export function summarizeRunGates(steps: readonly StepRecord[]): PipelineRunGate
  * changes shape between "live" and "sealed". Optional keys ride only when set.
  */
 export function runSummaryOf(
-  run: Pick<RunRecord, 'runId' | 'pipelineId' | 'projectId' | 'status' | 'firedBy' | 'fireEpoch' | 'startedAt' | 'endedAt' | 'error' | 'steps'>,
+  run: Pick<RunRecord, 'runId' | 'pipelineId' | 'projectId' | 'status' | 'firedBy' | 'fireEpoch' | 'startedAt' | 'endedAt' | 'error' | 'steps' | 'item'>,
 ): PipelineRunSummary {
   const gates = summarizeRunGates(run.steps);
   return {
@@ -729,6 +881,7 @@ export function runSummaryOf(
     ...(run.endedAt && { endedAt: run.endedAt }),
     ...(run.error && { error: run.error }),
     ...(gates.length > 0 && { gates }),
+    ...(run.item && { itemKey: run.item.key }),
   };
 }
 
@@ -765,7 +918,7 @@ export type PipelineLiveState = 'waiting' | 'running' | 'awaiting_human';
 
 /** The ONE derivation of a live-run view from a run record; `null` for a terminal run. */
 export function liveRunOf(
-  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps'>,
+  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps' | 'item'>,
 ): PipelineLiveRun | null {
   if (run.status !== 'running' && run.status !== 'awaiting_human') return null;
   return {
@@ -773,6 +926,7 @@ export function liveRunOf(
     status: run.status,
     startedAt: run.startedAt,
     firedBy: run.firedBy,
+    ...(run.item && { itemKey: run.item.key }),
     currentStepIds: run.steps.filter((s) => PIPELINE_LIVE_STEP_STATUSES.has(s.status)).map((s) => s.stepId),
   };
 }
@@ -784,7 +938,7 @@ export function liveRunOf(
  */
 export function foldLiveRun(
   liveRuns: readonly PipelineLiveRun[],
-  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps'>,
+  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps' | 'item'>,
 ): PipelineLiveRun[] {
   const rest = liveRuns.filter((r) => r.runId !== run.runId);
   const live = liveRunOf(run);
@@ -803,6 +957,7 @@ export interface PipelineRunEvent {
   ts: string;
   event:
     | 'fired'
+    | 'item_claimed'
     | 'step_dispatched'
     | 'step_completed'
     | 'step_retry'
@@ -837,11 +992,13 @@ export interface PipelineActivationView {
   mine: boolean;
   /** `broken` is sticky; otherwise `activationStateOf(liveRuns)`. */
   state: PipelineLiveState | 'broken';
-  /** Server-computed next fire; absent on `broken`. */
+  /** Server-computed next fire (fetch: last poll + `every`); absent on `broken`. */
   nextFireAt?: string;
   /** Every live run of this activation, newest first. */
   liveRuns: PipelineLiveRun[];
   lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
+  /** Fetch activations only — the last poll's telemetry. */
+  lastPoll?: PipelineFetchStatus;
   /** Per-gate approver roster — org-visible by design (who opens which gate is never hidden). */
   approvers?: Record<string, string[]>;
 }
@@ -853,6 +1010,8 @@ export interface PipelineListEntry {
   /** Absent = manual-only (no schedule trigger). */
   cron?: string;
   tz?: string;
+  /** Fetch trigger's poll interval (`{n}m|h|d`); absent otherwise. */
+  every?: string;
   stepCount: number;
   /** Which scope root resolved this definition (closest wins on id collision). */
   scope: PipelineScope;
@@ -918,6 +1077,16 @@ const RESERVED_DEF_KEYS: Record<string, string> = {
   projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
+const ON_KEYS = ['schedule', 'runCompleted', 'fetch'];
+const FETCH_KEYS = ['customJobRef', 'api', 'request', 'items', 'key', 'fields', 'every', 'batch'];
+const FETCH_REQUEST_KEYS = ['method', 'path', 'query', 'body'];
+/** Schedule-only knobs an author may reach for on a poll — say why they do not apply. */
+const FETCH_RESERVED_KEYS: Record<string, string> = {
+  overlap: '"overlap" does not apply to on.fetch — a poll admits items only while the activation has room under "concurrency"; unclaimed items are seen again next poll',
+  onMissed: '"onMissed" does not apply to on.fetch — a missed poll misses nothing; the next poll sees the same unclaimed items',
+  cron: '"cron" belongs to on.schedule — a fetch trigger polls "every" interval',
+  concurrency: '"concurrency" is a pipeline-level key (live runs per activation), not a fetch knob',
+};
 const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout', 'onMissingVerdict'];
 const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', 'timeout', 'remindAfter'];
 /** Author-visible knobs that exist in the design but not in v1 — reject loudly, never ignore. */
@@ -975,14 +1144,52 @@ interface StepOutputRef {
   field: string;
 }
 
-function templateVarErrors(directive: string, stepId: string, stepRefs?: StepOutputRef[]): string[] {
+/**
+ * Static-variable judgement shared by directives and pins. `itemVars` is the
+ * fetch trigger's `{{trigger.item.*}}` vocabulary (`fetchItemTemplateVars`) —
+ * null when the definition has no fetch trigger, so an item reference names
+ * a trigger that does not exist. Returns null when the name is accepted.
+ */
+function staticVarError(name: string, itemVars: string[] | null, allowFields: boolean): string | null {
+  if ((PIPELINE_TEMPLATE_VARS as readonly string[]).includes(name)) {
+    if (itemVars !== null && name.startsWith('run.prevSuccess.')) {
+      return `"{{${name}}}" is not defined on a fetch pipeline — runs are per item, there is no previous-run watermark`;
+    }
+    return null;
+  }
+  if (name.startsWith(PIPELINE_ITEM_TEMPLATE_PREFIX)) {
+    if (itemVars === null) return `"{{${name}}}" needs an on.fetch trigger — there is no item without one`;
+    if (!itemVars.includes(name)) {
+      return `unknown item field "{{${name}}}" (declared: ${itemVars.map((v) => `{{${v}}}`).join(', ')} — add it under on.fetch.fields)`;
+    }
+    if (!allowFields && name !== PIPELINE_ITEM_KEY_TEMPLATE_VAR) {
+      return `"{{${name}}}" is not allowed in a context pin — item fields are source-controlled text; only {{${PIPELINE_ITEM_KEY_TEMPLATE_VAR}}} may name a path`;
+    }
+    return null;
+  }
+  return `unknown template variable "{{${name}}}"`;
+}
+
+function allowedStaticVarsHint(itemVars: string[] | null, pin: boolean): string {
+  const names = [
+    ...(PIPELINE_TEMPLATE_VARS as readonly string[]).filter((v) => itemVars === null || !v.startsWith('run.prevSuccess.')),
+    ...(itemVars ?? []).filter((v) => !pin || v === PIPELINE_ITEM_KEY_TEMPLATE_VAR),
+  ];
+  return names.map((v) => `{{${v}}}`).join(', ');
+}
+
+function templateVarErrors(directive: string, stepId: string, itemVars: string[] | null, stepRefs?: StepOutputRef[]): string[] {
   const errors: string[] = [];
   const re = /\{\{\s*([^}]*?)\s*\}\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(directive)) !== null) {
     const name = m[1];
-    if ((PIPELINE_TEMPLATE_VARS as readonly string[]).includes(name)) continue;
-    if (name.startsWith('steps.')) {
+    if (!name.startsWith('steps.')) {
+      const err = staticVarError(name, itemVars, true);
+      if (err) errors.push(`step "${stepId}": ${err}${err.startsWith('unknown template') ? ` (allowed: ${allowedStaticVarsHint(itemVars, false)})` : ''}`);
+      continue;
+    }
+    {
       const ref = /^steps\.([a-z0-9-]+)\.([a-zA-Z]+)$/.exec(name);
       if (!ref) {
         errors.push(`step "${stepId}": template variable "{{${name}}}" must be "steps.<stepId>.<field>" (fields: ${PIPELINE_STEP_OUTPUT_FIELDS.join(', ')})`);
@@ -993,8 +1200,6 @@ function templateVarErrors(directive: string, stepId: string, stepRefs?: StepOut
       } else if (stepRefs) {
         stepRefs.push({ fromStepId: stepId, refStepId: ref[1], field: ref[2] });
       }
-    } else {
-      errors.push(`step "${stepId}": unknown template variable "{{${name}}}" (allowed: ${PIPELINE_TEMPLATE_VARS.map((v) => `{{${v}}}`).join(', ')})`);
     }
   }
   return errors;
@@ -1002,21 +1207,106 @@ function templateVarErrors(directive: string, stepId: string, stepRefs?: StepOut
 
 /**
  * Context-pin template check: pins accept the STATIC whitelist only
- * ({{trigger.*}} / {{run.*}}). Step-output refs are directive-only — a pin is
- * expanded once at dispatch, so it cannot carry another step's output.
+ * ({{trigger.*}} / {{run.*}}, plus {{trigger.item.key}} on a fetch pipeline —
+ * never a declared item FIELD, which is source-controlled text and must not
+ * name a path). Step-output refs are directive-only — a pin is expanded once
+ * at dispatch, so it cannot carry another step's output.
  */
-function pinTemplateErrors(pin: string, stepId: string): string[] {
+function pinTemplateErrors(pin: string, stepId: string, itemVars: string[] | null): string[] {
   const errors: string[] = [];
   const re = /\{\{\s*([^}]*?)\s*\}\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(pin)) !== null) {
     const name = m[1];
-    if ((PIPELINE_TEMPLATE_VARS as readonly string[]).includes(name)) continue;
-    errors.push(
-      name.startsWith('steps.')
-        ? `step "${stepId}": context pin "{{${name}}}" — step-output references are not allowed in context pins (pin the upstream intent's hooks.stop glob instead)`
-        : `step "${stepId}": unknown template variable "{{${name}}}" in context pin (allowed: ${PIPELINE_TEMPLATE_VARS.map((v) => `{{${v}}}`).join(', ')})`,
-    );
+    if (name.startsWith('steps.')) {
+      errors.push(`step "${stepId}": context pin "{{${name}}}" — step-output references are not allowed in context pins (pin the upstream intent's hooks.stop glob instead)`);
+      continue;
+    }
+    const err = staticVarError(name, itemVars, false);
+    if (err) {
+      errors.push(
+        err.startsWith('unknown template')
+          ? `step "${stepId}": ${err} in context pin (allowed: ${allowedStaticVarsHint(itemVars, true)})`
+          : `step "${stepId}": ${err}`,
+      );
+    }
+  }
+  return errors;
+}
+
+/** Fetch-trigger shape rules — plain messages, `on.fetch.` prefixed. */
+function fetchTriggerErrors(raw: unknown, caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'>): string[] {
+  if (!isPlainObject(raw)) return ['on.fetch must be a mapping { customJobRef, api, request, items, key, every, fields?, batch? }'];
+  const errors: string[] = [];
+  errors.push(...unknownKeyErrors(raw, FETCH_KEYS, 'on.fetch', FETCH_RESERVED_KEYS));
+  if (typeof raw.customJobRef !== 'string' || parseCustomJobRef(raw.customJobRef) === null) {
+    errors.push(`on.fetch.customJobRef must be "{agentId}/{jobId}" — the job whose apis map names the connection (got: ${String(raw.customJobRef)})`);
+  }
+  if (typeof raw.api !== 'string' || !isValidCustomId(raw.api)) {
+    errors.push(`on.fetch.api must be a connection name from that job's apis map (${STEP_ID_HINT})`);
+  }
+  if (!isPlainObject(raw.request)) {
+    errors.push('on.fetch.request must be a mapping { method, path, query?, body? }');
+  } else {
+    const req = raw.request;
+    errors.push(...unknownKeyErrors(req, FETCH_REQUEST_KEYS, 'on.fetch.request'));
+    const method = typeof req.method === 'string' ? req.method.toUpperCase() : undefined;
+    if (method !== 'GET' && method !== 'POST') {
+      errors.push(
+        method !== undefined && ['PUT', 'PATCH', 'DELETE'].includes(method)
+          ? `on.fetch.request.method "${method}" is a write — a poll reads; use GET, or POST for a search endpoint`
+          : `on.fetch.request.method must be "GET" or "POST" (got: ${String(req.method)})`,
+      );
+    }
+    if (typeof req.path !== 'string' || !/^\/(?!\/)/.test(req.path) || req.path.includes('\\') || /\s/.test(req.path)) {
+      errors.push(`on.fetch.request.path must be a /-rooted path relative to the connection's baseUrl, no whitespace (got: ${String(req.path)})`);
+    }
+    if (req.query !== undefined) {
+      if (!isPlainObject(req.query) || Object.values(req.query).some((v) => !['string', 'number', 'boolean'].includes(typeof v))) {
+        errors.push('on.fetch.request.query must be a mapping of string/number/boolean values');
+      }
+    }
+    if (req.body !== undefined) {
+      if (!isPlainObject(req.body)) {
+        errors.push('on.fetch.request.body must be a mapping (JSON object)');
+      } else if (method === 'GET') {
+        errors.push('on.fetch.request.body is not allowed with GET — use query, or POST for a search endpoint');
+      }
+    }
+  }
+  const items = parseItemPath(raw.items, 'on.fetch.items');
+  if (typeof items === 'string') errors.push(items);
+  const key = parseItemPath(raw.key, 'on.fetch.key');
+  if (typeof key === 'string') errors.push(key);
+  if (raw.fields !== undefined) {
+    if (!isPlainObject(raw.fields)) {
+      errors.push('on.fetch.fields must be a mapping of name → item-path');
+    } else {
+      const names = Object.keys(raw.fields);
+      if (names.length > PIPELINE_FETCH_MAX_FIELDS) {
+        errors.push(`on.fetch.fields: at most ${PIPELINE_FETCH_MAX_FIELDS} fields (got: ${names.length})`);
+      }
+      for (const name of names) {
+        if (name === 'key') {
+          errors.push('on.fetch.fields: "key" is reserved — {{trigger.item.key}} is the dedupe key declared by on.fetch.key');
+        } else if (!PIPELINE_FETCH_FIELD_NAME_PATTERN.test(name)) {
+          errors.push(`on.fetch.fields: field name "${name}" must be a lowerCamel identifier (letters and digits, up to 32 characters)`);
+        }
+        const fieldPath = parseItemPath(raw.fields[name], `on.fetch.fields.${name}`);
+        if (typeof fieldPath === 'string') errors.push(fieldPath);
+      }
+    }
+  }
+  const everyMs = parsePipelineDuration(raw.every as string);
+  if (everyMs === null) {
+    errors.push('on.fetch.every must be a duration like "5m", "1h", "1d"');
+  } else if (everyMs < caps.minFetchIntervalMinutes * 60_000) {
+    errors.push(`on.fetch.every must be at least ${caps.minFetchIntervalMinutes}m`);
+  }
+  if (raw.batch !== undefined) {
+    if (typeof raw.batch !== 'number' || !Number.isInteger(raw.batch) || raw.batch < 1 || raw.batch > caps.maxFetchBatch) {
+      errors.push(`on.fetch.batch must be an integer from 1 to ${caps.maxFetchBatch} (items admitted per poll; got: ${String(raw.batch)})`);
+    }
   }
   return errors;
 }
@@ -1057,7 +1347,7 @@ function isAcyclic(steps: Array<{ id: string; needs?: string[] }>): boolean {
  */
 export function validatePipelineDef(
   raw: unknown,
-  caps: Pick<PipelineCaps, 'maxStepsPerPipeline' | 'maxLiveRunsPerActivation'> = DEFAULT_PIPELINE_CAPS,
+  caps: Pick<PipelineCaps, 'maxStepsPerPipeline' | 'maxLiveRunsPerActivation' | 'minFetchIntervalMinutes' | 'maxFetchBatch'> = DEFAULT_PIPELINE_CAPS,
 ): string[] {
   if (!isPlainObject(raw)) return ['pipeline definition must be a mapping (YAML object)'];
   const errors: string[] = [];
@@ -1081,12 +1371,24 @@ export function validatePipelineDef(
   }
 
   // Trigger — absent `on` = manual-only (run-now is the only fire source).
+  // `itemVars` is the fetch trigger's template vocabulary (null = no fetch).
+  let itemVars: string[] | null = null;
   if (raw.on !== undefined && !isPlainObject(raw.on)) {
     errors.push('on must be a mapping of triggers (omit "on" entirely for a manual-only pipeline)');
   } else if (raw.on !== undefined && isPlainObject(raw.on)) {
-    errors.push(...unknownKeyErrors(raw.on, ['schedule', 'runCompleted'], 'on'));
-    if (raw.on.schedule === undefined && raw.on.runCompleted === undefined) {
-      errors.push('on must declare at least one trigger — "schedule" and/or "runCompleted" (omit "on" entirely for a manual-only pipeline)');
+    errors.push(...unknownKeyErrors(raw.on, ON_KEYS, 'on'));
+    if (raw.on.schedule === undefined && raw.on.runCompleted === undefined && raw.on.fetch === undefined) {
+      errors.push('on must declare at least one trigger — "schedule", "runCompleted" or "fetch" (omit "on" entirely for a manual-only pipeline)');
+    }
+    if (raw.on.fetch !== undefined) {
+      if (raw.on.schedule !== undefined || raw.on.runCompleted !== undefined) {
+        errors.push('on.fetch stands alone — a polled pipeline fires per item, not on a schedule or a chain (remove "schedule" / "runCompleted")');
+      }
+      errors.push(...fetchTriggerErrors(raw.on.fetch, caps));
+      if (isPlainObject(raw.on.fetch)) {
+        const fields = isPlainObject(raw.on.fetch.fields) ? (raw.on.fetch.fields as Record<string, string>) : undefined;
+        itemVars = fetchItemTemplateVars({ fields } as PipelineFetchTrigger);
+      }
     }
     if (raw.on.schedule !== undefined) {
       if (!isPlainObject(raw.on.schedule)) {
@@ -1246,7 +1548,7 @@ export function validatePipelineDef(
           // time is the only place the author sees why (M-NEW-029).
           errors.push(`step "${stepId}": directive must be at most ${DIRECTIVE_MAX_CHARS} characters`);
         } else {
-          errors.push(...templateVarErrors(rawStep.directive, stepId, stepOutputRefs));
+          errors.push(...templateVarErrors(rawStep.directive, stepId, itemVars, stepOutputRefs));
         }
       }
       if (rawStep.intent !== undefined) {
@@ -1299,7 +1601,7 @@ export function validatePipelineDef(
           // structural glob check runs on a placeholder-substituted copy.
           for (const pin of rawStep.context as string[]) {
             const raw = pin.trim();
-            errors.push(...pinTemplateErrors(raw, stepId));
+            errors.push(...pinTemplateErrors(raw, stepId, itemVars));
             const v = raw.replace(/\{\{\s*[^}]*?\s*\}\}/g, 'x');
             if (!v.includes('*')) continue;
             const globErr = validateArtifactGlob(v, `step "${stepId}": context`);
@@ -1420,9 +1722,16 @@ export interface PipelineCatalogIntent {
   /** Intent-level clarify knob (`infer.md` frontmatter) — the entry-channel advisory only; the job/agent default is not carried. */
   clarify?: boolean;
 }
+/** One declared REST connection as the catalog projects it — `self`/`allow` meta only, never baseUrl or headers. */
+export interface PipelineCatalogApi {
+  self?: boolean;
+  allow?: string[];
+}
 export interface PipelineCatalogJob {
   id: string;
   intents?: PipelineCatalogIntent[];
+  /** Merged agent ∪ job `apis` names (job wins). `undefined` = the definition failed lenient parsing. */
+  apis?: Record<string, PipelineCatalogApi>;
 }
 export interface PipelineCatalogAgent {
   id: string;
@@ -1453,7 +1762,7 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
     return { intent: job.intents.find((i) => i.id === step.intent), unknown: false };
   };
 
-  def.steps.forEach((step, index) => {
+  def.steps.forEach((step) => {
     if (!isApprovalStep(step)) {
       const ref = parseCustomJobRef(step.customJobRef);
       if (ref !== null) {
@@ -1483,6 +1792,35 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
         }
       }
     }
+  });
+
+  // The fetch trigger's connection: the named job must exist in the caller's
+  // catalog and declare the connection as an EXTERNAL api (a self entry
+  // targets this Ant server — polling it is not a case source). The allow
+  // rules are judged server-side with the executor's own matcher.
+  const fetch = def.on?.fetch;
+  if (fetch) {
+    const ref = parseCustomJobRef(fetch.customJobRef);
+    const agent = ref ? agentById.get(ref.agentId) : undefined;
+    const job = ref ? agent?.jobs.find((j) => j.id === ref.jobId) : undefined;
+    if (ref && agent === undefined) {
+      errors.push(`on.fetch: agent "${ref.agentId}" is not in your agent catalog — ${remedy}`);
+    } else if (ref && job === undefined) {
+      errors.push(`on.fetch: agent "${ref.agentId}" has no job "${ref.jobId}" — ${remedy}, or fix its definition in Agent Settings`);
+    } else if (job?.apis !== undefined) {
+      const api = job.apis[fetch.api];
+      if (api === undefined) {
+        const names = Object.keys(job.apis);
+        errors.push(
+          `on.fetch: job "${fetch.customJobRef}" declares no API connection "${fetch.api}"${names.length > 0 ? ` (declared: ${names.join(', ')})` : ' (its apis map is empty)'}`,
+        );
+      } else if (api.self) {
+        errors.push(`on.fetch: connection "${fetch.api}" is a self entry (this Ant server) — a poll needs an external API with a baseUrl`);
+      }
+    }
+  }
+
+  def.steps.forEach((step, index) => {
 
     // A verdict edge must be statically satisfiable: at least one DIRECT need
     // pins an intent that declares the named outcome. EVERY member of an
@@ -1707,7 +2045,9 @@ export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: Pi
         code: 'entry-no-case-channel',
         stepId: step.id,
         field: 'directive',
-        message: `step "${step.id}" is the run's entry and has no channel to learn its case: it pins nothing, its directive carries no run-known value, and intent "${step.intent}" declares clarify: false — the step will proceed on defaults and seal a case nobody supplied; enable clarify on the intent (Agent Builder), or pin the case's artifacts`,
+        message: def.on?.fetch
+          ? `step "${step.id}" is the run's entry and never reads the claimed item: its directive carries no {{trigger.item.*}} value and intent "${step.intent}" declares clarify: false — the step will proceed on defaults and seal a case nobody supplied; reference {{${PIPELINE_ITEM_KEY_TEMPLATE_VAR}}} (and declared fields) in the directive`
+          : `step "${step.id}" is the run's entry and has no channel to learn its case: it pins nothing, its directive carries no run-known value, and intent "${step.intent}" declares clarify: false — the step will proceed on defaults and seal a case nobody supplied; enable clarify on the intent (Agent Builder), or pin the case's artifacts`,
       });
     }
   }

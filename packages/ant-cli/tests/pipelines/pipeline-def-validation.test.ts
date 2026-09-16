@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisoryItems, collectPipelineCatalogAdvisoryItems, collectPipelineAdvisoryItems, resolvePipelineAdvisories, defaultStepDirective, PIPELINE_DEF_VERSION, PIPELINE_ADVISORY_CODES, DIRECTIVE_MAX_CHARS } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, validatePipelineCatalogBinding, collectPipelineDefAdvisoryItems, collectPipelineCatalogAdvisoryItems, collectPipelineAdvisoryItems, resolvePipelineAdvisories, defaultStepDirective, PIPELINE_DEF_VERSION, PIPELINE_ADVISORY_CODES, DIRECTIVE_MAX_CHARS, parseItemPath, fetchItemTemplateVars, ITEM_PATH_MAX_SEGMENTS, PIPELINE_FETCH_MAX_FIELDS, DEFAULT_PIPELINE_CAPS } from '@ant/shared';
 import type { PipelineCatalogAgent, PipelineDef } from '@ant/shared';
 
 // The rows below assert on the wire text — `message` is what the CLI prints and the editor renders.
@@ -280,6 +280,135 @@ describe('validatePipelineDef — structural rules', () => {
   });
 });
 
+describe('validatePipelineDef — on.fetch (the pull trigger: a deterministic poller, one run per claimed item)', () => {
+  const fetchOn = (patch: Record<string, unknown> = {}, request: Record<string, unknown> = {}) => ({
+    fetch: {
+      customJobRef: 'ops/tickets',
+      api: 'jira',
+      request: { method: 'GET', path: '/rest/api/3/search', query: { jql: 'status = Open' }, ...request },
+      items: '$.issues',
+      key: '$.key',
+      fields: { summary: '$.fields.summary', channel: "$.fields['customfield_10021'].value" },
+      every: '5m',
+      ...patch,
+    },
+  });
+  const fetchDef = (patch: Record<string, unknown> = {}, request: Record<string, unknown> = {}, steps?: unknown[]) =>
+    baseDef({
+      on: fetchOn(patch, request),
+      steps: steps ?? [{ id: 'handle', customJobRef: 'ops/tickets', intent: 'triage', directive: 'Handle {{trigger.item.key}}: {{trigger.item.summary}} ({{trigger.item.channel}})' }],
+    });
+
+  const valid: Array<[string, Record<string, unknown>]> = [
+    ['GET poll with query, two fields, item vars in the directive', fetchDef()],
+    ['POST search with a body', fetchDef({}, { method: 'POST', body: { jql: 'status = Open', maxResults: 50 } })],
+    ['batch at the cap', fetchDef({ batch: DEFAULT_PIPELINE_CAPS.maxFetchBatch })],
+    ['no fields — only trigger.item.key', fetchDef({ fields: undefined }, {}, [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.item.key}}' }])],
+    ['trigger.item.key in a context pin (the case names its folder)', fetchDef({}, {}, [
+      { id: 'a', customJobRef: 'x/a', directive: '{{trigger.item.key}}', context: ['cases/{{trigger.item.key}}/**'] },
+    ])],
+    ['concurrency alongside fetch (N items in flight)', fetchDef({ }, {}, undefined)],
+    ['every in hours/days', fetchDef({ every: '2h' })],
+  ];
+  it.each(valid)('accepts: %s', (_label, def) => {
+    expect(validatePipelineDef(def)).toEqual([]);
+  });
+
+  const invalid: Array<[string, Record<string, unknown>, RegExp]> = [
+    ['fetch beside a schedule', baseDef({ on: { ...fetchOn(), schedule: { cron: '0 9 * * 1' } } }), /on\.fetch stands alone/],
+    ['fetch beside runCompleted', baseDef({ on: { ...fetchOn(), runCompleted: { pipelineId: 'weekly-ops' } } }), /on\.fetch stands alone/],
+    ['overlap on fetch (schedule knob) is named, not ignored', fetchDef({ overlap: 'skip' }), /"overlap" does not apply to on\.fetch/],
+    ['onMissed on fetch is named, not ignored', fetchDef({ onMissed: 'runOnce' }), /"onMissed" does not apply to on\.fetch/],
+    ['unknown fetch key', fetchDef({ webhook: true }), /on\.fetch: unknown key "webhook"/],
+    ['malformed customJobRef', fetchDef({ customJobRef: 'jira' }), /on\.fetch\.customJobRef must be "\{agentId\}\/\{jobId\}"/],
+    ['bad api name', fetchDef({ api: 'Jira Cloud' }), /on\.fetch\.api must be a connection name/],
+    ['PUT method (a write)', fetchDef({}, { method: 'PUT' }), /"PUT" is a write — a poll reads/],
+    ['DELETE method (a write)', fetchDef({}, { method: 'DELETE' }), /"DELETE" is a write/],
+    ['unknown method', fetchDef({}, { method: 'FETCH' }), /method must be "GET" or "POST"/],
+    ['relative path', fetchDef({}, { path: 'rest/api/3/search' }), /path must be a \/-rooted path/],
+    ['protocol-relative path (//host)', fetchDef({}, { path: '//evil.example/x' }), /path must be a \/-rooted path/],
+    ['path with whitespace', fetchDef({}, { path: '/rest/api 3' }), /path must be a \/-rooted path/],
+    ['GET with a body', fetchDef({}, { body: { jql: 'x' } }), /body is not allowed with GET/],
+    ['query with a nested value', fetchDef({}, { query: { filter: { a: 1 } } }), /query must be a mapping of string\/number\/boolean/],
+    ['body that is not a mapping', fetchDef({}, { method: 'POST', body: 'jql=x' }), /body must be a mapping/],
+    ['items not an item-path', fetchDef({ items: 'issues' }), /on\.fetch\.items must start with "\$"/],
+    ['key with a wildcard', fetchDef({ key: '$.*.key' }), /on\.fetch\.key: expected a member name/],
+    ['field named key (reserved)', fetchDef({ fields: { key: '$.id' } }), /"key" is reserved/],
+    ['field with a bad name', fetchDef({ fields: { 'Ticket Summary': '$.summary' } }), /field name "Ticket Summary" must be a lowerCamel identifier/],
+    ['field with a bad path', fetchDef({ fields: { summary: 'fields.summary' } }), /on\.fetch\.fields\.summary must start with "\$"/],
+    ['too many fields', fetchDef({ fields: Object.fromEntries(Array.from({ length: PIPELINE_FETCH_MAX_FIELDS + 1 }, (_, i) => [`f${i}`, '$.x'])) }), /at most 20 fields/],
+    ['bad every', fetchDef({ every: 'hourly' }), /on\.fetch\.every must be a duration/],
+    ['batch zero', fetchDef({ batch: 0 }), /on\.fetch\.batch must be an integer from 1 to 5/],
+    ['batch over the cap', fetchDef({ batch: 6 }), /on\.fetch\.batch must be an integer from 1 to 5/],
+    // Template vocabulary: the item vars exist only under fetch, fields only where declared, pins take the key only.
+    ['prevSuccess watermark on a fetch pipeline', fetchDef({}, {}, [{ id: 'a', customJobRef: 'x/a', directive: '{{run.prevSuccess.fireDate}}' }]), /not defined on a fetch pipeline/],
+    ['trigger.item without a fetch trigger', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.item.key}}' }] }), /needs an on\.fetch trigger/],
+    ['undeclared item field', fetchDef({}, {}, [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.item.assignee}}' }]), /unknown item field "\{\{trigger\.item\.assignee\}\}" \(declared: \{\{trigger\.item\.key\}\}, \{\{trigger\.item\.summary\}\}, \{\{trigger\.item\.channel\}\}/],
+    ['item FIELD in a context pin (source text must not name a path)', fetchDef({}, {}, [
+      { id: 'a', customJobRef: 'x/a', directive: 'x', context: ['cases/{{trigger.item.summary}}/**'] },
+    ]), /not allowed in a context pin — item fields are source-controlled text/],
+    ['unknown var hint on a fetch pipeline lists item vars, not the watermark', fetchDef({}, {}, [{ id: 'a', customJobRef: 'x/a', directive: '{{today}}' }]), /allowed: \{\{trigger\.fireDate\}\}, \{\{trigger\.fireEpoch\}\}, \{\{run\.id\}\}, \{\{trigger\.item\.key\}\}/],
+  ];
+  it.each(invalid)('rejects: %s', (_label, def, pattern) => {
+    const errors = validatePipelineDef(def);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.join('\n')).toMatch(pattern);
+  });
+
+  it('the every floor is the tenant cap (default 1m; a 5m tenant refuses 1m)', () => {
+    expect(validatePipelineDef(fetchDef({ every: '1m' }))).toEqual([]);
+    expect(validatePipelineDef(fetchDef({ every: '1m' }), { ...DEFAULT_PIPELINE_CAPS, minFetchIntervalMinutes: 5 }).join('\n')).toMatch(/every must be at least 5m/);
+  });
+
+  it('the unknown-var hint on a fetch pipeline omits the watermark and a PIN hint omits item fields', () => {
+    const errors = validatePipelineDef(fetchDef({}, {}, [{ id: 'a', customJobRef: 'x/a', directive: 'x', context: ['{{today}}/**'] }])).join('\n');
+    expect(errors).toMatch(/in context pin \(allowed: \{\{trigger\.fireDate\}\}, \{\{trigger\.fireEpoch\}\}, \{\{run\.id\}\}, \{\{trigger\.item\.key\}\}\)/);
+    expect(errors).not.toMatch(/prevSuccess/);
+  });
+});
+
+describe('parseItemPath — the poller selector grammar (root, member, quoted member, index; nothing else)', () => {
+  it.each([
+    ['$', []],
+    ['$.issues', [{ kind: 'key', name: 'issues' }]],
+    ['$.fields.summary', [{ kind: 'key', name: 'fields' }, { kind: 'key', name: 'summary' }]],
+    ["$.fields['customfield_10021'].value", [{ kind: 'key', name: 'fields' }, { kind: 'key', name: 'customfield_10021' }, { kind: 'key', name: 'value' }]],
+    ['$["a b"][0].c', [{ kind: 'key', name: 'a b' }, { kind: 'index', index: 0 }, { kind: 'key', name: 'c' }]],
+    ['$.data[12]', [{ kind: 'key', name: 'data' }, { kind: 'index', index: 12 }]],
+    ['  $.x  ', [{ kind: 'key', name: 'x' }]],
+  ])('parses %s', (raw, segments) => {
+    expect(parseItemPath(raw, 'p')).toEqual(segments);
+  });
+
+  it.each([
+    ['', /must be an item-path string/],
+    [42, /must be an item-path string/],
+    ['issues', /must start with "\$"/],
+    ['$.', /expected a member name after "\."/],
+    ['$.*', /expected a member name/],
+    ['$..a', /expected a member name/],
+    ['$[a]', /expected \[n\] or \['name'\]/],
+    ['$[-1]', /expected \[n\] or \['name'\]/],
+    ["$['']", /must not be empty/],
+    ['$.a b', /unexpected " "/],
+    ['$.a?.b', /unexpected "\?"/],
+    [`$${'.a'.repeat(ITEM_PATH_MAX_SEGMENTS + 1)}`, /more than 16 segments/],
+  ])('refuses %s', (raw, pattern) => {
+    const r = parseItemPath(raw, 'p');
+    expect(typeof r).toBe('string');
+    expect(r as string).toMatch(pattern);
+    expect(r as string).toMatch(/^p/);
+  });
+});
+
+describe('fetchItemTemplateVars — the ONE derivation of {{trigger.item.*}}', () => {
+  it('is empty without a fetch trigger, key-only without fields, key + fields in declaration order', () => {
+    expect(fetchItemTemplateVars(undefined)).toEqual([]);
+    expect(fetchItemTemplateVars({ fields: undefined } as any)).toEqual(['trigger.item.key']);
+    expect(fetchItemTemplateVars({ fields: { summary: '$.s', channel: '$.c' } } as any)).toEqual(['trigger.item.key', 'trigger.item.summary', 'trigger.item.channel']);
+  });
+});
+
 describe('defaultStepDirective — the empty-directive dispatch fallback', () => {
   it('names the pinned intent', () => {
     const text = defaultStepDirective('gather');
@@ -488,6 +617,40 @@ describe('validatePipelineCatalogBinding — the definition against the agent ca
     ]), CATALOG);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/declares outcome "typo"/);
+  });
+});
+
+describe('validatePipelineCatalogBinding — on.fetch names a job\'s EXTERNAL api connection', () => {
+  const CATALOG: PipelineCatalogAgent[] = [
+    {
+      id: 'ops',
+      jobs: [
+        { id: 'tickets', intents: [{ id: 'triage' }], apis: { jira: { allow: ['GET /rest/api/3/**'] }, ant: { self: true } } },
+        { id: 'legacy', intents: [] },
+      ],
+    },
+  ];
+  const withFetch = (api: string, customJobRef = 'ops/tickets'): PipelineDef =>
+    ({
+      version: PIPELINE_DEF_VERSION,
+      name: 'n',
+      on: { fetch: { customJobRef, api, request: { method: 'GET', path: '/rest/api/3/search' }, items: '$.issues', key: '$.key', every: '5m' } },
+      steps: [{ id: 'a', customJobRef: 'ops/tickets', intent: 'triage', directive: '{{trigger.item.key}}' }],
+    }) as unknown as PipelineDef;
+
+  it('a declared external connection binds', () => {
+    expect(validatePipelineCatalogBinding(withFetch('jira'), CATALOG)).toEqual([]);
+  });
+  it.each([
+    ['an undeclared connection, naming what IS declared', withFetch('github'), /declares no API connection "github" \(declared: jira, ant\)/],
+    ['a self entry (this Ant server is not a case source)', withFetch('ant'), /is a self entry/],
+    ['an unknown agent', withFetch('jira', 'ghost/tickets'), /on\.fetch: agent "ghost" is not in your agent catalog/],
+    ['an unknown job', withFetch('jira', 'ops/ghost'), /on\.fetch: agent "ops" has no job "ghost"/],
+  ])('refuses %s', (_label, def, pattern) => {
+    expect(validatePipelineCatalogBinding(def, CATALOG).join('\n')).toMatch(pattern);
+  });
+  it('a job whose apis projection is absent (lenient parse failed) is not judged — its own rule owns that', () => {
+    expect(validatePipelineCatalogBinding(withFetch('jira', 'ops/legacy'), CATALOG)).toEqual([]);
   });
 });
 

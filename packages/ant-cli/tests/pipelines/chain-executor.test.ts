@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { runSummaryOf, type PipelineDef, type RunRecord } from '@ant/shared';
+import { runSummaryOf, type PipelineDef, type RunRecord, liveRunOf } from '@ant/shared';
 import { buildInitialSteps, planAdvance, applyStepOutcome } from '../../src/core/pipelines/ChainExecutor';
 
 function def(steps: any[], onStepFailure: 'abort' | 'continue' = 'abort'): PipelineDef {
@@ -328,5 +328,14 @@ describe('runSummaryOf — the ONE run-summary shape (index line, live row, FE f
     expect('gates' in liveSummary).toBe(false);
     const sealed = runSummaryOf({ ...live, status: 'failed', endedAt: 'e', error: 'a: boom' });
     expect(sealed).toMatchObject({ status: 'failed', endedAt: 'e', error: 'a: boom' });
+  });
+
+  it('a fetch-fired run carries its case label as itemKey — on the summary AND the live-run view (the runLabel source)', () => {
+    const live = { ...freshRun(def([job('a')])), firedBy: 'fetch' as const, item: { key: 'OPS-42', fields: { summary: 'refund' } } };
+    expect(runSummaryOf(live).itemKey).toBe('OPS-42');
+    expect(liveRunOf(live)?.itemKey).toBe('OPS-42');
+    // Fields never ride a summary or a view — the directive is their only consumer.
+    expect(JSON.stringify(runSummaryOf(live))).not.toContain('refund');
+    expect('itemKey' in runSummaryOf(freshRun(def([job('a')])))).toBe(false);
   });
 });

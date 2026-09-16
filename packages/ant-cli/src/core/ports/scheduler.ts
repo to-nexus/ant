@@ -6,7 +6,7 @@
  * per next fire lives in Redis, any replica's worker collects it).
  */
 
-import type { OrganizationKind, PipelineScope, StepOutputRecord } from '@ant/shared';
+import type { OrganizationKind, PipelineFiredBy, PipelineScope, StepOutputRecord } from '@ant/shared';
 
 /**
  * ACTIVATOR coordinates stored at registration — never a token (owner
@@ -28,7 +28,7 @@ export interface PipelineFireJobData {
   pipelineScope: PipelineScope;
   /** The activation's project — with `owner`, addresses the activation dir. */
   projectId: string;
-  firedBy: 'cron' | 'manual' | 'event';
+  firedBy: PipelineFiredBy;
   /** Set on overlap-queue re-arms so the original fire's identity survives. */
   fireEpoch?: number;
   /** Overlap-queue retry counter (bounded). */

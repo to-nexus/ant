@@ -534,6 +534,19 @@ export interface CustomJobSummary {
    * (fail-loud belongs to load/validate). Bounded: 32 intents × 8 hooks.
    */
   intents?: CustomIntentDef[];
+  /**
+   * Declared REST connections the job can reach — agent ∪ job `apis` (job wins
+   * on a name), projected to `self` / `allow` META only: never a baseUrl, never
+   * a header. The pipeline editor's `on.fetch.api` picker and the catalog
+   * binding read it. Omitted when either yaml failed lenient parsing.
+   */
+  apis?: Record<string, CustomApiConnectionSummary>;
+}
+
+/** Catalog projection of one `apis` entry — connectivity meta, no secrets, no origin. */
+export interface CustomApiConnectionSummary {
+  self?: true;
+  allow?: string[];
 }
 
 /**

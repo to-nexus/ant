@@ -7,7 +7,7 @@
  * intra-job lanes).
  */
 
-import { Clock, GitBranch, Play, type LucideIcon } from 'lucide-react';
+import { Clock, GitBranch, Inbox, Play, type LucideIcon } from 'lucide-react';
 import type { PipelineFiredBy } from '@ant/shared';
 
 /** The case label when the trigger carries one (fetch), else the run id. */
@@ -20,6 +20,7 @@ export const FIRED_BY_ICON: Record<PipelineFiredBy, LucideIcon> = {
   cron: Clock,
   manual: Play,
   event: GitBranch,
+  fetch: Inbox,
 };
 
 /** `runs.*` keys already used by the run history rows — one label per trigger kind. */
@@ -27,6 +28,7 @@ export const FIRED_BY_LABEL: Record<PipelineFiredBy, { key: string; fallback: st
   cron: { key: 'runs.cron', fallback: 'Scheduled' },
   manual: { key: 'runs.manual', fallback: 'Manual' },
   event: { key: 'runs.event', fallback: 'Chained' },
+  fetch: { key: 'runs.fetch', fallback: 'Fetched' },
 };
 
 /** Distinct, theme-safe hues (WorkerGroup precedent) — a run keeps its hue for life. */

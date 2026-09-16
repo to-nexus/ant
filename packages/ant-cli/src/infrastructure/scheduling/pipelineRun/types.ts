@@ -8,6 +8,7 @@ import type {
   ApprovalStepDef,
   JobStepDef,
   PipelineDef,
+  PipelineFiredBy,
   RunRecord,
   StepRecord,
 } from '@ant/shared';
@@ -57,7 +58,7 @@ export interface PipelineCoordinatorDeps {
       userContext?: any,
       actionMetadata?: any,
       jobType?: any,
-      pipeline?: { pipelineId: string; runId: string; stepId: string; firedBy: 'cron' | 'manual' | 'event' },
+      pipeline?: { pipelineId: string; runId: string; stepId: string; firedBy: PipelineFiredBy; itemKey?: string },
     ): Promise<void>;
     appendAssistantMessage(
       projectId: string,
