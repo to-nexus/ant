@@ -54,7 +54,6 @@ const ENTRY = (over: Record<string, unknown> = {}) => ({
   enabled: false,
   org: { owner: 'me@x.io', canEdit: true, canManageEditors: true, editors: ['a@x.io', 'b@x.io'] },
   activations: [activation('proj-a', { approvers: { g1: ['x@x.io'] } }), activation('proj-b', { mine: false, activatedBy: 'other@x.io' })],
-  pendingApprovalCount: 0,
   ...over,
 });
 

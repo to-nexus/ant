@@ -10,7 +10,7 @@ export { selectPipelineDirty, type PipelineDirtyReport } from '../slices/pipelin
 interface PipelineSelectorState {
   selectedProject: string | null | undefined;
   activePipelineByProject: Record<string, ActivePipelineInfo | null>;
-  pipelineApprovals: Array<{ gateId: string }>;
+  pipelineApprovals: Array<{ gateId: string; pipelineId: string }>;
 }
 
 /** Active pipeline bound to a given project, or null. */
@@ -27,6 +27,10 @@ export const selectActivePipelineForSelectedProject = (
   state: PipelineSelectorState,
 ): ActivePipelineInfo | null => selectActivationByProject(state, state.selectedProject);
 
-/** Account-wide pending approval count (tab-chip badge). */
+/** Account-wide pending approval count (navbar + tab-chip badges) — the inbox rows are the ONE count owner. */
 export const selectPipelineApprovalCount = (state: PipelineSelectorState): number =>
   state.pipelineApprovals?.length ?? 0;
+
+/** Pending rows of ONE pipeline (rail badge) — inbox parity: approver rows on org pipelines are "waiting on you" too. */
+export const selectPipelineApprovalCountFor = (state: PipelineSelectorState, pipelineId: string): number =>
+  state.pipelineApprovals?.filter((a) => a.pipelineId === pipelineId).length ?? 0;

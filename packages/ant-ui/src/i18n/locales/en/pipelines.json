@@ -108,6 +108,8 @@
     "alreadyDecided": "This gate was already decided.",
     "alreadyDecidedBy": "Already decided by {{who}}.",
     "authorityRevoked": "Your approval authority for this gate was revoked.",
+    "clarifyAlreadyAnswered": "This question was already answered or the run is no longer waiting.",
+    "clarifyRunGone": "This run is no longer available.",
     "timeoutApprove": "Auto-approves {{when}}",
     "timeoutReject": "Auto-rejects {{when}}",
     "openExecution": "Open run",

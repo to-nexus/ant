@@ -450,7 +450,16 @@ the `PipelineRunOps` ctx) is an
 ADDITIONAL subscriber on `job:status:updates` (note: no `ant:` prefix —
 `CHANNEL_DOMAINS.JOB = 'job'`), beside RouteConfigurator's. It resolves
 `ant:pipe:job:{jobId}`, takes the per-run lock, applies the executor's plan,
-dispatches what unblocked, appends JSONL, publishes SSE. An interruption
+dispatches what unblocked, appends JSONL. **Write → publish has ONE owner**:
+every run-record write (`runStore.mutateRun` on a changed record,
+`runStore.commitRun` on create and seal) publishes the `runUpdate` it wrote,
+under the run lock, so wire order equals write order. Cluster modules
+(`fire/dispatch/gates/outcome/hitl/lifecycle`) never publish `runUpdate`
+themselves — the ad hoc publish after `executeDispatches` re-sent a
+pre-dispatch snapshot over the fresher one, and the writes that had none
+(`dispatchJobStep`'s `running` + new jobId, `armGate`'s `gate` object, the
+sealed run) left the FE frozen on the previous step state until a page
+refresh — the 2026-09-16 "answered the clarify, nothing moved" report. An interruption
 (pause) on a pipeline job is a step **failure** (`interrupted: {reason}`) —
 unattended chains have nobody to resume — and the coordinator KILLS the
 parked job (`killStepJob`): a paused job blocks the project's next dispatch
@@ -558,8 +567,11 @@ the map = activator-only, exactly the pre-approver behavior.
   dir holds the run log). Every consumer re-verifies against the live
   activation, so a stale index entry grants nothing.
 - **Observer surfaces**: `PipelineActivationView.approvers` (org-visible by
-  design), `PipelineRunSummary.gates` (`{stepId, decision, decidedBy}` written
-  at finalize — approval steps only, tool gates stay off the summary line).
+  design), `PipelineRunSummary.gates` (`{stepId, decision, decidedBy}` —
+  approval steps only, tool gates stay off the summary line). The summary has
+  ONE shape, `runSummaryOf` (`@ant/shared`): the finalize index line, the
+  runs-list live row and the FE `runUpdate` fold all derive it, so a run never
+  changes shape between live and sealed.
 
 Guards: `tests/http/pipeline-routes-policy.test.ts` (resolve decision table
 S2/S6/S7/S8/S9 + roster ingresses), `tests/pipelines/pipeline-activation.test.ts`
@@ -840,6 +852,16 @@ projectId (on deactivate: the PREVIOUS project, so the FE can clear its
 lock). Published **user-scoped** (no projectId on the envelope) so the
 approvals inbox folds even while another project is open; org members see
 each other's activation changes on refetch (panel bootstrap), not live — v1.
+`runUpdate` has ONE publisher (the run-record write, §4); the FE fold is a
+lossless replace — the wire strips captured step answers, and the fold keeps
+a held answer whose `output.capturedAt` matches (a re-captured round wins).
+The server pushes no pipeline snapshot on stream open, so
+`resyncPipelineProjections` (pipelineSlice) is the ONE reconnect refresh, run
+from the SSE reconnect callback: the list (chaining the inbox), every held
+activation history, every held non-terminal run detail, the approver panel
+and the selected project's chat lock. Known boundary: the `pipeline` handler
+lives on the project/feature stream, so with no project selected the tab
+receives no pipeline SSE at all.
 
 FE (`presentation/components/Pipelines/`): the `pipelines` main-panel tab is
 ACCOUNT-scoped — it renders regardless of the selected project, survives
@@ -856,8 +878,11 @@ identically: the approval inbox is a collapsible `RailGroup` (ShieldCheck +
 amber count), then the SCOPE GROUPS (`My pipelines` / `Organization
 pipelines` — both headers always render, each collapsible, each with its own
 empty copy; the org copy branches on team-active), rows carrying a Waypoints
-icon tinted by availability plus awaiting / running / activation-count badges,
-the per-caller readonly pill and the ⋯ folder-export menu; invalid rows;
+icon tinted by availability plus awaiting / running / activation-count badges
+(the awaiting badge, the tab chip and the navbar count all read the inbox
+rows through `selectors/pipelines.ts` — the list entry carries no second
+pending count), the per-caller readonly pill and the ⋯ folder-export menu;
+invalid rows;
 orphan-activation rows (deactivate-only); and the footer SPACE switch
 (`RailIconSwitch` Workspace / Codespace, label hidden when narrow; Codespace
 is reserved and shows an unsupported notice — pure FE state, locally
@@ -1017,6 +1042,10 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
 
 ### ❌ Forbidden
 
+- **Publishing `runUpdate` or saving a run record from a cluster module.**
+  `runStore.mutateRun` / `commitRun` are the write→publish owner; an ad hoc
+  publish after `executeDispatches` re-sends a pre-dispatch snapshot over a
+  fresher one, and a bare save is a state change the FE never learns about.
 - **FlowProducer / BullMQ-internal hooks** for chaining. Fan-out is the
   `job:status:updates` subscriber; sequencing is the coordinator's.
 - **Touching `ant-jobs` retry semantics.** `attempts: 1` there is load-bearing;

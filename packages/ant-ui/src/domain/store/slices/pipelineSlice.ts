@@ -13,7 +13,7 @@ import type {
   PipelineScope,
   RunRecord,
 } from '@ant/shared';
-import { PIPELINE_DEF_VERSION } from '@ant/shared';
+import { PIPELINE_DEF_VERSION, runSummaryOf } from '@ant/shared';
 import {
   activatePipeline,
   createPipeline,
@@ -61,7 +61,10 @@ import { withAcknowledgement, withoutAcknowledgement } from '@/presentation/comp
  *
  * Everything transient (runs, approvals, run detail, activations) is a
  * projection the `pipeline` SSE event keeps fresh via `applyPipelineEvent`;
- * REST fetches are the bootstrap/refresh path only.
+ * REST fetches are the bootstrap path, and `resyncPipelineProjections` is the
+ * ONE refresh — run on every SSE reconnect, it re-reads exactly what is held
+ * (a `pipeline` event missed while the stream was down is otherwise lost until
+ * a page reload, because the server pushes no pipeline snapshot on open).
  */
 
 export type PipelineRunPublic = Omit<RunRecord, 'defSnapshot'>;
@@ -75,6 +78,38 @@ export interface PipelineActivatableProject {
 /** One activation's run-history key: `${pipelineId}:${userId||'me'}:${projectId}`. */
 export const activationRunsKey = (pipelineId: string, projectId: string, userId?: string): string =>
   `${pipelineId}:${userId ?? 'me'}:${projectId}`;
+
+/** Inverse of `activationRunsKey` — pipeline ids are validated slugs and project ids single segments, so neither carries `:`. */
+export const parseActivationRunsKey = (key: string): { pipelineId: string; projectId: string; userId?: string } => {
+  const first = key.indexOf(':');
+  const last = key.lastIndexOf(':');
+  const user = key.slice(first + 1, last);
+  return { pipelineId: key.slice(0, first), projectId: key.slice(last + 1), ...(user !== 'me' && { userId: user }) };
+};
+
+/**
+ * The wire strips captured step answers (they ride the runs API only), so a
+ * `runUpdate` fold must not erase what a fetch already showed. Same
+ * `capturedAt` = same capture; a re-captured round carries a new stamp and wins.
+ */
+const mergeHeldAnswers = (incoming: PipelineRunPublic, held: PipelineRunPublic | undefined): PipelineRunPublic => {
+  if (!held) return incoming;
+  return {
+    ...incoming,
+    steps: incoming.steps.map((step) => {
+      const prev = held.steps.find((h) => h.stepId === step.stepId);
+      if (!prev?.output?.answer || !step.output || step.output.answer || prev.output.capturedAt !== step.output.capturedAt) return step;
+      return {
+        ...step,
+        output: {
+          ...step.output,
+          answer: prev.output.answer,
+          ...(prev.output.answerTruncated !== undefined && { answerTruncated: prev.output.answerTruncated }),
+        },
+      };
+    }),
+  };
+};
 
 export interface PipelineSliceState {
   pipelines: PipelineListEntry[];
@@ -174,6 +209,8 @@ export interface PipelineSliceActions {
   loadPipelineApprovals: () => Promise<void>;
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject', note?: string) => Promise<void>;
   answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
+  /** The ONE reconnect refresh — re-reads every held projection (list → approvals, histories, live details, chat lock). */
+  resyncPipelineProjections: () => void;
   setPipelinePanelView: (view: 'editor' | 'execution') => void;
   selectPipelineNode: (nodeId: string | null) => void;
   applyPipelineEvent: (event: PipelineEventData) => void;
@@ -665,9 +702,43 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   closeApproverPanel: () => set({ approverPanel: null, approverPanelRun: null }),
 
   answerPipelineClarifyById: async (clarifyId: string, runId: string, stepId: string, answer: string) => {
-    await answerPipelineClarify(runId, stepId, answer);
-    // Optimistic removal; the clarifyAnswered SSE event is the durable fold.
-    set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== clarifyId) });
+    const fold = () =>
+      set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== clarifyId) });
+    try {
+      await answerPipelineClarify(runId, stepId, answer);
+    } catch (e) {
+      // Gate parity: 409 (already answered / run cancelled) and 404 (run gone)
+      // both mean this row is dead — fold it, then rethrow so the form names why.
+      if (e instanceof ApiError && (e.status === 409 || e.status === 404)) fold();
+      throw e;
+    }
+    // Removal after the server accepted; the clarifyAnswered SSE event folds
+    // every other surface, and the run's own runUpdate moves the canvas.
+    fold();
+  },
+
+  resyncPipelineProjections: () => {
+    const s = get();
+    if (s.pipelinesStatus === 'ready') void s.loadPipelines();
+    else void s.loadPipelineApprovals();
+    for (const key of Object.keys(s.pipelineRunsByActivation as Record<string, PipelineRunSummary[]>)) {
+      const { pipelineId, projectId, userId } = parseActivationRunsKey(key);
+      void s.loadActivationRuns(pipelineId, projectId, userId);
+    }
+    for (const run of Object.values(s.pipelineRunDetails as Record<string, PipelineRunPublic>)) {
+      if (run.status === 'running' || run.status === 'awaiting_human') void s.loadPipelineRunDetail(run.runId, run.projectId);
+    }
+    const panel = s.approverPanel as PipelinePendingApproval | null;
+    if (panel) {
+      fetchPipelineRun(panel.runId, panel.projectId)
+        .then(({ run }) => {
+          if (get().approverPanel?.gateId === panel.gateId) set({ approverPanelRun: run });
+        })
+        .catch(() => {
+          /* panel keeps last-good */
+        });
+    }
+    if (s.selectedProject) void s.loadActivePipeline(s.selectedProject);
   },
 
   setPipelinePanelView: (view) => set({ pipelinePanelView: view }),
@@ -680,82 +751,69 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       case 'runUpdate': {
         const { run } = event;
         const terminal = run.status !== 'running' && run.status !== 'awaiting_human';
-        // Rail + activation-row projection (events arrive on the OWN channel,
-        // so the touched activation row is always a `mine` row).
-        set({
-          pipelines: state.pipelines.map((p: PipelineListEntry) =>
+        const liveState = run.status === 'awaiting_human' ? 'awaiting_human' : 'running';
+        const lastRun = { runId: run.runId, status: run.status, firedAt: run.startedAt };
+        // One functional update: every projection reads the SAME snapshot.
+        set((s: PipelineSliceState) => {
+          const patch: Partial<PipelineSliceState> = {};
+          // Rail + activation-row projection (events arrive on the OWN channel,
+          // so the touched activation row is always a `mine` row).
+          patch.pipelines = s.pipelines.map((p) =>
             p.id === event.pipelineId
               ? {
                   ...p,
-                  lastRun: { runId: run.runId, status: run.status, firedAt: run.startedAt },
-                  pendingApprovalCount: run.steps.filter(
-                    (s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify',
-                  ).length,
+                  lastRun,
                   activations: p.activations.map((a) =>
                     a.mine && a.projectId === event.projectId
                       ? {
                           ...a,
-                          state: terminal
-                            ? a.state === 'broken'
-                              ? 'broken'
-                              : 'waiting'
-                            : run.status === 'awaiting_human'
-                              ? 'awaiting_human'
-                              : 'running',
+                          state: terminal ? (a.state === 'broken' ? 'broken' : 'waiting') : liveState,
                           currentRunId: terminal ? undefined : run.runId,
-                          lastRun: { runId: run.runId, status: run.status, firedAt: run.startedAt },
+                          lastRun,
                         }
                       : a,
                   ),
                 }
               : p,
-          ),
-        });
-        // Chat lock signal: the bound project's state follows the live run.
-        const activeInfo = state.activePipelineByProject[event.projectId];
-        if (activeInfo?.pipelineId === event.pipelineId || (!activeInfo && !terminal)) {
-          const entry = state.pipelines.find((p: PipelineListEntry) => p.id === event.pipelineId);
-          set({
-            activePipelineByProject: {
-              ...get().activePipelineByProject,
+          );
+          // Chat lock signal: the bound project's state follows the live run.
+          const activeInfo = s.activePipelineByProject[event.projectId];
+          if (activeInfo?.pipelineId === event.pipelineId || (!activeInfo && !terminal)) {
+            const entry = s.pipelines.find((p) => p.id === event.pipelineId);
+            patch.activePipelineByProject = {
+              ...s.activePipelineByProject,
               [event.projectId]: {
                 pipelineId: event.pipelineId,
                 pipelineName: entry?.name ?? activeInfo?.pipelineName ?? event.pipelineId,
-                state: terminal ? 'waiting' : run.status === 'awaiting_human' ? 'awaiting_human' : 'running',
+                state: terminal ? 'waiting' : liveState,
                 nextFireAt: entry?.nextFireAt ?? activeInfo?.nextFireAt,
                 ...(terminal ? {} : { currentRunId: run.runId }),
               },
-            },
-          });
-        }
-        // Per-activation runs projection.
-        const runsKey = activationRunsKey(event.pipelineId, event.projectId);
-        const runs = state.pipelineRunsByActivation[runsKey];
-        if (runs) {
-          const summary: PipelineRunSummary = {
-            runId: run.runId,
-            pipelineId: event.pipelineId,
-            projectId: run.projectId,
-            status: run.status,
-            firedBy: run.firedBy,
-            fireEpoch: run.fireEpoch,
-            startedAt: run.startedAt,
-            endedAt: run.endedAt,
-          };
-          const next = runs.some((r: PipelineRunSummary) => r.runId === run.runId)
-            ? runs.map((r: PipelineRunSummary) => (r.runId === run.runId ? summary : r))
-            : [summary, ...runs];
-          set({ pipelineRunsByActivation: { ...get().pipelineRunsByActivation, [runsKey]: next } });
-        }
-        // Run detail follows live for every run already held, and for the
-        // selected pipeline's runs (the design-view overlay reads them).
-        if (state.pipelineRunDetails[run.runId] || state.selectedPipelineId === event.pipelineId) {
-          set({ pipelineRunDetails: { ...get().pipelineRunDetails, [run.runId]: run } });
-        }
-        // A terminal run can not hold gates.
-        if (terminal) {
-          set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.runId !== run.runId) });
-        }
+            };
+          }
+          // Per-activation history row — the shared summary shape, so a run
+          // never changes shape between its live row and its sealed line.
+          const runsKey = activationRunsKey(event.pipelineId, event.projectId);
+          const runs = s.pipelineRunsByActivation[runsKey];
+          if (runs) {
+            const summary = runSummaryOf(run);
+            patch.pipelineRunsByActivation = {
+              ...s.pipelineRunsByActivation,
+              [runsKey]: runs.some((r) => r.runId === run.runId)
+                ? runs.map((r) => (r.runId === run.runId ? summary : r))
+                : [summary, ...runs],
+            };
+          }
+          // Run detail follows live for every run already held, and for the
+          // selected pipeline's runs (the design-view overlay reads them).
+          const held = s.pipelineRunDetails[run.runId];
+          if (held || s.selectedPipelineId === event.pipelineId) {
+            patch.pipelineRunDetails = { ...s.pipelineRunDetails, [run.runId]: mergeHeldAnswers(run, held) };
+          }
+          // A terminal run can not hold gates.
+          if (terminal) patch.pipelineApprovals = s.pipelineApprovals.filter((a) => a.runId !== run.runId);
+          return patch;
+        });
         break;
       }
       case 'approvalRequested': {

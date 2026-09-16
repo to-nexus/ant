@@ -35,7 +35,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@/infrastructure/http/api/pipelines', () => api);
 
 const DEF = { version: 2, name: 'Notice', steps: [{ id: 'lookup', customJobRef: 'terms/notice', intent: 'lookup-period' }] };
-const ENTRY = { id: 'p1', name: 'Notice', stepCount: 1, scope: 'user', readonly: false, enabled: false, activations: [], pendingApprovalCount: 0, openAdvisoryCount: 0 };
+const ENTRY = { id: 'p1', name: 'Notice', stepCount: 1, scope: 'user', readonly: false, enabled: false, activations: [], openAdvisoryCount: 0 };
 
 function buildStore() {
   return create<any>((set, get, store) => ({ selectedProject: 'proj-a', ...createPipelineSlice(set as any, get as any, store as any) }));

@@ -108,6 +108,8 @@
     "alreadyDecided": "이미 결정된 게이트입니다.",
     "alreadyDecidedBy": "이미 {{who}}이(가) 결정했습니다.",
     "authorityRevoked": "이 게이트에 대한 승인 권한이 회수되었습니다.",
+    "clarifyAlreadyAnswered": "이미 답변되었거나 더 이상 대기 중이 아닌 질문입니다.",
+    "clarifyRunGone": "이 실행은 더 이상 존재하지 않습니다.",
     "timeoutApprove": "{{when}} 자동 승인",
     "timeoutReject": "{{when}} 자동 거절",
     "openExecution": "실행 보기",

@@ -62,7 +62,6 @@ const ENTRY = (over: Record<string, unknown> = {}) => ({
   readonly: false,
   enabled: true,
   activations: [] as unknown[],
-  pendingApprovalCount: 0,
   ...over,
 });
 

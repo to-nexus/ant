@@ -57,7 +57,6 @@ const entry = (id: string, name: string, scope: PipelineListEntry['scope']): Pip
   readonly: scope === 'org',
   enabled: false,
   activations: [],
-  pendingApprovalCount: 0,
 });
 
 describe('buildPipelinesNode', () => {

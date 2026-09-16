@@ -123,7 +123,7 @@ function ApprovalRow({ approval: a, onNotice }: { approval: PipelinePendingAppro
         </div>
       )}
       {a.kind === 'clarify' ? (
-        <ClarifyAnswerForm approval={a} onSubmit={answerClarify} onOpenContext={openContext} />
+        <ClarifyAnswerForm approval={a} onSubmit={answerClarify} onOpenContext={openContext} onNotice={onNotice} />
       ) : (
         <GateDecisionForm
           busy={busy}
@@ -143,10 +143,12 @@ function ClarifyAnswerForm({
   approval,
   onSubmit,
   onOpenContext,
+  onNotice,
 }: {
   approval: PipelinePendingApproval;
   onSubmit: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
   onOpenContext: () => void;
+  onNotice: (msg: string | null) => void;
 }) {
   const { t } = useTranslation('pipelines');
   const [answer, setAnswer] = useState('');
@@ -159,14 +161,21 @@ function ClarifyAnswerForm({
   const pickerTree = useArtifactPickerTree({ definitionMounts: false });
   const canBrowse = selectedProject === approval.projectId && projectType === 'universal' && pickerTree.length > 0;
 
+  // Gate parity: a dead row is folded by the store; the surface names why.
   const submit = async () => {
     if (!answer.trim() || busy) return;
     setBusy(true);
+    onNotice(null);
     try {
       await onSubmit(approval.gateId, approval.runId, approval.stepId, answer.trim());
-    } catch {
-      setBusy(false);
-      return;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        onNotice(t('inbox.clarifyAlreadyAnswered', 'This question was already answered or the run is no longer waiting.'));
+      } else if (e instanceof ApiError && e.status === 404) {
+        onNotice(t('inbox.clarifyRunGone', 'This run is no longer available.'));
+      } else {
+        onNotice(e instanceof Error ? e.message : String(e));
+      }
     }
     setBusy(false);
   };

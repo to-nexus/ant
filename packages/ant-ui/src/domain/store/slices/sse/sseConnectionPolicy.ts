@@ -26,6 +26,9 @@ export function setupConnectionPolicy(manager: any, set: any, get: any): void {
     set({ sseReconnectGrace: true });
 
     get().refreshFigmaPopulated?.();
+    // Pipeline projections have no server-side refill on stream open — the
+    // ONE resync re-reads what is held (inbox, histories, live run details).
+    get().resyncPipelineProjections?.();
 
     setTimeout(() => {
       if (get().sseReconnectGrace) {

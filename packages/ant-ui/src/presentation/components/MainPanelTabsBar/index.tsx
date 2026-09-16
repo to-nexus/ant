@@ -1,4 +1,5 @@
 import { useStore } from '@/domain/store';
+import { selectPipelineApprovalCount } from '@/domain/store/selectors/pipelines';
 import { Bar } from '../Bar';
 import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot, Building2, Waypoints } from 'lucide-react';
 import { TabButton, type TabAccent } from './components/TabButton';
@@ -52,7 +53,7 @@ export function MainPanelTabsBar() {
   // Workspace (universal) projects have no tasks — the non-workflow board
   // slot renders the Checklist surface instead of the kanban board.
   const isUniversalProject = useStore((state) => state.projectType === 'universal');
-  const pendingApprovalCount = useStore((state) => state.pipelineApprovals?.length ?? 0);
+  const pendingApprovalCount = useStore((state) => selectPipelineApprovalCount(state as any));
 
   const getJobTabLabel = () => t('tabs.job');
 

@@ -16,6 +16,7 @@ import { AlertTriangle, Building2, Boxes, Code2, FileUp, FolderDown, FolderUp, P
 import type { PipelineActivationView, PipelineListEntry, PipelineScope } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
+import { selectPipelineApprovalCountFor } from '@/domain/store/selectors/pipelines';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { downloadPipelineFolder } from '@/infrastructure/http/api/pipelines';
 import { useFilePicker } from '@/application/hooks/ui/useFilePicker';
@@ -293,7 +294,9 @@ function PipelineRow({
   onDownload: () => void;
 }) {
   const { t } = useTranslation('pipelines');
-  const awaiting = entry.pendingApprovalCount > 0;
+  // Inbox rows are the one pending-count owner (the list entry carries none).
+  const awaitingCount = useStore((s) => selectPipelineApprovalCountFor(s as any, entry.id));
+  const awaiting = awaitingCount > 0;
   const running = entry.activations.some((a) => a.state === 'running' || a.state === 'awaiting_human');
   const nextFire = entry.nextFireAt ? relativeFromNow(entry.nextFireAt, t as any) : null;
   return (
@@ -308,8 +311,8 @@ function PipelineRow({
       trailing={
         <>
           {awaiting && (
-            <Badge tone="warning" size="sm" title={t('rail.awaiting', '{{n}} waiting', { n: entry.pendingApprovalCount })}>
-              {entry.pendingApprovalCount}
+            <Badge tone="warning" size="sm" title={t('rail.awaiting', '{{n}} waiting', { n: awaitingCount })}>
+              {awaitingCount}
             </Badge>
           )}
           {entry.openAdvisoryCount > 0 && (
