@@ -10,6 +10,7 @@ import {
   resolvePipelineAdvisories,
   type PipelineActivation,
   type PipelineActivationView,
+  activationStateOf,
   type PipelineCatalogAgent,
   type PipelineDef,
   type PipelineListEntry,
@@ -219,18 +220,11 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
     nextFireAt: string | undefined,
     broken: boolean,
   ): Promise<PipelineActivationView> {
-    let state: PipelineActivationView['state'] = broken ? 'broken' : 'waiting';
-    let currentRunId: string | undefined;
+    const liveRuns = await deps.coordinator.listLiveRuns(actOwner, activation.projectId);
+    const state: PipelineActivationView['state'] = broken ? 'broken' : activationStateOf(liveRuns);
     let lastRun: PipelineActivationView['lastRun'];
-    const runId = await deps.coordinator.getActiveRunId(actOwner, activation.projectId);
-    if (runId) {
-      currentRunId = runId;
-      const run = await deps.coordinator.getRun(runId);
-      if (run) {
-        if (!broken) state = run.status === 'awaiting_human' ? 'awaiting_human' : 'running';
-        lastRun = { runId: run.runId, status: run.status, firedAt: run.startedAt };
-      }
-    }
+    const newest = liveRuns[0];
+    if (newest) lastRun = { runId: newest.runId, status: newest.status, firedAt: newest.startedAt };
     if (!lastRun) {
       const [latest] = readRunIndex(deriveActivationsRoot(ctxOf(actOwner)), activation.projectId, 1, activation.pipelineId);
       if (latest) lastRun = { runId: latest.runId, status: latest.status, firedAt: latest.startedAt };
@@ -243,7 +237,7 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
       mine,
       state,
       ...(broken ? {} : nextFireAt ? { nextFireAt } : {}),
-      ...(currentRunId && { currentRunId }),
+      liveRuns,
       ...(lastRun && { lastRun }),
       // Org-visible by design: who opens which gate is never hidden.
       ...(activation.approvers && { approvers: activation.approvers }),

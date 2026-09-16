@@ -146,14 +146,17 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   // pipeline-driven isRunning never falls into the plain job-running stop
   // semantics (raw stop would kill a scheduled step under the scheduler).
   if (activePipeline) {
-    const running = activePipeline.state === 'running' || activePipeline.state === 'awaiting_human';
+    // The lock reads the live SET: any live run of the activation locks the chat
+    // (user decision — coexistence is a separate axis), whatever N is.
+    const liveCount = activePipeline.liveRuns?.length ?? 0;
+    const running = liveCount > 0;
     const when = activePipeline.nextFireAt ? new Date(activePipeline.nextFireAt).toLocaleString() : '';
     return {
       headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
       isOffline: false,
       canSendMessage: false,
       inputPlaceholder: running
-        ? t('policy.pipelineRunningPlaceholder', { name: activePipeline.pipelineName })
+        ? t('policy.pipelineRunningPlaceholder', { name: activePipeline.pipelineName, count: liveCount })
         : t('policy.pipelineActivePlaceholder', { name: activePipeline.pipelineName, when }),
       canResizeInput: true,
       emptyStateMessage: null,

@@ -25,7 +25,8 @@
     },
     "unsaved": "저장 전",
     "upload": "파이프라인 정의 업로드",
-    "openAdvisories": "미결 검토 사항 {{n}}건 — 파이프라인을 열어 확인하세요"
+    "openAdvisories": "미결 검토 사항 {{n}}건 — 파이프라인을 열어 확인하세요",
+    "liveCount": "라이브 런 {{n}}개"
   },
   "views": {
     "wiring": "설계",
@@ -58,8 +59,10 @@
     "thisProject": "이 프로젝트",
     "activatedByYou": "내가 활성화",
     "unsavedChanges": "설계에 저장되지 않은 변경이 있습니다 — 실행은 저장본을 따릅니다",
-    "runNowLive": "실행이 진행 중입니다 — 끝나면 다시 실행할 수 있습니다.",
-    "runNowAccepted": "실행이 시작됐습니다 — 아래 실행 이력에서 진행을 확인하세요."
+    "runNowAccepted": "실행이 시작됐습니다 — 아래 실행 이력에서 진행을 확인하세요.",
+    "runNowAtCap": "이 활성화는 라이브 런 상한({{n}}개)에 도달했습니다 — 런이 하나 끝나면 다시 실행할 수 있습니다.",
+    "liveCount": "라이브 {{n}}",
+    "liveRunsTitle": "라이브 런"
   },
   "availability": {
     "saveFirst": "게시하기 전에 변경사항을 저장하세요.",
@@ -146,7 +149,10 @@
     "insertBefore": "{{stepId}} 앞에 삽입",
     "appendNext": "다음 스텝 추가",
     "addBranch": "분기 추가",
-    "intentAuto": "인텐트 자동 선택"
+    "intentAuto": "인텐트 자동 선택",
+    "liveCount": "라이브 {{n}}",
+    "runsHere": "이 스텝에 라이브 런 {{n}}개",
+    "selectRun": "런 {{label}} 보기"
   },
   "inspector": {
     "trigger": "트리거·정책",
@@ -199,7 +205,11 @@
     "overlapQueue": "이전 실행이 끝날 때까지 대기",
     "onStepFailure": "스텝 실패 시",
     "failAbort": "실행 중단 (기본)",
-    "failContinue": "다른 브랜치 계속"
+    "failContinue": "다른 브랜치 계속",
+    "concurrency": "동시 라이브 런",
+    "concurrencyOne": "1 — 한 번에 하나 (기본)",
+    "concurrencyN": "{{n}} — 최대 {{n}}개 독립 런",
+    "concurrencyHint": "모든 트리거에 적용됩니다: 지금 실행, 스케줄, 체인 발화 모두 이 상한 아래에서 각각 런을 시작합니다."
   },
   "step": {
     "agent": "에이전트",

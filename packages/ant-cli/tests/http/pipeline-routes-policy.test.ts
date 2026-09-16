@@ -92,8 +92,9 @@ beforeAll(async () => {
     getProjectPath: (_uc: unknown, projectId: string) => path.join(userDir, projectId),
   };
   const coordinator = {
-    getActiveRunId: async () => liveRunIds[0] ?? null,
     listActiveRunIds: async () => liveRunIds,
+    listLiveRuns: async () =>
+      liveRunIds.map((runId) => ({ runId, status: 'running', startedAt: '2026-09-16T00:00:00.000Z', firedBy: 'manual', currentStepIds: [] })),
     getRun: async () => null,
     listPendingApprovals: async () => [],
     getHitlByGateId: async () => null,
@@ -455,7 +456,7 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
       createPipelinesRoutes({
         workspaceResolver: resolver as any,
         coordinator: {
-          getActiveRunId: async () => null,
+          listLiveRuns: async () => [],
           listActiveRunIds: async () => [],
           getRun: async () => null,
           listPendingApprovals: async () => [],
@@ -914,7 +915,7 @@ describe('gate resolve authority — owner ∨ per-gate approver', () => {
       createPipelinesRoutes({
         workspaceResolver: resolver as any,
         coordinator: {
-          getActiveRunId: async () => null,
+          listLiveRuns: async () => [],
           listActiveRunIds: async () => [],
           getRun: async () => opts.run ?? null,
           listPendingApprovals: async () => [],
@@ -1124,7 +1125,7 @@ describe('activation approver rosters — activate body + the approvers PUT (act
       createPipelinesRoutes({
         workspaceResolver: resolver as any,
         coordinator: {
-          getActiveRunId: async () => null,
+          listLiveRuns: async () => [],
           listActiveRunIds: async () => [],
           getRun: async () => null,
           listPendingApprovals: async () => [],

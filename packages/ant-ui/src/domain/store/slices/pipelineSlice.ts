@@ -13,7 +13,7 @@ import type {
   PipelineScope,
   RunRecord,
 } from '@ant/shared';
-import { PIPELINE_DEF_VERSION, runSummaryOf } from '@ant/shared';
+import { PIPELINE_DEF_VERSION, activationStateOf, foldLiveRun, liveRunOf, runSummaryOf } from '@ant/shared';
 import {
   activatePipeline,
   createPipeline,
@@ -598,9 +598,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
         pipelineRunsStatus: { ...get().pipelineRunsStatus, [key]: { status: 'ready' } },
       });
       if (!userId) {
-        // A live run opens itself when nothing is open yet — the person did not
-        // click it, so a run they DID open is never displaced.
-        const live = runs.find((r) => r.status === 'running' || r.status === 'awaiting_human');
+        // The NEWEST live run opens itself when nothing is open yet — the person
+        // did not click it, so a run they DID open is never displaced.
+        const live = runs
+          .filter((r) => r.status === 'running' || r.status === 'awaiting_human')
+          .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
         if (live && !get().pipelineSelectedRunByActivation[key]) get().selectActivationRun(key, live.runId, projectId);
       }
     } catch (e) {
@@ -750,10 +752,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     switch (event.cause) {
       case 'runUpdate': {
         const { run } = event;
-        const terminal = run.status !== 'running' && run.status !== 'awaiting_human';
-        const liveState = run.status === 'awaiting_human' ? 'awaiting_human' : 'running';
+        const terminal = liveRunOf(run) === null;
         const lastRun = { runId: run.runId, status: run.status, firedAt: run.startedAt };
-        // One functional update: every projection reads the SAME snapshot.
+        // One functional update: every projection reads the SAME snapshot, and
+        // both live-set holders (activation row, chat lock signal) go through
+        // the ONE fold + state rule — N live runs stay N until each seals.
         set((s: PipelineSliceState) => {
           const patch: Partial<PipelineSliceState> = {};
           // Rail + activation-row projection (events arrive on the OWN channel,
@@ -763,31 +766,27 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
               ? {
                   ...p,
                   lastRun,
-                  activations: p.activations.map((a) =>
-                    a.mine && a.projectId === event.projectId
-                      ? {
-                          ...a,
-                          state: terminal ? (a.state === 'broken' ? 'broken' : 'waiting') : liveState,
-                          currentRunId: terminal ? undefined : run.runId,
-                          lastRun,
-                        }
-                      : a,
-                  ),
+                  activations: p.activations.map((a) => {
+                    if (!(a.mine && a.projectId === event.projectId)) return a;
+                    const liveRuns = foldLiveRun(a.liveRuns ?? [], run);
+                    return { ...a, state: a.state === 'broken' ? 'broken' : activationStateOf(liveRuns), liveRuns, lastRun };
+                  }),
                 }
               : p,
           );
-          // Chat lock signal: the bound project's state follows the live run.
+          // Chat lock signal: the bound project's state follows its live set.
           const activeInfo = s.activePipelineByProject[event.projectId];
           if (activeInfo?.pipelineId === event.pipelineId || (!activeInfo && !terminal)) {
             const entry = s.pipelines.find((p) => p.id === event.pipelineId);
+            const liveRuns = foldLiveRun(activeInfo?.liveRuns ?? [], run);
             patch.activePipelineByProject = {
               ...s.activePipelineByProject,
               [event.projectId]: {
                 pipelineId: event.pipelineId,
                 pipelineName: entry?.name ?? activeInfo?.pipelineName ?? event.pipelineId,
-                state: terminal ? 'waiting' : liveState,
+                state: activationStateOf(liveRuns),
                 nextFireAt: entry?.nextFireAt ?? activeInfo?.nextFireAt,
-                ...(terminal ? {} : { currentRunId: run.runId }),
+                liveRuns,
               },
             };
           }
@@ -870,6 +869,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
                     activatedAt: event.activation.activatedAt,
                     mine: true,
                     state: 'waiting' as const,
+                    liveRuns: [],
                     ...(event.nextFireAt && { nextFireAt: event.nextFireAt }),
                   },
                   ...without,
@@ -886,6 +886,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
                     state.pipelines.find((p: PipelineListEntry) => p.id === event.pipelineId)?.name ?? event.pipelineId,
                   state: 'waiting',
                   nextFireAt: event.nextFireAt,
+                  liveRuns: [],
                 }
               : null,
           },

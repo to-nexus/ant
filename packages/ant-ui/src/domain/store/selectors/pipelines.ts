@@ -1,4 +1,4 @@
-import type { ActivePipelineInfo } from '@ant/shared';
+import type { ActivePipelineInfo, PipelineLiveRun } from '@ant/shared';
 
 export { selectPipelineDirty, type PipelineDirtyReport } from '../slices/pipelineSlice';
 
@@ -26,6 +26,12 @@ export const selectActivationByProject = (
 export const selectActivePipelineForSelectedProject = (
   state: PipelineSelectorState,
 ): ActivePipelineInfo | null => selectActivationByProject(state, state.selectedProject);
+
+const NO_RUNS: PipelineLiveRun[] = [];
+
+/** Live runs of the selected project's activation — the chat lock reads the SET, never a scalar (`pipeline-running` = length > 0). */
+export const selectLiveRunsForSelectedProject = (state: PipelineSelectorState): PipelineLiveRun[] =>
+  selectActivePipelineForSelectedProject(state)?.liveRuns ?? NO_RUNS;
 
 /** Account-wide pending approval count (navbar + tab-chip badges) — the inbox rows are the ONE count owner. */
 export const selectPipelineApprovalCount = (state: PipelineSelectorState): number =>

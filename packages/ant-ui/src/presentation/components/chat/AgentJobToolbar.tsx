@@ -181,17 +181,25 @@ export function AgentJobToolbar({
   // see a silent kill): confirm, then cancel the whole pipeline RUN through
   // the pipeline API.
   const activePipeline = useStore((state) => selectActivePipelineForSelectedProject(state));
+  const currentJobId = useStore((state) => state.currentJobId);
+  const pipelineLocked = !!activePipeline && (chatPolicy.reason === 'pipeline-running' || chatPolicy.reason === 'pipeline-active');
+  // Which run does Stop cancel? The run the viewed job is attributed to; with
+  // N live runs and no attribution there is no safe guess — Stop disables and
+  // points at the run list (cancelling an arbitrary sibling is data loss).
+  const attributedRunId = Object.values(activeJobs).find((e) => e.jobId === currentJobId)?.pipelineRunId;
+  const liveRuns = activePipeline?.liveRuns ?? [];
+  const pipelineStopRunId = pipelineLocked ? attributedRunId ?? (liveRuns.length === 1 ? liveRuns[0].runId : undefined) : undefined;
   const handleStop = () => {
-    if (activePipeline && (chatPolicy.reason === 'pipeline-running' || chatPolicy.reason === 'pipeline-active')) {
-      if (!activePipeline.currentRunId) return;
+    if (pipelineLocked) {
+      if (!pipelineStopRunId) return;
       const confirmed = window.confirm(
         t('input.pipelineStopConfirm', {
           defaultValue: 'This job is a step of pipeline "{{name}}". Stopping it cancels the whole pipeline run.',
-          name: activePipeline.pipelineName,
+          name: activePipeline!.pipelineName,
         }),
       );
       if (!confirmed) return;
-      void cancelPipelineRun(activePipeline.currentRunId);
+      void cancelPipelineRun(pipelineStopRunId);
       return;
     }
     stopJob();
@@ -611,7 +619,7 @@ export function AgentJobToolbar({
         {isRunning ? (
           <button
             onClick={handleStop}
-            disabled={isStopping}
+            disabled={isStopping || (pipelineLocked && !pipelineStopRunId)}
             className={`flex items-center gap-1 text-xs rounded
                        text-[color:var(--text-on-brand)]
                        hover:bg-[color:var(--red-600)]
@@ -622,7 +630,13 @@ export function AgentJobToolbar({
               background: 'var(--red-500)',
               border: '1px solid var(--red-600)',
             }}
-            title={isStopping ? t('input.stopping') : t('input.stopJob')}
+            title={
+              isStopping
+                ? t('input.stopping')
+                : pipelineLocked && !pipelineStopRunId
+                  ? t('input.pipelineStopPickRun', { defaultValue: 'Several pipeline runs are live — cancel the one you mean from the run list.' })
+                  : t('input.stopJob')
+            }
             aria-label={isStopping ? t('input.stopping') : t('input.stop')}
           >
             <Square className="w-3 h-3" fill="currentColor" />

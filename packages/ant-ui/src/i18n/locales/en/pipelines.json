@@ -25,7 +25,8 @@
     },
     "unsaved": "Unsaved",
     "upload": "Upload pipeline definition",
-    "openAdvisories": "{{n}} open advisories — open the pipeline"
+    "openAdvisories": "{{n}} open advisories — open the pipeline",
+    "liveCount": "{{n}} live run(s)"
   },
   "views": {
     "wiring": "Design",
@@ -58,8 +59,10 @@
     "thisProject": "This project",
     "activatedByYou": "you",
     "unsavedChanges": "Unsaved design changes — execution follows the saved definition",
-    "runNowLive": "A run is in progress — Run now is available when it finishes.",
-    "runNowAccepted": "Run started — follow it in the history below."
+    "runNowAccepted": "Run started — follow it in the history below.",
+    "runNowAtCap": "This activation is at its cap of {{n}} live run(s) — Run now opens up when one finishes.",
+    "liveCount": "{{n}} live",
+    "liveRunsTitle": "Live runs"
   },
   "availability": {
     "saveFirst": "Save your changes before publishing.",
@@ -146,7 +149,10 @@
     "insertBefore": "Insert before {{stepId}}",
     "appendNext": "Add next step",
     "addBranch": "Add branch",
-    "intentAuto": "intent chosen at run time"
+    "intentAuto": "intent chosen at run time",
+    "liveCount": "{{n}} live",
+    "runsHere": "{{n}} live run(s) at this step",
+    "selectRun": "Show run {{label}}"
   },
   "inspector": {
     "trigger": "Trigger & policies",
@@ -199,7 +205,11 @@
     "overlapQueue": "Queue until it finishes",
     "onStepFailure": "On step failure",
     "failAbort": "Abort the run (default)",
-    "failContinue": "Continue other branches"
+    "failContinue": "Continue other branches",
+    "concurrency": "Live runs at once",
+    "concurrencyOne": "1 — one run at a time (default)",
+    "concurrencyN": "{{n}} — up to {{n}} independent runs",
+    "concurrencyHint": "Applies to every trigger: Run now, the schedule and chain fires each start a run while the activation is below this cap."
   },
   "step": {
     "agent": "Agent",

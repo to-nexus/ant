@@ -31,6 +31,16 @@ describe('estimateNodeHeight', () => {
     expect(estimateNodeHeight({ primary: 'sync', status: 'running' })).toBeGreaterThan(estimateNodeHeight({ primary: 'sync' }));
   });
 
+  it('step and gate cards reserve the live-run chip row even with no run at the step; the trigger does not', () => {
+    const trigger = estimateNodeHeight({ primary: 'sync', kind: 'trigger' });
+    const step = estimateNodeHeight({ primary: 'sync', kind: 'step' });
+    const gate = estimateNodeHeight({ primary: 'sync', kind: 'gate' });
+    expect(step).toBeGreaterThan(trigger);
+    expect(gate).toBe(step);
+    // Absent kind = step (the reservation is the default, so a run arriving never re-fits the canvas).
+    expect(estimateNodeHeight({ primary: 'sync' })).toBe(step);
+  });
+
   it('is monotonic in primary length', () => {
     const heights = [10, 40, 80, 160].map((n) => estimateNodeHeight({ primary: 'a'.repeat(n) }));
     expect(heights).toEqual([...heights].sort((a, b) => a - b));

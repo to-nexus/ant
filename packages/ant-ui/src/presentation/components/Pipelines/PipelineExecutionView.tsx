@@ -1,8 +1,9 @@
 /**
  * PipelineExecutionView — the full-screen execution surface: NO wiring canvas
  * by default. One expandable section per activation (project), sorted mine
- * first; expanding a LIVE own activation reveals the on-demand progress
- * monitor (read-only canvas + run-status overlay) above the run history.
+ * first; expanding a LIVE own activation reveals the live-run rows (one per
+ * run — the only cancel point of this view) and the on-demand progress monitor
+ * (the ONE read-only canvas with per-node run chips) above the run history.
  * Other members' activations are status + history only — run detail and the
  * runUpdate SSE are activator-scoped, and so are the controls (B7).
  *
@@ -14,16 +15,19 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Pencil, Play, PowerOff, ShieldCheck, User, Zap } from 'lucide-react';
-import { isApprovalStep, type PipelineActivationView, type PipelineDef, type PipelineListEntry } from '@ant/shared';
+import { ChevronDown, ChevronRight, Pencil, Play, PowerOff, ShieldCheck, User, XCircle, Zap } from 'lucide-react';
+import { isApprovalStep, resolveRunConcurrency, type PipelineActivationView, type PipelineDef, type PipelineListEntry, type PipelineLiveRun } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
+import { activationRunsKey } from '@/domain/store/slices/pipelineSlice';
+import { cancelPipelineRun } from '@/infrastructure/http/api/pipelines';
 import { Badge, Button } from '../aurora';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeTrigger } from './cronDescribe';
 import { ActivationRunHistory } from './ActivationRunHistory';
 import { ApproversEditor, type ApproverGateInfo } from './ApproversEditor';
+import { FIRED_BY_ICON, FIRED_BY_LABEL, runHue, runLabel, runTintFg } from './runIdentity';
 
 export interface PipelineExecutionViewProps {
   /** The SAVED definition — execution never reads unsaved design edits. */
@@ -339,8 +343,16 @@ function ActivationSection({
   onDeactivate: () => void;
 }) {
   const { t } = useTranslation('pipelines');
-  // The live run's detail, keyed per run — another section's history click cannot evict it.
-  const runDetail = useStore((s) => (view.currentRunId ? s.pipelineRunDetails[view.currentRunId] : undefined));
+  const liveRuns: PipelineLiveRun[] = view.liveRuns ?? [];
+  const concurrency = resolveRunConcurrency(def);
+  const atCap = liveRuns.length >= concurrency;
+  // Run selection is per activation and SHARED between the live-run rows, the
+  // canvas chips and the history timeline — one selection, three views.
+  const runsKey = activationRunsKey(view.pipelineId, view.projectId, view.mine ? undefined : view.activatedBy);
+  const selectedRunId = useStore((s) => s.pipelineSelectedRunByActivation[runsKey]);
+  const selectActivationRun = useStore((s) => s.selectActivationRun);
+  // Run details keyed per run — another section's history click cannot evict them.
+  const runDetails = useStore((s) => s.pipelineRunDetails);
   const loadPipelineRunDetail = useStore((s) => s.loadPipelineRunDetail);
   // Roster edits are a ChangedBar draft (saved with the pipeline), so the
   // pencil only opens/closes the editor — closing is not a discard.
@@ -361,14 +373,19 @@ function ActivationSection({
         : view.state === 'awaiting_human'
           ? { state: 'warning' as const, label: t('execution.stateAwaiting', 'Awaiting input') }
           : { state: 'connected' as const, label: t('execution.stateWaiting', 'Waiting') };
-  const live = view.state === 'running' || view.state === 'awaiting_human';
-  // On-demand progress monitor: my live run only — run detail + runUpdate SSE
+  const live = liveRuns.length > 0;
+  // On-demand progress monitor: my live runs only — run detail + runUpdate SSE
   // are activator-scoped, so other members' progress stays at pill granularity.
-  const showProgress = expanded && view.mine && live && !!view.currentRunId;
+  const showProgress = expanded && view.mine && live;
 
+  const liveRunIds = liveRuns.map((r) => r.runId).join('|');
   useEffect(() => {
-    if (showProgress && view.currentRunId) void loadPipelineRunDetail(view.currentRunId, view.projectId);
-  }, [showProgress, view.currentRunId, view.projectId, loadPipelineRunDetail]);
+    if (!showProgress) return;
+    for (const runId of liveRunIds.split('|')) {
+      if (runId && !runDetails[runId]) void loadPipelineRunDetail(runId, view.projectId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- details are read once per live-set change, not re-fetched per detail fold
+  }, [showProgress, liveRunIds, view.projectId, loadPipelineRunDetail]);
 
   return (
     <div style={{ border: '1px solid var(--border-1)', borderRadius: 'var(--r-md)', background: 'var(--bg-surface)' }}>
@@ -393,6 +410,11 @@ function ActivationSection({
           {projectName ?? view.projectId}
         </span>
         <StatusPill state={stateProps.state} label={stateProps.label} />
+        {live && (
+          <Badge tone="brand" size="sm" title={liveRuns.map(runLabel).join('\n')}>
+            {t('execution.liveCount', '{{n}} live', { n: liveRuns.length })}
+          </Badge>
+        )}
         {isCurrentProject && (
           <Badge tone="brand" size="sm">
             {t('execution.thisProject', 'This project')}
@@ -433,8 +455,8 @@ function ActivationSection({
             <Button
               variant="ghost"
               size="xs"
-              disabled={busy || live}
-              title={live ? t('execution.runNowLive', 'A run is in progress — Run now is available when it finishes.') : undefined}
+              disabled={busy || atCap}
+              title={atCap ? t('execution.runNowAtCap', 'This activation is at its cap of {{n}} live run(s) — Run now opens up when one finishes.', { n: concurrency }) : undefined}
               onClick={onRunNow}
             >
               <Play size={12} /> {t('editor.runNow', 'Run now')}
@@ -466,18 +488,38 @@ function ActivationSection({
       )}
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-1)' }}>
-          {showProgress && runDetail && (
-            <div style={{ height: 320, borderBottom: '1px solid var(--border-1)', position: 'relative' }}>
-              <PipelineCanvas
-                def={def}
-                customAgents={accountAgents}
-                cronSummary={cronSummary}
-                run={runDetail}
-                approversByGate={view.approvers}
-                selectedNodeId={null}
-                onSelectNode={() => {}}
-              />
-            </div>
+          {showProgress && (
+            <>
+              {/* One row per live run, newest first — the ONE cancel point of this view. */}
+              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-1)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  {t('execution.liveRunsTitle', 'Live runs')}
+                </div>
+                {liveRuns.map((run) => (
+                  <LiveRunRow
+                    key={run.runId}
+                    run={run}
+                    selected={selectedRunId === run.runId}
+                    onSelect={() => selectActivationRun(runsKey, selectedRunId === run.runId ? null : run.runId, view.projectId)}
+                    onCancel={() => void cancelPipelineRun(run.runId)}
+                  />
+                ))}
+              </div>
+              <div style={{ height: 320, borderBottom: '1px solid var(--border-1)', position: 'relative' }}>
+                <PipelineCanvas
+                  def={def}
+                  customAgents={accountAgents}
+                  cronSummary={cronSummary}
+                  liveRuns={liveRuns}
+                  runDetails={runDetails}
+                  selectedRunId={selectedRunId ?? null}
+                  onSelectRun={(runId) => selectActivationRun(runsKey, runId, view.projectId)}
+                  approversByGate={view.approvers}
+                  selectedNodeId={null}
+                  onSelectNode={() => {}}
+                />
+              </div>
+            </>
           )}
           {/* Per-gate roster table — the observer's map (S4), read-only. */}
           {view.approvers && Object.keys(view.approvers).length > 0 && (
@@ -500,6 +542,51 @@ function ActivationSection({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** One live run: hue accent (its identity everywhere), trigger, label, state, started, cancel. */
+function LiveRunRow({ run, selected, onSelect, onCancel }: { run: PipelineLiveRun; selected: boolean; onSelect: () => void; onCancel: () => void }) {
+  const { t } = useTranslation('pipelines');
+  const hue = runHue(run.runId);
+  const FiredIcon = FIRED_BY_ICON[run.firedBy];
+  const fired = FIRED_BY_LABEL[run.firedBy];
+  const awaiting = run.status === 'awaiting_human';
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onSelect();
+      }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '5px 8px',
+        borderRadius: 'var(--r-md)',
+        border: `1px solid ${selected ? runTintFg(hue) : 'var(--border-1)'}`,
+        borderLeft: `3px solid ${runTintFg(hue)}`,
+        background: selected ? `color-mix(in srgb, ${runTintFg(hue)} 8%, var(--bg-surface))` : 'var(--bg-surface)',
+        cursor: 'pointer',
+        fontSize: 11,
+      }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-2)', flexShrink: 0 }}>
+        <FiredIcon size={11} />
+        {t(fired.key, fired.fallback)}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{runLabel(run)}</span>
+      <StatusPill state={awaiting ? 'warning' : 'checking'} label={awaiting ? t('runs.awaiting', 'Awaiting input') : t('runs.running', 'Running')} />
+      <span style={{ color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{new Date(run.startedAt).toLocaleString()}</span>
+      <div style={{ flex: 1 }} />
+      <span onClick={(e) => e.stopPropagation()}>
+        <Button variant="ghost" size="xs" title={t('runs.cancel', 'Cancel run')} onClick={onCancel}>
+          <XCircle size={12} /> {t('runs.cancel', 'Cancel run')}
+        </Button>
+      </span>
     </div>
   );
 }

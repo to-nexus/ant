@@ -297,7 +297,9 @@ function PipelineRow({
   // Inbox rows are the one pending-count owner (the list entry carries none).
   const awaitingCount = useStore((s) => selectPipelineApprovalCountFor(s as any, entry.id));
   const awaiting = awaitingCount > 0;
-  const running = entry.activations.some((a) => a.state === 'running' || a.state === 'awaiting_human');
+  // Liveness is the live SET across the entry's activations, never a state scalar.
+  const liveCount = entry.activations.reduce((n, a) => n + (a.liveRuns?.length ?? 0), 0);
+  const running = liveCount > 0;
   const nextFire = entry.nextFireAt ? relativeFromNow(entry.nextFireAt, t as any) : null;
   return (
     <RailRow
@@ -329,7 +331,7 @@ function PipelineRow({
             <span
               className="shrink-0 rounded-full"
               style={{ width: 7, height: 7, background: 'var(--violet-500)', animation: 'pulse-soft 1.4s ease-in-out infinite' }}
-              title={t('rail.running', 'Running')}
+              title={t('rail.liveCount', '{{n}} live run(s)', { n: liveCount })}
             />
           )}
           {entry.activations.length > 0 && (

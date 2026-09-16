@@ -52,6 +52,7 @@ const ACTIVATION_VIEW = {
   activatedAt: '2026-08-20T00:00:00.000Z',
   mine: true,
   state: 'waiting' as const,
+  liveRuns: [] as unknown[],
 };
 const ENTRY = (over: Record<string, unknown> = {}) => ({
   id: 'p1',
@@ -192,29 +193,61 @@ describe('applyPipelineEvent — activation / availability folds', () => {
     expect(useStore.getState().pipelines[0].enabled).toBe(false);
   });
 
-  it('runUpdate flips the bound project waiting → running → waiting on terminal', () => {
+  // The live set is folded, never replaced: N runs stay N until each seals,
+  // and BOTH holders (activation row, chat lock signal) pass the same fold.
+  it('runUpdate folds the live SET — two runs stay two, awaiting wins, a terminal run leaves, the last terminal clears', () => {
     const useStore = buildStore();
     useStore.setState({
       pipelines: [ENTRY({ activations: [ACTIVATION_VIEW] })],
-      activePipelineByProject: { 'proj-a': { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting' } },
+      activePipelineByProject: { 'proj-a': { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting', liveRuns: [] } },
     });
-    const run = (status: string) => ({
+    const run = (runId: string, status: string, startedAt: string, steps: unknown[] = []) => ({
       cause: 'runUpdate',
       pipelineId: 'p1',
       projectId: 'proj-a',
-      run: { runId: 'r1', pipelineId: 'p1', projectId: 'proj-a', firedBy: 'cron', fireEpoch: 0, status, steps: [], startedAt: 'now' },
+      run: { runId, pipelineId: 'p1', projectId: 'proj-a', firedBy: 'manual', fireEpoch: 0, status, steps, startedAt },
     });
+    const ids = (s: any) => s.activePipelineByProject['proj-a'].liveRuns.map((r: any) => r.runId);
 
-    useStore.getState().applyPipelineEvent(run('running') as any);
+    useStore.getState().applyPipelineEvent(run('r1', 'running', '2026-09-16T00:00:01.000Z', [{ stepId: 'a', status: 'running' }]) as any);
+    useStore.getState().applyPipelineEvent(run('r2', 'running', '2026-09-16T00:00:02.000Z', [{ stepId: 'a', status: 'dispatched' }]) as any);
     let s = useStore.getState();
-    expect(s.activePipelineByProject['proj-a']).toMatchObject({ state: 'running', currentRunId: 'r1' });
-    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'running', currentRunId: 'r1' });
+    expect(ids(s)).toEqual(['r2', 'r1']); // newest first
+    expect(s.activePipelineByProject['proj-a']).toMatchObject({ state: 'running' });
+    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'running' });
+    expect(s.pipelines[0].activations[0].liveRuns.map((r: any) => r.runId)).toEqual(['r2', 'r1']);
+    expect(s.pipelines[0].activations[0].liveRuns[1]).toMatchObject({ currentStepIds: ['a'], firedBy: 'manual' });
 
-    useStore.getState().applyPipelineEvent(run('completed') as any);
+    // One run parks on a person — the activation reads awaiting, the other run keeps working.
+    useStore.getState().applyPipelineEvent(run('r1', 'awaiting_human', '2026-09-16T00:00:01.000Z', [{ stepId: 'a', status: 'awaiting_gate' }]) as any);
     s = useStore.getState();
-    expect(s.activePipelineByProject['proj-a']?.state).toBe('waiting');
-    expect(s.activePipelineByProject['proj-a']?.currentRunId).toBeUndefined();
-    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'waiting' });
+    expect(s.activePipelineByProject['proj-a'].state).toBe('awaiting_human');
+    expect(ids(s)).toEqual(['r2', 'r1']);
+
+    // The awaiting run seals — the survivor decides the state.
+    useStore.getState().applyPipelineEvent(run('r1', 'completed', '2026-09-16T00:00:01.000Z') as any);
+    s = useStore.getState();
+    expect(ids(s)).toEqual(['r2']);
+    expect(s.activePipelineByProject['proj-a'].state).toBe('running');
+    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'running' });
+
+    useStore.getState().applyPipelineEvent(run('r2', 'failed', '2026-09-16T00:00:02.000Z') as any);
+    s = useStore.getState();
+    expect(ids(s)).toEqual([]);
+    expect(s.activePipelineByProject['proj-a'].state).toBe('waiting');
+    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'waiting', liveRuns: [] });
+  });
+
+  it('a broken activation row stays broken through run folds', () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelines: [ENTRY({ activations: [{ ...ACTIVATION_VIEW, state: 'broken' }] })], activePipelineByProject: {} });
+    useStore.getState().applyPipelineEvent({
+      cause: 'runUpdate',
+      pipelineId: 'p1',
+      projectId: 'proj-a',
+      run: { runId: 'r1', pipelineId: 'p1', projectId: 'proj-a', firedBy: 'cron', fireEpoch: 0, status: 'running', steps: [], startedAt: 'now' },
+    } as any);
+    expect(useStore.getState().pipelines[0].activations[0]).toMatchObject({ state: 'broken', liveRuns: [{ runId: 'r1' }] });
   });
 });
 

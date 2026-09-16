@@ -400,15 +400,13 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
       }
       const targetActRoot = deriveActivationsRoot(ctxOf(target));
       const runs: PipelineRunSummary[] = readRunIndex(targetActRoot, projectId, 50, pipelineId);
-      let live: PipelineRunSummary | undefined;
-      const activeRunId = await deps.coordinator.getActiveRunId(target, projectId);
-      if (activeRunId) {
-        const run = await deps.coordinator.getRun(activeRunId);
-        if (run && run.pipelineId === pipelineId && !runs.some((r) => r.runId === run.runId)) {
-          live = runSummaryOf(run);
-        }
+      // Live runs ride ahead of the sealed index — every one of them, newest first.
+      const live: PipelineRunSummary[] = [];
+      for (const { runId } of await deps.coordinator.listLiveRuns(target, projectId)) {
+        const run = await deps.coordinator.getRun(runId);
+        if (run && run.pipelineId === pipelineId && !runs.some((r) => r.runId === run.runId)) live.push(runSummaryOf(run));
       }
-      res.json({ runs: live ? [live, ...runs] : runs });
+      res.json({ runs: [...live, ...runs] });
     } catch (error) {
       sendErrorResponse(res, 500, error, 'PipelinesRuns');
     }

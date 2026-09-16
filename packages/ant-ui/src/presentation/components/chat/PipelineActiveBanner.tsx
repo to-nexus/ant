@@ -10,6 +10,10 @@ import { useTranslation } from 'react-i18next';
 import { Waypoints } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { selectActivePipelineForSelectedProject } from '@/domain/store/selectors/pipelines';
+import { runHue, runLabel, runTintFg } from '@/presentation/components/Pipelines/runIdentity';
+
+/** Run labels shown inline before the banner folds into a count. */
+const MAX_BANNER_RUNS = 3;
 
 export function PipelineActiveBanner() {
   const { t } = useTranslation('chat');
@@ -20,7 +24,8 @@ export function PipelineActiveBanner() {
 
   if (!active) return null;
 
-  const running = active.state === 'running' || active.state === 'awaiting_human';
+  const liveRuns = active.liveRuns ?? [];
+  const running = liveRuns.length > 0;
   const stateColor = running ? 'var(--emerald-500)' : 'var(--violet-400)';
 
   return (
@@ -42,8 +47,34 @@ export function PipelineActiveBanner() {
       </span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
         <span style={{ width: 7, height: 7, borderRadius: 4, background: stateColor }} />
-        {running ? t('banner.pipelineWorking', 'working') : t('banner.pipelineWaiting', 'waiting')}
+        {running ? t('banner.pipelineWorkingCount', '{{n}} live', { n: liveRuns.length }) : t('banner.pipelineWaiting', 'waiting')}
       </span>
+      {/* Run identity: the same label + hue the canvas chips and the run dock use. */}
+      {liveRuns.slice(0, MAX_BANNER_RUNS).map((run) => (
+        <span
+          key={run.runId}
+          title={runLabel(run)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 10.5,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--text-2)',
+            maxWidth: 120,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: 3, background: runTintFg(runHue(run.runId)), flexShrink: 0 }} />
+          {runLabel(run)}
+        </span>
+      ))}
+      {liveRuns.length > MAX_BANNER_RUNS && (
+        <span style={{ fontSize: 10.5, color: 'var(--text-3)', flexShrink: 0 }}>+{liveRuns.length - MAX_BANNER_RUNS}</span>
+      )}
       {!running && active.nextFireAt && (
         <span style={{ color: 'var(--text-3)', flexShrink: 0 }}>
           {t('banner.pipelineNextFire', 'next: {{when}}', { when: new Date(active.nextFireAt).toLocaleString() })}

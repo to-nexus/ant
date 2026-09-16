@@ -441,6 +441,8 @@ export interface ChatUserTurnLine extends LineBase {
     runId: string;
     stepId: string;
     firedBy: 'cron' | 'manual' | 'event';
+    /** The run's case label (fetch-triggered runs) — the chat chip's `runLabel`. */
+    itemKey?: string;
   };
 }
 

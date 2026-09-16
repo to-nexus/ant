@@ -24,7 +24,7 @@
  * structural resume (jobId re-pointing, `ant:pipe:job:{jobId}` re-keyed).
  */
 
-import type { GateDecision, PipelinePendingApproval, RunRecord } from '@ant/shared';
+import type { GateDecision, PipelineLiveRun, PipelinePendingApproval, RunRecord } from '@ant/shared';
 import type { PipelineControlJobData, PipelineOwner } from '../../core/ports/scheduler';
 import { REDIS_CHANNELS } from '../../core/constants/redis';
 import { InAppChannel, type NotificationChannelPort } from '../../core/pipelines/notifications';
@@ -38,8 +38,8 @@ import { applyResolvedGate, armGate, handleGateRemind, handleGateTimeout, republ
 import { applyOutcome, cancelRun, deactivate, finalizeRun, killStepJob } from './pipelineRun/lifecycle';
 import {
   approverRunAccess,
-  getActiveRunId,
   listActiveRunIds,
+  listLiveRuns,
   getHitlByGateId,
   getRun,
   listApproverPendingApprovals,
@@ -174,9 +174,9 @@ export class PipelineRunCoordinator {
     return listActiveRunIds(this.deps, owner, projectId);
   }
 
-  /** Singular shim over {@link listActiveRunIds} for the single-`currentRunId` view types. */
-  async getActiveRunId(owner: PipelineOwner, projectId: string): Promise<string | null> {
-    return getActiveRunId(this.deps, owner, projectId);
+  /** The view contract: every live run of one activation, newest first. */
+  async listLiveRuns(owner: PipelineOwner, projectId: string): Promise<PipelineLiveRun[]> {
+    return listLiveRuns(this.deps, owner, projectId);
   }
 
   /** Pending gates across the caller's own activations (disk-derived scan). */

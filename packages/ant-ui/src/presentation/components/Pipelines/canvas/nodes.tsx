@@ -15,7 +15,10 @@ import { useTranslation } from 'react-i18next';
 import type { GateDecision, PipelineStepStatus } from '@ant/shared';
 import { TRIGGER_NODE_ID, type TriggerMode } from '../draft';
 import { LIVE_STEP_STATUSES, STEP_STATUS_COLOR, gateDecisionLabel, isApprovedDecision, stepStatusLabel } from '../runStepPresentation';
+import { runTintFg } from '../runIdentity';
 import { HANDLE, NODE_WIDTH, type FlowDir } from './layout';
+import { RUN_CHIP_ROW_HEIGHT } from './nodeMetrics';
+import type { RunChip } from './runOverlay';
 
 export { NODE_WIDTH } from './layout';
 
@@ -69,9 +72,19 @@ export interface PipelineNodeData {
   advisory?: boolean;
   /** Gate nodes, activation context: who may open this gate ("이 게이트는 누가 여는가"). */
   approvers?: string[];
-  /** Gate nodes, run context: the landed decision ("✓ B 승인"). */
+  /** Gate nodes, run context: the landed decision ("✓ B 승인") — of the focused run. */
   gateDecision?: { decision: GateDecision; decidedBy?: string };
+  /** Step/gate nodes: the live runs AT this step right now — one chip each (`runOverlay.stepRunChips`). */
+  runChips?: RunChip[];
+  /** Trigger node: how many runs are live (the wiring is drawn once; N runs never mean N triggers). */
+  liveCount?: number;
+  /** The run whose chips draw a ring; clicking a chip selects that run. */
+  selectedRunId?: string | null;
+  onSelectRun?: (runId: string) => void;
 }
+
+/** Chips shown before the row folds into "+n". */
+export const MAX_RUN_CHIPS = 4;
 
 const HIDDEN_HANDLE: React.CSSProperties = { opacity: 0, pointerEvents: 'none' };
 
@@ -316,6 +329,75 @@ function StatusChip({ status }: { status?: PipelineStepStatus }) {
   );
 }
 
+/**
+ * The live runs at this step, as chips — the run's hue is the identity, the
+ * dot is that run's step status. The row is always rendered (fixed height) so
+ * a run arriving or leaving never changes the card height (nodeMetrics).
+ */
+function RunChipRow({ data }: { data: PipelineNodeData }) {
+  const { t } = useTranslation('pipelines');
+  const chips = data.runChips ?? [];
+  const shown = chips.slice(0, MAX_RUN_CHIPS);
+  const more = chips.length - shown.length;
+  return (
+    <div
+      className="nodrag"
+      style={{ display: 'flex', alignItems: 'center', gap: 4, height: RUN_CHIP_ROW_HEIGHT, marginTop: 2, overflow: 'hidden' }}
+      aria-label={chips.length > 0 ? t('canvas.runsHere', '{{n}} live run(s) at this step', { n: chips.length }) : undefined}
+    >
+      {shown.map((chip) => {
+        const selected = data.selectedRunId === chip.runId;
+        const color = STEP_STATUS_COLOR[chip.status] ?? 'var(--text-3)';
+        return (
+          <button
+            key={chip.runId}
+            type="button"
+            title={t('canvas.selectRun', 'Show run {{label}}', { label: chip.label })}
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onSelectRun?.(chip.runId);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              height: 18,
+              maxWidth: 88,
+              padding: '0 6px',
+              borderRadius: 'var(--r-pill)',
+              border: `1px solid ${selected ? runTintFg(chip.hue) : 'var(--border-1)'}`,
+              borderLeft: `3px solid ${runTintFg(chip.hue)}`,
+              background: 'var(--bg-surface-2)',
+              boxShadow: selected ? `0 0 0 2px color-mix(in srgb, ${runTintFg(chip.hue)} 30%, transparent)` : undefined,
+              cursor: data.onSelectRun ? 'pointer' : 'default',
+              fontSize: 10,
+              color: 'var(--text-2)',
+              minWidth: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                flexShrink: 0,
+                background: color,
+                animation: LIVE_STEP_STATUSES.has(chip.status) ? 'pulse-soft 1.4s ease-in-out infinite' : undefined,
+              }}
+            />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>{chip.label}</span>
+          </button>
+        );
+      })}
+      {more > 0 && (
+        <span style={{ fontSize: 10, color: 'var(--text-3)', flexShrink: 0 }} title={chips.slice(MAX_RUN_CHIPS).map((c) => c.label).join(', ')}>
+          +{more}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function NodeHeader({ kind, icon, primary, caption, captionTitle, invalid }: { kind: NodeKind; icon: ReactNode; primary: string; caption?: string; captionTitle?: string; invalid?: boolean }) {
   const accent = NODE_KIND_STYLE[kind].accent;
   return (
@@ -367,10 +449,29 @@ function NodeHeader({ kind, icon, primary, caption, captionTitle, invalid }: { k
 }
 
 export const TriggerNode = memo(function TriggerNode({ data }: NodeProps<PipelineNodeData>) {
+  const { t } = useTranslation('pipelines');
   const Icon = data.triggerMode ? TRIGGER_MODE_ICON[data.triggerMode] : Clock;
   return (
     <CardShell kind="trigger" data={data}>
       <NodeHeader kind="trigger" icon={<Icon size={14} />} primary={data.primary} caption={data.caption} />
+      {/* One trigger, N live runs — a count, never N copies of the wiring. */}
+      {(data.liveCount ?? 0) > 0 && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 6,
+            right: 8,
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '0 6px',
+            borderRadius: 'var(--r-pill)',
+            background: 'color-mix(in srgb, var(--teal-500) 14%, transparent)',
+            color: 'var(--teal-500)',
+          }}
+        >
+          {t('canvas.liveCount', '{{n}} live', { n: data.liveCount })}
+        </span>
+      )}
       <NodeHandles flowDir={data.flowDir} withTarget={false} />
       <AddButton data={data} />
     </CardShell>
@@ -389,6 +490,7 @@ export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeD
         invalid={data.invalid}
       />
       <StatusChip status={data.status} />
+      <RunChipRow data={data} />
       <AdvisoryDot data={data} kind="step" />
       <NodeHandles flowDir={data.flowDir} withTarget />
       <AddButton data={data} />
@@ -416,6 +518,7 @@ export const GateNode = memo(function GateNode({ data }: NodeProps<PipelineNodeD
           {gateDecisionLabel(t, decided.decision, decided.decidedBy)}
         </div>
       )}
+      <RunChipRow data={data} />
       <AdvisoryDot data={data} kind="gate" />
       <NodeHandles flowDir={data.flowDir} withTarget />
       <AddButton data={data} />

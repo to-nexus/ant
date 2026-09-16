@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import type { PipelineDef, PipelineRunStatus } from '@ant/shared';
+import { DEFAULT_PIPELINE_CAPS, resolveRunConcurrency, type PipelineDef, type PipelineRunStatus } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { AuroraSelect, FieldLabel } from '../../ConfigEditor/aurora';
 import { CronBuilder } from '../CronBuilder';
@@ -7,6 +7,14 @@ import { setTriggerMode, triggerModeOf, updateRunCompleted, updateSchedule, type
 import { ToggleChip } from './chips';
 
 const TERMINAL_STATUSES = ['completed', 'failed', 'partial', 'cancelled'] as const;
+/** `1..maxLiveRunsPerActivation` — the validator's range, offered as a closed list. */
+const CONCURRENCY_OPTIONS = Array.from({ length: DEFAULT_PIPELINE_CAPS.maxLiveRunsPerActivation }, (_, i) => i + 1);
+
+/** `concurrency: 1` is the default — the key is omitted rather than written as the default. */
+function setConcurrency(def: PipelineDef, n: number): PipelineDef {
+  const { concurrency: _prev, ...rest } = def;
+  return n > 1 ? { ...rest, concurrency: n } : rest;
+}
 
 export function TriggerPanel({ def, onChange, onCronValidity }: { def: PipelineDef; onChange: (d: PipelineDef) => void; onCronValidity: (ok: boolean) => void }) {
   const { t } = useTranslation('pipelines');
@@ -95,6 +103,23 @@ export function TriggerPanel({ def, onChange, onCronValidity }: { def: PipelineD
           </div>
         </>
       )}
+      <div>
+        <FieldLabel>{t('trigger.concurrency', 'Live runs at once')}</FieldLabel>
+        <AuroraSelect
+          value={String(resolveRunConcurrency(def))}
+          onChange={(v) => onChange(setConcurrency(def, Number(v)))}
+          options={CONCURRENCY_OPTIONS.map((n) => ({
+            value: String(n),
+            label:
+              n === 1
+                ? t('trigger.concurrencyOne', '1 — one run at a time (default)')
+                : t('trigger.concurrencyN', '{{n}} — up to {{n}} independent runs', { n }),
+          }))}
+        />
+        <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 4, lineHeight: 1.5 }}>
+          {t('trigger.concurrencyHint', 'Applies to every trigger: Run now, the schedule and chain fires each start a run while the activation is below this cap.')}
+        </div>
+      </div>
       <div>
         <FieldLabel>{t('trigger.onStepFailure', 'When a step fails')}</FieldLabel>
         <AuroraSelect

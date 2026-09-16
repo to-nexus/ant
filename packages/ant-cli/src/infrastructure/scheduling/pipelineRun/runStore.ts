@@ -19,6 +19,8 @@ import {
   type PipelineRunEvent,
   type RunRecord,
   type StepRecord,
+  foldLiveRun,
+  type PipelineLiveRun,
 } from '@ant/shared';
 import type { PipelineOwner } from '../../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL, getRealtimeBroadcastChannel } from '../../../core/constants/redis';
@@ -150,17 +152,21 @@ export async function listActiveRunIds(
 }
 
 /**
- * Singular view of {@link listActiveRunIds} for the HTTP consumers whose SHARED
- * types still carry one `currentRunId` (`ActivePipelineInfo`,
- * `PipelineActivationView`). Exact while the cap is 1; the multi-run contract
- * change retires it.
+ * The view contract over {@link listActiveRunIds}: every live run of the
+ * activation as `PipelineLiveRun`, newest first. A slot member whose run doc
+ * is gone (heal pending) is skipped — the set is liveness, the doc is state.
  */
-export async function getActiveRunId(
+export async function listLiveRuns(
   deps: PipelineCoordinatorDeps,
   owner: PipelineOwner,
   projectId: string,
-): Promise<string | null> {
-  return (await listActiveRunIds(deps, owner, projectId))[0] ?? null;
+): Promise<PipelineLiveRun[]> {
+  let live: PipelineLiveRun[] = [];
+  for (const runId of await listActiveRunIds(deps, owner, projectId)) {
+    const run = await getRun(deps, runId);
+    if (run) live = foldLiveRun(live, run);
+  }
+  return live;
 }
 
 /** Pending gates across the caller's own activations (disk-derived scan). */

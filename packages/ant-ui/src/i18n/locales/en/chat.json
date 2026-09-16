@@ -12,7 +12,8 @@
     "pipelineStopConfirm": "This job is a step of pipeline \"{{name}}\". Stopping it cancels the whole pipeline run.",
     "stop": "Stop",
     "stopping": "Stopping...",
-    "filesEdited": "{{count}} File(s) Edited"
+    "filesEdited": "{{count}} File(s) Edited",
+    "pipelineStopPickRun": "Several pipeline runs are live — cancel the one you mean from the run list."
   },
   "mention": {
     "intent": {
@@ -302,7 +303,8 @@
     "pipelineWorking": "working",
     "pipelineWaiting": "waiting",
     "pipelineNextFire": "next: {{when}}",
-    "pipelineManage": "Manage"
+    "pipelineManage": "Manage",
+    "pipelineWorkingCount": "{{n}} live"
   },
   "policy": {
     "signInPlaceholder": "Please sign in to start chatting...",
@@ -317,7 +319,7 @@
     "selectJobMessage": "Please select a job type from the selector below",
     "jobRunningPlaceholder": "Job is running. Stop the job to send a new message...",
     "pipelineActivePlaceholder": "Pipeline \"{{name}}\" owns this project (next run: {{when}}). Deactivate it to chat.",
-    "pipelineRunningPlaceholder": "Pipeline \"{{name}}\" is running a step — chat is locked.",
+    "pipelineRunningPlaceholder": "Pipeline \"{{name}}\" has {{count}} live run(s) — chat is locked.",
     "queueWaitingPlaceholder": "Waiting in queue ({{position}}/{{total}}). Stop to cancel...",
     "interruptedPlaceholder": "Send a message to continue with additional feedback...",
     "firstMessagePlaceholder": "Start your conversation with the agent...",

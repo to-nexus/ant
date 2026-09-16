@@ -41,7 +41,7 @@ beforeEach(() => {
 describe('useChatPolicy — pipeline-owned project lock', () => {
   it("reports 'pipeline-active' (send blocked) while the pipeline waits between fires", () => {
     storeState.activePipelineByProject = {
-      proj: { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting', nextFireAt: '2026-08-21T00:00:00.000Z' },
+      proj: { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting', nextFireAt: '2026-08-21T00:00:00.000Z', liveRuns: [] },
     };
     const policy = useChatPolicy();
     expect(policy.reason).toBe('pipeline-active');
@@ -49,24 +49,36 @@ describe('useChatPolicy — pipeline-owned project lock', () => {
     expect(policy.canChangeJob).toBe(false);
   });
 
+  const LIVE = (runId: string, status: 'running' | 'awaiting_human' = 'running') => ({ runId, status, startedAt: 'now', firedBy: 'manual', currentStepIds: [] });
+
   it("reports 'pipeline-running' and WINS over isRunning while a step executes", () => {
     storeState.isRunning = true;
     storeState.activePipelineByProject = {
-      proj: { pipelineId: 'p1', pipelineName: 'Digest', state: 'running', currentRunId: 'r1' },
+      proj: { pipelineId: 'p1', pipelineName: 'Digest', state: 'running', liveRuns: [LIVE('r1')] },
     };
     expect(useChatPolicy().reason).toBe('pipeline-running');
   });
 
   it("treats 'awaiting_human' as running (a live run holds the project)", () => {
     storeState.activePipelineByProject = {
-      proj: { pipelineId: 'p1', pipelineName: 'Digest', state: 'awaiting_human', currentRunId: 'r1' },
+      proj: { pipelineId: 'p1', pipelineName: 'Digest', state: 'awaiting_human', liveRuns: [LIVE('r1', 'awaiting_human')] },
     };
     expect(useChatPolicy().reason).toBe('pipeline-running');
   });
 
+  // The lock reads the live SET (user decision: any live run locks the chat).
+  it('N live runs lock exactly like one', () => {
+    storeState.activePipelineByProject = {
+      proj: { pipelineId: 'p1', pipelineName: 'Digest', state: 'running', liveRuns: [LIVE('r1'), LIVE('r2'), LIVE('r3')] },
+    };
+    const policy = useChatPolicy();
+    expect(policy.reason).toBe('pipeline-running');
+    expect(policy.canSendMessage).toBe(false);
+  });
+
   it('another project\'s activation never locks this one', () => {
     storeState.activePipelineByProject = {
-      other: { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting' },
+      other: { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting', liveRuns: [] },
     };
     expect(useChatPolicy().reason).toBe('ready');
   });

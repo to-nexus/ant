@@ -50,7 +50,8 @@ key types and their meaning.
 | `PipelineScheduleTrigger` | `pipeline.ts` | `cron` (5 fields, parsed server-side), `tz?`, `onMissed?`, `overlap?`. |
 | `StepEdgeCondition` / `StepFailurePolicy` | `pipeline.ts` | `'success' \| 'failure' \| 'always'` per edge; `'abort' \| 'continue'` for the run. |
 | `PipelineAvailability` | `pipeline.ts` | The `enabled` sidecar. Gates *activatability*, not execution — a missing sidecar reads as disabled. |
-| `PipelineActivation` / `ActivePipelineInfo` | `pipeline.ts` | The scheduling unit: one pipeline bound to one project, self-describing, pinning the scope its definition resolves from. |
+| `PipelineActivation` / `ActivePipelineInfo` | `pipeline.ts` | The scheduling unit: one pipeline bound to one project, self-describing, pinning the scope its definition resolves from. `ActivePipelineInfo` / `PipelineActivationView` carry `liveRuns: PipelineLiveRun[]` (newest first) and a `state` that is always `activationStateOf(liveRuns)`. |
+| `PipelineLiveRun` / `liveRunOf` / `foldLiveRun` / `activationStateOf` | `pipeline.ts` | One live run as every view sees it — `runId`, `status`, `startedAt`, `firedBy`, `itemKey?`, `currentStepIds` (steps in a live state; where the run's chips sit on the one canvas). `liveRunOf` is the ONE derivation from a run record, `foldLiveRun` the ONE upsert/removal, `activationStateOf` the ONE state rule (awaiting a person outranks working). |
 | `RunRecord` / `StepRecord` / `GateRecord` / `ClarifyRecord` | `pipeline.ts` | Run history shapes, including the `awaiting_clarify` step state. |
 | `PipelineRunEvent` | `pipeline.ts` | The SSE payload the Pipelines tab renders live. |
 | `ActiveJobInfo` | `task.ts` | One live job of a feature on the SSE initial kanban (`jobType`, `jobId`, `status`, `agent?`) plus attribution — `pipelineRunId?` (the run this job is a step of) and `customJobRef?` (universal) — so N universal jobs of one project stay distinguishable. |

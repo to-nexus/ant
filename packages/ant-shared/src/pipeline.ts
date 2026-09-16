@@ -427,15 +427,16 @@ export function validatePipelineActivation(
 
 /**
  * Per-project active-pipeline surface (`GET /api/projects/:id/active-pipeline`
- * + derived FE state). Activation alone means `waiting`; a live run makes it
- * `running` / `awaiting_human`.
+ * + derived FE state). Activation alone means `waiting`; live runs make it
+ * `running` / `awaiting_human` — `state` is always `activationStateOf(liveRuns)`.
  */
 export interface ActivePipelineInfo {
   pipelineId: string;
   pipelineName: string;
-  state: 'waiting' | 'running' | 'awaiting_human';
+  state: PipelineLiveState;
   nextFireAt?: string;
-  currentRunId?: string;
+  /** Every live run of the activation, newest first (`liveRunOf`). */
+  liveRuns: PipelineLiveRun[];
 }
 
 /**
@@ -731,6 +732,72 @@ export function runSummaryOf(
   };
 }
 
+// ============================================
+// Live runs — the N-runs-per-activation view contract
+// ============================================
+
+/** Step states that mean "this run is at this step right now" (the canvas chip placement). */
+export const PIPELINE_LIVE_STEP_STATUSES: ReadonlySet<PipelineStepStatus> = new Set<PipelineStepStatus>([
+  'dispatched',
+  'running',
+  'awaiting_gate',
+  'awaiting_clarify',
+]);
+
+/**
+ * One live run as every view surface sees it (activation row, chat lock
+ * signal, canvas chips, run dock). A run is one case in flight; N of them on
+ * one activation is what an operator would call "workers" — the vocabulary
+ * stays Run. `itemKey` is the fetch-trigger case label (absent until that
+ * trigger lands); `runLabel` on the FE falls back to `runId`.
+ */
+export interface PipelineLiveRun {
+  runId: string;
+  status: 'running' | 'awaiting_human';
+  startedAt: string;
+  firedBy: PipelineFiredBy;
+  itemKey?: string;
+  /** Steps in a live state — where this run's chips sit on the one canvas. */
+  currentStepIds: string[];
+}
+
+export type PipelineLiveState = 'waiting' | 'running' | 'awaiting_human';
+
+/** The ONE derivation of a live-run view from a run record; `null` for a terminal run. */
+export function liveRunOf(
+  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps'>,
+): PipelineLiveRun | null {
+  if (run.status !== 'running' && run.status !== 'awaiting_human') return null;
+  return {
+    runId: run.runId,
+    status: run.status,
+    startedAt: run.startedAt,
+    firedBy: run.firedBy,
+    currentStepIds: run.steps.filter((s) => PIPELINE_LIVE_STEP_STATUSES.has(s.status)).map((s) => s.stepId),
+  };
+}
+
+/**
+ * Fold one run update into a live set: a terminal run leaves, a live one is
+ * upserted; newest first (`startedAt` desc, runId tiebreak) so "the newest
+ * live run" is `[0]` everywhere.
+ */
+export function foldLiveRun(
+  liveRuns: readonly PipelineLiveRun[],
+  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps'>,
+): PipelineLiveRun[] {
+  const rest = liveRuns.filter((r) => r.runId !== run.runId);
+  const live = liveRunOf(run);
+  if (!live) return rest;
+  return [...rest, live].sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.runId.localeCompare(a.runId));
+}
+
+/** Activation state from its live set: awaiting a person outranks working; no live run = waiting. */
+export function activationStateOf(liveRuns: readonly PipelineLiveRun[]): PipelineLiveState {
+  if (liveRuns.some((r) => r.status === 'awaiting_human')) return 'awaiting_human';
+  return liveRuns.length > 0 ? 'running' : 'waiting';
+}
+
 /** Append-only run event line (`.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl`). */
 export interface PipelineRunEvent {
   ts: string;
@@ -768,10 +835,12 @@ export interface PipelineActivationView {
   activatedBy: string;
   activatedAt: string;
   mine: boolean;
-  state: 'waiting' | 'running' | 'awaiting_human' | 'broken';
+  /** `broken` is sticky; otherwise `activationStateOf(liveRuns)`. */
+  state: PipelineLiveState | 'broken';
   /** Server-computed next fire; absent on `broken`. */
   nextFireAt?: string;
-  currentRunId?: string;
+  /** Every live run of this activation, newest first. */
+  liveRuns: PipelineLiveRun[];
   lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
   /** Per-gate approver roster — org-visible by design (who opens which gate is never hidden). */
   approvers?: Record<string, string[]>;
@@ -824,6 +893,8 @@ export interface PipelinePendingApproval {
   onTimeout?: GateTimeoutAction;
   /** Clarify rows only: the asking job (funnel key). */
   jobId?: string;
+  /** The run's case label (fetch-triggered runs) — the inbox row's `runLabel`. */
+  itemKey?: string;
   /**
    * Absent = the caller's own activation. `'approver'` = the caller is on this
    * gate's roster of ANOTHER member's activation — the inbox groups these rows

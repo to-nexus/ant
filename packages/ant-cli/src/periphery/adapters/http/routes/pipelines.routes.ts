@@ -19,7 +19,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import type { ActivePipelineInfo, PipelineActivation } from '@ant/shared';
+import { activationStateOf, type ActivePipelineInfo, type PipelineActivation } from '@ant/shared';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { getNextFires } from '../../../../core/pipelines/cron';
 import { deriveActivationsRoot, type PipelineTenantContext } from '../../../../core/pipelines/paths';
@@ -95,20 +95,13 @@ export function createActivePipelineRoute(deps: PipelinesRoutesDeps): Router {
       } catch {
         /* invalid def: still report the binding */
       }
-      let state: ActivePipelineInfo['state'] = 'waiting';
-      let currentRunId: string | undefined;
-      const activeRunId = await deps.coordinator.getActiveRunId(owner, projectId);
-      if (activeRunId) {
-        currentRunId = activeRunId;
-        const run = await deps.coordinator.getRun(activeRunId);
-        state = run?.status === 'awaiting_human' ? 'awaiting_human' : 'running';
-      }
+      const liveRuns = await deps.coordinator.listLiveRuns(owner, projectId);
       const active: ActivePipelineInfo = {
         pipelineId: bound.pipelineId,
         pipelineName: name,
-        state,
+        state: activationStateOf(liveRuns),
         ...(nextFireAt && { nextFireAt }),
-        ...(currentRunId && { currentRunId }),
+        liveRuns,
       };
       res.json({ active });
     } catch (error) {

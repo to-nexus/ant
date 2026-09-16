@@ -596,13 +596,16 @@ describe('per-activation liveness is a slot set', () => {
     expect(lifecycle).not.toMatch(/holder === run\.runId/);
   });
 
-  it('every liveness read goes through listActiveRunIds (the singular is a shim over it)', () => {
+  it('every liveness read goes through listActiveRunIds; the view contract is listLiveRuns (no singular shim anywhere — tombstone)', () => {
     const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
     expect(runStore).toMatch(/export async function listActiveRunIds/);
-    expect(runStore).toMatch(/return \(await listActiveRunIds\(deps, owner, projectId\)\)\[0\] \?\? null/);
-    // Coordinator-internal consumers loop over the set — no `getActiveRunId` left there.
+    expect(runStore).toMatch(/export async function listLiveRuns/);
+    // The view derivation is the shared `foldLiveRun` — no hand-built PipelineLiveRun literal.
+    expect(runStore).toMatch(/foldLiveRun\(live, run\)/);
+    expect(coordinator).not.toMatch(/getActiveRunId/);
+    expect(routes).not.toMatch(/getActiveRunId|currentRunId/);
+    // Coordinator-internal consumers loop over the set.
     const internal = ['lifecycle.ts', 'gates.ts'].map((f) => read(`infrastructure/scheduling/pipelineRun/${f}`)).join('\n');
-    expect(internal).not.toMatch(/getActiveRunId\(/);
     expect(internal.match(/listActiveRunIds\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
@@ -698,7 +701,7 @@ describe('run-record write → publish has ONE owner (runStore)', () => {
     const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
     expect(lifecycle).toMatch(/appendRunIndex\([\s\S]*?runSummaryOf\((?:sealed|run)\)\)/);
     expect(lifecycle).not.toMatch(/startsWith\('gate-'\)/);
-    expect(read('periphery/adapters/http/routes/pipelines/activations.routes.ts')).toMatch(/live = runSummaryOf\(run\)/);
+    expect(read('periphery/adapters/http/routes/pipelines/activations.routes.ts')).toMatch(/live\.push\(runSummaryOf\(run\)\)/);
     // The list entry no longer carries a second pending-count owner — the FE reads its inbox rows.
     expect(pipeRoutesAll()).not.toMatch(/pendingApprovalCount/);
   });

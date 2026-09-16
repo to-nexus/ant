@@ -19,9 +19,11 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { resolvePipelineAdvisories, validatePipelineDef, type CustomAgentSummary, type PipelineAdvisory, type PipelineAdvisoryResolution, type PipelineDef, type PipelineListEntry } from '@ant/shared';
+import { resolvePipelineAdvisories, validatePipelineDef, type CustomAgentSummary, type PipelineAdvisory, type PipelineAdvisoryResolution, type PipelineDef, type PipelineListEntry, type PipelineLiveRun } from '@ant/shared';
+
+const NO_LIVE_RUNS: PipelineLiveRun[] = [];
 import { useStore } from '@/domain/store';
-import { selectPipelineDirty } from '@/domain/store/slices/pipelineSlice';
+import { activationRunsKey, selectPipelineDirty } from '@/domain/store/slices/pipelineSlice';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeTrigger } from './cronDescribe';
 import { StepInspector } from './StepInspector';
@@ -46,10 +48,13 @@ export function PipelineWorkspace() {
   const approversDraft = useStore((s) => s.pipelineApproversDraft);
   const view = useStore((s) => s.pipelinePanelView);
   const selectedNodeId = useStore((s) => s.selectedPipelineNodeId);
-  // Design-view run overlay: the live run of THIS pipeline's activation on the
-  // selected project — derived, never a separately held slot.
+  // Design-view run overlay: the live runs of THIS pipeline's activation on the
+  // selected project — derived, never a separately held slot; the selection is
+  // the same per-activation one the execution view uses.
   const selectedProject = useStore((s) => s.selectedProject);
   const runDetails = useStore((s) => s.pipelineRunDetails);
+  const selectedRunByActivation = useStore((s) => s.pipelineSelectedRunByActivation);
+  const selectActivationRun = useStore((s) => s.selectActivationRun);
   const pipelines = useStore((s) => s.pipelines);
   const accountAgents = useStore((s) => s.accountAgents) as CustomAgentSummary[];
   const serverJudgement = useStore((s) => s.pipelineServerJudgement);
@@ -139,8 +144,9 @@ export function PipelineWorkspace() {
       : editable && draft.steps.length === 0
         ? { kind: 'empty' }
         : null;
-  const overlayRunId = entry?.activations.find((a) => a.mine && a.projectId === selectedProject)?.currentRunId;
-  const overlayRun = overlayRunId ? runDetails[overlayRunId] ?? null : null;
+  const overlayLiveRuns = entry?.activations.find((a) => a.mine && a.projectId === selectedProject)?.liveRuns ?? NO_LIVE_RUNS;
+  const overlayKey = entry && selectedProject ? activationRunsKey(entry.id, selectedProject) : null;
+  const overlaySelectedRunId = overlayKey ? selectedRunByActivation[overlayKey] ?? null : null;
 
   const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate', mode: 'insert' | 'branch') => {
     if (!editable) return;
@@ -192,7 +198,10 @@ export function PipelineWorkspace() {
               def={draft}
               customAgents={accountAgents}
               cronSummary={cronSummary}
-              run={overlayRun}
+              liveRuns={overlayLiveRuns}
+              runDetails={runDetails}
+              selectedRunId={overlaySelectedRunId}
+              onSelectRun={overlayKey && selectedProject ? (runId) => selectActivationRun(overlayKey, runId, selectedProject) : undefined}
               advisoryStepIds={advisoryStepIds}
               selectedNodeId={editable ? selectedNodeId : null}
               onSelectNode={editable ? selectPipelineNode : noop}
