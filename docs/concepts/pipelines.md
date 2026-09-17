@@ -1,7 +1,8 @@
 # Pipelines — custom jobs on a schedule
 
-> ⚠️ **Experimental.** Cron triggers, fetch (queue-polling) triggers, linear
-> chains, approval gates, and clarify gates ship and are covered by tests. Not
+> ⚠️ **Experimental.** Cron triggers, fetch (queue-polling) triggers, upstream
+> edges (a pipeline hanging off another pipeline's step), linear chains,
+> approval gates, and clarify gates ship and are covered by tests. Not
 > there yet: webhook push triggers, Slack/email delivery, per-step retry,
 > `{{steps.*}}` substitution between steps, and parallel branches. Pipelines
 > run on **workspace** projects
@@ -21,7 +22,7 @@ the reasoning behind each of them are in
 
 | Term | What it is |
 |---|---|
-| **Pipeline** | One definition: a cron trigger plus an ordered list of steps. A file. |
+| **Pipeline** | One definition: a trigger (cron, fetch, or another pipeline's node) plus an ordered list of steps. A file. |
 | **Step** | One DAG node — either a custom job to dispatch, or an approval gate that dispatches nothing. |
 | **Run** | One firing of a pipeline. Has its own id, its own history, and a frozen copy of the definition. |
 | **Activation** | The binding of a pipeline to one project. This — not the definition — is the scheduling unit. |
@@ -112,6 +113,26 @@ poll would see before you enable.
 Steps read the claimed item as `{{trigger.item.key}}` and any fields the
 trigger declares (`{{trigger.item.summary}}`); those fields are the source's
 text, so a directive quotes them as the case's data.
+
+## After another pipeline's node
+
+A pipeline can hang off **one node** of another pipeline of yours instead of a
+clock — `on.upstream: { pipelineId, step?, when? }`. The node is a step of the
+upstream pipeline, or (no `step`) the upstream run itself. `when` is the same
+condition a step's `on` uses: `success` (the default), `failure`, `always`, or
+`verdict:<outcome>` for a step whose intent declares outcomes. Choose the node
+that is the real trigger: a step fires the moment it seals, while the upstream
+run may still be working through its other branches or waiting on a person; the
+run node fires only when everything has sealed. A step that was skipped or a run
+that was cancelled did not happen, and fires nothing — deactivating a pipeline
+or stopping a run is a person's decision, not an outcome.
+
+The downstream pipeline runs on a **different project** than the upstream one
+(a project holds one activation), so it cannot pin the upstream run's files.
+What it gets instead is the node itself: `{{trigger.upstream.runId}}`,
+`{{trigger.upstream.outcome}}`, and for a step node `{{trigger.upstream.step}}`,
+`{{trigger.upstream.verdict}}` and `{{trigger.upstream.answer}}` — the upstream
+step's final answer, quoted into the entry step's directive as the case's data.
 
 ## Two ways a run stops for a human
 

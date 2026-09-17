@@ -232,19 +232,73 @@ queue runs `attempts: 3` + backoff. **`ant-jobs` keeps `attempts: 1`** — that
 invariant belongs to a different queue and is untouched (a BullMQ retry would
 replay an LLM job's payload without `isResume`).
 
-**`on.runCompleted` — pipeline→pipeline chaining**: fires when another
-pipeline's run seals a matching terminal status (default `['completed']`;
-`['failed']` is the error-workflow pattern). Scoped to the ACTIVATOR's own
-activations (identity never crosses users, §6): `finalizeRun` scans
-`listAccountActivations` (bounded disk scan — the no-reverse-index doctrine),
-matches each activation's pinned definition, and `addNow`s the SAME fire path
-with `firedBy: 'event'`, an un-rounded `fireEpoch` and `chainDepth + 1`;
-`handleFire` skips past `MAX_CHAIN_DEPTH` (5) — the loop guard lives at fire,
-caps doctrine. A pipeline never chains onto its own project — so a chained
-definition can never pin the upstream run's artifacts (they sit in another
-project's container); the builder contract forbids such pins and routes the
-case through `{{trigger.*}}` and clarify. `schedule` and `runCompleted` may
-coexist on one definition.
+**`on.upstream` — the pipeline→pipeline edge**: this pipeline's root hangs off
+ONE node of another pipeline's runs. The node is a step (`step`) or, when
+omitted, the run itself; `when` is the step-edge vocabulary (`success` default
+/ `failure` / `always` / `verdict:a|b`, the last only with `step`), judged by
+the SAME predicate the executor uses inside a pipeline — `edgeMatches`
+(`core/pipelines/ChainExecutor.ts`) — so the two cannot drift. A run seal is
+judged as a node through `runNodeOf`: completed → succeeded, failed / partial
+→ failed (a run with a failed step failed, whatever the step-failure policy
+called the aggregate), cancelled → it did not happen. Non-occurrence — a
+skipped or cancelled node — never fires. Before this the trigger keyed on the
+RUN's aggregate status (`runCompleted { statuses }`), a lossy fold of the step
+graph: both arms of a verdict switch sealed `completed`, the same step failure
+read `failed` or `partial` by policy, a human cancel fired downstream, and a
+consumer of one step waited for every unrelated branch and gate of the
+upstream run (2026-09-17). The retired key is refused with the node-edge
+spelling (`ON_RESERVED_KEYS`), never silently ignored.
+
+Publish is `fireUpstreamTriggers` (`pipelineRun/lifecycle.ts`), called from
+exactly two places: `applyOutcome`, right after the lock, for the STEP that
+just sealed (mid-run — a step node fires the moment it seals while the upstream
+run continues), and `finalizeRun` for the run node. Scoped to the ACTIVATOR's
+own activations (identity never crosses users, §6): a bounded disk scan of
+`listAccountActivations` (the no-reverse-index doctrine) — now once per sealed
+node rather than once per run, so S×A candidate loads per run, each a YAML
+parse; best-effort, a broken candidate never blocks the seal — matches each
+activation's pinned definition on pipeline + node + `when`, and `addNow`s the
+SAME fire path with `firedBy: 'event'`, an un-rounded `fireEpoch`,
+`chainDepth + 1` and the node frozen as `upstream` (`PipelineRunUpstream`:
+pipelineId, runId, projectId, step?, outcome, verdict?, answer? cut at
+`PIPELINE_UPSTREAM_ANSWER_MAX_CHARS`). `handleFire` refuses an event fire
+without its node (the fetch-without-item shape), skips past `MAX_CHAIN_DEPTH`
+(5) — the loop guard lives at fire, caps doctrine — and keys the fire NX on the
+NODE (`upstream:{runId}:{step|run}`, epoch-free), so a replayed seal cannot
+fire one activation twice.
+
+**Exactly once per (upstream run, node) is anchored INSIDE the run lock.**
+`applyOutcome` captures `sealed` only when its closure moved the step to a
+terminal outcome; a stale or duplicate outcome (already-sealed step, superseded
+jobId, terminal run) returns `true` and changes nothing downstream. Before this
+the no-op result — `mutateRun` returns non-null for a no-op too — fell through
+to a SECOND `finalizeRun`: a cancelled run's killed job sealed late
+(`user_stopped`) and the run re-wrote `run_finished`, the index line, the chat
+notice and the chained fire. The NX identity is the belt; the closure flag is
+the anchor. Residual, pre-existing and documented: a crash between `commitRun`
+and `addNow` loses the fire (at-most-once).
+
+Downstream sees the node as `{{trigger.upstream.*}}` — directive-only, like
+`trigger.item.*` (another run's text never names a path in this project): the
+run-level fields always, the step-bound ones (`step`, `verdict`, `answer`) only
+when the trigger names a step (`upstreamTemplateVars` — the ONE derivation the
+validator, the renderer and the token picker share). `runSummaryOf` carries
+`upstream: { pipelineId, step? }` for the history row; the SSE `runUpdate`
+strips `upstream.answer` exactly like step answers. `overlap` belongs to the
+fire SOURCE (`overlapPolicyOf`: cron / manual → `schedule.overlap`, event →
+`upstream.overlap`, fetch → skip) — a chain-only definition used to have no
+knob and dropped every overflow fire silently. A pipeline never fires its own
+project (that activation runs the upstream itself), so a downstream definition
+can never pin the upstream run's artifacts; the builder contract routes the
+case through `{{trigger.upstream.*}}` and clarify. Cross-definition sanity —
+the named step exists, a `verdict:` edge names outcomes the step's intent
+declares and never sits on a gate — is `upstreamBindingWarnings`
+(`core/pipelines/catalogBinding.ts`), a catalog warning riding save / GET /
+list and the enable gate, silent while the upstream is not authored yet: the
+author's roots are not the activation's pinned scope, and fire time judges by
+the snapshot (a node it lacks never matches). A pipeline naming itself is
+refused at the save routes (the pure validator cannot see its own id).
+`schedule` and `upstream` may coexist on one definition.
 
 **The trigger block is optional**: a definition with no `on` is MANUAL-ONLY —
 run-now is its only fire source, riding the identical fire path (activation
@@ -1035,7 +1089,7 @@ manual intent (fixed output path) stays silent. All of these are ONE structured
 source, `collectPipelineAdvisoryItems` (`{ code, stepId, field, message }`) —
 the string collectors map its `message`, the FE anchors the same item to the
 step and field — and, on
-`on.runCompleted` pipelines only, the inverse F34 shape: a pinless
+`on.upstream` pipelines only, the inverse F34 shape: a pinless
 job step whose needs-closure ancestors declare stop globs, because
 the chain restriction "pin only what this pipeline's own steps
 produce" gets over-applied to intra-pipeline pins; prompt-side
@@ -1285,6 +1339,13 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
   `applyResolvedGate`. Two paths = double-applied gates.
 - **Silently ignoring a definition key.** Reserved knobs get an explicit
   "not supported yet" validation error.
+- **A pipeline→pipeline trigger keyed on run status.** The edge judges a NODE
+  (a step, or the run seal through `runNodeOf`) with the step-edge vocabulary;
+  `completed / partial / cancelled` are a lossy fold of the step graph and a
+  cancel is non-occurrence. Never re-admit a run-status list to `on`.
+- **A second edge predicate.** `on.upstream.when` and a step's `on` judge
+  through `edgeMatches` only; a coordinator-side `startsWith('verdict:')` is
+  the drift the extraction exists to prevent.
 - **Judging per-activation liveness anywhere but the `ant:pipe:actruns` slot
   set** — no NX string, no read-then-compare, no second cap reader beside
   `resolveRunConcurrency`. `listActiveRunIds` is the liveness read,
@@ -1390,8 +1451,9 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
 - A run's label everywhere = `runLabel` (case key when the trigger carries
   one, else the run id); the canvas chips, execution rows, chat chips, run
   dock, inbox rows and approval cards all call it.
-- New chain edge predicates = executor-only changes (`planAdvance` judges
-  conditions; the coordinator never inspects step semantics).
+- New edge predicates = ONE change in `edgeMatches` (executor) — a step's `on`
+  and `on.upstream.when` both judge through it; the coordinator never inspects
+  step semantics.
 - New approval channels = a new outbound presenter + the SAME resolve funnel.
 - Extending caps = `PipelineCaps` + validator; enforcement stays at save
   (400/form-disable) and fire (skip + log).
@@ -1486,7 +1548,7 @@ The obligations live at authoring time, in the pipeline builder's contract:
   channel. Produced only by a third party's work or on a calendar date → its
   arrival is the next stretch's trigger, so the seam is a **boundary between
   pipelines**: the upstream one ends at the hand-off deliverable, the
-  downstream one is manual-fired while the seam is human (`runCompleted` once
+  downstream one is manual-fired while the seam is human (`on.upstream` once
   automated), both authored in one turn, the split reversible. The facts that
   arbitrate: a gate carries no payload; `clarify` is text-only and three
   rounds per step; an activation runs ONE live run (run-now 409
@@ -1684,8 +1746,9 @@ The obligations live at authoring time, in the pipeline builder's contract:
   re-arms (`gre-`, bounded by MAX_GATE_REMINDERS), A3 approval-await (§5c —
   the tool-approval HITL rail: `awaitingApproval` seal, kind:'tool' gate,
   grant re-dispatch), the OPTIONAL trigger block (manual-only pipelines, §2),
-  and `on.runCompleted` event triggers (pipeline→pipeline chaining, §2 —
-  `firedBy: 'event'`, chain-depth bound). Phase 2 is complete.
+  and `on.upstream` event triggers (the pipeline→pipeline node edge, §2 —
+  `firedBy: 'event'`, chain-depth bound; shipped as run-status `runCompleted`
+  and generalized to a node edge on 2026-09-17). Phase 2 is complete.
 - **Phase B — multi-run open (shipped 2026-09-16)**: the `concurrency`
   definition key (1..`maxLiveRunsPerActivation`, every trigger — a Run now
   burst starts N independent runs, 409 only at cap), the
