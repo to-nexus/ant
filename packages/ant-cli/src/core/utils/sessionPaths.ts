@@ -31,7 +31,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SessionableJobType } from '@ant/shared';
-import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, UNIVERSAL_FEATURE, isCanonicalDir, createEmptyFigmaData } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, UNIVERSAL_FEATURE, isCanonicalDir, createEmptyFigmaData, isValidCustomId } from '@ant/shared';
 import { UNIVERSAL_DIRNAME, isUniversalProject } from '../customAgents/universalContainer';
 import { logger } from '../../utils/logger';
 import { toBaseRelative, readTextContainedBase } from '../config/containedIo';
@@ -388,10 +388,10 @@ export function getSessionFilePath(featurePath: string, agent: string, job: stri
  * Flat sibling, never a subdirectory — the universal run scanner reads exactly
  * one level below `sessions/`, so a `runs/` folder would hide pipeline jobs
  * from the job-tab history, the finalize fallback and DELETE. `@` is outside
- * both id alphabets (`[a-z0-9-]`), so the split is unambiguous.
+ * the id alphabet (`CUSTOM_ID_PATTERN` in `@ant/shared` — both stem parts are
+ * judged by it, so the alphabet cannot drift), which makes the split unambiguous.
  */
 export const UNIVERSAL_RUN_STEM_SEPARATOR = '@';
-const UNIVERSAL_STEM_PART = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function universalSessionStem(customJobId: string, pipelineRunId?: string): string {
   return pipelineRunId ? `${customJobId}${UNIVERSAL_RUN_STEM_SEPARATOR}${pipelineRunId}` : customJobId;
@@ -400,7 +400,7 @@ export function universalSessionStem(customJobId: string, pipelineRunId?: string
 /** Inverse of {@link universalSessionStem}; a stem that is not a well-formed run stem is a plain job id. */
 export function parseUniversalSessionStem(stem: string): { customJobId: string; pipelineRunId?: string } {
   const parts = stem.split(UNIVERSAL_RUN_STEM_SEPARATOR);
-  if (parts.length === 2 && UNIVERSAL_STEM_PART.test(parts[0]) && UNIVERSAL_STEM_PART.test(parts[1])) {
+  if (parts.length === 2 && isValidCustomId(parts[0]) && isValidCustomId(parts[1])) {
     return { customJobId: parts[0], pipelineRunId: parts[1] };
   }
   return { customJobId: stem };

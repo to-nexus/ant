@@ -277,10 +277,12 @@ export class FileSessionAdapter implements SessionPort {
     const sessionPath = this.getSessionPath(project, feature, job);
     const absent = sessionWriteGuardOf(null);
 
+    // Hoisted so the SyntaxError branch guards on the bytes already read.
+    let content: string | null = null;
     try {
       // Bound the read on its own descriptor (M-NEW-029): a session grown past
       // the budget must not be materialised and JSON-parsed on the load path.
-      const content = await readSessionTextBoundedAsync(sessionPath);
+      content = await readSessionTextBoundedAsync(sessionPath);
 
       if (content === null) {
         console.log(`📝 Missing session file detected, creating new session`);
@@ -331,8 +333,7 @@ export class FileSessionAdapter implements SessionPort {
         console.warn(`Error: ${error.message}`);
         // The unparseable bytes stay on disk until our write replaces them —
         // guard on them so a concurrent repair is not clobbered either.
-        const current = await readSessionTextBoundedAsync(sessionPath).catch(() => null);
-        return { session: this.createNewSession(project, feature), guard: sessionWriteGuardOf(current) };
+        return { session: this.createNewSession(project, feature), guard: sessionWriteGuardOf(content) };
       }
 
       throw error;

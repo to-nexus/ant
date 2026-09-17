@@ -426,16 +426,24 @@ export async function resolveUniversalResumeTarget(
   deps: {
     stateStore: {
       getJobMapping(jobId: string): Promise<
-        { customJobRef?: string; universalTurnMeta?: import('@ant/shared').UniversalTurnMeta } | null
+        | {
+            customJobRef?: string;
+            universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
+            firedBy?: 'user' | 'schedule' | 'chain';
+            pipelineRunId?: string;
+            pipelineStepId?: string;
+          }
+        | null
       >;
       getJobStatus(jobId: string): Promise<{ turnId?: string } | null>;
     };
     /** `{project}/universal`, or null when the project has no universal plane. */
     containerPath: string | null;
+    /** `pipelineRunId` is set when the file found is a run stem (`{job}@{runId}.json`). */
     findRefByJobId: (
       containerPath: string,
       jobId: string,
-    ) => Promise<{ agentId: string; customJobId: string } | null>;
+    ) => Promise<{ agentId: string; customJobId: string; pipelineRunId?: string } | null>;
   },
   jobId: string,
 ): Promise<
@@ -444,17 +452,30 @@ export async function resolveUniversalResumeTarget(
       customJobRef: string;
       /** Preserved chat anchor — resuming under it avoids a second user bubble. */
       seedTurnId?: string;
-      /** The interrupted turn's explicit meta, replayed through the accept funnel. */
+      /**
+       * The interrupted turn's meta. `intents` / `context` / `plan` are replayed
+       * through the accept funnel; `runId` (and the other coordinator-owned
+       * fields) ride along unvalidated — the runId selects the RUN session file
+       * the child opens, so dropping it re-splits writer and reader.
+       */
       turnMeta?: import('@ant/shared').UniversalTurnMeta;
+      /** Pipeline attribution of the interrupted run — absent for an interactive turn. */
+      firedBy?: 'user' | 'schedule' | 'chain';
+      pipelineRunId?: string;
+      pipelineStepId?: string;
     }
   | { ok: false; status: number; code: string; error: string }
 > {
   const mapping = await deps.stateStore.getJobMapping(jobId).catch(() => null);
   let customJobRef = mapping?.customJobRef;
+  let scannedRunId: string | undefined;
 
   if (!customJobRef && deps.containerPath) {
     const found = await deps.findRefByJobId(deps.containerPath, jobId).catch(() => null);
-    if (found) customJobRef = `${found.agentId}/${found.customJobId}`;
+    if (found) {
+      customJobRef = `${found.agentId}/${found.customJobId}`;
+      scannedRunId = found.pipelineRunId;
+    }
   }
 
   if (!customJobRef) {
@@ -469,11 +490,24 @@ export async function resolveUniversalResumeTarget(
   }
 
   const status = await deps.stateStore.getJobStatus(jobId).catch(() => null);
+  // The run id has three homes, in trust order: the meta the coordinator
+  // stamped, the mapping's attribution, and — once the mapping has expired —
+  // the stem of the file the scanner found. Whichever answers, the meta
+  // carries it, because the child derives its session file from the meta.
+  const mappedMeta = mapping?.universalTurnMeta;
+  const pipelineRunId = mappedMeta?.runId ?? mapping?.pipelineRunId ?? scannedRunId;
+  const turnMeta: import('@ant/shared').UniversalTurnMeta | undefined =
+    mappedMeta || pipelineRunId
+      ? { intents: [], context: [], ...mappedMeta, ...(pipelineRunId && { runId: pipelineRunId }) }
+      : undefined;
   return {
     ok: true,
     customJobRef,
     ...(status?.turnId && { seedTurnId: status.turnId }),
-    ...(mapping?.universalTurnMeta && { turnMeta: mapping.universalTurnMeta }),
+    ...(turnMeta && { turnMeta }),
+    ...(mapping?.firedBy && { firedBy: mapping.firedBy }),
+    ...(pipelineRunId && { pipelineRunId }),
+    ...(mapping?.pipelineStepId && { pipelineStepId: mapping.pipelineStepId }),
   };
 }
 

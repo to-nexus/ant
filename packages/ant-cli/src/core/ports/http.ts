@@ -58,6 +58,14 @@ export interface ExecuteJobParams {
    * so cloud workers receive the same hint.
    */
   seedTurnId?: string;
+  /**
+   * Pipeline attribution — absent on interactive starts. A universal RESUME
+   * replays it from the job mapping so the re-dispatched run stays attributed
+   * to (and sealed into the session file of) the same pipeline run.
+   */
+  firedBy?: 'user' | 'schedule' | 'chain';
+  pipelineRunId?: string;
+  pipelineStepId?: string;
 }
 
 export interface JobResult {

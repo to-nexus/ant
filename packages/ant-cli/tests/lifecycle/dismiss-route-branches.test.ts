@@ -329,17 +329,53 @@ describe('POST /jobs/:jobId/resume — universal: the server owns the resume tar
   });
 
   // A pipeline step's turn seals into its RUN file (`{job}@{runId}.json`); the
-  // probe re-opens it through the mapping's `universalTurnMeta.runId` — the
-  // same meta the re-dispatch replays — never the shared interactive file.
+  // probe re-opens it through the mapping's `universalTurnMeta.runId`, and the
+  // re-dispatch carries that SAME runId — the validator returns only
+  // `{intents, context, plan}` (mocked null here), so a re-dispatch built from
+  // its result alone sent the child to the shared stem while the coordinator
+  // read the run's. The attribution rides along so the resumed run stays the
+  // pipeline's.
   it('a pipeline-dispatched job\'s session probe reads the run stem, not the shared file', async () => {
     makeUniversalProject();
-    jobMapping = { customJobRef: 'agent-builder/author', universalTurnMeta: { runId: 'sandy-mending-cabin' } };
-    writeUniversalSession('agent-builder', 'author@sandy-mending-cabin', { jobId: 'crashed-run' });
+    const runId = 'sandy-mending-cabin';
+    jobMapping = {
+      customJobRef: 'agent-builder/author',
+      universalTurnMeta: { intents: [], context: [], unattended: true, runId },
+      firedBy: 'schedule',
+      pipelineRunId: runId,
+      pipelineStepId: 'draft',
+    };
+    writeUniversalSession('agent-builder', `author@${runId}`, { jobId: 'crashed-run' });
     fakeDeps.chatService.findInterruptedTurn.mockResolvedValueOnce(null);
 
     const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
     expect(res.status).toBe(200);
-    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({ customJobRef: 'agent-builder/author' }));
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({
+      customJobRef: 'agent-builder/author',
+      universalTurnMeta: expect.objectContaining({ runId, unattended: true }),
+      firedBy: 'schedule',
+      pipelineRunId: runId,
+      pipelineStepId: 'draft',
+    }));
+  });
+
+  // Mapping expired (24h TTL): the scanner finds `{job}@{runId}.json` and its
+  // stem is the only surviving copy of the run id. Dropping it composed the
+  // shared path and 409'd `universal-resume-no-turn` with the run file right there.
+  it('recovers the run id from the scanned run stem once the mapping has expired', async () => {
+    makeUniversalProject();
+    const runId = 'sandy-mending-cabin';
+    jobMapping = null;
+    writeUniversalSession('agent-builder', `author@${runId}`, { jobId: 'crashed-run' });
+    fakeDeps.chatService.findInterruptedTurn.mockResolvedValueOnce(null);
+
+    const res = await post('/jobs/crashed-run/resume', { projectId: 'p1', featureName: 'universal' });
+    expect(res.status).toBe(200);
+    expect(fakeDeps.executeJob).toHaveBeenCalledWith(expect.objectContaining({
+      customJobRef: 'agent-builder/author',
+      universalTurnMeta: expect.objectContaining({ runId }),
+      pipelineRunId: runId,
+    }));
   });
 
   it('a pipeline-dispatched job whose only seal is in the SHARED file has nothing to resume', async () => {

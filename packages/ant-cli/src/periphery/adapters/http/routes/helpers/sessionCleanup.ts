@@ -235,48 +235,80 @@ export async function setSessionDismissed(
   dismissed: boolean,
 ): Promise<boolean> {
   for (const entry of getAllSessionPaths(featurePath)) {
-    let raw: string;
-    try {
-      raw = await readSessionFileBounded(entry.path);
-    } catch {
-      continue;
-    }
-    let session: any;
-    try {
-      session = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    if (session?.state?.jobId !== jobId || !session.state.interruption) continue;
-    if ((session.state.interruption.dismissed === true) === dismissed) return true; // idempotent
-    session.state.interruption = {
-      ...session.state.interruption,
-      dismissed,
-      metadata: dismissed
-        ? { ...(session.state.interruption.metadata ?? {}), stoppedBy: 'dismiss' }
-        : session.state.interruption.metadata,
-    };
-    session.updatedAt = new Date().toISOString();
-    try {
-      await writeSessionBounded(entry.path, session);
-    } catch (err) {
-      logger.warn(
-        `[SessionCleanup] Failed to persist interruption.dismissed=${dismissed} (jobId=${jobId})`,
+    let outcome = await patchInterruptionDismissed(entry.path, jobId, dismissed);
+    if (outcome === 'conflict') {
+      logger.info(
+        `[SessionCleanup] Session changed under the dismissed patch; re-reading once (jobId=${jobId})`,
         { component: 'SessionCleanup' },
-        err,
+      );
+      outcome = await patchInterruptionDismissed(entry.path, jobId, dismissed);
+    }
+    if (outcome === 'skip') continue;
+    if (outcome === 'conflict' || outcome === 'failed') {
+      logger.warn(
+        `[SessionCleanup] Failed to persist interruption.dismissed=${dismissed} (jobId=${jobId}, ${outcome})`,
+        { component: 'SessionCleanup' },
       );
       return false;
     }
-    kanbanService?.invalidateSessionCache(entry.path);
-    logger.info(
-      `[SessionCleanup] interruption.dismissed=${dismissed} persisted (jobId=${jobId}, ${entry.agent}/${entry.job})`,
-    );
+    if (outcome === 'patched') {
+      kanbanService?.invalidateSessionCache(entry.path);
+      logger.info(
+        `[SessionCleanup] interruption.dismissed=${dismissed} persisted (jobId=${jobId}, ${entry.agent}/${entry.job})`,
+      );
+    }
     return true;
   }
   logger.debug(
     `[SessionCleanup] No session with interruption found for dismissed=${dismissed} (jobId=${jobId})`,
   );
   return false;
+}
+
+/**
+ * One read-modify-write of the marker, CAS-guarded on the bytes it read: a
+ * worker seal landing between read and write is a typed `conflict` for the
+ * caller to re-run as a fresh RMW — never a silent clobber of either side.
+ */
+async function patchInterruptionDismissed(
+  sessionPath: string,
+  jobId: string,
+  dismissed: boolean,
+): Promise<'skip' | 'idempotent' | 'patched' | 'conflict' | 'failed'> {
+  let raw: string;
+  try {
+    raw = await readSessionFileBounded(sessionPath);
+  } catch {
+    return 'skip';
+  }
+  let session: any;
+  try {
+    session = JSON.parse(raw);
+  } catch {
+    return 'skip';
+  }
+  if (session?.state?.jobId !== jobId || !session.state.interruption) return 'skip';
+  if ((session.state.interruption.dismissed === true) === dismissed) return 'idempotent';
+  session.state.interruption = {
+    ...session.state.interruption,
+    dismissed,
+    metadata: dismissed
+      ? { ...(session.state.interruption.metadata ?? {}), stoppedBy: 'dismiss' }
+      : session.state.interruption.metadata,
+  };
+  session.updatedAt = new Date().toISOString();
+  try {
+    await writeSessionBounded(sessionPath, session, { expect: sessionWriteGuardOf(raw) });
+    return 'patched';
+  } catch (err) {
+    if (err instanceof SessionWriteConflictError) return 'conflict';
+    logger.warn(
+      `[SessionCleanup] Session write failed for interruption.dismissed=${dismissed} (jobId=${jobId})`,
+      { component: 'SessionCleanup' },
+      err,
+    );
+    return 'failed';
+  }
 }
 
 /**

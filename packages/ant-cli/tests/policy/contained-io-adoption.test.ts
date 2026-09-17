@@ -290,7 +290,9 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
    * finalize on the same file were never ordered against each other — the
    * guard is what turns that race into a typed conflict (re-applied once)
    * instead of a silent clobber. Adoption is judged on the CALL: every
-   * `writeSessionBounded(` in these two files carries `expect`.
+   * `writeSessionBounded(` in these two files carries `expect` — counted per
+   * call, so one guarded call cannot vouch for an unguarded sibling (the
+   * dismissed-marker RMW shipped bare next to a guarded append).
    */
   const CAS_WRITERS = [
     'src/periphery/adapters/session/FileSessionAdapter.ts',
@@ -299,10 +301,15 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
   for (const file of CAS_WRITERS) {
     it(`${file} guards every session write on the bytes it read`, () => {
       const src = read(path.join(process.cwd(), file));
-      const calls = src.match(/writeSessionBounded\(/g) ?? [];
+      const calls = [...src.matchAll(/writeSessionBounded\(([\s\S]*?)\);/g)].map((m) => m[1]);
       expect(calls.length).toBeGreaterThan(0);
-      // The adapter forwards `opts` from save(); the helper passes the literal.
-      expect(src).toMatch(/expect:\s*(?:guard|sessionWriteGuardOf\()/);
+      // Guarded = a literal `expect:` third argument, or the adapter's `opts`
+      // forward from save() — whose signature must then declare `expect`.
+      const guarded = calls.filter((args) => /\bexpect:/.test(args) || /,\s*opts\s*$/.test(args));
+      expect(guarded).toEqual(calls);
+      if (calls.some((args) => /,\s*opts\s*$/.test(args))) {
+        expect(src).toMatch(/async save\([^)]*opts\?:\s*\{\s*expect\?:\s*SessionWriteGuard\s*\}/);
+      }
       expect(src).toMatch(/SessionWriteConflictError/);
     });
   }

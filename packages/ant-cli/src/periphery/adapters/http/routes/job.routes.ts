@@ -22,7 +22,7 @@ import { readBranchBase } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
-import { getConfigSlots, featureNameToSlug, MEMBERSHIP_REQUIRED, type LogJobType, type SessionableJobType } from '@ant/shared';
+import { getConfigSlots, featureNameToSlug, MEMBERSHIP_REQUIRED, type LogJobType, type SessionableJobType, type UniversalTurnMeta } from '@ant/shared';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import {
   resolveUniversalExecuteContext,
@@ -1102,10 +1102,10 @@ export function createJobRoutes(deps: {
           {
             stateStore: deps.stateStore,
             containerPath,
-            findRefByJobId: async (cp, jid) => {
-              const found = await findUniversalSessionFileByJobId(cp, jid);
-              return found ? { agentId: found.agentId, customJobId: found.customJobId } : null;
-            },
+            // The scanner's ref carries `pipelineRunId` when the file it found
+            // is a run stem — the only place that id survives once the mapping
+            // has expired.
+            findRefByJobId: findUniversalSessionFileByJobId,
           },
           requestedJobId,
         );
@@ -1126,8 +1126,12 @@ export function createJobRoutes(deps: {
         // durable chat log BEFORE the graph runs, so it survives a kill that
         // sealed nothing — which is why a session file is no longer required
         // to resume (a first-turn crash used to 404 forever here).
-        // A pipeline step's turn sealed into its RUN file (`turnMeta.runId`),
-        // which the re-dispatch below re-opens through the same meta.
+        // A pipeline step's turn sealed into its RUN file (`turnMeta.runId`).
+        // The validator below returns only `{intents, context, plan}`, so the
+        // re-dispatch spreads the coordinator-owned fields of `target.turnMeta`
+        // (`runId` first of all) back over its result — the child derives its
+        // session file from `universalTurnMeta.runId`, and a meta without it
+        // would write the SHARED stem while the coordinator reads the run's.
         const universalSessionPath = getUniversalSessionFilePath(
           resolvedUniversal.containerPath, resolvedUniversal.ref, target.turnMeta?.runId,
         );
@@ -1162,6 +1166,13 @@ export function createJobRoutes(deps: {
           }, 'JobResume');
         }
 
+        const { intents: _intents, context: _context, plan: _plan, ...coordinatorMeta }: Partial<UniversalTurnMeta> =
+          target.turnMeta ?? {};
+        const universalTurnMeta: UniversalTurnMeta | undefined =
+          resumeMeta.meta || coordinatorMeta.runId
+            ? { intents: [], context: [], ...resumeMeta.meta, ...coordinatorMeta }
+            : undefined;
+
         // The resume target is the REQUESTED job, full stop. `state.jobId` is
         // written by the end-of-turn seal, so after a crash it names the
         // PREVIOUS run — resuming under it re-queued an already-sealed id,
@@ -1186,7 +1197,10 @@ export function createJobRoutes(deps: {
             : target.seedTurnId
               ? { seedTurnId: target.seedTurnId }
               : {}),
-          ...(resumeMeta.meta && { universalTurnMeta: resumeMeta.meta }),
+          ...(universalTurnMeta && { universalTurnMeta }),
+          ...(target.firedBy && { firedBy: target.firedBy }),
+          ...(target.pipelineRunId && { pipelineRunId: target.pipelineRunId }),
+          ...(target.pipelineStepId && { pipelineStepId: target.pipelineStepId }),
         };
         const universalResult = await deps.executeJob(universalParams);
         await deps.stateStore.releaseLock(`ant:job-completed:${requestedJobId}`);
