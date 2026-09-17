@@ -104,7 +104,8 @@ rounding the count.
 ## Out of scope offline
 
 Run history is evidence only when the person exports it, and fire times are
-clone-only — judge the cron expression, not a computed schedule. Browsing
+clone-only — judge the trigger as written, a cron expression or a fetch
+request with its item-paths, not a computed schedule or a live poll. Browsing
 Ant's own source is unavailable and unnecessary — Part 2 is the contract. The write routes in
 the definition's `on-demand/api-surface.md` (`POST /definitions/pipelines`,
 `PUT /definitions/pipelines/{id}`, `DELETE /definitions/pipelines/{id}`)

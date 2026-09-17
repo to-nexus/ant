@@ -65,10 +65,11 @@ accepts the folder. A cell that names a clone-only command says so.
 |---|---|---|
 | attached `_pipelines/{pipelineId}/pipeline.yaml`, `_agents/{agentId}/…`; `GET /definitions/pipelines/{id}` (`base/system.md` step 1) | the pipeline and the agent definitions you were given | n/a |
 | `GET /definitions/pipelines` — ids are taken across scopes | the pipelines you were given; the final collision check is the import's `409` | n/a |
-| `GET /definitions/agents`, `GET /definitions/agents/{agentId}/files` — resolve every step against a real job and intent (step 2) | the agent definitions you were given — read each `jobs/{jobId}/intents/{intentId}/`; Part 2 holds the builders' own | with a clone, yes — `pnpm --filter @ant/cli definition validate-pipeline --agents <folder holding them>` binds every step against that catalog; without one, the upload does |
+| `GET /definitions/agents`, `GET /definitions/agents/{agentId}/files` — resolve every step against a real job and intent (step 2) | the agent definitions you were given — read each `jobs/{jobId}/intents/{intentId}/`; a job's declared `apis` names come from its `job.yaml` / `agent.yaml` there; Part 2 holds the builders' own | with a clone, yes — `pnpm --filter @ant/cli definition validate-pipeline --agents <folder holding them>` binds every step against that catalog; without one, the upload does |
 | `POST /definitions/pipelines` `{ id?, def }`, `PUT /definitions/pipelines/{id}` `{ def }` (step 4) | write `{pipelineId}/pipeline.yaml` — YAML of the same `def`, `version: 2`; mint the id yourself, the folder name is the id on import | yes — `validatePipelineDefServer`, same `errors[]` |
 | `DELETE /definitions/pipelines/{id}` | delete the folder | n/a |
-| `POST /definitions/pipelines/preview-fires` `{ cron, tz? }` — the only cron authority | never compute fire times yourself, in either mode. Without a clone you do not state them at all: give the cron expression and the cadence you intended in words, and record that the next fires are the ones Ant's Pipelines tab shows after upload. With a clone, `pnpm --filter @ant/cli definition preview-fires "<cron>" --tz <zone>` — same parser, same five-minute floor | with a clone, yes; otherwise deferred to the upload |
+| `POST /definitions/pipelines/preview-fires` `{ cron, tz? }` — the cron authority (a fetch trigger has no fires to preview) | never compute fire times yourself, in either mode. Without a clone you do not state them at all: give the cron expression and the cadence you intended in words, and record that the next fires are the ones Ant's Pipelines tab shows after upload. With a clone, `pnpm --filter @ant/cli definition preview-fires "<cron>" --tz <zone>` — same parser, same five-minute floor | with a clone, yes; otherwise deferred to the upload |
+| `POST /definitions/pipelines/preview-fetch` `{ fetch }` — a fetch trigger's dry run, refused to the runtime builder too | none offline, in either mode: a dry poll needs the activator's credentials and network. State what the poll is meant to return and which item-paths you chose; the person confirms them with Preview items in the editor after upload. A BOUND connection (`customJobRef` + `api`) binds against the agent folders passed to `validate-pipeline --agents` — the job's `apis` name and its `allow` rules; an INLINE `connection` binds against nothing | n/a |
 | `400` `errors[]`, `201` `catalogWarnings` + `advisories` | without a clone, the upload answers all three: its response carries the errors, the catalog warnings and the advisory lifecycle, and those lines are your findings. With a clone, `pnpm --filter @ant/cli definition validate-pipeline <the pipeline.yaml> --agents <the agent folders>` — `error:` lines are the 400; `warning:` lines are the catalog findings enable refuses (fix them); `advisory:` lines are `advisories.open` (fix the step, or add `{ code, step, reason }` to the definition's `acknowledged:` list — the prose says when that is honest); `acknowledged:` echoes your reasons; `stale:` names an acknowledgement whose shape no longer exists (remove it). `--strict` makes warnings and open advisories exit `1` | with a clone, yes; otherwise the upload |
 | `GET /definitions/pipelines/activatable-projects`, `GET /definitions/pipelines/{id}/permissions` | none offline — the hand-over names no project unless the person gives you the list | n/a |
 | `create_file pipeline-report/{flowId}.md` ("Write the run report") | write `pipeline-report/{flowId}.md` from the definitions you wrote, read back; an edit turn reads the flow's earlier report first and rewrites it whole | you are the checker: list every `{agentId}/{jobId}/{intentId}` the agents you were given declare, hold your Intent coverage table and count line against that list and against the steps in your `pipeline.yaml` files, and state the counts. With a clone, `pnpm --filter @ant/cli definition check-report <the report> --pipelines <the pipeline folders> --agents <folder holding the agents>` performs that same diff — every intent has a row, every `runs at` names a step that runs that intent, every step is accounted for, the count line agrees — and exits `0` |
@@ -103,14 +104,17 @@ hooks, `api__ant__request POST|PUT /definitions/pipelines**` and
   With a clone, `check-report` on it exits `0`; without one, the diff you
   performed by hand is that check, and the counts you state are it;
 - your reply is the report-and-hand-over the contract describes: the trigger
-  and the cadence it encodes, each step and what it runs, what remains a
-  person's decision. State the next fires only if you were able to have them
-  computed; otherwise say where the person reads them.
+  — the cadence a cron encodes, or the source, interval and case key a fetch
+  polls — each step and what it runs, what remains a person's decision. State
+  the next fires only if you were able to have them computed; otherwise say
+  where the person reads them. A fetch trigger has none to state: name the
+  `${secret:}` keys the activator must register instead.
 
 ## Out of scope offline
 
 `activatable-projects` and `permissions` have no offline twin, and neither do
-fire times without a clone. Browsing Ant's own source is unavailable and
+fire times without a clone — and `preview-fetch` has none in any mode.
+Browsing Ant's own source is unavailable and
 unnecessary — Part 2 is the contract. `enable`,
 `disable`, `activate`, `deactivate`, `run-now`, `promote`, `editors`,
 `approvals`, `runs`, `download` and `import` are a person's routes in every

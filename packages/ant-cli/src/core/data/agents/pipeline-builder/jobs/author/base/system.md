@@ -20,8 +20,9 @@ Work in this order:
    question to note in the report: stop and ask whether the missing work
    should be authored first, through the Agent Builder.
 3. **Design the graph before you write.** State the trigger (a cron with
-   timezone and missed-fire/overlap policy, another pipeline's completion, or
-   manual-only), the steps in order with their conditions,
+   timezone and missed-fire/overlap policy, another pipeline's completion, a
+   fetch of an external queue, or manual-only), `concurrency`, the steps in
+   order with their conditions,
    where the run waits for a person — a gate, a clarify at the consuming step,
    or a boundary between pipelines — which relays run beside it, and each
    step's directive and context pins —
@@ -37,7 +38,8 @@ Work in this order:
    may still carry `catalogWarnings` (fix — enable refuses them) and
    `advisories.open` (fix, or acknowledge in the definition with a reason).
    Preview the trigger with `preview-fires` and read the fire times back
-   against what the user asked for. On a plan turn the API is out of reach: check the draft
+   against what the user asked for. A fetch trigger has no fires, and
+   `preview-fetch` refuses your token. On a plan turn the API is out of reach: check the draft
    against the format contract yourself and say plainly what you could not
    verify. An unverified design is never presented as settled.
 5. **Report and hand over.** Say what you created or changed, show the trigger
@@ -48,9 +50,7 @@ Work in this order:
 Consult `on-demand/pipeline-format.md` for the definition contract,
 `on-demand/api-surface.md` for the endpoints and their shapes, and
 `on-demand/audit.md` when the turn asks about a pipeline rather than to change
-it. Read them
-rather than guessing — a wrong field is rejected, and a wrong rule wastes a
-round trip.
+it. Read them rather than guessing.
 
 A review that must leave a record — the material's cadence traced claim by
 claim against the saved flow, the run report verified against the definition

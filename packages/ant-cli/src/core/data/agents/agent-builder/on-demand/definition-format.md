@@ -114,6 +114,14 @@ An `apis` entry synthesizes two tools: `api__{name}__get` (GET/HEAD) and
 `PATTERN` is `*` or a `/`-rooted path whose segments may be `*` (one segment)
 or `**` (any suffix).
 
+An `apis` entry is also what a pipeline's fetch trigger may poll to fire one
+run per item of an external queue; its `allow` rules then bound that poll as
+well. A pipeline can instead carry its own inline connection, so never declare
+an `apis` entry on a job **only** to serve as a poll source — every entry
+grants the job's model two tools, and a source no intent calls is tools it has
+no use for. Declare the connection here when an intent calls that system; the
+pipeline binds to it.
+
 ### An `apis` entry that targets this Ant server
 
 The block above is the external form. An entry that calls **this Ant server**
@@ -194,6 +202,20 @@ evidence and reach a named conclusion — and make `prompt.md` state what each
 outcome means and what evidence supports it. The vocabulary lives here, on
 the intent, because the business knowledge lives here; pipelines only
 reference it.
+
+Reviewer nomination is the other channel a pipeline reads from an intent. When
+a turn runs as an unattended pipeline step and an approval gate follows it,
+the intent may end its final reply with exactly one
+`<assignee>member-id</assignee>` naming who that gate should reach for this
+case. The gate's approver roster is set by the person who activates the
+pipeline and is **never shown to the model**, so a nomination can only be
+right when the assignment rule is written in the intent's own prose —
+`prompt.md`, or a base document — as "cases of {kind} go to {member id}",
+with the ids exactly as the organization lists its members (structural
+tokens, never localized). An id the roster does not hold is ignored and every
+approver is called; the tag routes attention only, it grants no authority.
+There is no `assignee:` field on a pipeline: this prose is the only place the
+rule can live.
 
 `prompt.md` has no size limit and is inlined only while its intent is active —
 it is where a task's procedure lives; `infer.md` only decides when it applies,

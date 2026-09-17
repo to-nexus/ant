@@ -30,7 +30,7 @@ base — pass them exactly as written, starting with `/`.
 | `GET /definitions/pipelines/{id}` | `{ id, def, scope, readonly, enabled, org?, activations, catalogWarnings?, advisories? }` — `def` is the full definition to edit; the two verdicts are recomputed against your catalog on every read (see Writes) |
 | `GET /definitions/pipelines/{id}/permissions` | who owns and may edit an organization pipeline |
 | `GET /definitions/pipelines/activatable-projects` | `{ projects: [{ id, name, activePipelineId }] }` — where a person could activate the draft. A project whose `activePipelineId` is set is already TAKEN: one active pipeline per project, so activating there means deactivating that one first. Call this before writing a hand-over that names a project |
-| `GET /definitions/agents` | every agent this user can see, with its jobs and their intents |
+| `GET /definitions/agents` | every agent this user can see, with its jobs, their intents, and each job's declared `apis` connections — names and `allow` rules only, never a URL or a header — which is what a BOUND fetch trigger may name |
 | `GET /definitions/agents/{agentId}/files`, `…/file?path=…` | an agent's definition tree and one file's content — where the operating-context sections live |
 
 Definitions are also readable with `read_file`: any agent's files at
@@ -73,6 +73,13 @@ object in `def`, shaped exactly as `on-demand/pipeline-format.md` describes.
 five-minute minimum interval; `error` says which. This is the only cron
 authority — never compute fire times yourself.
 
+`POST /definitions/pipelines/preview-fetch` with `{ fetch, projectId? }` is a
+fetch trigger's dry run — it polls the source with the CALLER's own
+credentials and lists the items a poll would see. It **refuses this job's
+token** (`403`, code `self-api-scope`): a person runs it as Preview items in
+the editor. Check the request shape and the item-paths yourself, and say in
+the report that the items were not previewed.
+
 ## Failures
 
 | Response | Meaning | What to do |
@@ -89,9 +96,11 @@ authority — never compute fire times yourself.
 ## Routes you will not reach
 
 `enable`, `disable`, `activate`, `deactivate`, `run-now`, `promote`,
-`editors`, `approvals`, `runs`, `download`, and `import` refuse this job's
-token — `import` replaces a definition from uploaded file bytes, which is a
-person's lane; a job drafts through `POST /definitions/pipelines`.
+`editors`, `approvals`, `runs`, `download`, `import`, and `preview-fetch`
+refuse this job's token — `import` replaces a definition from uploaded file
+bytes, which is a person's lane; a job drafts through `POST /definitions/pipelines`;
+`preview-fetch` is an authenticated egress with the owner's secrets on a
+request a job composed, which the token pin refuses by design.
 Publishing a draft, binding it to a project, firing a run, sharing, and
 resolving approvals are a person's decisions in the Pipelines tab. Run history
 is readable there, and — for a pipeline bound to this project — under the

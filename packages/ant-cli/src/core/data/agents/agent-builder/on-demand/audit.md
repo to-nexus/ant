@@ -73,7 +73,11 @@ the authoring turn sweeps before each save, applied after the fact.
   not its absence. And the run-order quarantine reaches `base/system.md`: the
   procedure's stages written there as a numbered sequence are the position
   claim the build rules ban, and steps in that sequence which no intent
-  performs are the tell.
+  performs are the tell. A third check where the material names who approves
+  a case by an axis of the case: the intent whose result that approval
+  decides on must carry the assignment rule in its prose (which cases go to
+  which member id) — a pipeline gate reads the reviewer the step nominates
+  and is shown no roster, so a rule absent here is a rule nowhere.
 **Sweep altitude on every prose file the last build turn saved.**
 
 - Check altitude on every prose file the definition carries, one axis at a time — the

@@ -351,6 +351,16 @@ contract — the third omitted only when done is not observable.**
   attribute of what was examined rather than the decision reached names the
   findings behind the decisions. An intent that is not a judgment declares
   no `outcomes` — a producing intent's result is its file.
+- When the material says WHO approves a case by an axis of the case — the
+  business owner per sales channel, the lead per product line — that rule is
+  this intent's prose, not the pipeline's: a pipeline gate reads the reviewer
+  the step nominates and has no field to declare one. Write the assignments
+  into the `prompt.md` of the intent whose result the gate decides on —
+  "{kind of case} goes to {member id}", ids as the organization lists its
+  members — and say that the step names that reviewer when it runs
+  unattended (the mechanics are the format contract's,
+  `on-demand/definition-format.md`). A roster the material leaves to a
+  person is not this: then no rule is written and every approver is called.
 - `infer.md` names what arrives or is asked for — "a settlement file for the
   closed month is in hand" — never when a calendar fires it, not even as a
   trailing "typically runs at month-end" clause; a calendar anywhere in
@@ -737,6 +747,13 @@ contract — the third omitted only when done is not observable.**
   `missing:` holds one item there, so nothing separates it from the fields
   after it — which is where `on-provided:` gets folded into `interface:`
   and `gate:` slides under `missing:`. Both are entry fields.
+- A counterpart that only FEEDS cases — a queue a pipeline polls, whose
+  items the intents receive as their case — needs no connection on this
+  agent: the pipeline's fetch trigger carries its own inline connection.
+  Write that entry's `wiring:` as the pipeline's — base URL, auth header, the
+  `${secret:}` key name — and say so; declare `apis` for it here only when an
+  intent also calls that system, in which case the pipeline binds to the one
+  declaration instead.
 - When a turn supplies a dependency-report entry's missing items, wire the
   connection and advance that entry's `status:` in the report (the file this
   session owns, or a new mnemonic-named one when the newest predates this

@@ -17,7 +17,9 @@ procedure). It is the authoring contract applied after the fact.
   catalog — a review that never called the API is a guess. The trigger is
   checked from the definition: no `on` means manual-only and there is nothing
   to preview, so `preview-fires` is for a cron the definition actually carries
-  and never for one you supply to have something to call.
+  and never for one you supply to have something to call. A fetch trigger is
+  judged as written — the connection form, the request, the item-paths — its
+  dry run is a person's.
 - Check the graph: every `needs` names an existing step, no cycles, every
   approval gate has an upstream step, and each `on` condition can actually be
   reached.
@@ -86,8 +88,9 @@ step, and say which:
 - A seam classified against the material — judge what the downstream step
   needs and when it exists, never who does the work. A gate where the step
   needs content (one bit carries none); an in-run clarify for a value that
-  exists only after a third party's work or on a date (the run parks the
-  activation's one live slot for that lead time); a boundary for a value the
+  exists only after a third party's work or on a date (the run parks one of
+  the activation's live-run slots — the only one, at the default
+  `concurrency` — for that lead time); a boundary for a value the
   person pressing Run already holds (each boundary re-enters the case through
   clarify and pins across pipelines as cross-case globs). The boundary is the
   contract's default for third-party values, so an over-split is a judgment
@@ -118,6 +121,18 @@ step, and say which:
 - A pin whose producer is not among the step's `needs` ancestors. Nothing
   orders the producer before the consumer, so the file arrives only by the
   accident of dispatch order — what a step pins, it `needs`.
+- A fetch pipeline whose entry step's directive carries no
+  `{{trigger.item.key}}`: the run was fired for an item the step is never
+  told about.
+- `concurrency` above 1 over a domain-keyed `*` pin, or over a
+  `{{run.prevSuccess.*}}` watermark: concurrent runs share what the pin
+  matches, and sibling runs finish in any order, so the watermark races.
+- An inline fetch connection whose header carries a credential as a literal
+  instead of `${secret:KEY}` — the definition is read back, shared and
+  promoted, so the value is exposed. And the inverse duplication: an inline
+  connection to a system some step's job already declares under `apis` —
+  legal, but two declarations of one connection drift; a judgment call with
+  that cost named.
 - Chain-context pins (`on.runCompleted`), judged per pipeline: a pin naming
   what only the UPSTREAM pipeline's runs produce is structurally dead — the
   chained fire lands on a different project, out of container reach (a
