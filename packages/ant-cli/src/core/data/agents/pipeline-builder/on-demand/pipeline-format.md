@@ -16,24 +16,36 @@ on:                             # OPTIONAL — omit `on` entirely for a
     tz: Asia/Seoul              # (omitted = UTC)
     onMissed: skip              # skip (default) | runOnce
     overlap: skip               # skip (default) | queue
-  runCompleted:                 # pipeline→pipeline chaining: fires when
-    pipelineId: weekly-ops      # that pipeline's run (the SAME activator's)
-    statuses: [completed]       # seals one of these terminal statuses
-                                # (default [completed]; ['failed'] = an
-                                # error-handler pipeline). `schedule` may
-                                # coexist; chain depth is bounded (5). A
-                                # chained fire lands on the activator's OTHER
-                                # activated projects — never back where the
-                                # run just sealed — so the upstream run's
-                                # artifacts sit in another container, out of
-                                # pin reach: pin only what this pipeline's
-                                # own steps produce — and DO pin those:
-                                # WITHIN this pipeline the duty is unchanged;
-                                # a consumer still pins its own upstream
-                                # steps' stop globs (what you pin, you needs).
+  upstream:                     # pipeline→pipeline edge: this pipeline hangs
+    pipelineId: weekly-ops      # off ONE node of that pipeline's runs (the
+    step: verify                # SAME activator's). `step` names the node;
+    when: verdict:pass          # omit it for the run itself — its seal judged
+    overlap: skip               # as a node: completed = success, failed or
+                                # partial = failure, cancelled = did not
+                                # happen. `when` is the step-edge vocabulary:
+                                # success (default) | failure | always |
+                                # verdict:<a|b> (needs `step`; an outcome the
+                                # step's intent declares). A step node fires
+                                # the moment that step seals, mid-run, while
+                                # the upstream run continues. A skipped or
+                                # cancelled node never fires. `overlap` skip
+                                # (default) | queue, for THIS fire source.
+                                # `schedule` may coexist; chain depth is
+                                # bounded (5). The fire lands on the
+                                # activator's OTHER activated projects —
+                                # never back where the node sealed — so the
+                                # upstream run's artifacts sit in another
+                                # container, out of pin reach: the case
+                                # arrives as {{trigger.upstream.*}} (pipelineId,
+                                # runId, outcome; with `step` also step,
+                                # verdict, answer) in a DIRECTIVE, never in a
+                                # pin. Pin only what this pipeline's own steps
+                                # produce — and DO pin those: WITHIN this
+                                # pipeline the duty is unchanged (what you
+                                # pin, you needs).
 concurrency: 1                  # live runs one activation may hold at once
                                 # (1..3, default 1) — the SAME knob for every
-                                # trigger: Run now, cron, chain and fetch
+                                # trigger: Run now, cron, upstream and fetch
 defaults:
   onStepFailure: abort          # abort (default) | continue
 steps:
@@ -63,21 +75,27 @@ acknowledged:                   # OPTIONAL — advisories you judged by-design
       The gate's decision is the run's verdict; a chained pipeline reads it.
 ```
 
-A CHAINED pipeline's pins, demonstrated — this is required content, not a
-template to copy:
+An UPSTREAM-fired pipeline's pins and case channel, demonstrated — this is
+required content, not a template to copy:
 
 ```yaml
 version: 2
 name: Weekly ops follow-up
 on:
-  runCompleted:
+  upstream:
     pipelineId: weekly-ops      # the weekly-ops RUN's own artifacts sit in
-    statuses: [completed]       # another container — none of them is pinned.
+    step: verify                # another container — none of them is pinned.
+    when: verdict:needs-fix     # fires the moment `verify` seals that verdict,
+                                # while weekly-ops may still be running.
 steps:
-  - id: verify                  # entry step: no upstream step in THIS
-    customJobRef: ops-team/weekly-report      # pipeline, so no pin — its
-    intent: verify-apply                      # case inputs arrive through
-                                              # its intent's clarify.
+  - id: apply                   # entry step: no upstream step in THIS
+    customJobRef: ops-team/weekly-report      # pipeline, so no pin — the case
+    intent: verify-apply                      # arrives as the upstream node's
+    directive: >-                             # fields, quoted as data.
+      Run {{trigger.upstream.runId}} of weekly-ops sealed "{{trigger.upstream.verdict}}"
+      at step {{trigger.upstream.step}}. Its findings:
+      {{trigger.upstream.answer}}
+      Apply the fixes those findings name; anything they do not name stays.
   - id: file-record
     customJobRef: ops-team/weekly-report
     intent: record
@@ -95,7 +113,7 @@ steps:
 `on.fetch` polls a REST source on an interval and fires ONE run per item that
 has not been claimed yet. The external system (a ticket tracker, an inbox API)
 is the queue; Ant keeps only the claim ledger. It stands alone — a fetch
-pipeline has no `schedule` and no `runCompleted`.
+pipeline has no `schedule` and no `upstream`.
 
 The connection takes exactly ONE of two forms:
 
@@ -347,7 +365,10 @@ never concludes a silently ignored knob works:
 | `overlap` / `onMissed` under `on.fetch` | a poll admits items up to the room under `concurrency`; unclaimed items are seen again — nothing to skip or queue |
 | `customJobRef` + `api` beside `connection` under `on.fetch` | exactly one connection form: a job's declared `apis` entry, or the trigger's own inline connection |
 | `allow` / `self` under `on.fetch.connection` | an inline connection is connectivity only — the declared request is its whole scope, and a poll needs an external API |
-| `on.fetch` beside `schedule` / `runCompleted` | a polled pipeline fires per item, not on a clock or a chain |
+| `on.fetch` beside `schedule` / `upstream` | a polled pipeline fires per item, not on a clock or an upstream node |
+| `on.runCompleted` / `statuses` | retired — the edge judges a NODE: `on.upstream { pipelineId, step?, when? }`; `[completed]` → `when: success`, `[failed, partial]` → `when: failure`, `[cancelled]` has no equivalent (a cancelled run did not happen) |
+| `on.upstream.when: verdict:*` without `step` | a run seal carries no verdict — name the step whose intent declares the outcome |
+| `{{trigger.upstream.*}}` without `on.upstream`, `step` / `verdict` / `answer` on a run-node edge, or any of them in a context pin | the fields exist only with the trigger (the step-bound ones only with `step`), and another run's text never names a path in this project |
 | `{{run.prevSuccess.*}}` on a fetch pipeline | runs are per item — there is no previous-run watermark |
 | `{{trigger.item.*}}` without `on.fetch`, or an undeclared field | there is no item without a fetch trigger; declare fields under `on.fetch.fields` |
 | `{{steps.<id>.verdict}}` in a directive | reserved — a verdict routes edges (`on: verdict:<outcome>`), it is never substituted into directive text |

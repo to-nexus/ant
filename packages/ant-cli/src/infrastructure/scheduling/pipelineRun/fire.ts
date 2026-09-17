@@ -10,6 +10,8 @@ import {
   resolveRunConcurrency,
   type PipelineActivation,
   type PipelineDef,
+  type PipelineFiredBy,
+  type PipelineOverlap,
   type RunRecord,
 } from '@ant/shared';
 import type { PipelineFireJobData, PipelineOwner } from '../../../core/ports/scheduler';
@@ -27,6 +29,17 @@ import { COMPONENT, type PipelineRunOps } from './types';
 /** A cron fire older than this is "missed" (worker downtime) — `onMissed` decides. */
 const STALE_FIRE_MS = 10 * 60 * 1000;
 const MAX_OVERLAP_REQUEUES = 60; // 60 × 60s = 1h of queueing before giving up
+
+/**
+ * The overlap knob belongs to the fire SOURCE: a cron or manual fire reads the
+ * schedule's, an upstream fire the upstream trigger's. A fetch fire has none —
+ * an unclaimed item is simply seen again by the next poll.
+ */
+export function overlapPolicyOf(def: PipelineDef, firedBy: PipelineFiredBy): PipelineOverlap {
+  if (firedBy === 'event') return def.on?.upstream?.overlap ?? 'skip';
+  if (firedBy === 'fetch') return 'skip';
+  return def.on?.schedule?.overlap ?? 'skip';
+}
 
 export interface FireAuthority {
   activation: PipelineActivation;
@@ -98,7 +111,7 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   // Chain-depth loop guard (caps doctrine: enforce at fire, skip + log).
   if ((data.chainDepth ?? 0) > MAX_CHAIN_DEPTH) {
     logger.warn(
-      `[Pipeline] chained fire skipped — depth ${data.chainDepth} exceeds ${MAX_CHAIN_DEPTH}: ${pipelineId} on ${projectId}`,
+      `[Pipeline] upstream fire skipped — depth ${data.chainDepth} exceeds ${MAX_CHAIN_DEPTH}: ${pipelineId} on ${projectId}`,
       { component: COMPONENT },
     );
     return;
@@ -107,6 +120,11 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   // A fetch fire is one claimed item — without one there is nothing to run.
   if (data.firedBy === 'fetch' && !data.item) {
     logger.warn(`[Pipeline] fetch fire skipped — no item: ${pipelineId} on ${projectId}`, { component: COMPONENT });
+    return;
+  }
+  // An event fire is one upstream node — without one there is no cause to run for.
+  if (data.firedBy === 'event' && !data.upstream) {
+    logger.warn(`[Pipeline] upstream fire skipped — no upstream node: ${pipelineId} on ${projectId}`, { component: COMPONENT });
     return;
   }
 
@@ -121,12 +139,18 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   }
 
   // Fire idempotency (attempts:3 on the control queue + multi-replica). A poll
-  // fires N items in the same instant, so a fetch fire's identity is the item.
+  // fires N items in the same instant, so a fetch fire's identity is the item;
+  // an upstream fire's identity is the NODE that sealed (epoch-free — one node
+  // fires an activation at most once, however many times its seal is replayed).
   const firedKey = REDIS_KEYS.PIPE.FIRED(
     owner.organizationId,
     owner.userId,
     projectId,
-    data.item ? `${fireEpoch}:${encodeURIComponent(data.item.key)}` : fireEpoch,
+    data.upstream
+      ? `upstream:${data.upstream.runId}:${data.upstream.step ?? 'run'}`
+      : data.item
+        ? `${fireEpoch}:${encodeURIComponent(data.item.key)}`
+        : fireEpoch,
   );
   if (!(await ctx.deps.stateStore.acquireLock(firedKey, REDIS_TTL.PIPE.FIRED))) return;
 
@@ -159,7 +183,7 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     REDIS_TTL.PIPE.ACTIVE,
   );
   if (!admitted) {
-    const overlap = def.on?.schedule?.overlap ?? 'skip';
+    const overlap = overlapPolicyOf(def, data.firedBy);
     // Release the fire NX so a queued re-arm (same fireEpoch) can pass it.
     await ctx.deps.stateStore.releaseLock(firedKey).catch(() => {});
     if (overlap === 'queue' && (data.requeues ?? 0) < MAX_OVERLAP_REQUEUES) {
@@ -169,10 +193,9 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
         { ...data, fireEpoch, requeues: (data.requeues ?? 0) + 1 },
       );
     } else {
-      // A fetch pipeline has no `on.schedule` (validator: fetch and schedule
-      // are exclusive), so its fires always land here: the item stays
-      // unclaimed and the next poll sees it again.
-      logger.info(`[Pipeline] overlap skip: ${pipelineId} on ${projectId}`, { component: COMPONENT });
+      // A fetch fire always lands here: the item stays unclaimed and the next
+      // poll sees it again.
+      logger.info(`[Pipeline] overlap skip (${data.firedBy}): ${pipelineId} on ${projectId}`, { component: COMPONENT });
     }
     return;
   }
@@ -242,6 +265,7 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     ...(prevSuccessFireEpoch !== undefined && { prevSuccessFireEpoch }),
     ...(data.chainDepth !== undefined && { chainDepth: data.chainDepth }),
     ...(data.item && { item: data.item }),
+    ...(data.upstream && { upstream: data.upstream }),
   };
 
   // The run doc lands FIRST: the run log is what `isDeadClaim` reads as "this
@@ -249,7 +273,14 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   // claim permanent while the reconciler heals the slots under it.
   const plan = planAdvance(def, run);
   await commitRun(ctx.deps, owner, plan.run);
-  await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
+  // The audit line names the upstream node, never its answer (that rides the run doc).
+  const { answer: _answer, ...upstreamRef } = data.upstream ?? {};
+  await appendEvent(ctx.deps, owner, projectId, {
+    ts: run.startedAt,
+    event: 'fired',
+    runId,
+    detail: { firedBy: run.firedBy, fireEpoch, projectId, ...(data.upstream && { upstream: upstreamRef }) },
+  });
   if (data.item) {
     await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'item_claimed', runId, detail: { key: data.item.key } });
   }

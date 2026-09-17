@@ -16,7 +16,7 @@ import {
   type PipelineScope,
 } from '@ant/shared';
 import { sendErrorResponse } from '../helpers/errorResponse';
-import { judgePipelineForCatalog, judgementResponseFields, resolvePipelineCatalog, type PipelineJudgement } from '../../../../../core/pipelines/catalogBinding';
+import { judgePipelineForCatalog, judgementResponseFields, resolvePipelineCatalog, upstreamLoaderFor, type PipelineJudgement } from '../../../../../core/pipelines/catalogBinding';
 import { derivePipelinesRoot, pipelineDir } from '../../../../../core/pipelines/paths';
 import {
   listAccountActivations,
@@ -120,6 +120,10 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       res.status(400).json({ error: `Invalid pipeline id: "${requestedId}"`, code: 'invalid-pipeline-id' });
       return null;
     }
+    if (def.on?.upstream?.pipelineId === requestedId) {
+      res.status(400).json({ error: 'on.upstream.pipelineId must name ANOTHER pipeline — a pipeline cannot hang off its own runs', code: 'invalid-pipeline-def' });
+      return null;
+    }
     // Cross-scope collision: shadowing an org pipeline is refused, not applied.
     const collision = findPipelineRoot(scopeRoots, requestedId);
     if (collision) {
@@ -159,7 +163,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
     return {
       id: requestedId,
       entry: await buildListEntry(owner, null, userRoot, requestedId, def, agents),
-      judgement: judgePipelineForCatalog(def, agents),
+      judgement: judgePipelineForCatalog(def, agents, upstreamLoaderFor(ctxOf(owner))),
     };
   }
 
@@ -243,6 +247,10 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       // Availability machine: editable only while disabled — an import must
       // not be a back door around what `PUT /:id` refuses.
       if (refuseWhileEnabled(res, found.scopeRoot.root, targetId, 'editing')) return;
+      if (def.on?.upstream?.pipelineId === targetId) {
+        res.status(400).json({ error: 'on.upstream.pipelineId must name ANOTHER pipeline — a pipeline cannot hang off its own runs', code: 'invalid-pipeline-def' });
+        return;
+      }
       await savePipeline(found.scopeRoot.root, targetId, def);
       await publishPipelineEvent(owner, { cause: 'defChanged', pipelineId: targetId });
       const gate = found.scopeRoot.aclGoverned ? await orgGateFor(req)() : null;
@@ -251,7 +259,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
         id: targetId,
         entry: await buildListEntry(owner, gate, found.scopeRoot, targetId, def, agents),
         created: false,
-        ...judgementResponseFields(judgePipelineForCatalog(def, agents)),
+        ...judgementResponseFields(judgePipelineForCatalog(def, agents, upstreamLoaderFor(ctxOf(owner)))),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {

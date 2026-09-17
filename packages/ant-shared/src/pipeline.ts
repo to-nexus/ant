@@ -73,6 +73,11 @@ export type StepEdgeCondition = 'success' | 'failure' | 'always' | `verdict:${st
 
 export const VERDICT_EDGE_PATTERN = /^verdict:[a-z0-9][a-z0-9-]*(\|[a-z0-9][a-z0-9-]*)*$/;
 
+/** The ONE shape test for an edge condition — step `on` and `on.upstream.when` share it. */
+export function isStepEdgeCondition(value: unknown): value is StepEdgeCondition {
+  return value === 'success' || value === 'failure' || value === 'always' || (typeof value === 'string' && VERDICT_EDGE_PATTERN.test(value));
+}
+
 /** The outcomes a `verdict:` edge names — the ONE parse site for the `a|b` disjunction form. */
 export function verdictEdgeOutcomes(on: string): string[] {
   return on.slice('verdict:'.length).split('|');
@@ -91,15 +96,41 @@ export interface PipelineScheduleTrigger {
 }
 
 /**
- * Pipeline→pipeline chaining: fire when another pipeline's run (an activation
- * of the SAME activator — identity never crosses users) seals one of the
- * given terminal statuses. `statuses: ['failed']` is the error-workflow
- * pattern. Chain depth is bounded (MAX_CHAIN_DEPTH) against fire loops.
+ * Pipeline→pipeline edge: this pipeline's root hangs off ONE node of another
+ * pipeline's runs (an activation of the SAME activator — identity never
+ * crosses users). The node is a step (`step`) or, when omitted, the run's
+ * seal judged as a node (completed → succeeded, failed / partial → failed,
+ * cancelled → did not happen). `when` is the step-edge vocabulary — the same
+ * predicate that routes edges inside a pipeline — so `failure` is the
+ * error-workflow pattern and `verdict:<outcome>` follows a declared decision.
+ * Non-occurrence (a skipped or cancelled node) never fires. A step node fires
+ * at the step's terminal seal, mid-run. Chain depth is bounded
+ * (MAX_CHAIN_DEPTH) against fire loops.
  */
-export interface PipelineRunCompletedTrigger {
+export interface PipelineUpstreamTrigger {
   pipelineId: string;
-  /** Terminal statuses that fire. Default: ['completed']. */
-  statuses?: PipelineRunStatus[];
+  /** Step id in that pipeline. Absent = the run's seal. */
+  step?: string;
+  /** Default `success`. `verdict:*` needs `step` — a run seal carries no verdict. */
+  when?: StepEdgeCondition;
+  /** What an upstream fire does when this activation's slots are full. Default `skip`. */
+  overlap?: PipelineOverlap;
+}
+
+/**
+ * The upstream node that fired an event run — frozen at fire
+ * (`{{trigger.upstream.*}}`, directive-only). `step` absent = the run's seal
+ * was the node. `answer` is the step's captured answer cut at
+ * PIPELINE_UPSTREAM_ANSWER_MAX_CHARS; it never rides the SSE wire.
+ */
+export interface PipelineRunUpstream {
+  pipelineId: string;
+  runId: string;
+  projectId: string;
+  step?: string;
+  outcome: 'succeeded' | 'failed';
+  verdict?: string;
+  answer?: string;
 }
 
 /**
@@ -309,10 +340,10 @@ export interface PipelineDef {
    * Trigger block. ABSENT = manual-only: the pipeline fires only via run-now
    * (the same fire path — activation, overlap and caps gates unchanged).
    * When declared it must carry at least one trigger; `schedule` and
-   * `runCompleted` may coexist. `fetch` stands alone in v1 — a polled
-   * activation fires per item, never on a clock or a chain.
+   * `upstream` may coexist. `fetch` stands alone in v1 — a polled
+   * activation fires per item, never on a clock or an upstream node.
    */
-  on?: { schedule?: PipelineScheduleTrigger; runCompleted?: PipelineRunCompletedTrigger; fetch?: PipelineFetchTrigger };
+  on?: { schedule?: PipelineScheduleTrigger; upstream?: PipelineUpstreamTrigger; fetch?: PipelineFetchTrigger };
   /**
    * Live runs one ACTIVATION may hold at once — the per-activation slot cap the
    * fire path reserves against, whatever fired (run-now, cron, chain, fetch).
@@ -668,6 +699,26 @@ export function fetchItemTemplateVars(fetch: PipelineFetchTrigger | undefined | 
   return [PIPELINE_ITEM_KEY_TEMPLATE_VAR, ...Object.keys(fetch.fields ?? {}).map((f) => `${PIPELINE_ITEM_TEMPLATE_PREFIX}${f}`)];
 }
 
+/** Template variable prefix of the upstream node an event run was fired by. */
+export const PIPELINE_UPSTREAM_TEMPLATE_PREFIX = 'trigger.upstream.';
+/** An upstream step's answer is cut here before it rides the fire — it is another run's text, not a record store. */
+export const PIPELINE_UPSTREAM_ANSWER_MAX_CHARS = 4_000;
+/** Fields every upstream fire carries; the step-bound ones exist only when `on.upstream.step` is set. */
+const UPSTREAM_RUN_FIELDS = ['pipelineId', 'runId', 'outcome'] as const;
+const UPSTREAM_STEP_FIELDS = ['step', 'verdict', 'answer'] as const;
+
+/**
+ * The `{{trigger.upstream.*}}` vocabulary an upstream trigger declares — the
+ * ONE derivation the validator, the renderer and the editor's token picker
+ * share. Empty when the definition has no upstream trigger; the step-bound
+ * fields appear only when the trigger names a step (a run seal has none).
+ */
+export function upstreamTemplateVars(upstream: Pick<PipelineUpstreamTrigger, 'step'> | undefined | null): string[] {
+  if (!upstream) return [];
+  const fields: readonly string[] = upstream.step !== undefined ? [...UPSTREAM_RUN_FIELDS, ...UPSTREAM_STEP_FIELDS] : UPSTREAM_RUN_FIELDS;
+  return fields.map((f) => `${PIPELINE_UPSTREAM_TEMPLATE_PREFIX}${f}`);
+}
+
 /**
  * Directive template whitelist — the ONLY substitutions the dispatcher
  * performs. No general template engine, no user code path. Step-output
@@ -696,7 +747,7 @@ export const PIPELINE_STEP_OUTPUT_MAX_CHARS = 16_000;
 
 /** Hard ceiling on `retry.max` — coordinator re-dispatch rounds per step. */
 export const MAX_STEP_RETRY = 3;
-/** runCompleted chain-depth bound — a fire past this is skipped (loop guard). */
+/** Upstream-fire chain-depth bound — a fire past this is skipped (loop guard). */
 export const MAX_CHAIN_DEPTH = 5;
 /** Reminder re-arms per gate — a nag, not a poll; resolve cancels it. */
 export const MAX_GATE_REMINDERS = 10;
@@ -921,10 +972,12 @@ export interface RunRecord {
   activationSnapshot?: PipelineActivation;
   /** Previous COMPLETED run's fireEpoch, frozen at fire — `{{run.prevSuccess.*}}`. */
   prevSuccessFireEpoch?: number;
-  /** runCompleted chain position (0/absent = not event-fired). Bounded by MAX_CHAIN_DEPTH. */
+  /** Upstream chain position (0/absent = not event-fired). Bounded by MAX_CHAIN_DEPTH. */
   chainDepth?: number;
   /** The claimed case of a fetch-fired run (`firedBy: 'fetch'` ⇔ present). */
   item?: PipelineRunItem;
+  /** The upstream node of an event-fired run (`firedBy: 'event'` ⇔ present). */
+  upstream?: PipelineRunUpstream;
 }
 
 /** One approval-gate decision on a terminal run's summary line — the org observer's "who opened this gate" channel. */
@@ -951,6 +1004,8 @@ export interface PipelineRunSummary {
   gates?: PipelineRunGateSummary[];
   /** The run's case label (fetch-fired runs) — the history row's `runLabel`. */
   itemKey?: string;
+  /** The upstream node that fired an event run — the history row's origin. */
+  upstream?: Pick<PipelineRunUpstream, 'pipelineId' | 'step'>;
 }
 
 /**
@@ -974,7 +1029,7 @@ export function summarizeRunGates(steps: readonly StepRecord[]): PipelineRunGate
  * changes shape between "live" and "sealed". Optional keys ride only when set.
  */
 export function runSummaryOf(
-  run: Pick<RunRecord, 'runId' | 'pipelineId' | 'projectId' | 'status' | 'firedBy' | 'fireEpoch' | 'startedAt' | 'endedAt' | 'error' | 'steps' | 'item'>,
+  run: Pick<RunRecord, 'runId' | 'pipelineId' | 'projectId' | 'status' | 'firedBy' | 'fireEpoch' | 'startedAt' | 'endedAt' | 'error' | 'steps' | 'item' | 'upstream'>,
 ): PipelineRunSummary {
   const gates = summarizeRunGates(run.steps);
   return {
@@ -989,6 +1044,7 @@ export function runSummaryOf(
     ...(run.error && { error: run.error }),
     ...(gates.length > 0 && { gates }),
     ...(run.item && { itemKey: run.item.key }),
+    ...(run.upstream && { upstream: { pipelineId: run.upstream.pipelineId, ...(run.upstream.step && { step: run.upstream.step }) } }),
   };
 }
 
@@ -1193,7 +1249,16 @@ const RESERVED_DEF_KEYS: Record<string, string> = {
   projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
-const ON_KEYS = ['schedule', 'runCompleted', 'fetch'];
+const ON_KEYS = ['schedule', 'upstream', 'fetch'];
+/** The retired chain trigger keyed on run status — say how the node edge spells it. */
+const ON_RESERVED_KEYS: Record<string, string> = {
+  runCompleted:
+    '"runCompleted" was replaced by "upstream" — { pipelineId, step?, when?, overlap? }: statuses [completed] → when: success (the default), [failed, partial] → when: failure; [cancelled] has no equivalent (a cancelled run did not happen); name "step" to fire on one step\'s seal instead of the whole run',
+};
+const UPSTREAM_KEYS = ['pipelineId', 'step', 'when', 'overlap'];
+const UPSTREAM_RESERVED_KEYS: Record<string, string> = {
+  statuses: '"statuses" judged the run\'s aggregate status — an upstream edge judges a NODE: say "when": success | failure | always | verdict:<outcome> (with "step")',
+};
 const FETCH_KEYS = ['customJobRef', 'api', 'connection', 'request', 'items', 'key', 'fields', 'every'];
 const FETCH_REQUEST_KEYS = ['method', 'path', 'query', 'body'];
 const FETCH_CONNECTION_FORMS_HINT = 'exactly one connection form: { customJobRef, api } (a job\'s declared apis entry) or { connection: { baseUrl, headers? } } (inline)';
@@ -1234,6 +1299,16 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/** The overlap knob's ONE shape rule — `on.schedule` and `on.upstream` carry the same values. */
+function overlapErrors(value: unknown, where: string): string[] {
+  if (value === undefined || value === 'skip' || value === 'queue') return [];
+  return [
+    value === 'cancelPrevious'
+      ? `${where}.overlap "cancelPrevious" is not supported yet — use "skip" or "queue"`
+      : `${where}.overlap must be "skip" or "queue" (got: ${String(value)})`,
+  ];
+}
+
 function unknownKeyErrors(
   obj: Record<string, unknown>,
   allowed: string[],
@@ -1271,48 +1346,64 @@ interface StepOutputRef {
 }
 
 /**
- * Static-variable judgement shared by directives and pins. `itemVars` is the
- * fetch trigger's `{{trigger.item.*}}` vocabulary (`fetchItemTemplateVars`) —
- * null when the definition has no fetch trigger, so an item reference names
- * a trigger that does not exist. Returns null when the name is accepted.
+ * The trigger-declared template vocabularies: `item` is the fetch trigger's
+ * `{{trigger.item.*}}` (`fetchItemTemplateVars`), `upstream` the upstream
+ * trigger's `{{trigger.upstream.*}}` (`upstreamTemplateVars`) — null when the
+ * definition has no such trigger, so a reference names one that does not exist.
  */
-function staticVarError(name: string, itemVars: string[] | null, allowFields: boolean): string | null {
+interface TriggerVars {
+  item: string[] | null;
+  upstream: string[] | null;
+}
+
+/** Static-variable judgement shared by directives and pins. Returns null when the name is accepted. */
+function staticVarError(name: string, vars: TriggerVars, allowFields: boolean): string | null {
   if ((PIPELINE_TEMPLATE_VARS as readonly string[]).includes(name)) {
-    if (itemVars !== null && name.startsWith('run.prevSuccess.')) {
+    if (vars.item !== null && name.startsWith('run.prevSuccess.')) {
       return `"{{${name}}}" is not defined on a fetch pipeline — runs are per item, there is no previous-run watermark`;
     }
     return null;
   }
   if (name.startsWith(PIPELINE_ITEM_TEMPLATE_PREFIX)) {
-    if (itemVars === null) return `"{{${name}}}" needs an on.fetch trigger — there is no item without one`;
-    if (!itemVars.includes(name)) {
-      return `unknown item field "{{${name}}}" (declared: ${itemVars.map((v) => `{{${v}}}`).join(', ')} — add it under on.fetch.fields)`;
+    if (vars.item === null) return `"{{${name}}}" needs an on.fetch trigger — there is no item without one`;
+    if (!vars.item.includes(name)) {
+      return `unknown item field "{{${name}}}" (declared: ${vars.item.map((v) => `{{${v}}}`).join(', ')} — add it under on.fetch.fields)`;
     }
     if (!allowFields && name !== PIPELINE_ITEM_KEY_TEMPLATE_VAR) {
       return `"{{${name}}}" is not allowed in a context pin — item fields are source-controlled text; only {{${PIPELINE_ITEM_KEY_TEMPLATE_VAR}}} may name a path`;
     }
     return null;
   }
+  if (name.startsWith(PIPELINE_UPSTREAM_TEMPLATE_PREFIX)) {
+    if (vars.upstream === null) return `"{{${name}}}" needs an on.upstream trigger — there is no upstream node without one`;
+    if (!vars.upstream.includes(name)) {
+      const stepBound = UPSTREAM_STEP_FIELDS.some((f) => name === `${PIPELINE_UPSTREAM_TEMPLATE_PREFIX}${f}`);
+      return `unknown upstream field "{{${name}}}" (available: ${vars.upstream.map((v) => `{{${v}}}`).join(', ')}${stepBound ? ' — step, verdict and answer exist only when on.upstream names a step' : ''})`;
+    }
+    if (!allowFields) return `"{{${name}}}" is not allowed in a context pin — upstream fields are another run's text and cannot name a path in this project`;
+    return null;
+  }
   return `unknown template variable "{{${name}}}"`;
 }
 
-function allowedStaticVarsHint(itemVars: string[] | null, pin: boolean): string {
+function allowedStaticVarsHint(vars: TriggerVars, pin: boolean): string {
   const names = [
-    ...(PIPELINE_TEMPLATE_VARS as readonly string[]).filter((v) => itemVars === null || !v.startsWith('run.prevSuccess.')),
-    ...(itemVars ?? []).filter((v) => !pin || v === PIPELINE_ITEM_KEY_TEMPLATE_VAR),
+    ...(PIPELINE_TEMPLATE_VARS as readonly string[]).filter((v) => vars.item === null || !v.startsWith('run.prevSuccess.')),
+    ...(vars.item ?? []).filter((v) => !pin || v === PIPELINE_ITEM_KEY_TEMPLATE_VAR),
+    ...(pin ? [] : vars.upstream ?? []),
   ];
   return names.map((v) => `{{${v}}}`).join(', ');
 }
 
-function templateVarErrors(directive: string, stepId: string, itemVars: string[] | null, stepRefs?: StepOutputRef[]): string[] {
+function templateVarErrors(directive: string, stepId: string, vars: TriggerVars, stepRefs?: StepOutputRef[]): string[] {
   const errors: string[] = [];
   const re = /\{\{\s*([^}]*?)\s*\}\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(directive)) !== null) {
     const name = m[1];
     if (!name.startsWith('steps.')) {
-      const err = staticVarError(name, itemVars, true);
-      if (err) errors.push(`step "${stepId}": ${err}${err.startsWith('unknown template') ? ` (allowed: ${allowedStaticVarsHint(itemVars, false)})` : ''}`);
+      const err = staticVarError(name, vars, true);
+      if (err) errors.push(`step "${stepId}": ${err}${err.startsWith('unknown template') ? ` (allowed: ${allowedStaticVarsHint(vars, false)})` : ''}`);
       continue;
     }
     {
@@ -1338,7 +1429,7 @@ function templateVarErrors(directive: string, stepId: string, itemVars: string[]
  * name a path). Step-output refs are directive-only — a pin is expanded once
  * at dispatch, so it cannot carry another step's output.
  */
-function pinTemplateErrors(pin: string, stepId: string, itemVars: string[] | null): string[] {
+function pinTemplateErrors(pin: string, stepId: string, vars: TriggerVars): string[] {
   const errors: string[] = [];
   const re = /\{\{\s*([^}]*?)\s*\}\}/g;
   let m: RegExpExecArray | null;
@@ -1348,11 +1439,11 @@ function pinTemplateErrors(pin: string, stepId: string, itemVars: string[] | nul
       errors.push(`step "${stepId}": context pin "{{${name}}}" — step-output references are not allowed in context pins (pin the upstream intent's hooks.stop glob instead)`);
       continue;
     }
-    const err = staticVarError(name, itemVars, false);
+    const err = staticVarError(name, vars, false);
     if (err) {
       errors.push(
         err.startsWith('unknown template')
-          ? `step "${stepId}": ${err} in context pin (allowed: ${allowedStaticVarsHint(itemVars, true)})`
+          ? `step "${stepId}": ${err} in context pin (allowed: ${allowedStaticVarsHint(vars, true)})`
           : `step "${stepId}": ${err}`,
       );
     }
@@ -1550,23 +1641,23 @@ export function validatePipelineDef(
   }
 
   // Trigger — absent `on` = manual-only (run-now is the only fire source).
-  // `itemVars` is the fetch trigger's template vocabulary (null = no fetch).
-  let itemVars: string[] | null = null;
+  // `vars` is the trigger-declared template vocabulary (null = no such trigger).
+  const vars: TriggerVars = { item: null, upstream: null };
   if (raw.on !== undefined && !isPlainObject(raw.on)) {
     errors.push('on must be a mapping of triggers (omit "on" entirely for a manual-only pipeline)');
   } else if (raw.on !== undefined && isPlainObject(raw.on)) {
-    errors.push(...unknownKeyErrors(raw.on, ON_KEYS, 'on'));
-    if (raw.on.schedule === undefined && raw.on.runCompleted === undefined && raw.on.fetch === undefined) {
-      errors.push('on must declare at least one trigger — "schedule", "runCompleted" or "fetch" (omit "on" entirely for a manual-only pipeline)');
+    errors.push(...unknownKeyErrors(raw.on, ON_KEYS, 'on', ON_RESERVED_KEYS));
+    if (raw.on.schedule === undefined && raw.on.upstream === undefined && raw.on.fetch === undefined) {
+      errors.push('on must declare at least one trigger — "schedule", "upstream" or "fetch" (omit "on" entirely for a manual-only pipeline)');
     }
     if (raw.on.fetch !== undefined) {
-      if (raw.on.schedule !== undefined || raw.on.runCompleted !== undefined) {
-        errors.push('on.fetch stands alone — a polled pipeline fires per item, not on a schedule or a chain (remove "schedule" / "runCompleted")');
+      if (raw.on.schedule !== undefined || raw.on.upstream !== undefined) {
+        errors.push('on.fetch stands alone — a polled pipeline fires per item, not on a schedule or an upstream node (remove "schedule" / "upstream")');
       }
       errors.push(...fetchTriggerErrors(raw.on.fetch, caps));
       if (isPlainObject(raw.on.fetch)) {
         const fields = isPlainObject(raw.on.fetch.fields) ? (raw.on.fetch.fields as Record<string, string>) : undefined;
-        itemVars = fetchItemTemplateVars({ fields } as PipelineFetchTrigger);
+        vars.item = fetchItemTemplateVars({ fields } as PipelineFetchTrigger);
       }
     }
     if (raw.on.schedule !== undefined) {
@@ -1583,36 +1674,28 @@ export function validatePipelineDef(
         if (sched.onMissed !== undefined && sched.onMissed !== 'skip' && sched.onMissed !== 'runOnce') {
           errors.push(`on.schedule.onMissed must be "skip" or "runOnce" (got: ${String(sched.onMissed)})`);
         }
-        if (sched.overlap !== undefined && sched.overlap !== 'skip' && sched.overlap !== 'queue') {
-          errors.push(
-            sched.overlap === 'cancelPrevious'
-              ? 'on.schedule.overlap "cancelPrevious" is not supported yet — use "skip" or "queue"'
-              : `on.schedule.overlap must be "skip" or "queue" (got: ${String(sched.overlap)})`,
-          );
-        }
+        errors.push(...overlapErrors(sched.overlap, 'on.schedule'));
       }
     }
-    if (raw.on.runCompleted !== undefined) {
-      if (!isPlainObject(raw.on.runCompleted)) {
-        errors.push('on.runCompleted must be a mapping { pipelineId, statuses? }');
+    if (raw.on.upstream !== undefined) {
+      if (!isPlainObject(raw.on.upstream)) {
+        errors.push('on.upstream must be a mapping { pipelineId, step?, when?, overlap? }');
       } else {
-        const rc = raw.on.runCompleted as Record<string, unknown>;
-        errors.push(...unknownKeyErrors(rc, ['pipelineId', 'statuses'], 'on.runCompleted'));
-        if (typeof rc.pipelineId !== 'string' || !isValidCustomId(rc.pipelineId)) {
-          errors.push('on.runCompleted.pipelineId must be a pipeline id (lowercase kebab-case)');
+        const up = raw.on.upstream as Record<string, unknown>;
+        errors.push(...unknownKeyErrors(up, UPSTREAM_KEYS, 'on.upstream', UPSTREAM_RESERVED_KEYS));
+        if (typeof up.pipelineId !== 'string' || !isValidCustomId(up.pipelineId)) {
+          errors.push('on.upstream.pipelineId must be a pipeline id (lowercase kebab-case)');
         }
-        if (rc.statuses !== undefined) {
-          const terminal = ['completed', 'failed', 'partial', 'cancelled'];
-          if (!Array.isArray(rc.statuses) || rc.statuses.length === 0) {
-            errors.push('on.runCompleted.statuses must be a non-empty array of terminal run statuses');
-          } else {
-            for (const s of rc.statuses) {
-              if (!terminal.includes(String(s))) {
-                errors.push(`on.runCompleted.statuses: "${String(s)}" is not a terminal run status (allowed: ${terminal.join(', ')})`);
-              }
-            }
-          }
+        if (up.step !== undefined && (typeof up.step !== 'string' || !isValidCustomId(up.step))) {
+          errors.push('on.upstream.step must be a step id of that pipeline (lowercase kebab-case) — omit it to fire on the run\'s seal');
         }
+        if (up.when !== undefined && !isStepEdgeCondition(up.when)) {
+          errors.push(`on.upstream.when must be "success", "failure", "always", "verdict:<outcome>" or "verdict:<a|b>" (got: ${String(up.when)})`);
+        } else if (typeof up.when === 'string' && up.when.startsWith('verdict:') && up.step === undefined) {
+          errors.push('on.upstream.when "verdict:…" needs on.upstream.step — a run seal carries no verdict; name the step whose intent declares the outcome');
+        }
+        errors.push(...overlapErrors(up.overlap, 'on.upstream'));
+        vars.upstream = upstreamTemplateVars({ step: typeof up.step === 'string' ? up.step : undefined });
       }
     }
   }
@@ -1665,13 +1748,7 @@ export function validatePipelineDef(
         errors.push(`step "${stepId}": needs must not reference itself`);
       }
     }
-    if (
-      rawStep.on !== undefined &&
-      rawStep.on !== 'success' &&
-      rawStep.on !== 'failure' &&
-      rawStep.on !== 'always' &&
-      !(typeof rawStep.on === 'string' && VERDICT_EDGE_PATTERN.test(rawStep.on))
-    ) {
+    if (rawStep.on !== undefined && !isStepEdgeCondition(rawStep.on)) {
       errors.push(`step "${stepId}": on must be "success", "failure", "always", "verdict:<outcome>" or "verdict:<a|b>" (got: ${String(rawStep.on)})`);
     }
 
@@ -1727,7 +1804,7 @@ export function validatePipelineDef(
           // time is the only place the author sees why (M-NEW-029).
           errors.push(`step "${stepId}": directive must be at most ${DIRECTIVE_MAX_CHARS} characters`);
         } else {
-          errors.push(...templateVarErrors(rawStep.directive, stepId, itemVars, stepOutputRefs));
+          errors.push(...templateVarErrors(rawStep.directive, stepId, vars, stepOutputRefs));
         }
       }
       if (rawStep.intent !== undefined) {
@@ -1780,7 +1857,7 @@ export function validatePipelineDef(
           // structural glob check runs on a placeholder-substituted copy.
           for (const pin of rawStep.context as string[]) {
             const raw = pin.trim();
-            errors.push(...pinTemplateErrors(raw, stepId, itemVars));
+            errors.push(...pinTemplateErrors(raw, stepId, vars));
             const v = raw.replace(/\{\{\s*[^}]*?\s*\}\}/g, 'x');
             if (!v.includes('*')) continue;
             const globErr = validateArtifactGlob(v, `step "${stepId}": context`);
@@ -2109,7 +2186,7 @@ function needsClosureOf(def: PipelineDef): (id: string) => Set<string> {
 
 /**
  * Definition-structural advisories — catalog-free findings. A terminal gate
- * still differentiates the run's final status (a `runCompleted` chain may
+ * still differentiates the run's final status (an `on.upstream` edge may
  * consume it), and a gate with no timeout is a legal "wait for a person" —
  * so both are advisories a person weighs, never validator errors.
  */
@@ -2335,7 +2412,7 @@ export function collectPipelineCatalogAdvisoryItems(def: PipelineDef, agents: Pi
   // consumer ships with no pins at all, while its upstream steps DECLARE stop
   // globs. Advisory, never the hard gate — a consumer that truly needs no
   // upstream file stays saveable.
-  if (def.on?.runCompleted !== undefined) {
+  if (def.on?.upstream !== undefined) {
     for (const step of def.steps) {
       if (isApprovalStep(step)) continue;
       if ((step.context ?? []).length > 0) continue;

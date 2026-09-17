@@ -15,12 +15,15 @@
  */
 
 import {
+  GENERAL_INTENT,
   fetchConnectionSource,
   hasPipelineAdvisories,
+  isApprovalStep,
   parseCustomJobRef,
   parseRestAllowLine,
   resolvePipelineAdvisories,
   validatePipelineCatalogBinding,
+  verdictEdgeOutcomes,
   type PipelineAdvisoryResolution,
   type PipelineCatalogAgent,
   type PipelineDef,
@@ -29,6 +32,9 @@ import {
 import { discoverAgents } from '../customAgents/CustomAgentLoader';
 import { isAllowedByRules } from '../customAgents/restApi';
 import { deriveCustomAgentScopeRootsForTenant, type CustomAgentTenantContext } from '../customAgents/scopeRoots';
+import type { PipelineTenantContext } from './paths';
+import { derivePipelineScopeRootsForTenant } from './scopeRoots';
+import { findPipelineRoot, loadPipeline } from './store';
 
 export interface PipelineJudgement {
   catalogWarnings: string[];
@@ -59,21 +65,74 @@ export function fetchAllowErrors(def: PipelineDef, agents: PipelineCatalogAgent[
   ];
 }
 
-export function validatePipelineCatalogServer(def: PipelineDef, tenant: CustomAgentTenantContext): string[] {
-  const agents = resolvePipelineCatalog(tenant);
-  return [...validatePipelineCatalogBinding(def, agents), ...fetchAllowErrors(def, agents)];
+/** Resolves the definition an `on.upstream` edge names; null = not authored (yet). Throws on an unparsable one. */
+export type UpstreamDefLoader = (pipelineId: string) => PipelineDef | null;
+
+/** The AUTHOR's scope roots, closest-wins — what the editor and enable see; the fire path judges by the activation's pinned snapshot. */
+export function upstreamLoaderFor(tenant: PipelineTenantContext): UpstreamDefLoader {
+  const roots = derivePipelineScopeRootsForTenant(tenant);
+  return (pipelineId) => {
+    const found = findPipelineRoot(roots, pipelineId);
+    return found ? loadPipeline(found.scopeRoot.root, pipelineId) : null;
+  };
 }
 
-/** Both verdicts over an already-resolved catalog — the offline CLI's entry as well. */
-export function judgePipelineForCatalog(def: PipelineDef, agents: PipelineCatalogAgent[]): PipelineJudgement {
+/**
+ * The upstream edge against the definition it names. Only what is DEFINITELY
+ * dead warns: a step the upstream lacks, a `verdict:` edge on a gate or on an
+ * intent that declares no such outcome. An upstream not authored yet is
+ * silent — fire time is the truth (a node the snapshot lacks never matches),
+ * and the author may write the two in either order.
+ */
+export function upstreamBindingWarnings(def: PipelineDef, agents: PipelineCatalogAgent[], loadUpstream?: UpstreamDefLoader): string[] {
+  const trigger = def.on?.upstream;
+  if (!trigger || !loadUpstream) return [];
+  let upstream: PipelineDef | null;
+  try {
+    upstream = loadUpstream(trigger.pipelineId);
+  } catch {
+    return [`on.upstream: pipeline "${trigger.pipelineId}" does not load — fix its definition before this edge can fire`];
+  }
+  if (!upstream || trigger.step === undefined) return [];
+  const step = upstream.steps.find((s) => s.id === trigger.step);
+  if (!step) {
+    return [`on.upstream: pipeline "${trigger.pipelineId}" has no step "${trigger.step}" (steps: ${upstream.steps.map((s) => s.id).join(', ')}) — the edge can never fire`];
+  }
+  const when = trigger.when ?? 'success';
+  if (!when.startsWith('verdict:')) return [];
+  if (isApprovalStep(step)) {
+    return [`on.upstream: step "${step.id}" of "${trigger.pipelineId}" is an approval gate — a gate seals no verdict, so "${when}" can never match; use when: success (approved) or failure (rejected)`];
+  }
+  const ref = parseCustomJobRef(step.customJobRef);
+  const job = ref ? agents.find((a) => a.id === ref.agentId)?.jobs.find((j) => j.id === ref.jobId) : undefined;
+  if (!job || job.intents === undefined) return []; // unknowable here — that job's own catalog rules speak
+  const intent = step.intent !== undefined && step.intent !== GENERAL_INTENT ? job.intents.find((i) => i.id === step.intent) : undefined;
+  const declared = intent?.outcomes ?? [];
+  if (declared.length === 0) {
+    return [`on.upstream: step "${step.id}" of "${trigger.pipelineId}" pins no outcome-declaring intent, so "${when}" can never match — name a step whose intent declares outcomes, or use when: success / failure`];
+  }
+  const missing = verdictEdgeOutcomes(when).filter((o) => !declared.includes(o));
+  if (missing.length > 0) {
+    return [`on.upstream: intent "${intent!.id}" of "${step.customJobRef}" declares no outcome ${missing.map((o) => `"${o}"`).join(', ')} (declared: ${declared.join(', ')}) — that arm of "${when}" can never match`];
+  }
+  return [];
+}
+
+export function validatePipelineCatalogServer(def: PipelineDef, tenant: CustomAgentTenantContext): string[] {
+  const agents = resolvePipelineCatalog(tenant);
+  return [...validatePipelineCatalogBinding(def, agents), ...fetchAllowErrors(def, agents), ...upstreamBindingWarnings(def, agents, upstreamLoaderFor(tenant))];
+}
+
+/** Both verdicts over an already-resolved catalog — the offline CLI's entry as well (no upstream loader there). */
+export function judgePipelineForCatalog(def: PipelineDef, agents: PipelineCatalogAgent[], loadUpstream?: UpstreamDefLoader): PipelineJudgement {
   return {
-    catalogWarnings: [...validatePipelineCatalogBinding(def, agents), ...fetchAllowErrors(def, agents)],
+    catalogWarnings: [...validatePipelineCatalogBinding(def, agents), ...fetchAllowErrors(def, agents), ...upstreamBindingWarnings(def, agents, loadUpstream)],
     advisories: resolvePipelineAdvisories(def, agents),
   };
 }
 
 export function judgePipeline(def: PipelineDef, tenant: CustomAgentTenantContext): PipelineJudgement {
-  return judgePipelineForCatalog(def, resolvePipelineCatalog(tenant));
+  return judgePipelineForCatalog(def, resolvePipelineCatalog(tenant), upstreamLoaderFor(tenant));
 }
 
 /** Response fields — each key present only when it carries something (a clean definition answers neither). */

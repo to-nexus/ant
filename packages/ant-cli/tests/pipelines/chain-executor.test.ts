@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { runSummaryOf, type PipelineDef, type RunRecord, liveRunOf } from '@ant/shared';
-import { buildInitialSteps, planAdvance, applyStepOutcome } from '../../src/core/pipelines/ChainExecutor';
+import { buildInitialSteps, planAdvance, applyStepOutcome, edgeMatches, runNodeOf } from '../../src/core/pipelines/ChainExecutor';
 
 function def(steps: any[], onStepFailure: 'abort' | 'continue' = 'abort'): PipelineDef {
   return {
@@ -307,6 +307,70 @@ describe('planAdvance — terminal status', () => {
   });
 });
 
+describe('edgeMatches — the ONE edge predicate (step `on` and `on.upstream.when`)', () => {
+  const ok = { status: 'succeeded' as const };
+  const okPass = { status: 'succeeded' as const, verdict: 'pass' };
+  const bad = { status: 'failed' as const };
+  const skipped = { status: 'skipped' as const };
+  const cancelled = { status: 'cancelled' as const };
+
+  it.each([
+    // condition, nodes, expected
+    ['success', [ok], true],
+    ['success', [okPass], true],
+    ['success', [bad], false],
+    ['success', [skipped], false],
+    ['success', [cancelled], false],
+    ['success', [ok, bad], false],
+    ['success', [], true],
+    ['failure', [bad], true],
+    ['failure', [ok, bad], true],
+    ['failure', [ok], false],
+    ['failure', [skipped], false],
+    ['failure', [cancelled], false],
+    ['always', [ok], true],
+    ['always', [bad], true],
+    ['always', [ok, bad], true],
+    // Non-occurrence is not an outcome — `always` needs every node to have happened.
+    ['always', [skipped], false],
+    ['always', [cancelled], false],
+    ['always', [ok, cancelled], false],
+    ['always', [], true],
+    ['verdict:pass', [okPass], true],
+    ['verdict:pass|fail', [okPass], true],
+    ['verdict:fail', [okPass], false],
+    ['verdict:pass', [ok], false],
+    ['verdict:pass', [{ status: 'failed' as const, verdict: 'pass' }], false],
+    ['verdict:pass', [skipped], false],
+  ] as Array<[string, Array<{ status: any; verdict?: string }>, boolean]>)('%s over %j → %s', (condition, nodes, expected) => {
+    expect(edgeMatches(condition as any, nodes)).toBe(expected);
+  });
+
+  it('planAdvance judges its edges through the same predicate: a skipped need satisfies no condition', () => {
+    // a fails → b (success) skips → c (on: always, needs b) must NOT run off the skip.
+    const d = def([job('a'), job('b'), job('c', { on: 'always' })], 'continue');
+    const s1 = planAdvance(d, freshRun(d));
+    const s2 = applyStepOutcome(d, s1.run, 'a', 'failed');
+    expect(s2.run.steps.find((s) => s.stepId === 'b')?.status).toBe('skipped');
+    expect(s2.run.steps.find((s) => s.stepId === 'c')?.status).toBe('skipped');
+  });
+});
+
+describe('runNodeOf — a sealed run judged as ONE node for an upstream edge', () => {
+  it.each([
+    ['completed', { status: 'succeeded' }],
+    ['failed', { status: 'failed' }],
+    // Some step failed, whatever the step-failure policy called the aggregate.
+    ['partial', { status: 'failed' }],
+    // A cancelled run did not happen — non-occurrence fires nothing.
+    ['cancelled', null],
+    ['running', null],
+    ['awaiting_human', null],
+  ] as Array<[any, { status: string } | null]>)('%s → %j', (status, expected) => {
+    expect(runNodeOf({ status })).toEqual(expected);
+  });
+});
+
 describe('runSummaryOf — the ONE run-summary shape (index line, live row, FE fold)', () => {
   it('decided approval-step gates ride the summary; tool gates and undecided gates do not', () => {
     const run = {
@@ -337,5 +401,14 @@ describe('runSummaryOf — the ONE run-summary shape (index line, live row, FE f
     // Fields never ride a summary or a view — the directive is their only consumer.
     expect(JSON.stringify(runSummaryOf(live))).not.toContain('refund');
     expect('itemKey' in runSummaryOf(freshRun(def([job('a')])))).toBe(false);
+  });
+
+  it('an event-fired run carries its upstream NODE on the summary — never the upstream answer', () => {
+    const upstream = { pipelineId: 'weekly-ops', runId: 'r0', projectId: 'other', step: 'verify', outcome: 'succeeded' as const, verdict: 'pass', answer: 'secret text' };
+    const live = { ...freshRun(def([job('a')])), firedBy: 'event' as const, upstream };
+    expect(runSummaryOf(live).upstream).toEqual({ pipelineId: 'weekly-ops', step: 'verify' });
+    expect(JSON.stringify(runSummaryOf(live))).not.toContain('secret text');
+    expect(runSummaryOf({ ...live, upstream: { ...upstream, step: undefined } }).upstream).toEqual({ pipelineId: 'weekly-ops' });
+    expect('upstream' in runSummaryOf(freshRun(def([job('a')])))).toBe(false);
   });
 });

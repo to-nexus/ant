@@ -34,6 +34,7 @@ import {
   type PipelineRunStatus,
   type PipelineStepDef,
   type RunRecord,
+  type StepEdgeCondition,
   type StepRecord,
 } from '@ant/shared';
 
@@ -49,6 +50,41 @@ export interface ChainPlan {
 }
 
 const TERMINAL: ReadonlySet<string> = new Set(['succeeded', 'failed', 'skipped', 'cancelled']);
+
+/** What an edge judges: a sealed node's status and (for `verdict:` edges) its sealed verdict. */
+export type EdgeNode = Pick<StepRecord, 'status' | 'verdict'>;
+
+/**
+ * The ONE edge predicate — a step's `on` inside a pipeline and `on.upstream.when`
+ * across pipelines judge with it, so the two can never drift. `always` judges an
+ * OUTCOME, and a skipped or cancelled node has none: it did not happen.
+ * Matching it unconditionally made `always` the one edge that rejoins a branch
+ * and the one edge an abort cascade cannot stop — an aborting run dispatched a
+ * fresh job off a cancelled need and then asked a human a question it could
+ * not act on. `verdict:a|b` has switch semantics: a node SUCCEEDED with a sealed
+ * verdict the edge names (any listed member).
+ */
+export function edgeMatches(condition: StepEdgeCondition, needs: readonly EdgeNode[]): boolean {
+  const happened = (s: EdgeNode) => s.status === 'succeeded' || s.status === 'failed';
+  if (condition === 'always') return needs.length === 0 || needs.every(happened);
+  if (condition === 'failure') return needs.some((s) => s.status === 'failed');
+  if (condition.startsWith('verdict:')) {
+    return needs.some((s) => s.status === 'succeeded' && s.verdict !== undefined && verdictEdgeOutcomes(condition).includes(s.verdict));
+  }
+  return needs.length === 0 || needs.every((s) => s.status === 'succeeded');
+}
+
+/**
+ * A sealed run judged as ONE node for an upstream edge: completed → succeeded,
+ * failed / partial → failed (a run with a failed step failed, whatever the
+ * step-failure policy called the aggregate), cancelled → null: it did not
+ * happen, and non-occurrence fires nothing.
+ */
+export function runNodeOf(run: Pick<RunRecord, 'status'>): EdgeNode | null {
+  if (run.status === 'completed') return { status: 'succeeded' };
+  if (run.status === 'failed' || run.status === 'partial') return { status: 'failed' };
+  return null;
+}
 
 /** Materialize implicit `needs` (OMITTED = previous step in file order; an explicit `[]` stays a root). */
 export function effectiveNeeds(def: PipelineDef, index: number): string[] {
@@ -125,25 +161,8 @@ export function planAdvance(def: PipelineDef, run: RunRecord): ChainPlan {
       const needs = effectiveNeeds(def, i).map((id) => byId.get(id)).filter((s): s is StepRecord => !!s);
       if (!needs.every((s) => TERMINAL.has(s.status))) continue;
 
-      // `always` judges an OUTCOME, and a skipped or cancelled need has none:
-      // it did not happen. Matching it unconditionally made `always` the one
-      // edge that rejoins a branch and the one edge an abort cascade cannot
-      // stop — an aborting run dispatched a fresh job off a cancelled need
-      // and then asked a human a question it could not act on.
-      const happened = (s: StepRecord) => s.status === 'succeeded' || s.status === 'failed';
-      const matches =
-        condition === 'always'
-          ? needs.length === 0 || needs.every(happened)
-          : condition === 'failure'
-            ? needs.some((s) => s.status === 'failed')
-            : condition.startsWith('verdict:')
-              // Switch semantics: a need SUCCEEDED with a sealed verdict the
-              // edge names (`a|b` matches any member). Non-matching branches
-              // skip; skips cascade (doc 46 §4).
-              ? needs.some((s) => s.status === 'succeeded' && s.verdict !== undefined && verdictEdgeOutcomes(condition).includes(s.verdict))
-              : needs.length === 0 || needs.every((s) => s.status === 'succeeded');
-
-      if (!matches) {
+      // Non-matching branches skip; skips cascade (doc 46 §4).
+      if (!edgeMatches(condition, needs)) {
         record.status = 'skipped';
         changed = true;
         continue;

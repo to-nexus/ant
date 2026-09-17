@@ -13,7 +13,7 @@ import { streamDefinitionArchive } from '../helpers/definitionArchive';
 import { downloadRateLimiter } from '../../middleware/rateLimiter';
 import { computeOrgResourcePermissions, updateOrgPipelineAcl } from '../helpers/orgAclStore';
 import { resolveLiveTeamMembership } from '../helpers/teamRole';
-import { judgePipeline, judgePipelineForCatalog, judgementResponseFields, resolvePipelineCatalog, validatePipelineCatalogServer } from '../../../../../core/pipelines/catalogBinding';
+import { judgePipeline, judgePipelineForCatalog, judgementResponseFields, resolvePipelineCatalog, upstreamLoaderFor, validatePipelineCatalogServer } from '../../../../../core/pipelines/catalogBinding';
 import { pipelineDir } from '../../../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../../../core/pipelines/scopeRoots';
 import {
@@ -101,6 +101,8 @@ export function registerDefinitionRoutes(router: Router, ctx: PipelinesRouteCont
       // activations ⇒ no crons to resync; in-flight runs hold defSnapshot).
       if (refuseWhileEnabled(res, found.scopeRoot.root, pipelineId, 'editing')) return;
       const errors = validatePipelineDefServer(def);
+      // The one cross-definition fact the pure validator cannot see: a pipeline is not its own upstream.
+      if (def.on?.upstream?.pipelineId === pipelineId) errors.push('on.upstream.pipelineId must name ANOTHER pipeline — a pipeline cannot hang off its own runs');
       if (errors.length > 0) {
         res.status(400).json({ error: errors[0], errors, code: 'invalid-pipeline-def' });
         return;
@@ -112,7 +114,7 @@ export function registerDefinitionRoutes(router: Router, ctx: PipelinesRouteCont
       res.json({
         id: pipelineId,
         entry: await buildListEntry(owner, gate, found.scopeRoot, pipelineId, def, agents),
-        ...judgementResponseFields(judgePipelineForCatalog(def, agents)),
+        ...judgementResponseFields(judgePipelineForCatalog(def, agents, upstreamLoaderFor(ctxOf(owner)))),
       });
     } catch (error) {
       if (error instanceof PipelineValidationError) {

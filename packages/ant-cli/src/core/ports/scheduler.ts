@@ -6,7 +6,7 @@
  * per next fire lives in Redis, any replica's worker collects it).
  */
 
-import type { OrganizationKind, PipelineFiredBy, PipelineRunItem, PipelineScope, StepOutputRecord } from '@ant/shared';
+import type { OrganizationKind, PipelineFiredBy, PipelineRunItem, PipelineRunUpstream, PipelineScope, StepOutputRecord } from '@ant/shared';
 
 /**
  * ACTIVATOR coordinates stored at registration — never a token (owner
@@ -33,10 +33,12 @@ export interface PipelineFireJobData {
   fireEpoch?: number;
   /** Overlap-queue retry counter (bounded). */
   requeues?: number;
-  /** runCompleted chain position — bounded at fire (MAX_CHAIN_DEPTH). */
+  /** Upstream chain position — bounded at fire (MAX_CHAIN_DEPTH). */
   chainDepth?: number;
   /** `firedBy: 'fetch'` — the item this fire claims (the fire path refuses a fetch fire without one). */
   item?: PipelineRunItem;
+  /** `firedBy: 'event'` — the upstream node that sealed (the fire path refuses an event fire without one). */
+  upstream?: PipelineRunUpstream;
 }
 
 /**

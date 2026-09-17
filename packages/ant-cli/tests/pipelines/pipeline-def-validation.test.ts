@@ -14,6 +14,7 @@ const collectPipelineDefAdvisories = (d: PipelineDef): string[] => collectPipeli
 const collectPipelineCatalogAdvisories = (d: PipelineDef, agents: PipelineCatalogAgent[]): string[] =>
   collectPipelineCatalogAdvisoryItems(d, agents).map((a) => a.message);
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
+import { upstreamBindingWarnings } from '../../src/core/pipelines/catalogBinding';
 
 function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -103,13 +104,22 @@ describe('validatePipelineDef — structural rules', () => {
     })],
     // Manual-only: no trigger block at all — run-now is the only fire source.
     ['manual-only pipeline (no on block)', baseDef({ on: undefined })],
-    // runCompleted chaining — alone, and alongside a schedule.
-    ['runCompleted trigger alone', baseDef({ on: { runCompleted: { pipelineId: 'weekly-ops' } } })],
-    ['runCompleted error-workflow + schedule', baseDef({
+    // The upstream edge — a node of another pipeline's runs: the run itself
+    // (no `step`) or one step, judged with the step-edge vocabulary.
+    ['upstream edge alone (run node, success)', baseDef({ on: { upstream: { pipelineId: 'weekly-ops' } } })],
+    ['upstream error-workflow (run node, failure) + schedule', baseDef({
       on: {
         schedule: { cron: '0 9 * * 1' },
-        runCompleted: { pipelineId: 'weekly-ops', statuses: ['failed', 'partial'] },
+        upstream: { pipelineId: 'weekly-ops', when: 'failure' },
       },
+    })],
+    ['upstream step node with a verdict edge and its vars in the directive', baseDef({
+      on: { upstream: { pipelineId: 'weekly-ops', step: 'verify', when: 'verdict:pass|needs-fix', overlap: 'queue' } },
+      steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.upstream.runId}} {{trigger.upstream.step}} {{trigger.upstream.verdict}} {{trigger.upstream.answer}}' }],
+    })],
+    ['upstream run node: run-level vars only', baseDef({
+      on: { upstream: { pipelineId: 'weekly-ops', when: 'always' } },
+      steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.upstream.pipelineId}} {{trigger.upstream.runId}} {{trigger.upstream.outcome}}' }],
     })],
     // Verdict routing — on: verdict:<outcome> edges + onMissingVerdict.
     ['verdict switch with onMissingVerdict fallback', baseDef({
@@ -174,9 +184,24 @@ describe('validatePipelineDef — structural rules', () => {
     ['reserved step key feature (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', feature: 'main' }] }), /"feature" is not supported yet/],
     ['empty name', baseDef({ name: '' }), /name/],
     ['empty on block', baseDef({ on: {} }), /at least one trigger/],
-    ['runCompleted with a bad pipeline id', baseDef({ on: { runCompleted: { pipelineId: 'Not Valid!' } } }), /pipelineId must be a pipeline id/],
-    ['runCompleted with a non-terminal status', baseDef({ on: { runCompleted: { pipelineId: 'weekly-ops', statuses: ['running'] } } }), /not a terminal run status/],
-    ['runCompleted with empty statuses', baseDef({ on: { runCompleted: { pipelineId: 'weekly-ops', statuses: [] } } }), /non-empty array of terminal run statuses/],
+    // The retired run-status chain trigger is named, never silently ignored — with the node-edge spelling.
+    ['runCompleted (retired) names the upstream edge', baseDef({ on: { runCompleted: { pipelineId: 'weekly-ops' } } }), /"runCompleted" was replaced by "upstream".*\[failed, partial\] → when: failure/],
+    ['upstream statuses (retired) names when', baseDef({ on: { upstream: { pipelineId: 'weekly-ops', statuses: ['failed'] } } }), /"statuses" judged the run's aggregate status/],
+    ['upstream with a bad pipeline id', baseDef({ on: { upstream: { pipelineId: 'Not Valid!' } } }), /on\.upstream\.pipelineId must be a pipeline id/],
+    ['upstream with a bad step id', baseDef({ on: { upstream: { pipelineId: 'weekly-ops', step: 'Not Valid' } } }), /on\.upstream\.step must be a step id/],
+    ['upstream with a bad when', baseDef({ on: { upstream: { pipelineId: 'weekly-ops', when: 'completed' } } }), /on\.upstream\.when must be "success", "failure", "always"/],
+    ['upstream verdict edge without a step (a run seal has no verdict)', baseDef({ on: { upstream: { pipelineId: 'weekly-ops', when: 'verdict:pass' } } }), /needs on\.upstream\.step/],
+    ['upstream overlap cancelPrevious', baseDef({ on: { upstream: { pipelineId: 'weekly-ops', overlap: 'cancelPrevious' } } }), /on\.upstream\.overlap "cancelPrevious" is not supported yet/],
+    ['unknown upstream key', baseDef({ on: { upstream: { pipelineId: 'weekly-ops', projectId: 'p' } } }), /on\.upstream: unknown key "projectId"/],
+    ['trigger.upstream without an upstream trigger', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.upstream.runId}}' }] }), /needs an on\.upstream trigger/],
+    ['step-bound upstream var on a run-node edge', baseDef({
+      on: { upstream: { pipelineId: 'weekly-ops' } },
+      steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.upstream.verdict}}' }],
+    }), /exist only when on\.upstream names a step/],
+    ['upstream var in a context pin', baseDef({
+      on: { upstream: { pipelineId: 'weekly-ops', step: 'verify' } },
+      steps: [{ id: 'a', customJobRef: 'x/a', directive: 'x', context: ['cases/{{trigger.upstream.runId}}/**'] }],
+    }), /not allowed in a context pin — upstream fields are another run's text/],
     ['4-field cron', baseDef({ on: { schedule: { cron: '0 9 * *' } } }), /5 fields/],
     ['cancelPrevious overlap', baseDef({ on: { schedule: { cron: '0 9 * * 1', overlap: 'cancelPrevious' } } }), /not supported yet/],
     ['unknown top-level key', baseDef({ webhookToken: 'x' }), /unknown key "webhookToken"/],
@@ -318,7 +343,7 @@ describe('validatePipelineDef — on.fetch (the pull trigger: a deterministic po
 
   const invalid: Array<[string, Record<string, unknown>, RegExp]> = [
     ['fetch beside a schedule', baseDef({ on: { ...fetchOn(), schedule: { cron: '0 9 * * 1' } } }), /on\.fetch stands alone/],
-    ['fetch beside runCompleted', baseDef({ on: { ...fetchOn(), runCompleted: { pipelineId: 'weekly-ops' } } }), /on\.fetch stands alone/],
+    ['fetch beside upstream', baseDef({ on: { ...fetchOn(), upstream: { pipelineId: 'weekly-ops' } } }), /on\.fetch stands alone/],
     ['overlap on fetch (schedule knob) is named, not ignored', fetchDef({ overlap: 'skip' }), /"overlap" does not apply to on\.fetch/],
     ['onMissed on fetch is named, not ignored', fetchDef({ onMissed: 'runOnce' }), /"onMissed" does not apply to on\.fetch/],
     ['unknown fetch key', fetchDef({ webhook: true }), /on\.fetch: unknown key "webhook"/],
@@ -933,7 +958,7 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
     ({
       version: PIPELINE_DEF_VERSION,
       name: 'n',
-      on: { runCompleted: { pipelineId: 'up' } },
+      on: { upstream: { pipelineId: 'up' } },
       steps,
     } as unknown as PipelineDef);
 
@@ -956,13 +981,63 @@ describe('collectPipelineCatalogAdvisories — pin-needs coherence (save advisor
     ).toHaveLength(0);
   });
 
-  it('not a chained pipeline: the pinless-consumer advisory does not fire (scope = on.runCompleted only)', () => {
+  it('not a chained pipeline: the pinless-consumer advisory does not fire (scope = on.upstream only)', () => {
     expect(
       collectPipelineCatalogAdvisories(
         def([step('publishing', 'publishing'), step('mail', 'mail')]),
         CATALOG,
       ),
     ).toHaveLength(0);
+  });
+});
+
+describe('upstreamBindingWarnings — the upstream edge against the definition it names (catalog leg, never a 400 at save)', () => {
+  const CATALOG: PipelineCatalogAgent[] = [
+    { id: 'ops', jobs: [{ id: 'report', intents: [{ id: 'verify', outcomes: ['pass', 'needs-fix'] }, { id: 'draft' }] }] },
+  ];
+  const upstreamDef: PipelineDef = {
+    version: PIPELINE_DEF_VERSION,
+    name: 'Weekly ops',
+    steps: [
+      { id: 'draft', customJobRef: 'ops/report', intent: 'draft', directive: 'x' },
+      { id: 'verify', customJobRef: 'ops/report', intent: 'verify', directive: 'x' },
+      { id: 'sign-off', type: 'approval', prompt: 'ok?' },
+      { id: 'general', customJobRef: 'ops/report', directive: 'x' },
+    ],
+  } as unknown as PipelineDef;
+  const loader = (defs: Record<string, PipelineDef | null>) => (id: string) => {
+    if (!(id in defs)) return null;
+    if (defs[id] === null) throw new Error('broken yaml');
+    return defs[id];
+  };
+  const consumer = (upstream: Record<string, unknown>): PipelineDef =>
+    ({ version: PIPELINE_DEF_VERSION, name: 'n', on: { upstream }, steps: [{ id: 'a', customJobRef: 'ops/report', directive: 'x' }] } as unknown as PipelineDef);
+
+  it.each([
+    ['run node — nothing to check beyond the pipeline loading', { pipelineId: 'weekly-ops', when: 'failure' }, []],
+    ['a step that exists, success edge', { pipelineId: 'weekly-ops', step: 'verify' }, []],
+    ['a verdict edge every member of which the intent declares', { pipelineId: 'weekly-ops', step: 'verify', when: 'verdict:pass|needs-fix' }, []],
+    ['upstream not authored yet — silent, fire time judges', { pipelineId: 'later', step: 'x', when: 'verdict:pass' }, []],
+    ['a step the upstream lacks', { pipelineId: 'weekly-ops', step: 'publish' }, [/has no step "publish" \(steps: draft, verify, sign-off, general\)/]],
+    ['a verdict edge on an approval gate', { pipelineId: 'weekly-ops', step: 'sign-off', when: 'verdict:pass' }, [/is an approval gate — a gate seals no verdict/]],
+    ['a verdict edge on a step with no outcome-declaring intent', { pipelineId: 'weekly-ops', step: 'draft', when: 'verdict:pass' }, [/pins no outcome-declaring intent/]],
+    ['a verdict edge on a general-intent step', { pipelineId: 'weekly-ops', step: 'general', when: 'verdict:pass' }, [/pins no outcome-declaring intent/]],
+    ['a verdict member the intent does not declare', { pipelineId: 'weekly-ops', step: 'verify', when: 'verdict:pass|reject' }, [/declares no outcome "reject" \(declared: pass, needs-fix\)/]],
+  ] as Array<[string, Record<string, unknown>, RegExp[]]>)('%s', (_label, upstream, expected) => {
+    const warnings = upstreamBindingWarnings(consumer(upstream), CATALOG, loader({ 'weekly-ops': upstreamDef }));
+    expect(warnings).toHaveLength(expected.length);
+    expected.forEach((re, i) => expect(warnings[i]).toMatch(re));
+  });
+
+  it('an upstream that does not load is named — the edge cannot fire until it does', () => {
+    expect(upstreamBindingWarnings(consumer({ pipelineId: 'weekly-ops' }), CATALOG, loader({ 'weekly-ops': null }))).toEqual([
+      expect.stringMatching(/pipeline "weekly-ops" does not load/),
+    ]);
+  });
+
+  it('without a loader (the offline CLI) or without an upstream trigger there is nothing to judge', () => {
+    expect(upstreamBindingWarnings(consumer({ pipelineId: 'weekly-ops', step: 'nope' }), CATALOG)).toEqual([]);
+    expect(upstreamBindingWarnings({ ...consumer({ pipelineId: 'x' }), on: undefined }, CATALOG, loader({}))).toEqual([]);
   });
 });
 

@@ -380,8 +380,8 @@ export async function publish(
   data: PipelineEventData,
 ): Promise<void> {
   try {
-    // The wire stays lean: captured step answers (≤16k each) ride the run
-    // JSONL and the runs API, never the SSE fan-out.
+    // The wire stays lean: captured step answers (≤16k each) and the upstream
+    // node's answer ride the run JSONL and the runs API, never the SSE fan-out.
     const payload: PipelineEventData =
       data.cause === 'runUpdate'
         ? {
@@ -391,6 +391,7 @@ export async function publish(
               steps: data.run.steps.map((s) =>
                 s.output?.answer ? { ...s, output: { ...s.output, answer: undefined, answerTruncated: undefined } } : s,
               ),
+              ...(data.run.upstream?.answer !== undefined && { upstream: { ...data.run.upstream, answer: undefined } }),
             },
           }
         : data;

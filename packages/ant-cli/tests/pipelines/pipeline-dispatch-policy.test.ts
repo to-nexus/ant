@@ -333,17 +333,61 @@ describe('tool-approval HITL (L3)', () => {
   });
 });
 
-describe('runCompleted chaining', () => {
-  it('chained fires ride the SAME fire path, scoped to the activator, depth-bounded at fire', () => {
+describe('upstream edges (pipeline → pipeline)', () => {
+  it('ONE publish, called from the step seal and the run seal; fires ride the SAME fire path, depth-bounded at fire', () => {
     const coordinator = coordinatorAll();
-    // Publish point is finalize; delivery is addNow into the control queue.
-    expect(coordinator).toMatch(/fireChainedPipelines\(ctx, owner, sealed\)/);
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    // Two publish sites: the sealed STEP (applyOutcome) and the sealed RUN (finalizeRun).
+    expect(lifecycle.match(/await fireUpstreamTriggers\(/g)?.length ?? 0).toBe(2);
+    expect(lifecycle).toMatch(/fireUpstreamTriggers\(ctx, owner, result\.run, \{ step: stepId, node: sealed \}\)/);
+    expect(lifecycle).toMatch(/fireUpstreamTriggers\(ctx, owner, sealed, \{ node \}\)/);
     expect(coordinator).toMatch(/firedBy: 'event'/);
     // The loop guard lives at FIRE (caps doctrine), not at publish.
     expect(coordinator).toMatch(/data\.chainDepth \?\? 0\) > MAX_CHAIN_DEPTH/);
     // Candidates come from the activator's own bounded disk scan — never a
     // Redis reverse index (doc 46 §1 doctrine).
     expect(coordinator.match(/listAccountActivations\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('the edge predicate is the executor\'s — the coordinator judges `when` through edgeMatches, never a second implementation', () => {
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    expect(lifecycle).toMatch(/edgeMatches\(trigger\.when \?\? 'success', \[source\.node\]\)/);
+    expect(lifecycle).toMatch(/runNodeOf\(sealed\)/);
+    expect(lifecycle).not.toMatch(/startsWith\('verdict:'\)/);
+    // The trigger keys on a NODE (pipeline + step), never on a run status list.
+    expect(lifecycle).toMatch(/trigger\.step !== source\.step/);
+    expect(lifecycle).not.toMatch(/statuses/);
+  });
+
+  it('a seal publishes and advances only when THIS call sealed the step — a stale or duplicate outcome never re-finalizes', () => {
+    const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+    const apply = lifecycle.slice(lifecycle.indexOf('export async function applyOutcome'), lifecycle.indexOf('export async function cancelRun'));
+    // Captured INSIDE the lock, after the guards; gates dispatch, finalize and the publish.
+    expect(apply).toMatch(/sealed = plan\.run\.steps\.find\(\(s\) => s\.stepId === stepId\);/);
+    expect(apply).toMatch(/if \(!result\) return false;\s*\n\s*if \(!sealed\) return true;/);
+  });
+
+  it('an upstream fire\'s NX identity is the sealed node, not the epoch; overlap belongs to the fire source', () => {
+    const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
+    expect(fire).toMatch(/`upstream:\$\{data\.upstream\.runId\}:\$\{data\.upstream\.step \?\? 'run'\}`/);
+    expect(fire).toMatch(/const overlap = overlapPolicyOf\(def, data\.firedBy\);/);
+    // The schedule's knob is read in ONE place — the source-keyed policy function.
+    expect(fire.match(/schedule\?\.overlap/g)?.length ?? 0).toBe(1);
+    expect(fire).toMatch(/firedBy === 'event'\) return def\.on\?\.upstream\?\.overlap \?\? 'skip'/);
+    // An event fire without its node is refused like a fetch fire without its item.
+    expect(fire).toMatch(/data\.firedBy === 'event' && !data\.upstream/);
+  });
+
+  it('upstream vars are directive-only on the render side too: the pin renderer never substitutes them', () => {
+    const render = read('infrastructure/scheduling/pipelineRun/render.ts');
+    const statics = render.slice(render.indexOf('export function renderStaticVars'), render.indexOf('export function renderDirective'));
+    expect(statics).not.toMatch(/UPSTREAM_VAR/);
+    expect(render.slice(render.indexOf('export function renderDirective'))).toMatch(/\.replace\(UPSTREAM_VAR/);
+  });
+
+  it('the SSE wire strips the upstream answer exactly like step answers', () => {
+    const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
+    expect(runStore).toMatch(/upstream: \{ \.\.\.data\.run\.upstream, answer: undefined \}/);
   });
 });
 

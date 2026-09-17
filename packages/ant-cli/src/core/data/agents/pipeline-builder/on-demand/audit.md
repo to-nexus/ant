@@ -133,11 +133,15 @@ step, and say which:
   connection to a system some step's job already declares under `apis` —
   legal, but two declarations of one connection drift; a judgment call with
   that cost named.
-- Chain-context pins (`on.runCompleted`), judged per pipeline: a pin naming
-  what only the UPSTREAM pipeline's runs produce is structurally dead — the
-  chained fire lands on a different project, out of container reach (a
-  hand-over telling the operator to activate both on the same project is the
-  same defect in prose). WITHIN the chained pipeline the duty is unchanged:
+- Upstream-edge pins (`on.upstream`), judged per pipeline: a pin naming what
+  only the UPSTREAM pipeline's runs produce is structurally dead — the fire
+  lands on a different project, out of container reach (a hand-over telling
+  the operator to activate both on the same project is the same defect in
+  prose); the case reaches the entry step as `{{trigger.upstream.*}}` in its
+  directive. Also dead: `when: verdict:*` on a node whose intent declares no
+  such outcome, or with no `step` (a run seal has no verdict) — the save
+  response's catalog warning names it. WITHIN the downstream pipeline the
+  duty is unchanged:
   consumers still pin their own upstream steps' stop globs — intra-pipeline
   pins at zero across a multi-step flow is the restriction over-applied, not
   compliance.

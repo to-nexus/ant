@@ -44,13 +44,20 @@ change, everything that follows applies.
 - The trigger is optional — omit `on` for a manual-only pipeline fired through
   Run now. A schedule needs an explicit IANA timezone whenever the request
   implies local time; an unstated `tz` is UTC.
-- `on.runCompleted` chains this pipeline onto another's terminal status, and
-  may coexist with `schedule` — an error-handler pipeline is one that waits on
-  `['failed']`. A chained pipeline fires on a DIFFERENT project than the run
-  it follows, so its steps can never pin that run's artifacts — the case
-  arrives through clarify — and the hand-over says to activate it on another
-  project than the upstream pipeline's. Choose `onMissed` and `overlap` from
-  what the work tolerates, and say which you chose.
+- `on.upstream` hangs this pipeline off ONE node of another pipeline's runs —
+  a step (`step`) or the run itself — with the same edge vocabulary a step's
+  `on` uses (`when`: success / failure / always / `verdict:<outcome>`), and
+  may coexist with `schedule`. Name the step whose seal is the real trigger,
+  not the whole run: a step node fires the moment it seals, while the upstream
+  run continues; an error-handler pipeline waits on `when: failure`; a
+  verdict arm on `when: verdict:<outcome>` the step's intent declares. A
+  skipped or cancelled node never fires. The downstream fires on a DIFFERENT
+  project than the run it follows, so its steps can never pin that run's
+  artifacts — the case arrives as `{{trigger.upstream.*}}` (runId, outcome,
+  and with `step`: step, verdict, answer) in the entry step's directive,
+  quoted as data — and the hand-over says to activate it on another project
+  than the upstream pipeline's. Choose `onMissed` and `overlap` from what the
+  work tolerates, and say which you chose.
 - `on.fetch` is the trigger when the cases already sit in an external system
   with a key of their own — a ticket queue, an inbox API, a table of open
   requests: the source is the queue, and each unclaimed item fires its own
@@ -185,7 +192,7 @@ long it takes never decide on their own.
   source counterpart) or on a calendar date: its arrival is the next stretch's
   trigger, so the seam is a boundary between pipelines — end this one at the
   hand-off deliverable and author the downstream one in the same turn,
-  manual-only while the seam is human, `runCompleted` once wired. This is the
+  manual-only while the seam is human, `on.upstream` once wired. This is the
   contract's default; the one exception is a reply the answering person can
   fetch without leaving the card, or an hour they will still be sitting at —
   that is held. The facts behind the default: an activation holds

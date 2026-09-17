@@ -202,7 +202,7 @@ export async function dispatchJobStep(
     const startedText = run.firedBy === 'cron'
       ? `🔁 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
       : run.firedBy === 'event'
-        ? `🔗 선행 파이프라인 완료로 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
+        ? `🔗 선행 파이프라인 "${run.upstream?.pipelineId ?? '?'}"의 ${run.upstream?.step ? `스텝 "${run.upstream.step}"` : '실행'} ${run.upstream?.outcome === 'failed' ? '실패' : '완료'}로 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
         : run.firedBy === 'fetch'
           ? `📥 항목 "${run.item?.key ?? run.runId}"에 대해 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
           : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;

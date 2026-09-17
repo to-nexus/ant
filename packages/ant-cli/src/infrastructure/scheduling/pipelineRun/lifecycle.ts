@@ -1,15 +1,23 @@
 /**
  * Run lifecycle — outcome application under the run lock, cancel (the ONE
- * kill authority), finalize (index append + slot release), runCompleted
- * chaining, and the run-finished chat notice.
+ * kill authority), finalize (index append + slot release), the upstream-edge
+ * publish (a sealed node fires the pipelines that hang off it), and the
+ * run-finished chat notice.
  */
 
 import { randomUUID } from 'crypto';
-import { UNIVERSAL_FEATURE, runSummaryOf, type RunRecord, type StepRecord } from '@ant/shared';
+import {
+  PIPELINE_UPSTREAM_ANSWER_MAX_CHARS,
+  UNIVERSAL_FEATURE,
+  runSummaryOf,
+  type PipelineRunUpstream,
+  type RunRecord,
+  type StepRecord,
+} from '@ant/shared';
 import type { PipelineOwner } from '../../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_CHANNELS, REDIS_TTL } from '../../../core/constants/redis';
 import { logger } from '../../../utils/logger';
-import { applyStepOutcome } from '../../../core/pipelines/ChainExecutor';
+import { applyStepOutcome, edgeMatches, runNodeOf } from '../../../core/pipelines/ChainExecutor';
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../core/pipelines/scopeRoots';
 import {
@@ -23,9 +31,11 @@ import { appendEvent, commitRun, getRun, isTerminal, listActiveRunIds, mutateRun
 import { COMPONENT, type PipelineRunOps } from './types';
 
 /**
- * Apply one step outcome under the run lock, dispatch what unblocks,
- * finalize when terminal. Returns false when the mutation could NOT be
- * applied (lock starvation / missing run) — callers re-arm, never drop.
+ * Apply one step outcome under the run lock, publish the sealed node to the
+ * pipelines that hang off it, dispatch what unblocks, finalize when terminal.
+ * Returns false when the mutation could NOT be applied (lock starvation /
+ * missing run) — callers re-arm, never drop. A stale or duplicate outcome
+ * returns true and changes NOTHING downstream.
  */
 export async function applyOutcome(
   ctx: PipelineRunOps,
@@ -38,6 +48,12 @@ export async function applyOutcome(
   expectedJobId?: string,
   onOutcomeLanded?: () => Promise<void>,
 ): Promise<boolean> {
+  // Set inside the lock ONLY when this call sealed the step. The guard paths
+  // (already-sealed step, superseded jobId, terminal run) leave it unset: a
+  // late seal against a sealed run used to fall through to a SECOND finalize
+  // (duplicate run_finished, index line, notice and chained fire) because
+  // mutateRun returns non-null for a no-op too.
+  let sealed: StepRecord | undefined;
   const result = await mutateRun(ctx.deps, owner, runId, async (live, def) => {
     if (!def) return { run: live, dispatches: [] };
     const already = live.steps.find((s) => s.stepId === stepId);
@@ -57,13 +73,19 @@ export async function applyOutcome(
     if (decorate) {
       plan.run.steps = plan.run.steps.map((s) => (s.stepId === stepId ? decorate(s) : s));
     }
+    sealed = plan.run.steps.find((s) => s.stepId === stepId);
     return plan;
   });
   if (!result) return false;
+  if (!sealed) return true; // stale / duplicate — dropped, never re-armed
   // The resolver's audit line (human_resolved) must precede the
   // step_dispatched/run_finished fan-out below — and must not be written
   // when the apply starved (the timeout arm re-funnels the whole resolve).
   if (onOutcomeLanded) await onOutcomeLanded();
+  // The sealed step is a node other pipelines may hang off. Published before
+  // this run's own advance, so a last step's node fire precedes the run-node
+  // fire finalize publishes.
+  await fireUpstreamTriggers(ctx, owner, result.run, { step: stepId, node: sealed });
 
   if (result.dispatches.length > 0) {
     const def = result.run.defSnapshot!;
@@ -220,17 +242,31 @@ export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run
     .releaseSlot(REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId), REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(run.projectId, run.runId))
     .catch(() => {});
   await emitRunFinishedNotice(ctx, owner, sealed);
-  await fireChainedPipelines(ctx, owner, sealed);
+  // The run's seal is itself a node; a cancelled run did not happen.
+  const node = runNodeOf(sealed);
+  if (node) await fireUpstreamTriggers(ctx, owner, sealed, { node });
+}
+
+/** The node that just sealed: a step of the run, or (no `step`) the run itself. */
+interface SealedNode {
+  step?: string;
+  node: Pick<StepRecord, 'status' | 'verdict' | 'output'>;
 }
 
 /**
- * runCompleted chaining — scoped to the ACTIVATOR's own activations
- * (identity never crosses users; doc 46 §6). Bounded disk scan per the
- * no-reverse-index doctrine; each chained fire rides the SAME fire path
- * with `firedBy: 'event'` and an incremented chainDepth (fire-side loop
- * guard). Best-effort: a broken candidate never blocks finalize.
+ * Upstream-edge publish — scoped to the ACTIVATOR's own activations (identity
+ * never crosses users; doc 46 §6). Every activation whose definition hangs off
+ * THIS node (`on.upstream`: same pipeline, same step or the run, `when`
+ * satisfied by the ONE edge predicate the executor uses) fires through the
+ * SAME fire path with `firedBy: 'event'`, an incremented chainDepth (fire-side
+ * loop guard) and the node frozen as `upstream`. Bounded disk scan per the
+ * no-reverse-index doctrine — once per sealed node, not once per run. A
+ * skipped or cancelled node did not happen and publishes nothing.
+ * Best-effort: a broken candidate never blocks the seal.
  */
-async function fireChainedPipelines(ctx: PipelineRunOps, owner: PipelineOwner, run: RunRecord): Promise<void> {
+async function fireUpstreamTriggers(ctx: PipelineRunOps, owner: PipelineOwner, run: RunRecord, source: SealedNode): Promise<void> {
+  const outcome = source.node.status === 'succeeded' || source.node.status === 'failed' ? source.node.status : null;
+  if (!outcome) return;
   const depth = (run.chainDepth ?? 0) + 1;
   let activations: Array<{ projectId: string }>;
   try {
@@ -238,18 +274,30 @@ async function fireChainedPipelines(ctx: PipelineRunOps, owner: PipelineOwner, r
   } catch {
     return;
   }
+  const nodeLabel = `${run.pipelineId}/${source.step ?? 'run'}`;
   for (const { projectId } of activations) {
-    // A pipeline never chains onto its own project — that run just finished.
+    // A pipeline never fires its own project — that activation runs the upstream itself.
     if (projectId === run.projectId) continue;
     try {
       const activation = loadActivationByProject(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), projectId);
       if (!activation) continue;
       const defRoot = resolveDefRoot(tenantCtx(ctx.deps, owner), activation.pipelineScope);
       const def = loadPipeline(defRoot, activation.pipelineId);
-      const trigger = def.on?.runCompleted;
+      const trigger = def.on?.upstream;
       if (!trigger || trigger.pipelineId !== run.pipelineId) continue;
-      if (!(trigger.statuses ?? ['completed']).includes(run.status)) continue;
+      if (trigger.step !== source.step) continue;
+      if (!edgeMatches(trigger.when ?? 'success', [source.node])) continue;
       if (!loadAvailability(defRoot, activation.pipelineId).enabled) continue;
+      const answer = source.node.output?.answer?.slice(0, PIPELINE_UPSTREAM_ANSWER_MAX_CHARS);
+      const upstream: PipelineRunUpstream = {
+        pipelineId: run.pipelineId,
+        runId: run.runId,
+        projectId: run.projectId,
+        ...(source.step && { step: source.step }),
+        outcome,
+        ...(source.node.verdict && { verdict: source.node.verdict }),
+        ...(answer && { answer }),
+      };
       await ctx.deps.scheduleQueue.addNow({
         kind: 'fire',
         owner,
@@ -258,16 +306,17 @@ async function fireChainedPipelines(ctx: PipelineRunOps, owner: PipelineOwner, r
         projectId,
         firedBy: 'event',
         // Un-rounded: two event fires in the same minute are distinct fires
-        // (the overlap guard still bounds concurrency per activation).
+        // (the fire NX key is the upstream node's identity, not this epoch).
         fireEpoch: Date.now(),
         chainDepth: depth,
+        upstream,
       });
       logger.info(
-        `[Pipeline] chained fire: ${run.pipelineId}(${run.status}) → ${activation.pipelineId} on ${projectId} (depth ${depth})`,
+        `[Pipeline] upstream fire: ${nodeLabel} (${outcome}${upstream.verdict ? `:${upstream.verdict}` : ''}) → ${activation.pipelineId} on ${projectId} (depth ${depth})`,
         { component: COMPONENT },
       );
     } catch (e) {
-      logger.warn(`[Pipeline] chained-fire candidate failed: ${projectId}`, { component: COMPONENT }, e);
+      logger.warn(`[Pipeline] upstream-fire candidate failed: ${nodeLabel} → ${projectId}`, { component: COMPONENT }, e);
     }
   }
 }
