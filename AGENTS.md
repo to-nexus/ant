@@ -482,7 +482,11 @@ debugging session.
   request outside prose is a pipeline's `on.fetch.request` — trigger
   CONFIGURATION (the cron expression's sibling) executed by the control-plane
   poller, never rendered to a model and never a tool; it rides the same
-  `buildRestRequest` admission as the tools (doc 46 §2).
+  `buildRestRequest` admission as the tools (doc 46 §2). Its connection is
+  either a job's `apis` entry (bound) or the trigger's own inline
+  `connection` — the external entry's shape minus `allow`/`self`, compiled by
+  the same `compileRestServer`. A trigger is not a capability grant, so a
+  queue no step calls never earns a job an `apis` entry.
 - An `apis` entry takes one of two mutually exclusive forms: external
   (`baseUrl` + `headers`) or `self: true`, which targets Ant's own API and
   carries NEITHER — the runtime resolves the origin from `ANT_API_URL` and the

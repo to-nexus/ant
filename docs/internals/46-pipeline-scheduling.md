@@ -287,10 +287,20 @@ Fire semantics (`scheduling/pipelineRun/fire.ts::handleFire`, addressed by
   button and the cron path cannot diverge.
 
 **`on.fetch` — the pull trigger (Phase C).** A DETERMINISTIC poller in the
-control plane (no LLM, no credits) calls a declared REST connection (`apis`)
-of one of the activator's jobs and fires ONE run per not-yet-claimed item.
-The external system is the queue; Ant keeps only a claim ledger. `fetch`
-stands alone on a definition (no schedule/chain coexistence in v1).
+control plane (no LLM, no credits) calls a REST connection — a declared
+`apis` entry of one of the activator's jobs (the BOUND form) or the trigger's
+own inline `connection` — and fires ONE run per not-yet-claimed item. The
+external system is the queue; Ant keeps only a claim ledger. `fetch` stands
+alone on a definition (no schedule/chain coexistence in v1).
+
+The two connection forms exist because an `apis` entry fuses connectivity with
+a CAPABILITY GRANT (`api__x__get/request` tools + `allow`), and a trigger needs
+only the connectivity half: forcing a queue no step calls onto some job's
+`apis` map handed that job's model tools it never used and made the pipeline
+author widen an agent's `allow` to get a poll admitted. The inline form is the
+external entry's shape minus `allow`/`self` (`PipelineFetchConnection`); the
+one declared `request` is its scope. `fetchConnectionSource` is the single
+discriminator every reader uses.
 
 - **Registration**: the reconciler / activate route upsert an `every`
   scheduler (`fetch|{org}|{user}|{projectId}`, `upsertEvery` →
@@ -309,9 +319,10 @@ stands alone on a definition (no schedule/chain coexistence in v1).
   disk ledger when `ant:pipe:items-built:*` is absent — the opposite posture
   from the mutual-exclusion gate, because a duplicate case costs credits and
   a delayed poll costs nothing) → `pollFetchSource` (`core/pipelines/
-  fetchConnection.ts`: `loadCustomJob` in the ACTIVATOR's scope roots →
-  `resolveDeclaredCredentials` through `credentialResolverFor(owner)` — the
-  encrypted store, never `process.env` → `compileRestServer` →
+  fetchConnection.ts`: the config is the inline `connection` or, bound,
+  `loadCustomJob` in the ACTIVATOR's scope roots → `apiServers[api]`; either
+  way `resolveDeclaredCredentials` through `credentialResolverFor(owner)` —
+  the encrypted store, never `process.env` → ONE `compileRestServer` →
   `assertPublicApiBaseUrl` → **`buildRestRequest` → `performRestRequest`**,
   the tool executor's own admission split, so the poller can reach no origin,
   path or header the `api__*` tools could not; the `REST_BODY_CAP_BYTES` (2MB)
@@ -354,9 +365,14 @@ stands alone on a definition (no schedule/chain coexistence in v1).
   owner's secrets into a credentialed proxy.
 - **Doctrine carve-out**: `on.fetch.request` is trigger CONFIGURATION (the
   cron expression's sibling), never rendered to a model and never a tool;
-  the `apis` entry stays connectivity-only. Catalog binding checks the
-  connection exists and is external (shared) and that the request passes the
-  connection's `allow` rules with the executor's own matcher (server).
+  the `apis` entry stays connectivity-only, and an inline `connection` is
+  the same connectivity-only shape (`baseUrl` + `${secret:}` headers, no
+  `allow` — the declared request is its scope), validated by the shared
+  `restExternalConnectionErrors` and compiled by the same `compileRestServer`.
+  Catalog binding applies to the BOUND form only: the connection exists and
+  is external (shared), and the request passes the connection's `allow`
+  rules with the executor's own matcher (server). The inline form binds
+  against nothing in the catalog.
 
 Reconciliation (`PipelineReconciler`) is the StaleJobRecovery template
 verbatim: boot-time run + 90s `setInterval().unref()` in
@@ -1342,6 +1358,11 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
 
 - New trigger kinds = new `on.*` fields compiled to the same fire path;
   `runNow` already proves the path is trigger-agnostic.
+- A new fetch connection form = one branch on `fetchConnectionSource` that
+  yields a `RestApiServerConfig`; the admission owner (`compileRestServer` →
+  `assertPublicApiBaseUrl` → `buildRestRequest` → `performRestRequest`) is
+  never duplicated, and `pipeline-dispatch-policy` pins the single
+  `compileRestServer(` in `fetchConnection.ts`.
 - Per-activation concurrency is the definition's `concurrency` (validator-
   bounded by `maxLiveRunsPerActivation`, trigger-agnostic); the gate, both slot
   sets, the session file, the buffer clear, the `liveRuns[]` contract and the
@@ -1657,9 +1678,10 @@ The obligations live at authoring time, in the pipeline builder's contract:
   (`selectActiveJobByType`), the chat `PipelineRunDock`, run labels on the
   origin chip / inbox / approval card / banner (`runIdentity.ts`). The two
   Phase A shims stay until one release has shipped with them.
-- **Phase C — `on.fetch` (shipped 2026-09-16)**: the pull trigger (§2) —
-  shared contract (`PipelineFetchTrigger`, item paths, `{{trigger.item.*}}`,
-  `firedBy: 'fetch'`, `RunRecord.item`, catalog `apis` meta), the
+- **Phase C — `on.fetch` (shipped 2026-09-16; inline connection 2026-09-17)**: the pull trigger (§2) —
+  shared contract (`PipelineFetchTrigger` as bound | inline,
+  `PipelineFetchConnection`, `fetchConnectionSource`, item paths,
+  `{{trigger.item.*}}`, `firedBy: 'fetch'`, `RunRecord.item`, catalog `apis` meta), the
   deterministic poller on the `ant-pipelines` queue, the claim in the fire
   path, the disk claim ledger + rebuildable projection, `preview-fetch`,
   Poll-now, and the FE `fetch` trigger mode. MCP-source polling and webhook

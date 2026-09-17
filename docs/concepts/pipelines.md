@@ -1,9 +1,10 @@
 # Pipelines — custom jobs on a schedule
 
-> ⚠️ **Experimental.** Cron triggers, linear chains, approval gates, and clarify
-> gates ship and are covered by tests. Not there yet: webhook and event
-> triggers, Slack/email delivery, per-step retry, `{{steps.*}}` substitution
-> between steps, and parallel branches. Pipelines run on **workspace** projects
+> ⚠️ **Experimental.** Cron triggers, fetch (queue-polling) triggers, linear
+> chains, approval gates, and clarify gates ship and are covered by tests. Not
+> there yet: webhook push triggers, Slack/email delivery, per-step retry,
+> `{{steps.*}}` substitution between steps, and parallel branches. Pipelines
+> run on **workspace** projects
 > only — the Codespace toggle in the UI is reserved, not wired. Every reserved
 > knob is rejected loudly by the validator rather than silently ignored, so a
 > definition never quietly does nothing.
@@ -88,6 +89,29 @@ On the first failure, `defaults.onStepFailure` decides the run's fate:
 
 A run executes the definition **as it was when the run started**. Editing the
 YAML never mutates a run already in flight.
+
+## Polling a queue — one run per item
+
+When the cases already sit in an external system — a ticket tracker, an inbox
+API — `on.fetch` makes that system the queue: a poller in the control plane
+(no model, no credits) calls it every `every`, and each item not yet claimed
+fires its own run, labelled by the item's key. `concurrency` says how many
+runs one activation may hold at once (default 1, up to 3); an item there is no
+room for stays unclaimed and is seen again on the next poll.
+
+The connection takes one of two forms. **Bound** — `customJobRef` + `api` —
+reuses an external `apis` entry a step's job already declares, so the poll and
+the step share one declaration. **Inline** — `connection: { baseUrl, headers }`
+on the trigger — is for a source that is only a queue: no agent has to be
+given a connection (and the tools that come with it) just so a pipeline can
+poll it. Credentials are `${secret:KEY}` references in either form; the person
+who activates the pipeline registers the key in credential settings, and the
+poll runs with their credentials. The editor's **Preview items** shows what a
+poll would see before you enable.
+
+Steps read the claimed item as `{{trigger.item.key}}` and any fields the
+trigger declares (`{{trigger.item.summary}}`); those fields are the source's
+text, so a directive quotes them as the case's data.
 
 ## Two ways a run stops for a human
 
