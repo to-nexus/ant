@@ -302,7 +302,6 @@ describe('validatePipelineDef — on.fetch (the pull trigger: a deterministic po
   const valid: Array<[string, Record<string, unknown>]> = [
     ['GET poll with query, two fields, item vars in the directive', fetchDef()],
     ['POST search with a body', fetchDef({}, { method: 'POST', body: { jql: 'status = Open', maxResults: 50 } })],
-    ['batch at the cap', fetchDef({ batch: DEFAULT_PIPELINE_CAPS.maxFetchBatch })],
     ['no fields — only trigger.item.key', fetchDef({ fields: undefined }, {}, [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.item.key}}' }])],
     ['trigger.item.key in a context pin (the case names its folder)', fetchDef({}, {}, [
       { id: 'a', customJobRef: 'x/a', directive: '{{trigger.item.key}}', context: ['cases/{{trigger.item.key}}/**'] },
@@ -352,8 +351,7 @@ describe('validatePipelineDef — on.fetch (the pull trigger: a deterministic po
     ['field with a bad path', fetchDef({ fields: { summary: 'fields.summary' } }), /on\.fetch\.fields\.summary must start with "\$"/],
     ['too many fields', fetchDef({ fields: Object.fromEntries(Array.from({ length: PIPELINE_FETCH_MAX_FIELDS + 1 }, (_, i) => [`f${i}`, '$.x'])) }), /at most 20 fields/],
     ['bad every', fetchDef({ every: 'hourly' }), /on\.fetch\.every must be a duration/],
-    ['batch zero', fetchDef({ batch: 0 }), /on\.fetch\.batch must be an integer from 1 to 5/],
-    ['batch over the cap', fetchDef({ batch: 6 }), /on\.fetch\.batch must be an integer from 1 to 5/],
+    ['batch (removed key — concurrency is the one admission cap)', fetchDef({ batch: 2 }), /"batch" was removed/],
     // Template vocabulary: the item vars exist only under fetch, fields only where declared, pins take the key only.
     ['prevSuccess watermark on a fetch pipeline', fetchDef({}, {}, [{ id: 'a', customJobRef: 'x/a', directive: '{{run.prevSuccess.fireDate}}' }]), /not defined on a fetch pipeline/],
     ['trigger.item without a fetch trigger', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{trigger.item.key}}' }] }), /needs an on\.fetch trigger/],

@@ -241,8 +241,8 @@
       "every": "Poll every",
       "everyCustom": "Custom…",
       "everyHint": "Duration like 5m, 1h, 1d — at least 1m.",
-      "batch": "Items per poll",
-      "batchHint": "How many new items one poll may start, while the activation has room under \"Live runs at once\". Unclaimed items are seen again next poll.",
+      "scheduleHint": "The poller reads the source at this interval and starts a run for every unclaimed item the activation has room for under \"Live runs at once\". Items with no room are seen again next poll.",
+      "everySummary": "every {{every}}",
       "preview": "Preview items",
       "previewing": "Polling…",
       "previewNeedsProject": "Pass a project to see which items are already claimed.",
@@ -300,8 +300,7 @@
       "sampleMore": "… {{n}} more",
       "sampleTotal": "{{n}} item(s)",
       "fieldsEmpty": "No fields yet — the step only learns the key.",
-      "previewMore": "… and {{n}} more",
-      "everyBatch": "every {{every}} · {{batch}} per poll"
+      "previewMore": "… and {{n}} more"
     },
     "chainedSummary": "After \"{{id}}\"",
     "chainSource": "Fires when this pipeline finishes",

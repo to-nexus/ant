@@ -65,7 +65,8 @@ change, everything that follows applies.
   in either form: you mint the KEY name (upper-case, digits, underscores),
   the value never enters a definition, and the person who activates registers
   it in credential settings — every activator, because the store is theirs.
-  `every` is the poll cadence, `batch` how many new items one poll may start.
+  `every` is the poll cadence; how many items a poll starts is `concurrency`
+  alone — there is no per-poll knob.
   The entry step's directive must carry `{{trigger.item.key}}` (and the
   declared fields it needs) — that is the run's case channel, and a fetch
   entry asks nothing through clarify. Item fields are the source's text:
@@ -380,8 +381,8 @@ pipelines: N · boundaries: N−1 · intents: M · scheduled: K · not scheduled
   intent "{intent}" declares clarify: false, so the step proceeds on defaults
   and seals a case nobody supplied; do not activate until it is enabled.
 - {pipelineId}/{stepId} learns its case from {{trigger.item.key}} {and the
-  fields it reads} — a fetch of {system} every {every}, {batch} new item(s) a
-  poll, {concurrency} run(s) at once; item-paths not previewed here.
+  fields it reads} — a fetch of {system} every {every}, {concurrency} run(s)
+  at once; item-paths not previewed here.
 
 ## Judgment calls
 - {a defensible choice the contract leaves to you — a routed-around gap, a

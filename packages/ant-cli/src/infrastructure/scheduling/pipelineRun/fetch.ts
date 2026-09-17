@@ -3,8 +3,8 @@
  *
  * One poll: authority → claim ledger present (fail-CLOSED) → poll lock →
  * source call through the shared admission owner → room under `concurrency`
- * → for each unclaimed item up to `batch`, one `fire` control job carrying
- * the item. The FIRE path claims (Redis NX + disk line) after it holds both
+ * → for each unclaimed item with room, one `fire` control job carrying the
+ * item — `concurrency` is the one admission cap; there is no per-poll knob. The FIRE path claims (Redis NX + disk line) after it holds both
  * slots, so a full activation claims nothing and the item is seen again next
  * poll — the source is the queue, Ant keeps only the claim ledger.
  *
@@ -91,7 +91,6 @@ export async function handleFetchPoll(ctx: PipelineRunOps, data: PipelineFetchPo
     // only stops the poll from enqueueing fires that would certainly skip.
     const live = await ctx.deps.stateStore.countSlots(REDIS_KEYS.PIPE.ACTIVE_RUNS(organizationId, userId, projectId));
     const room = Math.max(0, resolveRunConcurrency(def) - live);
-    const take = Math.min(trigger.batch ?? 1, room);
 
     const unclaimed: PipelineRunItem[] = [];
     for (const item of items) {
@@ -109,7 +108,7 @@ export async function handleFetchPoll(ctx: PipelineRunOps, data: PipelineFetchPo
 
     let enqueued = 0;
     const now = Date.now();
-    for (const item of unclaimed.slice(0, take)) {
+    for (const item of unclaimed.slice(0, room)) {
       await ctx.deps.scheduleQueue.addNow({
         kind: 'fire',
         owner,

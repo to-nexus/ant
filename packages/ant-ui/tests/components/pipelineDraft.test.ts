@@ -274,8 +274,8 @@ describe('trigger modes — fetch stands alone, and the mode is read from the on
   });
 
   it('updateFetch patches onto the defaults and never re-introduces another trigger half', () => {
-    const d = updateFetch({ ...def([job('a')]), on: undefined }, { items: '$.rows', batch: 3 });
-    expect(d.on).toEqual({ fetch: { ...DEFAULT_FETCH_TRIGGER, items: '$.rows', batch: 3 } });
+    const d = updateFetch({ ...def([job('a')]), on: undefined }, { items: '$.rows', every: '10m' });
+    expect(d.on).toEqual({ fetch: { ...DEFAULT_FETCH_TRIGGER, items: '$.rows', every: '10m' } });
   });
 
   it('setFetchConnectionSource swaps the connection form and keeps every other field; the opposite form\'s keys are gone', () => {

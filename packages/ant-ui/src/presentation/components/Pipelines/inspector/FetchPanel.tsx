@@ -10,7 +10,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ListTree, Plug, Send, Timer } from 'lucide-react';
 import {
-  DEFAULT_PIPELINE_CAPS,
   MCP_HEADER_NAME_PATTERN,
   PIPELINE_FETCH_FIELD_NAME_PATTERN,
   fetchConnectionSource,
@@ -44,7 +43,6 @@ import { SecretRefField } from './fetch/SecretRefField';
 import { absoluteFromItem, firstItemSegments, relativeToItem, sampleAt, sampleText, segmentsOf, suggestFieldName, suggestSecretKey, type PickMode } from './fetch/fetchMapping';
 
 const EVERY_PRESETS = ['1m', '5m', '15m', '30m', '1h', '6h', '1d'] as const;
-const BATCH_OPTIONS = Array.from({ length: DEFAULT_PIPELINE_CAPS.maxFetchBatch }, (_, i) => i + 1);
 const TONE = { items: 'var(--teal-500)', key: 'var(--amber-500)', field: 'var(--violet-500)' } as const;
 const ACCENT = NODE_KIND_STYLE.trigger.accent;
 
@@ -427,7 +425,7 @@ export function FetchPanel({ def, onChange, customAgents }: { def: PipelineDef; 
         )}
       </InspectorSection>
 
-      <InspectorSection step={4} icon={Timer} accent={ACCENT} title={t('trigger.fetch.schedule', 'Polling')} description={t('trigger.fetch.batchHint', 'How many new items one poll may start, while the activation has room under "Live runs at once". Unclaimed items are seen again next poll.')} status={everyOk ? 'ok' : 'warn'} statusLabel={everyOk ? t('trigger.fetch.everyBatch', 'every {{every}} · {{batch}} per poll', { every: fetch.every, batch: fetch.batch ?? 1 }) : t('trigger.fetch.everyHint', 'Duration like 5m, 1h, 1d — at least 1m.')} data-section="fetch-polling">
+      <InspectorSection step={4} icon={Timer} accent={ACCENT} title={t('trigger.fetch.schedule', 'Polling')} description={t('trigger.fetch.scheduleHint', 'The poller reads the source at this interval and starts a run for every unclaimed item the activation has room for under "Live runs at once". Items with no room are seen again next poll.')} status={everyOk ? 'ok' : 'warn'} statusLabel={everyOk ? t('trigger.fetch.everySummary', 'every {{every}}', { every: fetch.every }) : t('trigger.fetch.everyHint', 'Duration like 5m, 1h, 1d — at least 1m.')} data-section="fetch-polling">
         <Field label={t('trigger.fetch.every', 'Poll every')}>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {EVERY_PRESETS.map((e) => (
@@ -451,9 +449,6 @@ export function FetchPanel({ def, onChange, customAgents }: { def: PipelineDef; 
               <AuroraInput mono value={fetch.every} hasError={!everyOk} placeholder="5m" onChange={(v) => patch({ every: v })} />
             </div>
           )}
-        </Field>
-        <Field label={t('trigger.fetch.batch', 'Items per poll')}>
-          <AuroraSelect value={String(fetch.batch ?? 1)} onChange={(v) => patch({ batch: Number(v) > 1 ? Number(v) : undefined })} options={BATCH_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))} />
         </Field>
       </InspectorSection>
     </>

@@ -275,7 +275,7 @@ function TriggerDefinition({ def, cronSummary, t }: { def: PipelineDef; cronSumm
       )}
       {fetch && (
         <Field label={t('trigger.modeFetch', 'Poll an external queue (fetch)')}>
-          <span style={text}>{t('trigger.fetch.everyBatch', 'every {{every}} · {{batch}} per poll', { every: fetch.every, batch: fetch.batch ?? '—' })}</span>
+          <span style={text}>{t('trigger.fetch.everySummary', 'every {{every}}', { every: fetch.every })}</span>
         </Field>
       )}
       <Field label={t('trigger.concurrency', 'Live runs at once')}>

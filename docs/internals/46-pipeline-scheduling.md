@@ -331,9 +331,12 @@ discriminator every reader uses.
   so an unattended poll against a runaway source never buffers it) →
   `extractFetchItems`
   (`fetchSource.ts`: item-path selection, ≤200 items, key pattern, field cut
-  2k, first-wins dedupe) → `room = concurrency − live`, `take = min(batch,
-  room)` → per unclaimed item `addNow({ kind: 'fire', firedBy: 'fetch',
-  item })`. Every exit records `ant:pipe:fetch:*` (`PipelineFetchStatus`,
+  2k, first-wins dedupe) → `room = concurrency − live` → per unclaimed item
+  with room `addNow({ kind: 'fire', firedBy: 'fetch', item })`. `concurrency`
+  is the ONE admission cap: the former `on.fetch.batch` (a per-poll ceiling
+  clamped by `room`, whose cap of 5 exceeded the 3 live runs an activation
+  may hold) had no independent axis and read as an API page size in the
+  editor; it is refused as a removed key. Every exit records `ant:pipe:fetch:*` (`PipelineFetchStatus`,
   24h) and publishes `fetchPolled`; the activation row derives `nextFireAt =
   polledAt + every` from it. Items whose claim is DEAD (past the 10-minute
   grace, no run doc, no run log) are healed and re-admitted.

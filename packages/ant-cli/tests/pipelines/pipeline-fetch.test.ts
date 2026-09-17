@@ -2,7 +2,7 @@
  * `on.fetch` — the pull trigger's runtime, one axis one file: item extraction
  * (the poller and the preview share it), the source call through the REST
  * admission owner with the activator's credentials, and the poll itself
- * (room under `concurrency`, batch, claim skip, dead-claim heal, telemetry).
+ * (room under `concurrency`, claim skip, dead-claim heal, telemetry).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -242,7 +242,7 @@ describe('pollFetchSource — the activator\'s connection, the executor\'s admis
   });
 });
 
-// ---- the poll: room, batch, claims, heal, telemetry ----
+// ---- the poll: room, claims, heal, telemetry ----
 
 const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
 
@@ -315,7 +315,7 @@ function makeCtx(ws: string, fetchImpl: typeof fetch, concurrency = 1) {
     version: 2,
     name: 'p1',
     concurrency,
-    on: { fetch: { ...TRIGGER, batch: 5 } },
+    on: { fetch: TRIGGER },
     steps: [{ id: 'a', customJobRef: 'ops/tickets', directive: '{{trigger.item.key}} {{trigger.item.summary}}' }],
   });
   scaffoldAgent(ws, 'apis:\n  jira:\n    baseUrl: https://jira.example.com/api\n');
@@ -328,7 +328,7 @@ const CLAIM_KEY = (key: string, pipelineId = 'p1') => `ant:pipe:item:local:user:
 const POLL = { kind: 'fetch-poll' as const, owner: OWNER, pipelineId: 'p1', pipelineScope: 'user' as const, projectId: 'proj-a' };
 
 describe('handleFetchPoll — room under concurrency, one fire per unclaimed item, telemetry on every exit', () => {
-  it('admits min(batch, room) unclaimed items as fire jobs carrying the item; records seen/unclaimed/enqueued; builds the ledger marker', async () => {
+  it('admits every unclaimed item with room under concurrency as a fire job carrying the item; records seen/unclaimed/enqueued; builds the ledger marker', async () => {
     const { impl } = fetchStub(json(RESPONSE));
     const { ctx, keys, enqueued, published } = makeCtx(tmp, impl, 2);
     await handleFetchPoll(ctx, POLL);

@@ -170,8 +170,6 @@ export interface PipelineFetchTriggerBase {
   fields?: Record<string, string>;
   /** Poll interval, `{n}m|h|d` (server floor `PipelineCaps.minFetchIntervalMinutes`). */
   every: string;
-  /** Items admitted per poll (1..`PipelineCaps.maxFetchBatch`). Default 1. */
-  batch?: number;
 }
 
 /** The claimed case a fetch-fired run carries — frozen at fire (`{{trigger.item.*}}`). */
@@ -743,8 +741,6 @@ export interface PipelineCaps {
   maxApproversPerGate: number;
   /** Floor for `on.fetch.every` — one authenticated egress per activation per interval. */
   minFetchIntervalMinutes: number;
-  /** Ceiling for `on.fetch.batch` — items admitted per poll. */
-  maxFetchBatch: number;
 }
 
 export const DEFAULT_PIPELINE_CAPS: PipelineCaps = {
@@ -755,7 +751,6 @@ export const DEFAULT_PIPELINE_CAPS: PipelineCaps = {
   maxLiveRunsPerActivation: 3,
   maxApproversPerGate: 10,
   minFetchIntervalMinutes: 1,
-  maxFetchBatch: 5,
 };
 
 /**
@@ -1199,7 +1194,7 @@ const RESERVED_DEF_KEYS: Record<string, string> = {
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
 const ON_KEYS = ['schedule', 'runCompleted', 'fetch'];
-const FETCH_KEYS = ['customJobRef', 'api', 'connection', 'request', 'items', 'key', 'fields', 'every', 'batch'];
+const FETCH_KEYS = ['customJobRef', 'api', 'connection', 'request', 'items', 'key', 'fields', 'every'];
 const FETCH_REQUEST_KEYS = ['method', 'path', 'query', 'body'];
 const FETCH_CONNECTION_FORMS_HINT = 'exactly one connection form: { customJobRef, api } (a job\'s declared apis entry) or { connection: { baseUrl, headers? } } (inline)';
 /** `apis`-entry knobs an author may carry into an inline connection — say why they do not apply. */
@@ -1216,6 +1211,7 @@ const FETCH_RESERVED_KEYS: Record<string, string> = {
   onMissed: '"onMissed" does not apply to on.fetch — a missed poll misses nothing; the next poll sees the same unclaimed items',
   cron: '"cron" belongs to on.schedule — a fetch trigger polls "every" interval',
   concurrency: '"concurrency" is a pipeline-level key (live runs per activation), not a fetch knob',
+  batch: '"batch" was removed — a poll starts every unclaimed item the activation has room for under "concurrency"; delete the key',
 };
 const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout', 'onMissingVerdict'];
 const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', 'timeout', 'remindAfter'];
@@ -1365,8 +1361,8 @@ function pinTemplateErrors(pin: string, stepId: string, itemVars: string[] | nul
 }
 
 /** Fetch-trigger shape rules — plain messages, `on.fetch.` prefixed. */
-function fetchTriggerErrors(raw: unknown, caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'>): string[] {
-  if (!isPlainObject(raw)) return [`on.fetch must be a mapping { request, items, key, every, fields?, batch? } plus ${FETCH_CONNECTION_FORMS_HINT}`];
+function fetchTriggerErrors(raw: unknown, caps: Pick<PipelineCaps, 'minFetchIntervalMinutes'>): string[] {
+  if (!isPlainObject(raw)) return [`on.fetch must be a mapping { request, items, key, every, fields? } plus ${FETCH_CONNECTION_FORMS_HINT}`];
   const errors: string[] = [];
   errors.push(...unknownKeyErrors(raw, FETCH_KEYS, 'on.fetch', FETCH_RESERVED_KEYS));
   errors.push(...fetchConnectionRequestErrors(raw));
@@ -1433,7 +1429,7 @@ function fetchConnectionRequestErrors(raw: Record<string, unknown>): string[] {
 }
 
 /** The other half: what to SELECT from the response (items / key / fields) and how often to poll. */
-function fetchSelectionErrors(raw: Record<string, unknown>, caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'>): string[] {
+function fetchSelectionErrors(raw: Record<string, unknown>, caps: Pick<PipelineCaps, 'minFetchIntervalMinutes'>): string[] {
   const errors: string[] = [];
   const items = parseItemPath(raw.items, 'on.fetch.items');
   if (typeof items === 'string') errors.push(items);
@@ -1463,11 +1459,6 @@ function fetchSelectionErrors(raw: Record<string, unknown>, caps: Pick<PipelineC
     errors.push('on.fetch.every must be a duration like "5m", "1h", "1d"');
   } else if (everyMs < caps.minFetchIntervalMinutes * 60_000) {
     errors.push(`on.fetch.every must be at least ${caps.minFetchIntervalMinutes}m`);
-  }
-  if (raw.batch !== undefined) {
-    if (typeof raw.batch !== 'number' || !Number.isInteger(raw.batch) || raw.batch < 1 || raw.batch > caps.maxFetchBatch) {
-      errors.push(`on.fetch.batch must be an integer from 1 to ${caps.maxFetchBatch} (items admitted per poll; got: ${String(raw.batch)})`);
-    }
   }
   return errors;
 }
@@ -1506,14 +1497,14 @@ function isAcyclic(steps: Array<{ id: string; needs?: string[] }>): boolean {
  * as "no connection"); selection and cadence rules are judged separately.
  */
 export function validatePipelineFetchProbe(raw: unknown): string[] {
-  if (!isPlainObject(raw)) return [`on.fetch must be a mapping { request, items, key, every, fields?, batch? } plus ${FETCH_CONNECTION_FORMS_HINT}`];
+  if (!isPlainObject(raw)) return [`on.fetch must be a mapping { request, items, key, every, fields? } plus ${FETCH_CONNECTION_FORMS_HINT}`];
   return [...unknownKeyErrors(raw, FETCH_KEYS, 'on.fetch', FETCH_RESERVED_KEYS), ...fetchConnectionRequestErrors(raw)];
 }
 
-/** The selection half alone (`items` / `key` / `fields` / `every` / `batch`) — the preview reports these as a mapping verdict, not a refusal. */
+/** The selection half alone (`items` / `key` / `fields` / `every`) — the preview reports these as a mapping verdict, not a refusal. */
 export function validatePipelineFetchSelection(
   raw: unknown,
-  caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'> = DEFAULT_PIPELINE_CAPS,
+  caps: Pick<PipelineCaps, 'minFetchIntervalMinutes'> = DEFAULT_PIPELINE_CAPS,
 ): string[] {
   if (!isPlainObject(raw)) return ['on.fetch must be a mapping'];
   return fetchSelectionErrors(raw, caps);
@@ -1522,7 +1513,7 @@ export function validatePipelineFetchSelection(
 /** The fetch-trigger rules alone — the editor's preview round-trip validates the block before polling with it. */
 export function validatePipelineFetchTrigger(
   raw: unknown,
-  caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'> = DEFAULT_PIPELINE_CAPS,
+  caps: Pick<PipelineCaps, 'minFetchIntervalMinutes'> = DEFAULT_PIPELINE_CAPS,
 ): string[] {
   return fetchTriggerErrors(raw, caps);
 }
@@ -1535,7 +1526,7 @@ export function validatePipelineFetchTrigger(
  */
 export function validatePipelineDef(
   raw: unknown,
-  caps: Pick<PipelineCaps, 'maxStepsPerPipeline' | 'maxLiveRunsPerActivation' | 'minFetchIntervalMinutes' | 'maxFetchBatch'> = DEFAULT_PIPELINE_CAPS,
+  caps: Pick<PipelineCaps, 'maxStepsPerPipeline' | 'maxLiveRunsPerActivation' | 'minFetchIntervalMinutes'> = DEFAULT_PIPELINE_CAPS,
 ): string[] {
   if (!isPlainObject(raw)) return ['pipeline definition must be a mapping (YAML object)'];
   const errors: string[] = [];

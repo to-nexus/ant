@@ -135,7 +135,6 @@ on:
       summary: $.fields.summary
       channel: $.fields['customfield_10021'].value
     every: 5m                        # poll interval — {n}m|h|d, at least 1m
-    batch: 2                         # items admitted per poll, 1..5 (default 1)
 concurrency: 3                       # the SAME knob as every trigger: live runs one activation may hold
 steps:
   - id: handle

@@ -241,8 +241,8 @@
       "every": "폴링 주기",
       "everyCustom": "직접 입력…",
       "everyHint": "5m, 1h, 1d 같은 기간 — 최소 1m.",
-      "batch": "폴링당 항목 수",
-      "batchHint": "한 번의 폴링이 시작할 수 있는 새 항목 수입니다(\"동시 라이브 런\" 여유 안에서). 시작하지 못한 항목은 다음 폴링에 다시 보입니다.",
+      "scheduleHint": "폴러가 이 주기로 소스를 읽고, \"동시 라이브 런\" 여유 안에서 미처리 항목마다 런을 시작합니다. 여유가 없던 항목은 다음 폴링에 다시 보입니다.",
+      "everySummary": "{{every}}마다",
       "preview": "항목 미리보기",
       "previewing": "폴링 중…",
       "previewNeedsProject": "프로젝트를 지정하면 이미 처리 중인 항목을 표시합니다.",
@@ -300,8 +300,7 @@
       "sampleMore": "… {{n}}개 더",
       "sampleTotal": "{{n}}개 항목",
       "fieldsEmpty": "필드 없음 — 스텝은 키만 받습니다.",
-      "previewMore": "… 외 {{n}}개",
-      "everyBatch": "{{every}}마다 · 폴링당 {{batch}}개"
+      "previewMore": "… 외 {{n}}개"
     },
     "chainedSummary": "\"{{id}}\" 완료 후",
     "chainSource": "이 파이프라인이 끝나면 발화",
