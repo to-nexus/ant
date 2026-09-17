@@ -11,7 +11,8 @@ import * as os from 'os';
 import * as path from 'path';
 import type { PipelineFetchTrigger } from '@ant/shared';
 import { extractFetchItems, selectItemPath } from '../../src/core/pipelines/fetchSource';
-import { pollFetchSource } from '../../src/core/pipelines/fetchConnection';
+import { fetchSourceJson, pollFetchSource } from '../../src/core/pipelines/fetchConnection';
+import { FETCH_SAMPLE_LIMITS, sampleOf } from '../../src/core/pipelines/fetchSample';
 import { handleFetchPoll, fetchLockTtlSeconds, FETCH_LOCK_MAX_S, FETCH_LOCK_MIN_S } from '../../src/infrastructure/scheduling/pipelineRun/fetch';
 import { handleFire } from '../../src/infrastructure/scheduling/pipelineRun/fire';
 import { ITEM_CLAIM_GRACE_MS, isDeadClaim, parseClaimValue } from '../../src/infrastructure/scheduling/pipelineRun/itemLedger';
@@ -109,6 +110,36 @@ function fetchStub(response: () => Response) {
 }
 const json = (body: unknown, status = 200) => () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+describe('sampleOf — the bounded response view the preview shows, never the poller', () => {
+  it('keeps shape and counts: first N array items with total, first keys with more, cut strings flagged', () => {
+    const json = { total: 40, issues: Array.from({ length: 40 }, (_, i) => ({ key: `OPS-${i}`, note: 'x'.repeat(500) })), nested: { a: { b: { c: { d: { e: { f: { g: 1 } } } } } } } };
+    const node = sampleOf(json);
+    expect(node.t).toBe('obj');
+    if (node.t !== 'obj') return;
+    const issues = node.entries.find(([k]) => k === 'issues')![1];
+    expect(issues.t).toBe('arr');
+    if (issues.t !== 'arr') return;
+    expect(issues.total).toBe(40);
+    expect(issues.items).toHaveLength(FETCH_SAMPLE_LIMITS.maxArrayItems);
+    const note = (issues.items[0] as Extract<typeof node, { t: 'obj' }>).entries.find(([k]) => k === 'note')![1];
+    expect(note).toEqual({ t: 'str', v: 'x'.repeat(FETCH_SAMPLE_LIMITS.maxStringChars), cut: true });
+    // Depth is capped: the deepest object comes back empty with its key count, not walked.
+    const text = JSON.stringify(node);
+    expect(text).not.toContain('"g"');
+    expect(text).toContain('"more":1');
+  });
+  it('a body past the byte ceiling is cut harder until the sample fits', () => {
+    const json = { rows: Array.from({ length: 3 }, () => ({ blob: 'y'.repeat(150), keys: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`k${i}`, 'v'.repeat(150)])) })) };
+    const node = sampleOf(json, { ...FETCH_SAMPLE_LIMITS, maxBytes: 2_000 });
+    expect(Buffer.byteLength(JSON.stringify(node), 'utf-8')).toBeLessThanOrEqual(2_000);
+  });
+  it('scalars and null at the root are samples too', () => {
+    expect(sampleOf(null)).toEqual({ t: 'null' });
+    expect(sampleOf(3)).toEqual({ t: 'num', v: 3 });
+    expect(sampleOf(true)).toEqual({ t: 'bool', v: true });
+  });
+});
+
 describe('pollFetchSource — the activator\'s connection, the executor\'s admission, a reason string on every failure', () => {
   it('resolves the job\'s api, sends the declared request with resolved secret headers, and extracts items', async () => {
     scaffoldAgent(tmp, 'apis:\n  jira:\n    baseUrl: https://jira.example.com/api\n    headers:\n      Authorization: ${secret:JIRA_TOKEN}\n    allow:\n      - GET /rest/**\n');
@@ -151,6 +182,17 @@ describe('pollFetchSource — the activator\'s connection, the executor\'s admis
     expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('q-live');
     expect((calls[0].init.headers as Record<string, string>).Accept).toBe('application/json');
     expect(calls[0].init.redirect).toBe('manual');
+  });
+
+  it('fetchSourceJson answers the parsed body with NO selection declared — the preview shows a response before items/key exist', async () => {
+    const { impl, calls } = fetchStub(json(RESPONSE));
+    const r = await fetchSourceJson(
+      { tenant: { ...TENANT, workspacesPath: tmp }, credentialResolver: resolver({}), fetchImpl: impl },
+      { connection: { baseUrl: 'https://queue.example.com' }, request: { method: 'GET', path: '/items' } },
+    );
+    expect(r.ok).toBe(true);
+    expect((r as any).json).toEqual(RESPONSE);
+    expect(calls[0].url).toBe('https://queue.example.com/items');
   });
 
   it('an inline connection with an unregistered secret is the config_invalid reason, no egress', async () => {

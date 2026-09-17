@@ -10,7 +10,7 @@ import { API_BASE, apiGet, apiPost, apiPut, apiDelete } from './client';
 import { downloadAttachment } from './download';
 import type {
   PipelineFetchTrigger,
-  PipelineRunItem,
+  PipelineFetchPreview,
   ActivePipelineInfo,
   PipelineActivation,
   PipelineActivationView,
@@ -175,17 +175,9 @@ export function runPipelineNow(pipelineId: string, projectId: string): Promise<{
   return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/run-now`, { projectId });
 }
 
-export interface PipelineFetchPreview {
-  ok: boolean;
-  error?: string;
-  items: Array<PipelineRunItem & { claimed: boolean }>;
-  seen: number;
-  skipped: number;
-}
-
 /** Dry-run a fetch trigger with the caller's own credentials — no claim, no fire. */
-export function previewPipelineFetch(fetch: PipelineFetchTrigger, projectId?: string): Promise<PipelineFetchPreview> {
-  return apiPost(`${base()}/preview-fetch`, { fetch, ...(projectId && { projectId }) });
+export function previewPipelineFetch(fetch: PipelineFetchTrigger, projectId?: string, pipelineId?: string): Promise<PipelineFetchPreview> {
+  return apiPost(`${base()}/preview-fetch`, { fetch, ...(projectId && { projectId }), ...(pipelineId && { pipelineId }) });
 }
 
 /** Runs of ONE activation (pipeline × project); `userId` reads an org member's history read-only. */

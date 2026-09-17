@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import type { ApprovalStepDef, PipelineAdvisory, PipelineDef } from '@ant/shared';
+import { Settings2, ShieldCheck, Waypoints } from 'lucide-react';
 import { AuroraInput, AuroraSelect, FieldHint, FieldLabel } from '../../ConfigEditor/aurora';
+import { NODE_KIND_STYLE } from '../canvas/nodes';
 import { Textarea } from '../../aurora';
 import { updateStep } from '../draft';
-import { SectionHeading } from './SectionHeading';
+import { InspectorSection } from './primitives/InspectorSection';
 import { ToggleChip } from './chips';
 import { AdvisoryHints } from './AdvisoryHints';
 import { StepIdField } from './fields/StepIdField';
@@ -32,20 +34,24 @@ export function GatePanel({
   const patch = (p: Partial<ApprovalStepDef>) => onChange(updateStep(def, step.id, p));
   const timeoutValue = step.timeout?.after ?? '';
 
+  const accent = NODE_KIND_STYLE.gate.accent;
   return (
     <>
+      <InspectorSection icon={ShieldCheck} accent={accent} title={t('gate.decisionTitle', 'Decision')} description={t('gate.decisionHint', 'A person approves or rejects here; the run waits until they do.')} data-section="gate-decision">
       <div>
         <FieldLabel required>{t('gate.prompt', 'Approval prompt')}</FieldLabel>
         <Textarea value={step.prompt} onChange={(e) => patch({ prompt: e.target.value })} rows={3} placeholder={t('gate.promptPlaceholder', 'What is being approved?')} />
         <FieldHint spacing="above">{t('gate.promptHint', 'Say what happened upstream and what approving runs. The approver can only approve or reject — nothing they type reaches a step.')}</FieldHint>
       </div>
       <StepIdField def={def} step={step} onChange={onChange} onRenamed={onStepRenamed} />
+      </InspectorSection>
 
-      <SectionHeading>{t('inspector.section.wiring', 'Wiring')}</SectionHeading>
-      <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} advisories={advisories} />
-      <EdgeConditionField def={def} step={step} onChange={onChange} />
+      <InspectorSection icon={Waypoints} accent={accent} title={t('inspector.section.wiring', 'Wiring')} description={t('inspector.section.wiringHint', 'Which steps must finish first, and on which of their outcomes this one runs.')} data-section="gate-wiring">
+        <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} advisories={advisories} />
+        <EdgeConditionField def={def} step={step} onChange={onChange} />
+      </InspectorSection>
 
-      <SectionHeading>{t('inspector.section.policy', 'Policy')}</SectionHeading>
+      <InspectorSection icon={Settings2} accent={accent} title={t('inspector.section.policy', 'Policy')} description={t('gate.policyHint', 'How long the gate waits, what a timeout decides, and where the request is delivered.')} data-section="gate-policy">
       <div>
         <FieldLabel>{t('gate.timeout', 'Timeout')}</FieldLabel>
         <AuroraSelect
@@ -101,6 +107,7 @@ export function GatePanel({
             is a shared template, so a name here would block reuse (A5-1). */}
         <FieldHint spacing="above">{t('gate.approversHint', 'Approvers are assigned per gate when the pipeline is activated on a project.')}</FieldHint>
       </div>
+      </InspectorSection>
     </>
   );
 }

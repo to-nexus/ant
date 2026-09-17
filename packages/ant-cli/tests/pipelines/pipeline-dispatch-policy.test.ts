@@ -696,8 +696,11 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
   const connection = read('core/pipelines/fetchConnection.ts');
   const restApi = read('core/customAgents/restApi.ts');
 
-  it('the poller and the preview share pollFetchSource, which admits through buildRestRequest → performRestRequest only', () => {
+  it('the poller and the preview share ONE source reader (fetchSourceJson → extractFetchItems), which admits through buildRestRequest → performRestRequest only', () => {
     expect(fetchPoll).toMatch(/pollFetchSource\(/);
+    // pollFetchSource is the composition, never a second request path.
+    expect(connection).toMatch(/const fetched = await fetchSourceJson\(deps, trigger\);/);
+    expect(connection.match(/performRestRequest\(/g)?.length).toBe(1);
     expect(fetchPoll).not.toMatch(/\bfetch\(|fetchImpl\(|process\.env\[|process\.env\./);
     expect(connection).toMatch(/buildRestRequest\(/);
     expect(connection).toMatch(/performRestRequest\(/);
@@ -707,8 +710,10 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
     expect(connection.match(/assertPublicApiBaseUrl\(/g)?.length).toBe(1);
     expect(connection).toMatch(/fetchConnectionSource\(trigger\)/);
     const planning = read('periphery/adapters/http/routes/pipelines/planning.routes.ts');
-    expect(planning).toMatch(/pollFetchSource\(/);
-    expect(planning).not.toMatch(/\bfetch\(|buildRestRequest|process\.env/);
+    // The preview stops after the body (to show the sample) and reads items with the poller's own extractor.
+    expect(planning).toMatch(/fetchSourceJson\(/);
+    expect(planning).toMatch(/extractFetchItems\(fetched\.json, trigger\)/);
+    expect(planning).not.toMatch(/\bfetch\(|buildRestRequest|performRestRequest|process\.env/);
     // The tool executor is the same three steps — one admission owner.
     expect(restApi).toMatch(/const built = buildRestRequest\(compiled, toolName, args\);/);
     expect(restApi).toMatch(/formatRestResult\(compiled\.serverName, built\.request, await performRestRequest\(built\.request, fetchImpl\)\)/);

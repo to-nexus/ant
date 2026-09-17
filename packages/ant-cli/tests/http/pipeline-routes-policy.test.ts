@@ -543,6 +543,20 @@ describe('fetch trigger — poll-now, the every-poller, preview-fetch', () => {
     expect((await both.json()).errors.join('\n')).toMatch(/exactly one connection form/);
   });
 
+  it('preview-fetch validates the block as a PROBE: connection + request must hold, selection may still be blank (the sample is what fills it)', async () => {
+    // No items/key/every yet — an author who has not read the response cannot have written them. The probe passes; this harness then answers 503 for the missing store.
+    const probe = { connection: { baseUrl: 'https://queue.example.com' }, request: { method: 'GET', path: '/items' } };
+    const res = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: probe }) });
+    expect(res.status).toBe(503);
+    // A broken REQUEST is still a 400 — there is no response to show without one.
+    const badPath = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: { ...probe, request: { method: 'GET', path: 'items' } } }) });
+    expect(badPath.status).toBe(400);
+    expect((await badPath.json()).errors.join('\n')).toMatch(/request\.path/);
+    // An unknown key is refused even in probe form — a misspelled `connection` must not read as "bound with nothing".
+    const typo = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: { ...probe, conection: {} } }) });
+    expect(typo.status).toBe(400);
+  });
+
   it('preview-fetch is registered as a LITERAL — it never resolves as a pipeline id', async () => {
     const res = await api('/preview-fetch');
     expect([404, 405]).toContain(res.status);

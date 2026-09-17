@@ -7,7 +7,7 @@ import { RailResizeHandle } from '../shared/rail';
 
 export const INSPECTOR_MIN_WIDTH = 300;
 export const INSPECTOR_MAX_WIDTH = 720;
-export const INSPECTOR_DEFAULT_WIDTH = 360;
+export const INSPECTOR_DEFAULT_WIDTH = 400;
 
 /**
  * The right-hand drawer chrome shared by StepInspector and PipelineSettingsPanel —
@@ -71,7 +71,7 @@ export function InspectorShell({ title, icon: Icon, accent, onClose, children }:
           </button>
         )}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>{children}</div>
     </div>
   );
 }

@@ -73,9 +73,11 @@ object in `def`, shaped exactly as `on-demand/pipeline-format.md` describes.
 five-minute minimum interval; `error` says which. This is the only cron
 authority — never compute fire times yourself.
 
-`POST /definitions/pipelines/preview-fetch` with `{ fetch, projectId? }` is a
-fetch trigger's dry run — it polls the source with the CALLER's own
-credentials and lists the items a poll would see. It **refuses this job's
+`POST /definitions/pipelines/preview-fetch` with `{ fetch, projectId?, pipelineId? }`
+is a fetch trigger's dry run — it polls the source with the CALLER's own
+credentials, returns a bounded `sample` of the response, and lists the items
+the current `items` / `key` / `fields` select (`mapping.ok`; only the connection
+and request must already be valid — the selection may still be blank). It **refuses this job's
 token** (`403`, code `self-api-scope`): a person runs it as Preview items in
 the editor. Check the request shape and the item-paths yourself, and say in
 the report that the items were not previewed.

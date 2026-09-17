@@ -42,9 +42,24 @@ export interface FetchSourceDeps {
 }
 
 export type FetchSourceOutcome = { ok: true; extracted: ExtractedFetchItems } | { ok: false; error: string };
+/** The response body alone — what the editor's preview shows an author before any selection exists. */
+export type FetchSourceJsonOutcome = { ok: true; json: unknown } | { ok: false; error: string };
 
 export async function pollFetchSource(deps: FetchSourceDeps, trigger: PipelineFetchTrigger): Promise<FetchSourceOutcome> {
-  const fail = (error: string): FetchSourceOutcome => ({ ok: false, error });
+  const fetched = await fetchSourceJson(deps, trigger);
+  if (!fetched.ok) return fetched;
+  const extracted = extractFetchItems(fetched.json, trigger);
+  if (typeof extracted === 'string') return { ok: false, error: extracted };
+  return { ok: true, extracted };
+}
+
+/**
+ * Connection → admission → request → parsed JSON. The poller composes this
+ * with `extractFetchItems`; the preview route stops here so the sample can be
+ * shown even while `items` / `key` are still unwritten.
+ */
+export async function fetchSourceJson(deps: FetchSourceDeps, trigger: Pick<PipelineFetchTrigger, 'connection' | 'customJobRef' | 'api' | 'request'>): Promise<FetchSourceJsonOutcome> {
+  const fail = (error: string): FetchSourceJsonOutcome => ({ ok: false, error });
 
   let name: string;
   let cfg: RestApiServerConfig | undefined;
@@ -98,7 +113,5 @@ export async function pollFetchSource(deps: FetchSourceDeps, trigger: PipelineFe
   } catch {
     return fail('response body is not valid JSON');
   }
-  const extracted = extractFetchItems(json, trigger);
-  if (typeof extracted === 'string') return fail(extracted);
-  return { ok: true, extracted };
+  return { ok: true, json };
 }

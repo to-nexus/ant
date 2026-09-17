@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import { GENERAL_INTENT, parseCustomJobRef, type CustomAgentSummary, type JobStepDef, type PipelineAdvisory, type PipelineDef } from '@ant/shared';
+import { Bot, FileInput, Settings2, Waypoints, Wrench } from 'lucide-react';
 import { AuroraInput, AuroraSelect, FieldHint, FieldLabel } from '../../ConfigEditor/aurora';
+import { NODE_KIND_STYLE } from '../canvas/nodes';
 import { HintBadge } from '../../common/HintBadge';
 import { updateStep } from '../draft';
-import { SectionHeading } from './SectionHeading';
+import { InspectorSection } from './primitives/InspectorSection';
 import { TokenChip } from './chips';
 import { withCurrentValue } from './selectOptions';
 import { StepIdField } from './fields/StepIdField';
@@ -58,9 +60,10 @@ export function JobStepPanel({
     unknown,
   );
 
+  const accent = NODE_KIND_STYLE.step.accent;
   return (
     <>
-      <SectionHeading>{t('inspector.section.identity', 'Identity')}</SectionHeading>
+      <InspectorSection icon={Bot} accent={accent} title={t('inspector.section.identity', 'Identity')} description={t('inspector.section.identityHint', 'Which agent runs this step, in which job, pinned to which intent.')} data-section="step-identity">
       <div>
         <FieldLabel required>{t('step.agent', 'Agent')}</FieldLabel>
         <AuroraSelect
@@ -118,18 +121,22 @@ export function JobStepPanel({
         )}
       </div>
       <StepIdField def={def} step={step} onChange={onChange} onRenamed={onStepRenamed} />
+      </InspectorSection>
 
-      <SectionHeading>{t('inspector.section.wiring', 'Wiring')}</SectionHeading>
-      <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} advisories={advisories} />
-      <EdgeConditionField def={def} step={step} onChange={onChange} />
+      <InspectorSection icon={Waypoints} accent={accent} title={t('inspector.section.wiring', 'Wiring')} description={t('inspector.section.wiringHint', 'Which steps must finish first, and on which of their outcomes this one runs.')} data-section="step-wiring">
+        <DependsOnField def={def} step={step} stepIndex={stepIndex} onChange={onChange} advisories={advisories} />
+        <EdgeConditionField def={def} step={step} onChange={onChange} />
+      </InspectorSection>
 
-      <SectionHeading>{t('inspector.section.work', 'Work')}</SectionHeading>
-      <DirectiveField def={def} step={step} onChange={onChange} customAgents={customAgents} advisories={advisories} />
+      <InspectorSection icon={Wrench} accent={accent} title={t('inspector.section.work', 'Work')} description={t('inspector.section.workHint', 'The instruction the run receives — with the values substituted at dispatch.')} data-section="step-work">
+        <DirectiveField def={def} step={step} onChange={onChange} customAgents={customAgents} advisories={advisories} />
+      </InspectorSection>
 
-      <SectionHeading>{t('inspector.section.inputs', 'Inputs')}</SectionHeading>
-      <ContextPinsField def={def} step={step} onChange={onChange} customAgents={customAgents} advisories={advisories} />
+      <InspectorSection icon={FileInput} accent={accent} title={t('inspector.section.inputs', 'Inputs')} description={t('inspector.section.inputsHint', 'Artifacts attached when the step is dispatched — pin what upstream steps guarantee.')} data-section="step-inputs">
+        <ContextPinsField def={def} step={step} onChange={onChange} customAgents={customAgents} advisories={advisories} />
+      </InspectorSection>
 
-      <SectionHeading>{t('inspector.section.policy', 'Policy')}</SectionHeading>
+      <InspectorSection icon={Settings2} accent={accent} title={t('inspector.section.policy', 'Policy')} description={t('inspector.section.policyHint', 'Retries, the time limit, and how a missing verdict is read.')} data-section="step-policy">
       <div>
         <FieldLabel optional>{t('step.retry', 'Retry on failure')}</FieldLabel>
         <AuroraSelect
@@ -175,6 +182,7 @@ export function JobStepPanel({
           <AdvisoryHints advisories={advisories} field="onMissingVerdict" />
         </div>
       )}
+      </InspectorSection>
     </>
   );
 }

@@ -362,7 +362,24 @@ discriminator every reader uses.
   claim; the `claimed` flag is judged in the ledger of the body's `pipelineId`,
   else of the project's activated pipeline), rate-limited,
   and a RESERVED segment the self-api pin refuses — a job must not turn the
-  owner's secrets into a credentialed proxy.
+  owner's secrets into a credentialed proxy. It validates the block as a
+  PROBE (`validatePipelineFetchProbe`: connection + request; 400 otherwise)
+  and answers two verdicts in one `PipelineFetchPreview`: `ok` + `sample`
+  (the response reached a JSON body — `sampleOf` in
+  `core/pipelines/fetchSample.ts` prunes it to a bounded
+  `PipelineFetchSampleNode` tree: depth 6, 3 array items, 40 keys, 160-char
+  strings, 24KB serialized) and `mapping` (whether `items` / `key` / `fields`
+  select anything — `validatePipelineFetchSelection` + the poller's own
+  `extractFetchItems`). The split exists because an author WRITES the
+  selection by reading the sample: a bad path must never hide the body it
+  needs to fix it. The reader is one: `pollFetchSource = fetchSourceJson ∘
+  extractFetchItems`, and the preview stops after `fetchSourceJson`. The FE
+  inspector (`FetchPanel` → `ResponseExplorer`) turns the sample into a click
+  target (an array → `items`, a scalar inside `items[0]` → `key` or a field,
+  paths spelled by the shared `formatItemPath`), and registers an inline
+  connection's `${secret:KEY}` in place through the same account credential
+  store the agent settings use (`useMcpCredentialRegistry` — one hook, two
+  screens).
 - **Doctrine carve-out**: `on.fetch.request` is trigger CONFIGURATION (the
   cron expression's sibling), never rendered to a model and never a tool;
   the `apis` entry stays connectivity-only, and an inline `connection` is

@@ -198,6 +198,41 @@ export interface PipelineFetchStatus {
   manual?: boolean;
 }
 
+/**
+ * A BOUNDED view of a polled response — what the editor's "fetch the response"
+ * shows so an author can pick `items` / `key` / field paths by clicking, instead
+ * of guessing them. Never the whole body: arrays keep their first few elements
+ * (`total` says how many there were), objects their first keys (`more` counts
+ * the rest), strings are cut. Produced only by the preview route; the poller
+ * never materialises it.
+ */
+export type PipelineFetchSampleNode =
+  | { t: 'obj'; entries: Array<[string, PipelineFetchSampleNode]>; more: number }
+  | { t: 'arr'; items: PipelineFetchSampleNode[]; total: number }
+  | { t: 'str'; v: string; cut: boolean }
+  | { t: 'num'; v: number }
+  | { t: 'bool'; v: boolean }
+  | { t: 'null' };
+
+/**
+ * `POST /definitions/pipelines/preview-fetch` — the editor's dry run with the
+ * CALLER's credentials (no claim, no fire). `ok` is the REQUEST: connection,
+ * request and JSON body all worked, and `sample` is the response. `mapping` is
+ * the SELECTION: whether `items` / `key` / `fields` selected anything — an
+ * author fills those by reading the sample, so a bad selection must not hide
+ * the response it needs to fix it.
+ */
+export interface PipelineFetchPreview {
+  ok: boolean;
+  /** Request-side failure — status line or policy reason, never a body. */
+  error?: string;
+  sample?: PipelineFetchSampleNode;
+  mapping?: { ok: boolean; error?: string };
+  items: Array<PipelineRunItem & { claimed: boolean }>;
+  seen: number;
+  skipped: number;
+}
+
 export interface JobStepDef {
   id: string;
   /** `{agentId}/{jobId}` — cross-agent chaining is the point. */
@@ -596,6 +631,18 @@ export function parseItemPath(raw: unknown, where: string): ItemPathSegment[] | 
       return `${where}: expected [n] or ['name'] at position ${i}`;
     }
     return `${where}: unexpected "${ch}" at position ${i} (segments are ".name", "['name']" or "[n]")`;
+  }
+  return out;
+}
+
+/** The inverse of {@link parseItemPath} — a canonical spelling the editor can write back into a definition. */
+export function formatItemPath(segments: readonly ItemPathSegment[]): string {
+  let out = '$';
+  for (const seg of segments) {
+    if (seg.kind === 'index') out += `[${seg.index}]`;
+    else if (/^[A-Za-z_$][A-Za-z0-9_$-]*$/.test(seg.name)) out += `.${seg.name}`;
+    // The grammar has no escapes: quote with whichever delimiter the name does not contain.
+    else out += seg.name.includes("'") ? `["${seg.name}"]` : `['${seg.name}']`;
   }
   return out;
 }
@@ -1322,6 +1369,18 @@ function fetchTriggerErrors(raw: unknown, caps: Pick<PipelineCaps, 'minFetchInte
   if (!isPlainObject(raw)) return [`on.fetch must be a mapping { request, items, key, every, fields?, batch? } plus ${FETCH_CONNECTION_FORMS_HINT}`];
   const errors: string[] = [];
   errors.push(...unknownKeyErrors(raw, FETCH_KEYS, 'on.fetch', FETCH_RESERVED_KEYS));
+  errors.push(...fetchConnectionRequestErrors(raw));
+  errors.push(...fetchSelectionErrors(raw, caps));
+  return errors;
+}
+
+/**
+ * The half of the fetch rules a poll needs to REACH the source: connection form
+ * and request. The editor probes with these alone so an author sees the
+ * response before writing any selection path.
+ */
+function fetchConnectionRequestErrors(raw: Record<string, unknown>): string[] {
+  const errors: string[] = [];
   const bound = raw.customJobRef !== undefined || raw.api !== undefined;
   const inline = raw.connection !== undefined;
   if (bound === inline) errors.push(`on.fetch needs ${FETCH_CONNECTION_FORMS_HINT}`);
@@ -1370,6 +1429,12 @@ function fetchTriggerErrors(raw: unknown, caps: Pick<PipelineCaps, 'minFetchInte
       }
     }
   }
+  return errors;
+}
+
+/** The other half: what to SELECT from the response (items / key / fields) and how often to poll. */
+function fetchSelectionErrors(raw: Record<string, unknown>, caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'>): string[] {
+  const errors: string[] = [];
   const items = parseItemPath(raw.items, 'on.fetch.items');
   if (typeof items === 'string') errors.push(items);
   const key = parseItemPath(raw.key, 'on.fetch.key');
@@ -1433,6 +1498,25 @@ function isAcyclic(steps: Array<{ id: string; needs?: string[] }>): boolean {
     }
   }
   return visited === steps.length;
+}
+
+/**
+ * Connection + request rules only — what the preview route needs to fetch a
+ * response. Unknown keys still count (a misspelled `connection` must not pass
+ * as "no connection"); selection and cadence rules are judged separately.
+ */
+export function validatePipelineFetchProbe(raw: unknown): string[] {
+  if (!isPlainObject(raw)) return [`on.fetch must be a mapping { request, items, key, every, fields?, batch? } plus ${FETCH_CONNECTION_FORMS_HINT}`];
+  return [...unknownKeyErrors(raw, FETCH_KEYS, 'on.fetch', FETCH_RESERVED_KEYS), ...fetchConnectionRequestErrors(raw)];
+}
+
+/** The selection half alone (`items` / `key` / `fields` / `every` / `batch`) — the preview reports these as a mapping verdict, not a refusal. */
+export function validatePipelineFetchSelection(
+  raw: unknown,
+  caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'> = DEFAULT_PIPELINE_CAPS,
+): string[] {
+  if (!isPlainObject(raw)) return ['on.fetch must be a mapping'];
+  return fetchSelectionErrors(raw, caps);
 }
 
 /** The fetch-trigger rules alone — the editor's preview round-trip validates the block before polling with it. */
