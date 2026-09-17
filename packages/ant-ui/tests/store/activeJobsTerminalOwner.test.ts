@@ -32,7 +32,7 @@ vi.mock('../../src/domain/store/storage', async (orig) => {
   return { ...actual, saveToStorage: () => {}, removeFromStorage: () => {} };
 });
 
-import { createJobSlice, selectActiveJobByType, selectHasActiveCodeJob, selectIsJobLive, type JobSlice } from '../../src/domain/store/slices/jobSlice';
+import { createJobSlice, selectActiveJobByType, selectHasActiveCodeJob, type JobSlice } from '../../src/domain/store/slices/jobSlice';
 
 function makeStore() {
   return create<any>()((set, get, store) => ({
@@ -70,8 +70,17 @@ describe('activeJobs is keyed by jobId', () => {
     expect(Object.keys(map).sort()).toEqual(['j1', 'j2']);
     expect(map.j1).toMatchObject({ jobType: 'universal', pipelineRunId: 'run-a' });
     expect(map.j2).toMatchObject({ jobType: 'universal', pipelineRunId: 'run-b' });
-    expect(selectIsJobLive(s.getState(), 'j1')).toBe(true);
-    expect(selectIsJobLive(s.getState(), 'ghost')).toBe(false);
+    expect(map.ghost).toBeUndefined();
+  });
+
+  it('a kanban frame keeps bootstrap attribution (pipelineRunId/customJobRef survive a setActiveJob with only jobId+status)', () => {
+    s.setState({
+      activeJobs: { j1: { jobType: 'universal', jobId: 'j1', status: 'queued', agent: 'ops', pipelineRunId: 'run-a', customJobRef: 'ops-team/triage' } },
+    });
+    s.getState().setActiveJob('universal', { jobId: 'j1', status: 'running' });
+    expect(s.getState().activeJobs.j1).toEqual({
+      jobType: 'universal', jobId: 'j1', status: 'running', agent: 'ops', pipelineRunId: 'run-a', customJobRef: 'ops-team/triage',
+    });
   });
 
   it('selectActiveJobByType ranks running > paused > queued and ignores other types', () => {

@@ -243,7 +243,9 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
 
   setActiveJob: (jobType, entry) => {
     const activeJobs = { ...get().activeJobs };
-    activeJobs[entry.jobId] = { ...entry, jobType };
+    // Merge: a kanban frame carries only jobId+status; bootstrap attribution
+    // (pipelineRunId / customJobRef / agent) must survive it.
+    activeJobs[entry.jobId] = { ...activeJobs[entry.jobId], ...entry, jobType };
     set({ activeJobs });
   },
 
@@ -448,8 +450,4 @@ export const selectActiveJobByType = (
   }
   return best;
 };
-
-/** Is this exact job live (in the SSE-fed map)? */
-export const selectIsJobLive = (s: { activeJobs?: Record<string, ActiveJobEntry> }, jobId: string | undefined): boolean =>
-  Boolean(jobId && s.activeJobs?.[jobId]);
 

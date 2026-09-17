@@ -8,6 +8,8 @@ import type {
   PipelineDef,
   PipelineEventData,
   PipelineListEntry,
+  PipelineLiveRun,
+  PipelineLiveState,
   PipelinePendingApproval,
   PipelineRunSummary,
   PipelineScope,
@@ -88,6 +90,24 @@ export const parseActivationRunsKey = (key: string): { pipelineId: string; proje
   return { pipelineId: key.slice(0, first), projectId: key.slice(last + 1), ...(user !== 'me' && { userId: user }) };
 };
 
+const SEALED_RUNS_KEPT = 32;
+
+/** A REST snapshot issued at `seqAtRequest` predates every seal folded after it — those runs must not come back live. */
+const sealedSince =
+  (sealed: ReadonlyArray<{ runId: string; seq: number }>, seqAtRequest: number) =>
+  (runId: string): boolean =>
+    sealed.some((e) => e.runId === runId && e.seq > seqAtRequest);
+
+function reconcileLiveRuns<T extends { state: PipelineLiveState | 'broken'; liveRuns?: PipelineLiveRun[] }>(
+  row: T,
+  isSealed: (runId: string) => boolean,
+): T {
+  const before = row.liveRuns ?? [];
+  const liveRuns = before.filter((r) => !isSealed(r.runId));
+  if (liveRuns.length === before.length) return row;
+  return { ...row, liveRuns, state: row.state === 'broken' ? 'broken' : activationStateOf(liveRuns) } as T;
+}
+
 /**
  * The wire strips captured step answers (they ride the runs API only), so a
  * `runUpdate` fold must not erase what a fetch already showed. Same
@@ -154,6 +174,10 @@ export interface PipelineSliceState {
   pipelineRunDetails: Record<string, PipelineRunPublic>;
   /** The run a person opened in each activation's history (`activationRunsKey` → runId). */
   pipelineSelectedRunByActivation: Record<string, string>;
+  /** Monotonic count of terminal `runUpdate` folds — a refetch captures it before issuing. */
+  pipelineSealSeq: number;
+  /** Runs sealed by a live fold and the seq they sealed at (bounded, oldest first). */
+  pipelineSealedRuns: Array<{ runId: string; seq: number }>;
   pipelineApprovals: PipelinePendingApproval[];
   /**
    * Approver context panel (slideover) — self-contained on run data: an
@@ -289,6 +313,8 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineRunsStatus: {},
   pipelineRunDetails: {},
   pipelineSelectedRunByActivation: {},
+  pipelineSealSeq: 0,
+  pipelineSealedRuns: [],
   pipelineApprovals: [],
   approverPanel: null,
   approverPanelRun: null,
@@ -298,10 +324,12 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
 
   loadPipelines: async () => {
     set({ pipelinesStatus: 'loading' });
+    const seqAtRequest = get().pipelineSealSeq;
     try {
       const { pipelines, invalid, orphanActivations } = await fetchPipelines();
+      const isSealed = sealedSince(get().pipelineSealedRuns, seqAtRequest);
       set({
-        pipelines,
+        pipelines: pipelines.map((p) => ({ ...p, activations: p.activations.map((a) => reconcileLiveRuns(a, isSealed)) })),
         pipelinesInvalid: invalid ?? [],
         pipelineOrphanActivations: orphanActivations ?? [],
         pipelinesStatus: 'ready',
@@ -583,9 +611,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   },
 
   loadActivePipeline: async (projectId: string) => {
+    const seqAtRequest = get().pipelineSealSeq;
     try {
       const { active } = await fetchActivePipeline(projectId);
-      set({ activePipelineByProject: { ...get().activePipelineByProject, [projectId]: active } });
+      const isSealed = sealedSince(get().pipelineSealedRuns, seqAtRequest);
+      set({ activePipelineByProject: { ...get().activePipelineByProject, [projectId]: active && reconcileLiveRuns(active, isSealed) } });
     } catch {
       /* chat lock signal keeps last-good; SSE folds correct it */
     }
@@ -594,8 +624,13 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   loadActivationRuns: async (pipelineId: string, projectId: string, userId?: string) => {
     const key = activationRunsKey(pipelineId, projectId, userId);
     set({ pipelineRunsStatus: { ...get().pipelineRunsStatus, [key]: { status: 'loading' } } });
+    const seqAtRequest = get().pipelineSealSeq;
     try {
-      const { runs } = await fetchPipelineRuns(pipelineId, projectId, userId);
+      const { runs: fetched } = await fetchPipelineRuns(pipelineId, projectId, userId);
+      // A run sealed after this request was issued keeps its held (sealed) row — the snapshot predates the seal.
+      const isSealed = sealedSince(get().pipelineSealedRuns, seqAtRequest);
+      const held: PipelineRunSummary[] = get().pipelineRunsByActivation[key] ?? [];
+      const runs = fetched.map((r) => (isSealed(r.runId) ? held.find((h) => h.runId === r.runId) ?? r : r));
       set({
         pipelineRunsByActivation: { ...get().pipelineRunsByActivation, [key]: runs },
         pipelineRunsStatus: { ...get().pipelineRunsStatus, [key]: { status: 'ready' } },
@@ -835,8 +870,19 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
           if (held || s.selectedPipelineId === event.pipelineId) {
             patch.pipelineRunDetails = { ...s.pipelineRunDetails, [run.runId]: mergeHeldAnswers(run, held) };
           }
-          // A terminal run can not hold gates.
-          if (terminal) patch.pipelineApprovals = s.pipelineApprovals.filter((a) => a.runId !== run.runId);
+          if (terminal) {
+            // A terminal run can not hold gates, and leaves the selection so the
+            // next live run can open itself (`loadActivationRuns`).
+            patch.pipelineApprovals = s.pipelineApprovals.filter((a) => a.runId !== run.runId);
+            if (s.pipelineSelectedRunByActivation[runsKey] === run.runId) {
+              patch.pipelineSelectedRunByActivation = Object.fromEntries(
+                Object.entries(s.pipelineSelectedRunByActivation).filter(([k]) => k !== runsKey),
+              );
+            }
+            const seq = s.pipelineSealSeq + 1;
+            patch.pipelineSealSeq = seq;
+            patch.pipelineSealedRuns = [...s.pipelineSealedRuns, { runId: run.runId, seq }].slice(-SEALED_RUNS_KEPT);
+          }
           return patch;
         });
         break;

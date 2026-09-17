@@ -27,8 +27,11 @@ describe('estimateNodeHeight', () => {
     expect(withLong).toBe(withShort);
   });
 
-  it('a live status adds its own row', () => {
-    expect(estimateNodeHeight({ primary: 'sync', status: 'running' })).toBeGreaterThan(estimateNodeHeight({ primary: 'sync' }));
+  it('a live status never changes the height — the row is reserved, so a run appearing cannot re-fit the canvas', () => {
+    const idle = estimateNodeHeight({ primary: 'sync', kind: 'step' });
+    expect(estimateNodeHeight({ primary: 'sync', kind: 'step', status: 'running' } as any)).toBe(idle);
+    expect(estimateNodeHeight({ primary: 'sync', kind: 'gate', status: 'awaiting_gate' } as any)).toBe(idle);
+    expect(idle).toBeGreaterThan(estimateNodeHeight({ primary: 'sync', kind: 'trigger' }));
   });
 
   it('step and gate cards reserve the live-run chip row even with no run at the step; the trigger does not', () => {

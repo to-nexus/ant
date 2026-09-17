@@ -9,6 +9,7 @@ import { createPipelineSlice } from '../../src/domain/store/slices/pipelineSlice
 import {
   selectActivationByProject,
   selectActivePipelineForSelectedProject,
+  selectPipelineViewerId,
 } from '../../src/domain/store/selectors/pipelines';
 
 const api = vi.hoisted(() => ({
@@ -239,6 +240,78 @@ describe('applyPipelineEvent — activation / availability folds', () => {
     expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'waiting', liveRuns: [] });
   });
 
+  it('selected run sealing clears the selection so the next live run auto-selects', async () => {
+    const useStore = buildStore();
+    const key = 'p1:me:proj-a';
+    useStore.setState({
+      pipelines: [ENTRY({ activations: [ACTIVATION_VIEW] })],
+      pipelineRunsByActivation: { [key]: [] },
+      pipelineSelectedRunByActivation: { [key]: 'r1', 'p2:me:proj-a': 'other' },
+    });
+    const run = (runId: string, status: string) => ({
+      cause: 'runUpdate',
+      pipelineId: 'p1',
+      projectId: 'proj-a',
+      run: { runId, pipelineId: 'p1', projectId: 'proj-a', firedBy: 'manual', fireEpoch: 0, status, steps: [], startedAt: `2026-09-16T00:00:0${runId.slice(1)}.000Z` },
+    });
+    // A live frame of the selected run, and a seal of some OTHER run, leave the selection alone.
+    useStore.getState().applyPipelineEvent(run('r1', 'running') as any);
+    useStore.getState().applyPipelineEvent(run('r9', 'completed') as any);
+    expect(useStore.getState().pipelineSelectedRunByActivation[key]).toBe('r1');
+
+    useStore.getState().applyPipelineEvent(run('r1', 'completed') as any);
+    expect(useStore.getState().pipelineSelectedRunByActivation).toEqual({ 'p2:me:proj-a': 'other' });
+
+    api.fetchPipelineRuns.mockResolvedValueOnce({ runs: [run('r2', 'running').run, run('r1', 'completed').run] });
+    await useStore.getState().loadActivationRuns('p1', 'proj-a');
+    expect(useStore.getState().pipelineSelectedRunByActivation[key]).toBe('r2');
+  });
+
+  it('a REST snapshot that lands after a fresh-stream seal cannot revive the sealed run as live', async () => {
+    const useStore = buildStore();
+    const key = 'p1:me:proj-a';
+    const live = { runId: 'r1', status: 'running', startedAt: '2026-09-16T00:00:01.000Z', firedBy: 'manual', currentStepIds: ['a'] };
+    const staleActive = { pipelineId: 'p1', pipelineName: 'Digest', state: 'running', liveRuns: [live] };
+    useStore.setState({
+      pipelines: [ENTRY({ activations: [{ ...ACTIVATION_VIEW, state: 'running', liveRuns: [live] }] })],
+      activePipelineByProject: { 'proj-a': staleActive },
+      pipelineRunsByActivation: { [key]: [{ runId: 'r1', pipelineId: 'p1', projectId: 'proj-a', status: 'running', firedBy: 'manual', fireEpoch: 0, startedAt: live.startedAt }] },
+    });
+    let releaseActive!: (v: unknown) => void;
+    let releaseList!: (v: unknown) => void;
+    let releaseRuns!: (v: unknown) => void;
+    api.fetchActivePipeline.mockReturnValueOnce(new Promise((r) => { releaseActive = r; }));
+    api.fetchPipelines.mockReturnValueOnce(new Promise((r) => { releaseList = r; }));
+    api.fetchPipelineRuns.mockReturnValueOnce(new Promise((r) => { releaseRuns = r; }));
+    useStore.setState({ pipelinesStatus: 'ready' });
+    useStore.getState().resyncPipelineProjections();
+
+    // The stream seals r1 while the refetches are in flight.
+    useStore.getState().applyPipelineEvent({
+      cause: 'runUpdate',
+      pipelineId: 'p1',
+      projectId: 'proj-a',
+      run: { runId: 'r1', pipelineId: 'p1', projectId: 'proj-a', firedBy: 'manual', fireEpoch: 0, status: 'completed', steps: [], startedAt: live.startedAt, endedAt: '2026-09-16T00:00:05.000Z' },
+    } as any);
+    expect(useStore.getState().activePipelineByProject['proj-a'].liveRuns).toEqual([]);
+
+    // The pre-seal snapshots land last — every projection keeps the seal.
+    releaseActive({ active: staleActive });
+    releaseList({ pipelines: [ENTRY({ activations: [{ ...ACTIVATION_VIEW, state: 'running', liveRuns: [live] }] })], invalid: [], orphanActivations: [] });
+    releaseRuns({ runs: [{ runId: 'r1', pipelineId: 'p1', projectId: 'proj-a', status: 'running', firedBy: 'manual', fireEpoch: 0, startedAt: live.startedAt }] });
+    await new Promise((r) => setTimeout(r, 0));
+    const s = useStore.getState();
+    expect(s.activePipelineByProject['proj-a']).toMatchObject({ state: 'waiting', liveRuns: [] });
+    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'waiting', liveRuns: [] });
+    expect(s.pipelineRunsByActivation[key][0]).toMatchObject({ runId: 'r1', status: 'completed' });
+    expect(s.pipelineSelectedRunByActivation[key]).toBeUndefined();
+
+    // A snapshot issued AFTER the seal is authoritative — the server may have re-fired.
+    api.fetchActivePipeline.mockResolvedValueOnce({ active: staleActive });
+    await useStore.getState().loadActivePipeline('proj-a');
+    expect(useStore.getState().activePipelineByProject['proj-a'].liveRuns).toEqual([live]);
+  });
+
   it('a broken activation row stays broken through run folds', () => {
     const useStore = buildStore();
     useStore.setState({ pipelines: [ENTRY({ activations: [{ ...ACTIVATION_VIEW, state: 'broken' }] })], activePipelineByProject: {} });
@@ -253,6 +326,11 @@ describe('applyPipelineEvent — activation / availability folds', () => {
 });
 
 describe('selectors — the chat lock derivation', () => {
+  it('the roster viewer is the server-side id, never the IdP-cased email', () => {
+    expect(selectPipelineViewerId({ userEmail: 'Me@X.io', userId: 'me@x.io' } as any)).toBe('me@x.io');
+    expect(selectPipelineViewerId({ userEmail: 'Me@X.io', userId: undefined } as any)).toBeUndefined();
+  });
+
   it('resolves only the selected project, defensively on partial stores', () => {
     const state: any = {
       selectedProject: 'proj-a',

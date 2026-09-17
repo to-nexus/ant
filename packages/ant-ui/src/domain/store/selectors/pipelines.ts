@@ -13,6 +13,13 @@ interface PipelineSelectorState {
   pipelineApprovals: Array<{ gateId: string; pipelineId: string }>;
 }
 
+/**
+ * The viewer as rosters/assignees/candidates spell them — the server-side id
+ * (lowercased email), never `userEmail` (IdP casing). ONE read for every
+ * "is this gate mine" comparison.
+ */
+export const selectPipelineViewerId = (state: { userId: string | undefined }): string | undefined => state.userId;
+
 /** Active pipeline bound to a given project, or null. */
 export const selectActivationByProject = (
   state: PipelineSelectorState,

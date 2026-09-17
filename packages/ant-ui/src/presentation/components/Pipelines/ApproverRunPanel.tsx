@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShieldCheck, X } from 'lucide-react';
 import { useStore } from '@/domain/store';
+import { selectPipelineViewerId } from '@/domain/store/selectors/pipelines';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { Badge, Button } from '../aurora';
 import { RunTimeline } from './ActivationRunHistory';
@@ -22,7 +23,7 @@ export function ApproverRunPanel() {
   const panel = useStore((s) => s.approverPanel);
   const run = useStore((s) => s.approverPanelRun);
   const approvals = useStore((s) => s.pipelineApprovals);
-  const currentUser = useStore((s) => s.userEmail as string | null | undefined);
+  const currentUser = useStore(selectPipelineViewerId);
   const close = useStore((s) => s.closeApproverPanel);
   const openApproverPanel = useStore((s) => s.openApproverPanel);
   const resolve = useStore((s) => s.resolvePipelineApprovalById);

@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { FolderOpen, MessageCircleQuestion, ShieldCheck, UserRound, Wrench } from 'lucide-react';
 import type { PipelinePendingApproval } from '@ant/shared';
 import { useStore } from '@/domain/store';
+import { selectPipelineViewerId } from '@/domain/store/selectors/pipelines';
 import { activationRunsKey } from '@/domain/store/slices/pipelineSlice';
 import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 import { ApiError } from '@/infrastructure/http/api/client';
@@ -30,7 +31,7 @@ import { runHue, runLabel, runTintFg, sortAssignedFirst } from './runIdentity';
 export function ApprovalInbox() {
   const { t } = useTranslation('pipelines');
   const approvals = useStore((s) => s.pipelineApprovals);
-  const currentUser = useStore((s) => s.userEmail as string | null | undefined);
+  const currentUser = useStore(selectPipelineViewerId);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -134,7 +135,7 @@ function GroupLabel({ label }: { label: string }) {
 
 function ApprovalRow({ approval: a, onNotice }: { approval: PipelinePendingApproval; onNotice: (msg: string | null) => void }) {
   const { t } = useTranslation('pipelines');
-  const currentUser = useStore((s) => s.userEmail as string | null | undefined);
+  const currentUser = useStore(selectPipelineViewerId);
   const resolve = useStore((s) => s.resolvePipelineApprovalById);
   const answerClarify = useStore((s) => s.answerPipelineClarifyById);
   const openApproverPanel = useStore((s) => s.openApproverPanel);

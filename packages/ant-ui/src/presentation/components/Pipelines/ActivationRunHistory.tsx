@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Clock, GitBranch, Play, XCircle } from 'lucide-react';
+import { XCircle } from 'lucide-react';
 import type { PipelineRunSummary, StepRecord } from '@ant/shared';
 import type { AsyncResource } from '@/domain/async';
 import { useStore } from '@/domain/store';
@@ -19,6 +19,7 @@ import { Badge, Button } from '../aurora';
 import { AsyncBoundary } from '../common/async/boundary/AsyncBoundary';
 import { cancelPipelineRun } from '@/infrastructure/http/api/pipelines';
 import { TokenChip } from './inspector/chips';
+import { FIRED_BY_ICON, FIRED_BY_LABEL } from './runIdentity';
 import { LIVE_STEP_STATUSES, STEP_STATUS_COLOR, gateDecisionLabel, isApprovedDecision, stepStatusLabel } from './runStepPresentation';
 
 const RUN_PILL: Record<string, { state: any; labelKey: string; fallback: string }> = {
@@ -112,6 +113,8 @@ function RunRow({ run, active, clickable, onClick }: { run: PipelineRunSummary; 
   const pill = RUN_PILL[run.status] ?? RUN_PILL.completed;
   const started = new Date(run.startedAt);
   const duration = run.endedAt ? Math.max(0, Math.round((Date.parse(run.endedAt) - Date.parse(run.startedAt)) / 1000)) : null;
+  const FiredByIcon = FIRED_BY_ICON[run.firedBy];
+  const firedBy = FIRED_BY_LABEL[run.firedBy];
   return (
     <button
       onClick={onClick}
@@ -131,8 +134,8 @@ function RunRow({ run, active, clickable, onClick }: { run: PipelineRunSummary; 
       }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-2)' }}>
-        {run.firedBy === 'cron' ? <Clock size={11} /> : run.firedBy === 'event' ? <GitBranch size={11} /> : <Play size={11} />}
-        {run.firedBy === 'cron' ? t('runs.cron', 'Scheduled') : run.firedBy === 'event' ? t('runs.event', 'Chained') : t('runs.manual', 'Manual')}
+        <FiredByIcon size={11} />
+        {t(firedBy.key, firedBy.fallback)}
       </span>
       <StatusPill state={pill.state} label={t(pill.labelKey, pill.fallback)} />
       <span style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>

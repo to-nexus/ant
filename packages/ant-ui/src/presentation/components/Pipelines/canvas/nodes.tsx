@@ -17,7 +17,7 @@ import { TRIGGER_NODE_ID, type TriggerMode } from '../draft';
 import { LIVE_STEP_STATUSES, STEP_STATUS_COLOR, gateDecisionLabel, isApprovedDecision, stepStatusLabel } from '../runStepPresentation';
 import { runTintFg } from '../runIdentity';
 import { HANDLE, NODE_WIDTH, type FlowDir } from './layout';
-import { RUN_CHIP_ROW_HEIGHT } from './nodeMetrics';
+import { RUN_CHIP_ROW_HEIGHT, STATUS_ROW_HEIGHT } from './nodeMetrics';
 import type { RunChip } from './runOverlay';
 
 export { NODE_WIDTH } from './layout';
@@ -298,34 +298,28 @@ function AdvisoryDot({ data, kind }: { data: PipelineNodeData; kind: NodeKind })
   );
 }
 
+/** Always rendered at a fixed height (nodeMetrics) — a status appearing never moves the card's rows. */
 function StatusChip({ status }: { status?: PipelineStepStatus }) {
   const { t } = useTranslation('pipelines');
-  if (!status || status === 'pending') return null;
-  const color = STEP_STATUS_COLOR[status] ?? 'var(--text-3)';
-  const pulse = LIVE_STEP_STATUSES.has(status);
+  const shown = status && status !== 'pending' ? status : undefined;
+  const color = shown ? STEP_STATUS_COLOR[shown] ?? 'var(--text-3)' : undefined;
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        fontSize: 10,
-        fontWeight: 600,
-        color,
-        marginTop: 4,
-      }}
-    >
-      <span
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 4,
-          background: color,
-          animation: pulse ? 'pulse-soft 1.4s ease-in-out infinite' : undefined,
-        }}
-      />
-      {stepStatusLabel(t, status)}
-    </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: STATUS_ROW_HEIGHT, fontSize: 10, fontWeight: 600, color, overflow: 'hidden' }}>
+      {shown && (
+        <>
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 4,
+              background: color,
+              animation: LIVE_STEP_STATUSES.has(shown) ? 'pulse-soft 1.4s ease-in-out infinite' : undefined,
+            }}
+          />
+          {stepStatusLabel(t, shown)}
+        </>
+      )}
+    </div>
   );
 }
 
