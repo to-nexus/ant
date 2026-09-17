@@ -250,7 +250,7 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
             projectId,
           });
         }
-        await ensureItemLedger(deps.stateStore, actRoot, owner, projectId).catch(() => false);
+        await ensureItemLedger(deps.stateStore, actRoot, owner, projectId, pipelineId).catch(() => false);
       }
       const nextFireAt = nextFireOf(def);
       await publishPipelineEvent(owner, {

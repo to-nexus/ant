@@ -156,6 +156,14 @@ export class RedisKvStore extends RedisJobStore {
     return this.redis.zrange(setKey, 0, -1);
   }
 
+  async listSlotsWithExpiry(setKey: string): Promise<Array<{ member: string; expiresAt: number }>> {
+    await this.redis.zremrangebyscore(setKey, '-inf', Date.now());
+    const flat = await this.redis.zrange(setKey, 0, -1, 'WITHSCORES');
+    const out: Array<{ member: string; expiresAt: number }> = [];
+    for (let i = 0; i + 1 < flat.length; i += 2) out.push({ member: flat[i], expiresAt: Number(flat[i + 1]) });
+    return out;
+  }
+
   // ============================================
   // Distributed Locking
   // ============================================

@@ -50,7 +50,7 @@ unique per `{org}/{user}`, and an activation binds a project):
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/activation.json
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl
 {ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/index.jsonl ← 1 line per terminal run, appended under `ant:lock:pipe-index:*`
-{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/items/index.jsonl ← fetch trigger: 1 line per CLAIMED item `{key, runId, claimedAt}` (fire path is the single writer)
+{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/items/{pipelineId}.jsonl ← fetch trigger: 1 line per CLAIMED item `{key, runId, claimedAt}`, per pipeline (fire path is the single writer)
 ```
 
 A pipeline cannot live inside an agent directory because its steps cross
@@ -145,8 +145,10 @@ The dispatch audit (`unresolvedTemplates`, `contextExpanded`) also lands on
 best-effort: failure means an absent record, never a step failure. The
 validator restricts references to the step's transitive `needs` closure
 (never itself, never a gate) — the compile-time guarantee the referenced
-step is terminal at render. A skipped/no-output upstream renders empty and is
-recorded as `unresolvedTemplates` on the `step_dispatched` event. The rendered
+step is terminal at render. A skipped/no-output upstream — and a declared
+`trigger.item.<field>` the source did not carry — renders empty and is
+recorded as `unresolvedTemplates` on the `step_dispatched` event
+(`unresolvedTemplateRefs`, the one audit over both grammars). The rendered
 directive stays under the existing `DIRECTIVE_MAX_CHARS` authority. SSE
 `runUpdate` strips captured answers (the wire stays lean); the run JSONL and
 the runs API serve them, and `finalizeRun`'s chat notice quotes the last
@@ -183,9 +185,11 @@ structural), so one pipeline runs concurrently on many projects:
 | Key | Role |
 |---|---|
 | `ant:pipe:run:{runId}` | live RunRecord JSON (single writer under the run lock; 7d past terminal) |
-| `ant:pipe:actruns:{org}:{user}:{projectId}` | per-ACTIVATION live-run slot ZSET (member = runId) — cap = the definition's `concurrency` via `resolveRunConcurrency` (1 today); `reserveSlot` at fire, the run's own member released at terminal; reconciler heals members whose run is gone/terminal. Replaced the single-value `ant:pipe:active` NX (a one-release migration shim in `healOverlapGuard` carries a live holder over) |
-| `ant:pipe:runslots:{org}:{user}` | account-wide live-run slot ZSET (member = `{projectId}:{runId}`) — the `maxConcurrentRuns` fire gate (`reserveSlot`, count+reserve in one step; the run's own member released at terminal). The member is the RUN: a projectId member let N runs of one activation share one slot |
-| `ant:lock:pipe-index:{org}:{user}:{projectId}` | best-effort cross-pod lock around the `runs/index.jsonl` append (5s; a timeout warns and appends anyway — an append is never refused) |
+| `ant:pipe:actruns:{org}:{user}:{projectId}` | per-ACTIVATION live-run slot ZSET (member = runId) — cap = the definition's `concurrency` via `resolveRunConcurrency` (1 today); `reserveSlot` at fire, refreshed with the `ACTIVE` TTL on every live-run write (`saveRun`), the run's own member released at terminal; reconciler heals members whose run is gone/terminal, but judges a doc-less member only past `SLOT_HEAL_GRACE_MS` (5 min) from its last write (derived from the member's expiry) so the reserve→commit window is never healed away. Replaced the single-value `ant:pipe:active` NX (a one-release migration shim in `healOverlapGuard` carries a live holder over) |
+| `ant:pipe:runslots:{org}:{user}` | account-wide live-run slot ZSET (member = `{projectId}:{runId}`, split by `parseRunSlotMember` on the LAST colon — a projectId may contain `:`) — the `maxConcurrentRuns` fire gate (`reserveSlot`, count+reserve in one step; refreshed by `saveRun` like the activation member; the run's own member released at terminal). The member is the RUN: a projectId member let N runs of one activation share one slot |
+| `ant:lock:pipe-index:{org}:{user}:{projectId}` | best-effort cross-pod lock around the `runs/index.jsonl` append (5s; token-acquired, compare-and-delete release via `releaseLockIfOwner` so a lapsed holder never frees a successor's lock; a timeout warns and appends anyway — an append is never refused) |
+| `ant:pipe:item:{org}:{user}:{projectId}:{pipelineId}:{encodedKey}` | fetch item CLAIM (`{runId, claimedAt}`, 30d) — the Redis projection of `items/{pipelineId}.jsonl`, namespaced by PIPELINE as well as project; rebuilt with SET+EX (TTL refreshed) when `ant:pipe:items-built:{…projectId}` is absent |
+| `ant:lock:pipe-fetch:{org}:{user}:{projectId}` | one poll in flight per activation (token-acquired, `releaseLockIfOwner`; TTL = every/2 clamped `FETCH_LOCK_MIN_S` = REST timeout + 60s .. `FETCH_LOCK_MAX_S` = 180s) |
 | `ant:pipe:fired:{org}:{user}:{projectId}:{fireEpoch}` | fire idempotency NX (48h) |
 | `ant:pipe:job:{jobId}` | jobId → (runId, stepId, projectId, owner) reverse mapping for the status consumer |
 | `ant:pipe:hitl:{gateId}` / `ant:pipe:card:{cardId}` | armed gate record / card → gate reverse mapping |
@@ -268,8 +272,9 @@ Fire semantics (`scheduling/pipelineRun/fire.ts::handleFire`, addressed by
   reader of the definition's `concurrency`; absent = 1), then the account slot
   (`maxConcurrentRuns`, member = `{projectId}:{runId}`) — activation slot
   first, so an overlap `queue` re-arm never churns the account set. Both are
-  count+reserve in one step; both are released at terminal by member identity
-  (no holder check needed — a member is one run's). Raising concurrency is a
+  count+reserve in one step; both are refreshed on every live write by
+  `saveRun` (a wait is bounded by silence, not age); both are released at
+  terminal by member identity (no holder check needed — a member is one run's). Raising concurrency is a
   definition knob, not an executor change.
 - `fireEpoch` = the intended slot (job creation time + delay, minute-rounded).
 - **Missed fires** (worker downtime > 10 min): `onMissed: skip` drops,
@@ -296,7 +301,10 @@ stands alone on a definition (no schedule/chain coexistence in v1).
   that already ran).
 - **The poll** (`pipelineRun/fetch.ts::handleFetchPoll`, never throws — a
   retried poll is a wasted egress): `loadFireAuthority` (shared with the fire
-  path) → `ant:lock:pipe-fetch:*` NX (TTL = every/2 clamped 30..120s) →
+  path) → `ant:lock:pipe-fetch:*` holder-checked (`tryAcquireLock` token +
+  `releaseLockIfOwner`; TTL = every/2 clamped to a floor above the REST call
+  timeout, so a slow source cannot outlive its own lock and a lapsed holder
+  cannot delete a successor's) →
   `ensureItemLedger` **fail-CLOSED** (rebuilds `ant:pipe:item:*` from the
   disk ledger when `ant:pipe:items-built:*` is absent — the opposite posture
   from the mutual-exclusion gate, because a duplicate case costs credits and
@@ -306,7 +314,11 @@ stands alone on a definition (no schedule/chain coexistence in v1).
   encrypted store, never `process.env` → `compileRestServer` →
   `assertPublicApiBaseUrl` → **`buildRestRequest` → `performRestRequest`**,
   the tool executor's own admission split, so the poller can reach no origin,
-  path or header the `api__*` tools could not) → `extractFetchItems`
+  path or header the `api__*` tools could not; the `REST_BODY_CAP_BYTES` (2MB)
+  read cap is enforced ON THE WIRE — a larger `Content-Length` is refused
+  before any byte is read and a stream is aborted once the cap is crossed —
+  so an unattended poll against a runaway source never buffers it) →
+  `extractFetchItems`
   (`fetchSource.ts`: item-path selection, ≤200 items, key pattern, field cut
   2k, first-wins dedupe) → `room = concurrency − live`, `take = min(batch,
   room)` → per unclaimed item `addNow({ kind: 'fire', firedBy: 'fetch',
@@ -315,8 +327,13 @@ stands alone on a definition (no schedule/chain coexistence in v1).
   polledAt + every` from it. Items whose claim is DEAD (past the 10-minute
   grace, no run doc, no run log) are healed and re-admitted.
 - **The claim lives in the FIRE path**, after BOTH slot reservations
-  (`tryAcquireLock(PIPE.ITEM(key), {runId, claimedAt}, 30d)` then the
-  `items/index.jsonl` line; either failing releases everything in reverse) —
+  (`tryAcquireLock(PIPE.ITEM(pipelineId, key), {runId, claimedAt}, 30d)` then
+  the ledger line; either failing releases everything in reverse) — the claim
+  is namespaced by PIPELINE as well as project: one project re-activated with a
+  different pipeline (or a different source behind the same key space) must
+  not inherit the previous pipeline's claims. The run record is committed
+  BEFORE the run-log events so a crash between the two leaves a claim the
+  dead-claim heal can see (no run doc ⇒ dead) —
   so a full activation never claims what it cannot run and the item is seen
   again next poll (backpressure). A fetch fire's `FIRED` identity suffixes
   the item key (N items fire in one instant); `run.item` freezes the case;
@@ -331,7 +348,8 @@ stands alone on a definition (no schedule/chain coexistence in v1).
 - **Run-now on a fetch activation is Poll-now** (`202 { polled: true }`, no
   cap refusal — the poll judges room itself). `POST /definitions/pipelines/
   preview-fetch` is the editor's dry run with the CALLER's credentials (no
-  claim, `claimed` flag per item when a projectId is given), rate-limited,
+  claim; the `claimed` flag is judged in the ledger of the body's `pipelineId`,
+  else of the project's activated pipeline), rate-limited,
   and a RESERVED segment the self-api pin refuses — a job must not turn the
   owner's secrets into a credentialed proxy.
 - **Doctrine carve-out**: `on.fetch.request` is trigger CONFIGURATION (the
@@ -665,7 +683,9 @@ is added only if the hint is observed to fail.
   /definitions/pipelines/runs/:runId/gates/:stepId/assignee { userId | null }`,
   activator ∨ candidate of THAT gate (live roster + live membership, the
   resolve leg's posture), target ∈ candidates (400 `assignee-not-candidate`),
-  `null` = everyone; self-claim is picking yourself. ② the sealed `<assignee>`
+  `null` = everyone; self-claim is picking yourself. The route re-reads the
+  gate after its write: a resolve that landed in between wins (409), and no
+  card or notice is emitted for a decided gate. ② the sealed `<assignee>`
   of the first DIRECT `needs` step (definition order) that nominated one —
   the model's choice, because the right reviewer is often a judgment over the
   case, not a declared field (the `<verdict>` precedent: `OutputTagRegistry`
@@ -673,17 +693,22 @@ is added only if the hint is observed to fail.
   `StepRecord.assignee`). ③ none → every candidate, exactly the pre-assignee
   behaviour. A nomination naming a non-candidate is DROPPED and audited
   (`awaiting_human.detail.assigneeUnresolved`), never widened into authority.
-- **Audience per leg** (`gateAudience(…, assignees?)`): request + reminder
-  narrow to activator ∪ (assignees ∩ live roster), falling back to the whole
-  roster when no assignee survives a roster edit — a stale hint never silences
-  a gate. Resolved, the S9 roster re-fire, and the reassign re-fire go to the
-  FULL roster: everyone who could have acted learns it is settled / re-routed,
-  and the FE `approvalRequested` fold is an UPSERT so the held row takes the
-  fresher `assignees` in place. Non-assigned candidates still list the row on
-  `GET /approvals` (permission-visible) with the "assigned to X" badge —
-  friction, not a wall.
-- **Where it rides**: `HitlRecord.assignees`, `GateRecord.{assignees,
-  assigneeSource, assignedBy}`, the card payload, `PipelinePendingApproval.
+- **Audience per leg** (`gateAudience(…, assignees?)`): the REQUEST leg (arm,
+  S9 roster re-fire, reassign re-fire, resolved) goes to the FULL roster —
+  the row is how a non-assigned candidate learns the gate exists while the app
+  is open (`GET /approvals` is fetched only on mount / reconnect), and seeing
+  it is what makes self-claim reachable. Only the REMINDER leg narrows to
+  activator ∪ (assignees ∩ live roster), falling back to the whole roster when
+  no assignee survives a roster edit — a stale hint never silences a gate. The
+  `approvalRequested` payload ALWAYS carries `assignees` (an empty array when
+  routing was cleared), and the FE fold is an UPSERT, so a reassign — to a
+  person or to `null` — updates every holder's badge in place; the durable
+  chat card payload is rewritten on reassign for the same reason. The "assigned
+  to X" badge is friction, not a wall — narrowing the request leg was tried
+  and it made the wall.
+- **Where it rides**: `GateRecord.{assignees, assigneeSource, assignedBy}`
+  (the run record is the ONE home — the HITL funnel record carries no copy),
+  the card payload, `PipelinePendingApproval.
   {assignees, candidates}` (candidates = the reassign select's options; the
   roster is org-visible by design), `gate_reassigned` run event. Tool gates
   (`tga-…`) never route. The prompt band (`## Reviewer Nomination`) renders on
@@ -799,8 +824,11 @@ answer       → applyClarifyAnswer (guard: awaiting_clarify ∧ clarify.jobId m
   409 anyway.
 - **The wait is open-ended — no timeout arm.** Pipelines are long-running by
   design; the escape hatches are run cancel (sweeps `awaiting_clarify`,
-  deletes the funnel key) and deactivation. Waits beyond the 30d `ACTIVE`
-  bound fall into the same pre-existing limit as any 30d run.
+  deletes the funnel key) and deactivation. `saveRun` re-arms the run doc AND
+  both live-run slot members (`ACTIVE_RUNS`, `RUN_SLOTS`) on every write of a
+  non-terminal run, so a wait is bounded by 30d of SILENCE, not 30d of age —
+  a slot member that lapsed while its run was live would drop the run out of
+  every set-derived surface (inbox, deactivate, retention, the cap) at once.
 - **Multi-round works by construction**: the resumed job may seal
   `awaitingClarify` again under its new jobId → round+1 re-entry. The
   `clarifyRoundsUsed` budget (3) is per-(agent, job) session, shared with
@@ -898,7 +926,9 @@ per-activation slot set, and run-now's 409 fires only at cap. Under N > 1 the
 `{{run.prevSuccess.*}}` watermark races (save advisory
 `prev-success-under-concurrency`). Sealed run session files are retained
 newest-K (20) per `(agent, job)` stem by the reconciler
-(`pruneRunSessionFiles`, judged against the healed live set).
+(`pruneRunSessionFiles`, judged against the healed live set; the heal is
+fault-isolated per activation, and an activation whose heal failed skips
+retention that pass — never prune against an unknown live set).
 
 ---
 
@@ -1236,8 +1266,10 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
 - **Drawing the workflow N times for N live runs** — the wiring is drawn ONCE;
   a step node lists the runs AT it as chips and the trigger carries a count
   (`runOverlay.ts`). N copies read as "the trigger fires N times", which is
-  exactly wrong for a cron or fetch trigger. Every card reserves the chip row
-  (`RUN_CHIP_ROW_HEIGHT`) so a run arriving never re-fits the canvas.
+  exactly wrong for a cron or fetch trigger. Every step/gate card reserves
+  BOTH the chip row (`RUN_CHIP_ROW_HEIGHT`) and the status row
+  (`STATUS_ROW_HEIGHT`) whether or not a run is live — the estimate takes no
+  run-dependent input, so a run arriving or leaving never re-fits the canvas.
 - **Calling a live run a "worker"** in pipeline code, API or UI. The unit is
   Run (`RunRecord`, `runId`, `runs/*.jsonl`, `runUpdate`); N live runs of one
   activation are what an operator would call workers, and the code never says

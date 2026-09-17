@@ -59,17 +59,32 @@ export function readRunFromDisk(
   return null;
 }
 
-async function saveRun(deps: PipelineCoordinatorDeps, run: RunRecord): Promise<void> {
+async function saveRun(deps: PipelineCoordinatorDeps, owner: PipelineOwner, run: RunRecord): Promise<void> {
   // Open-ended human waits (gate without timeout, clarify) must outlive the
   // 7d projection TTL — align with the ACTIVE overlap bound while awaiting.
   const awaiting = run.steps.some((s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify');
   const ttl = awaiting ? REDIS_TTL.PIPE.ACTIVE : REDIS_TTL.PIPE.RUN;
   await deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.RUN(run.runId), JSON.stringify(run), ttl);
+  if (isTerminal(run.status)) return;
+  // The slot memberships are the run's liveness (every listing, the fire cap,
+  // session retention). Reserved once at fire with the ACTIVE bound, they would
+  // silently lapse under a run that waits longer than that — so every live
+  // write is also their heartbeat. Same TTL as the reservation, so a healer can
+  // derive the last-write time from the member's expiry.
+  const { organizationId, userId } = owner;
+  await Promise.all([
+    deps.stateStore.refreshSlot(REDIS_KEYS.PIPE.ACTIVE_RUNS(organizationId, userId, run.projectId), run.runId, REDIS_TTL.PIPE.ACTIVE),
+    deps.stateStore.refreshSlot(
+      REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId),
+      REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(run.projectId, run.runId),
+      REDIS_TTL.PIPE.ACTIVE,
+    ),
+  ]).catch((e) => logger.warn(`[Pipeline] live-run slot refresh failed: ${run.runId}`, { component: COMPONENT }, e));
 }
 
 /** Save a run record and publish it — the ONE write→publish seam (create, seal, and every `mutateRun` change). */
 export async function commitRun(deps: PipelineCoordinatorDeps, owner: PipelineOwner, run: RunRecord): Promise<void> {
-  await saveRun(deps, run);
+  await saveRun(deps, owner, run);
   await publish(deps, owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId: run.pipelineId, run: publicRun(run) });
 }
 
@@ -119,7 +134,7 @@ export async function mutateRun(
         // itself, every real change spreads a new record. A no-op still
         // re-saves (TTL refresh) but publishes nothing.
         if (result.run !== live) await commitRun(deps, owner, result.run);
-        else await saveRun(deps, result.run);
+        else await saveRun(deps, owner, result.run);
         // Any step this mutation turned `cancelled` while it still held an
         // undecided gate is an orphaned human wait (the abort cascade's
         // armed gate, §5). The executor owns the state change; the arms,

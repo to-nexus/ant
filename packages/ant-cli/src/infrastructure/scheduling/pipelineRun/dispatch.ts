@@ -29,7 +29,7 @@ import {
 } from '../../../core/scheduling/UniversalDispatchGate';
 import { UniversalDispatchService } from '../../../core/scheduling/UniversalDispatchService';
 import { createSelfApiTokenMinter } from '../../auth/selfApiToken';
-import { renderDirective, renderStaticVars, unresolvedStepRefs } from './render';
+import { renderDirective, renderStaticVars, unresolvedTemplateRefs } from './render';
 import { appendEvent, getRun, isTerminal, mutateRun } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
@@ -223,8 +223,8 @@ export async function dispatchJobStep(
     REDIS_TTL.PIPE.JOB,
   );
   // Dispatch audit rides the record too, so the run view can show a step that
-  // ran with a `{{steps.*}}` ref unsubstituted or a glob pin expanded to N.
-  const unresolvedTemplates = directiveOverride ? [] : unresolvedStepRefs(template, run);
+  // ran with a step-output or item-field ref blank, or a glob pin expanded to N.
+  const unresolvedTemplates = directiveOverride ? [] : unresolvedTemplateRefs(template, run);
   const dispatchDetail = {
     ...(meta.contextExpanded && { contextExpanded: meta.contextExpanded }),
     ...(unresolvedTemplates.length > 0 && { unresolvedTemplates }),

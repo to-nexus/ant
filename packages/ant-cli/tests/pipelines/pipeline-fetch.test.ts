@@ -12,10 +12,12 @@ import * as path from 'path';
 import type { PipelineFetchTrigger } from '@ant/shared';
 import { extractFetchItems, selectItemPath } from '../../src/core/pipelines/fetchSource';
 import { pollFetchSource } from '../../src/core/pipelines/fetchConnection';
-import { handleFetchPoll, fetchLockTtlSeconds } from '../../src/infrastructure/scheduling/pipelineRun/fetch';
+import { handleFetchPoll, fetchLockTtlSeconds, FETCH_LOCK_MAX_S, FETCH_LOCK_MIN_S } from '../../src/infrastructure/scheduling/pipelineRun/fetch';
 import { handleFire } from '../../src/infrastructure/scheduling/pipelineRun/fire';
-import { ITEM_CLAIM_GRACE_MS } from '../../src/infrastructure/scheduling/pipelineRun/itemLedger';
+import { ITEM_CLAIM_GRACE_MS, isDeadClaim, parseClaimValue } from '../../src/infrastructure/scheduling/pipelineRun/itemLedger';
+import { unresolvedTemplateRefs } from '../../src/infrastructure/scheduling/pipelineRun/render';
 import { readItemClaims } from '../../src/core/pipelines/store';
+import { REST_BODY_CAP_BYTES, REST_CALL_TIMEOUT_DEFAULT_MS } from '../../src/core/customAgents/restApi';
 
 const TRIGGER: PipelineFetchTrigger = {
   customJobRef: 'ops/tickets',
@@ -153,6 +155,16 @@ describe('pollFetchSource — the activator\'s connection, the executor\'s admis
     expect((r as any).error).not.toMatch(/leak/);
   });
 
+  it('a body over the read cap is a reason (declared up front, or cut mid-stream) — never a buffered 2MB parse', async () => {
+    scaffoldAgent(tmp, 'apis:\n  jira:\n    baseUrl: https://jira.example.com\n');
+    const declared = fetchStub(() => new Response('{"issues":[]}', { status: 200, headers: { 'content-type': 'application/json', 'content-length': String(REST_BODY_CAP_BYTES + 1) } }));
+    const r1 = await pollFetchSource({ tenant: { ...TENANT, workspacesPath: tmp }, credentialResolver: resolver({}), fetchImpl: declared.impl }, TRIGGER);
+    expect(r1).toMatchObject({ ok: false, error: expect.stringMatching(/exceeds the \d+-byte cap/) });
+    const streamed = fetchStub(() => new Response(`{"issues":[${'1,'.repeat(REST_BODY_CAP_BYTES / 2)}1]}`, { status: 200, headers: { 'content-type': 'application/json' } }));
+    const r2 = await pollFetchSource({ tenant: { ...TENANT, workspacesPath: tmp }, credentialResolver: resolver({}), fetchImpl: streamed.impl }, TRIGGER);
+    expect(r2).toMatchObject({ ok: false, error: expect.stringMatching(/exceeds the \d+-byte cap/) });
+  });
+
   it('a network failure is a reason naming the request, not a throw', async () => {
     scaffoldAgent(tmp, 'apis:\n  jira:\n    baseUrl: https://jira.example.com\n');
     const impl = (async () => {
@@ -184,6 +196,8 @@ function makeCtx(ws: string, fetchImpl: typeof fetch, concurrency = 1) {
   const published: any[] = [];
   const dispatched: any[] = [];
   const locks = new Set<string>();
+  /** Keys whose write must fail — the commit-crash rows. */
+  const failWrites = new Set<string>();
   const stateStore = {
     acquireLock: async (k: string) => {
       if (locks.has(k)) return false;
@@ -201,7 +215,10 @@ function makeCtx(ws: string, fetchImpl: typeof fetch, concurrency = 1) {
     },
     exists: async (k: string) => keys.has(k),
     getKey: async (k: string) => keys.get(k) ?? null,
-    setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
+    setKeyWithTTL: async (k: string, v: string) => {
+      if (failWrites.has(k)) throw new Error('redis down');
+      keys.set(k, v);
+    },
     deleteKey: async (k: string) => void keys.delete(k),
     countSlots: async (k: string) => slots.get(k)?.size ?? 0,
     listSlots: async (k: string) => [...(slots.get(k) ?? [])],
@@ -212,6 +229,7 @@ function makeCtx(ws: string, fetchImpl: typeof fetch, concurrency = 1) {
       set.add(m);
       return true;
     },
+    refreshSlot: async (k: string, m: string) => slots.get(k)?.has(m) ?? false,
     releaseSlot: async (k: string, m: string) => void slots.get(k)?.delete(m),
     publish: async (_ch: string, msg: any) => void published.push(msg),
   };
@@ -234,8 +252,11 @@ function makeCtx(ws: string, fetchImpl: typeof fetch, concurrency = 1) {
     steps: [{ id: 'a', customJobRef: 'ops/tickets', directive: '{{trigger.item.key}} {{trigger.item.summary}}' }],
   });
   scaffoldAgent(ws, 'apis:\n  jira:\n    baseUrl: https://jira.example.com/api\n');
-  return { ctx, keys, slots, enqueued, published, dispatched, locks };
+  return { ctx, keys, slots, enqueued, published, dispatched, locks, failWrites };
 }
+
+const ACT_ROOT = (ws: string) => path.join(ws, 'local', 'user', '.ant', 'pipeline-activations');
+const CLAIM_KEY = (key: string, pipelineId = 'p1') => `ant:pipe:item:local:user:proj-a:${pipelineId}:${key}`;
 
 const POLL = { kind: 'fetch-poll' as const, owner: OWNER, pipelineId: 'p1', pipelineScope: 'user' as const, projectId: 'proj-a' };
 
@@ -269,14 +290,24 @@ describe('handleFetchPoll — room under concurrency, one fire per unclaimed ite
     const { impl } = fetchStub(json(RESPONSE));
     const { ctx, keys, enqueued } = makeCtx(tmp, impl, 3);
     keys.set('ant:pipe:items-built:local:user:proj-a', 'x');
-    keys.set('ant:pipe:item:local:user:proj-a:OPS-1', JSON.stringify({ runId: 'run-live', claimedAt: new Date(Date.now() - 2 * ITEM_CLAIM_GRACE_MS).toISOString() }));
+    keys.set(CLAIM_KEY('OPS-1'), JSON.stringify({ runId: 'run-live', claimedAt: new Date(Date.now() - 2 * ITEM_CLAIM_GRACE_MS).toISOString() }));
     keys.set('ant:pipe:run:run-live', JSON.stringify({ runId: 'run-live', status: 'running' }));
-    keys.set('ant:pipe:item:local:user:proj-a:OPS-2', JSON.stringify({ runId: 'run-dead', claimedAt: new Date(Date.now() - 2 * ITEM_CLAIM_GRACE_MS).toISOString() }));
-    keys.set('ant:pipe:item:local:user:proj-a:42', JSON.stringify({ runId: 'run-young', claimedAt: new Date().toISOString() }));
+    keys.set(CLAIM_KEY('OPS-2'), JSON.stringify({ runId: 'run-dead', claimedAt: new Date(Date.now() - 2 * ITEM_CLAIM_GRACE_MS).toISOString() }));
+    keys.set(CLAIM_KEY('42'), JSON.stringify({ runId: 'run-young', claimedAt: new Date().toISOString() }));
     await handleFetchPoll(ctx, POLL);
     expect(enqueued.map((d) => d.item.key)).toEqual(['OPS-2']);
-    expect(keys.has('ant:pipe:item:local:user:proj-a:OPS-2')).toBe(false);
+    expect(keys.has(CLAIM_KEY('OPS-2'))).toBe(false);
     expect(JSON.parse(keys.get('ant:pipe:fetch:local:user:proj-a')!)).toMatchObject({ seen: 6, unclaimed: 1, enqueued: 1 });
+  });
+
+  it('claims of pipeline A do not shadow pipeline B on the same project — the claim is namespaced per pipeline', async () => {
+    const { impl } = fetchStub(json(RESPONSE));
+    const { ctx, keys, enqueued } = makeCtx(tmp, impl, 3);
+    keys.set('ant:pipe:items-built:local:user:proj-a', 'x');
+    // Project proj-a used to run `staging` against another source; its keys are its own.
+    for (const k of ['OPS-1', 'OPS-2', '42']) keys.set(CLAIM_KEY(k, 'staging'), JSON.stringify({ runId: 'run-old', claimedAt: new Date().toISOString() }));
+    await handleFetchPoll(ctx, POLL);
+    expect(enqueued.map((d) => d.item.key)).toEqual(['OPS-1', 'OPS-2', '42']);
   });
 
   it('a source failure records the reason and enqueues nothing; a manual poll is marked', async () => {
@@ -287,23 +318,36 @@ describe('handleFetchPoll — room under concurrency, one fire per unclaimed ite
     expect(JSON.parse(keys.get('ant:pipe:fetch:local:user:proj-a')!)).toMatchObject({ error: expect.stringMatching(/^HTTP 500/), manual: true, enqueued: 0 });
   });
 
-  it('a held poll lock skips the poll entirely (no egress, no status); the lock is released afterwards', async () => {
+  it('a held poll lock skips the poll entirely (no egress, no status); the lock is released afterwards — only by its holder', async () => {
+    const LOCK = 'ant:lock:pipe-fetch:local:user:proj-a';
     const { impl, calls } = fetchStub(json(RESPONSE));
-    const { ctx, keys, locks } = makeCtx(tmp, impl);
-    locks.add('ant:lock:pipe-fetch:local:user:proj-a');
+    const { ctx, keys } = makeCtx(tmp, impl);
+    keys.set(LOCK, 'another-replica');
     await handleFetchPoll(ctx, POLL);
     expect(calls).toHaveLength(0);
     expect(keys.has('ant:pipe:fetch:local:user:proj-a')).toBe(false);
-    locks.clear();
+    // Compare-and-delete: a poll that lost its lock never frees the next holder's.
+    expect(keys.get(LOCK)).toBe('another-replica');
+    keys.delete(LOCK);
     await handleFetchPoll(ctx, POLL);
     expect(calls).toHaveLength(1);
-    expect(locks.has('ant:lock:pipe-fetch:local:user:proj-a')).toBe(false);
+    expect(keys.has(LOCK)).toBe(false);
   });
 
-  it('the lock TTL is half the interval, clamped to 30..120s', () => {
-    expect(fetchLockTtlSeconds(60_000)).toBe(30);
-    expect(fetchLockTtlSeconds(5 * 60_000)).toBe(120);
-    expect(fetchLockTtlSeconds(100_000)).toBe(50);
+  it('the lock TTL is half the interval, clamped so it outlives the source timeout plus a ledger rebuild', () => {
+    expect(FETCH_LOCK_MIN_S).toBeGreaterThanOrEqual(REST_CALL_TIMEOUT_DEFAULT_MS / 1000 + 30);
+    expect(FETCH_LOCK_MAX_S).toBeGreaterThanOrEqual(FETCH_LOCK_MIN_S);
+    expect(fetchLockTtlSeconds(60_000)).toBe(FETCH_LOCK_MIN_S);
+    expect(fetchLockTtlSeconds(5 * 60_000)).toBe(150);
+    expect(fetchLockTtlSeconds(60 * 60_000)).toBe(FETCH_LOCK_MAX_S);
+  });
+
+  it('a missing item field (or a run without an item) is an UNRESOLVED template ref, audited like a blank steps.* ref', () => {
+    const run = { runId: 'r', fireEpoch: 1, steps: [], item: { key: 'OPS-1', fields: { summary: 's' } } } as any;
+    const template = '{{trigger.item.key}} {{trigger.item.summary}} {{trigger.item.channel}} {{steps.a.answer}}';
+    expect(unresolvedTemplateRefs(template, run)).toEqual(['steps.a.answer', 'trigger.item.channel']);
+    expect(unresolvedTemplateRefs('{{trigger.item.key}}', { ...run, item: undefined })).toEqual(['trigger.item.key']);
+    expect(unresolvedTemplateRefs(template, { ...run, steps: [{ stepId: 'a', output: { answer: 'x' } }], item: { key: 'k', fields: { summary: 's', channel: 'c' } } })).toEqual([]);
   });
 });
 
@@ -318,13 +362,30 @@ describe('handleFire with an item — claim after both slots, ledger line, run.i
     const run = dispatched[0].run;
     expect(run).toMatchObject({ firedBy: 'fetch', item: { key: 'OPS-1' } });
     expect(run.prevSuccessFireEpoch).toBeUndefined();
-    const claim = JSON.parse(keys.get('ant:pipe:item:local:user:proj-a:OPS-1')!);
+    const claim = JSON.parse(keys.get(CLAIM_KEY('OPS-1'))!);
     expect(claim.runId).toBe(run.runId);
-    const ledger = readItemClaims(path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations'), 'proj-a');
+    const ledger = readItemClaims(ACT_ROOT(tmp), 'proj-a', 'p1');
     expect(ledger).toEqual([{ key: 'OPS-1', runId: run.runId, claimedAt: run.startedAt }]);
-    const events = fs.readFileSync(path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations', 'proj-a', 'runs', `${run.runId}.jsonl`), 'utf-8');
+    expect(fs.existsSync(path.join(ACT_ROOT(tmp), 'proj-a', 'items', 'p1.jsonl'))).toBe(true);
+    const events = fs.readFileSync(path.join(ACT_ROOT(tmp), 'proj-a', 'runs', `${run.runId}.jsonl`), 'utf-8');
     expect(events).toMatch(/"event":"fired"/);
     expect(events).toMatch(/"event":"item_claimed".*"key":"OPS-1"/);
+  });
+
+  it('a commit that fails after the claim leaves NO run log, so the claim is dead once past grace (never permanent)', async () => {
+    const { impl } = fetchStub(json(RESPONSE));
+    const { ctx, keys, failWrites, dispatched } = makeCtx(tmp, impl, 2);
+    failWrites.add('ant:pipe:run:');
+    ctx.deps.stateStore.setKeyWithTTL = async (k: string, v: string) => {
+      if (k.startsWith('ant:pipe:run:')) throw new Error('redis down');
+      keys.set(k, v);
+    };
+    await expect(handleFire(ctx, { ...FIRE, item: { key: 'OPS-1' } }, Date.now())).rejects.toThrow(/redis down/);
+    expect(dispatched).toEqual([]);
+    const claim = parseClaimValue(keys.get(CLAIM_KEY('OPS-1')) ?? null)!;
+    expect(claim).not.toBeNull();
+    expect(fs.existsSync(path.join(ACT_ROOT(tmp), 'proj-a', 'runs', `${claim.runId}.jsonl`))).toBe(false);
+    expect(await isDeadClaim(ctx.deps.stateStore, ACT_ROOT(tmp), 'proj-a', claim, Date.now() + ITEM_CLAIM_GRACE_MS + 1)).toBe(true);
   });
 
   it('two fires for the same item in one instant: the second loses the claim and gives both slots back', async () => {
@@ -353,6 +414,6 @@ describe('handleFire with an item — claim after both slots, ledger line, run.i
     slots.set('ant:pipe:actruns:local:user:proj-a', new Set(['run-live']));
     await handleFire(ctx, { ...FIRE, item: { key: 'OPS-9' } }, Date.now());
     expect(dispatched).toEqual([]);
-    expect(keys.has('ant:pipe:item:local:user:proj-a:OPS-9')).toBe(false);
+    expect(keys.has(CLAIM_KEY('OPS-9'))).toBe(false);
   });
 });

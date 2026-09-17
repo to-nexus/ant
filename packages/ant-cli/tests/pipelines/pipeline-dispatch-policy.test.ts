@@ -617,9 +617,35 @@ describe('per-activation liveness is a slot set', () => {
   it('the run-index append is bracketed by the cross-pod INDEX_LOCK and has ONE caller', () => {
     const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
     expect(lifecycle).toMatch(/INDEX_LOCK\(/);
-    expect(lifecycle.indexOf('acquireLock(lockKey')).toBeLessThan(lifecycle.indexOf('await appendRunIndex('));
-    expect(lifecycle.indexOf('await appendRunIndex(')).toBeLessThan(lifecycle.indexOf('releaseLock(lockKey'));
+    expect(lifecycle.indexOf('tryAcquireLock(lockKey')).toBeLessThan(lifecycle.indexOf('await appendRunIndex('));
+    expect(lifecycle.indexOf('await appendRunIndex(')).toBeLessThan(lifecycle.indexOf('releaseLockIfOwner(lockKey'));
     expect(coordinator.match(/appendRunIndex\(/g)?.length).toBe(1);
+  });
+
+  // A bare DEL after a lapsed TTL frees the lock the NEXT holder owns — every
+  // cross-pod lock the run path takes is token-acquired and compare-and-deleted.
+  it('the index lock and the poll lock are holder-checked (token acquire + releaseLockIfOwner; no bare releaseLock)', () => {
+    for (const file of ['lifecycle.ts', 'fetch.ts']) {
+      const text = read(`infrastructure/scheduling/pipelineRun/${file}`);
+      expect(text, file).not.toMatch(/\breleaseLock\(/);
+      expect(text, file).toMatch(/tryAcquireLock\(lockKey, (token|lockToken),/);
+      expect(text, file).toMatch(/releaseLockIfOwner\(lockKey, (token|lockToken)\)/);
+    }
+  });
+
+  // The fire path holds both slots before the run doc exists; the run doc is
+  // what the reconciler's heal and the poller's dead-claim check read. The doc
+  // lands first, then the run-log lines — a log line before a failed commit
+  // would make an item claim permanent.
+  it('fire commits the run doc BEFORE the first run-log line', () => {
+    const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
+    expect(fire.indexOf('await commitRun(')).toBeLessThan(fire.indexOf('await appendEvent('));
+    const reconciler = read('infrastructure/scheduling/PipelineReconciler.ts');
+    // The heal judges a doc-less member by its last-write time — never by membership alone.
+    expect(reconciler).toMatch(/listSlotsWithExpiry\(/);
+    expect(reconciler).not.toMatch(/\blistSlots\(/);
+    expect(reconciler).toMatch(/parseRunSlotMember\(/);
+    expect(reconciler).not.toMatch(/startsWith\(prefix\)/);
   });
 });
 
@@ -635,7 +661,8 @@ describe('duplicate gate — run-scoped for the coordinator, unscoped elsewhere'
     expect(dispatch).toMatch(/findDuplicateActiveJob\([\s\S]*?\{ pipelineRunId: run\.runId \}/);
     const jobRoutes = read('periphery/adapters/http/routes/job.routes.ts');
     const activations = read('periphery/adapters/http/routes/pipelines/activations.routes.ts');
-    expect(jobRoutes).not.toMatch(/pipelineRunId: /);
+    // The resume lane forwards `pipelineRunId` to `executeJob` (attribution), never to the gate.
+    expect(jobRoutes).not.toMatch(/findDuplicateActiveJob\([^)]*pipelineRunId/);
     expect(activations).not.toMatch(/findDuplicateActiveJob\([^)]*pipelineRunId/);
   });
 
@@ -685,7 +712,10 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
 
   it('the poller enqueues fire control jobs only and never claims itself — the fire path claims after both slots', () => {
     expect([...fetchPoll.matchAll(/addNow\(\{\s*kind: '([a-z-]+)'/g)].map((m) => m[1])).toEqual(['fire']);
-    expect(fetchPoll).not.toMatch(/tryAcquireLock\(|appendItemClaim\(/);
+    // The poller's ONE tryAcquireLock is its own poll lock — never an item key.
+    expect(fetchPoll.match(/tryAcquireLock\(/g)?.length).toBe(1);
+    expect(fetchPoll).toMatch(/tryAcquireLock\(lockKey,/);
+    expect(fetchPoll).not.toMatch(/appendItemClaim\(/);
     const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
     expect(fire.match(/appendItemClaim\(/g)?.length).toBe(1);
     expect(coordinatorAll().match(/appendItemClaim\(/g)?.length).toBe(1);
@@ -712,6 +742,18 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
     expect(guard).not.toMatch(/tail: \['preview-fetch'\]/);
     const planning = read('periphery/adapters/http/routes/pipelines/planning.routes.ts');
     expect(planning).toMatch(/router\.post\('\/preview-fetch', jobExecuteRateLimiter,/);
+  });
+
+  it('the item claim is namespaced per pipeline everywhere it is keyed (Redis key + disk ledger)', () => {
+    const redis = read('core/constants/redis.ts');
+    expect(redis).toMatch(/ITEM: \(org: string, user: string, projectId: string, pipelineId: string, itemKey: string\)/);
+    expect(read('core/pipelines/paths.ts')).toMatch(/activationItemLedgerPath\(actRoot: string, projectId: string, pipelineId: string\)/);
+    const callers = [coordinatorAll(), read('infrastructure/scheduling/PipelineReconciler.ts'), pipeRoutesAll()].join('\n');
+    // Every key builder call names the pipeline (5 args); every rebuild call ends on it.
+    for (const call of callers.match(/PIPE\.ITEM\([^)]*\)/g) ?? []) expect(call.split(',').length).toBe(5);
+    const rebuilds = callers.match(/await ensureItemLedger\((?:[^()]|\([^()]*\))*\)/g) ?? [];
+    expect(rebuilds.length).toBeGreaterThanOrEqual(3);
+    for (const call of rebuilds) expect(call).toMatch(/projectId, pipelineId\)$/);
   });
 
   it('{{trigger.item.*}} has ONE render site and the run item rides the chat attribution + inbox rows', () => {

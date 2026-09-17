@@ -443,18 +443,21 @@ export const REDIS_KEYS = {
     /** Account-wide live-run slot set (ZSET, member = `{projectId}:{runId}`) - ant:pipe:runslots:{orgId}:{userId} */
     RUN_SLOTS: (org: string, user: string): string =>
       `${REDIS_DOMAINS.PIPE}:runslots:${org}:${user}`,
-    /** Member of RUN_SLOTS for one run — one reservation per RUN, never per activation. */
+    /** Member of RUN_SLOTS for one run — one reservation per RUN, never per activation. Split with `parseRunSlotMember`. */
     RUN_SLOT_MEMBER: (projectId: string, runId: string): string => `${projectId}:${runId}`,
     /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{projectId}:{fireEpoch} (fetch fires suffix the item key) */
     FIRED: (org: string, user: string, projectId: string, fireEpoch: number | string): string =>
       `${REDIS_DOMAINS.PIPE}:fired:${org}:${user}:${projectId}:${fireEpoch}`,
     /**
      * Fetch-trigger item CLAIM (NX; value = `{runId, claimedAt}`) — the Redis
-     * projection of the activation's `items/index.jsonl` ledger, rebuilt from
-     * disk when ITEMS_BUILT is absent. - ant:pipe:item:{orgId}:{userId}:{projectId}:{encodedKey}
+     * projection of the activation's `items/{pipelineId}.jsonl` ledger, rebuilt
+     * from disk when ITEMS_BUILT is absent. Namespaced by PIPELINE: two
+     * pipelines activated in turn on one project poll different sources, so a
+     * key seen by one must never shadow the other's.
+     * - ant:pipe:item:{orgId}:{userId}:{projectId}:{pipelineId}:{encodedKey}
      */
-    ITEM: (org: string, user: string, projectId: string, itemKey: string): string =>
-      `${REDIS_DOMAINS.PIPE}:item:${org}:${user}:${projectId}:${encodeURIComponent(itemKey)}`,
+    ITEM: (org: string, user: string, projectId: string, pipelineId: string, itemKey: string): string =>
+      `${REDIS_DOMAINS.PIPE}:item:${org}:${user}:${projectId}:${pipelineId}:${encodeURIComponent(itemKey)}`,
     /** Marker that the claim projection was rebuilt from disk (poller is fail-CLOSED without it). - ant:pipe:items-built:{orgId}:{userId}:{projectId} */
     ITEMS_BUILT: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.PIPE}:items-built:${org}:${user}:${projectId}`,
@@ -491,6 +494,17 @@ export const REDIS_KEYS = {
       `${REDIS_DOMAINS.PIPE}:approver-of:${org}:${user}`,
   },
 } as const;
+
+/**
+ * Inverse of `REDIS_KEYS.PIPE.RUN_SLOT_MEMBER`. Split on the LAST `:` — a
+ * projectId may carry `:`, a runId (`generateHumanId`) never does, so a
+ * prefix match would let project `a` claim the members of project `a:b`.
+ */
+export function parseRunSlotMember(member: string): { projectId: string; runId: string } | null {
+  const at = member.lastIndexOf(':');
+  if (at <= 0 || at === member.length - 1) return null;
+  return { projectId: member.slice(0, at), runId: member.slice(at + 1) };
+}
 
 // ============================================
 // TTLs (in seconds)
@@ -576,7 +590,7 @@ export const REDIS_TTL = {
   PIPE: {
     /** Live run doc; refreshed on every coordinator write, kept 7d past terminal. */
     RUN: 7 * 24 * 60 * 60,
-    /** A live run's slot memberships (incl. human waits) — bounds one run to 30 days. */
+    /** A live run's slot memberships (incl. human waits) — refreshed on every run write, so this bounds a run to 30 days WITHOUT a write. */
     ACTIVE: 30 * 24 * 60 * 60,
     /** Fire idempotency window. */
     FIRED: 48 * 60 * 60,

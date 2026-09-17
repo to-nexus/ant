@@ -68,8 +68,9 @@ export async function deactivatePipelineBinding(
     .deleteKey(REDIS_KEYS.PIPE.PROJECT(owner.organizationId, owner.userId, projectId))
     .catch(() => {});
   // Poll telemetry and the claim-projection marker go with the binding; the
-  // claims themselves stay (disk ledger = history, Redis keys lapse on TTL) —
-  // a re-activation must not re-fire cases that already ran.
+  // claims themselves stay (per-pipeline disk ledger = history, Redis keys
+  // lapse on TTL) — re-activating the SAME pipeline must not re-fire cases
+  // that already ran, and another pipeline's keys live in its own namespace.
   await deps.stateStore
     .deleteKey(REDIS_KEYS.PIPE.FETCH_STATUS(owner.organizationId, owner.userId, projectId))
     .catch(() => {});

@@ -18,8 +18,10 @@ import {
   type PipelineFetchStatus,
   type PipelineRunItem,
 } from '@ant/shared';
+import { randomUUID } from 'crypto';
 import type { PipelineFetchPollJobData } from '../../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL } from '../../../core/constants/redis';
+import { REST_CALL_TIMEOUT_DEFAULT_MS } from '../../../core/customAgents/restApi';
 import { logger } from '../../../utils/logger';
 import { pollFetchSource } from '../../../core/pipelines/fetchConnection';
 import { loadFireAuthority } from './fire';
@@ -27,10 +29,15 @@ import { ensureItemLedger, isDeadClaim, parseClaimValue } from './itemLedger';
 import { publish, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
-const FETCH_LOCK_MIN_S = 30;
-const FETCH_LOCK_MAX_S = 120;
+/**
+ * The lock must outlive the longest poll: the source call (REST default
+ * timeout) plus a ledger rebuild — a lock that lapses mid-poll lets a replica
+ * start a second one, which is the duplicate the lock exists to stop.
+ */
+export const FETCH_LOCK_MIN_S = REST_CALL_TIMEOUT_DEFAULT_MS / 1000 + 60;
+export const FETCH_LOCK_MAX_S = 180;
 
-/** One poll in flight per activation, bounded by half the interval (30..120s). */
+/** One poll in flight per activation, bounded by half the interval, clamped to FETCH_LOCK_MIN_S..FETCH_LOCK_MAX_S. */
 export function fetchLockTtlSeconds(everyMs: number): number {
   return Math.min(FETCH_LOCK_MAX_S, Math.max(FETCH_LOCK_MIN_S, Math.floor(everyMs / 2000)));
 }
@@ -59,15 +66,16 @@ export async function handleFetchPoll(ctx: PipelineRunOps, data: PipelineFetchPo
   };
 
   const lockKey = REDIS_KEYS.PIPE.FETCH_LOCK(organizationId, userId, projectId);
+  const lockToken = randomUUID();
   const everyMs = parsePipelineDuration(trigger.every) ?? 60_000;
-  if (!(await ctx.deps.stateStore.acquireLock(lockKey, fetchLockTtlSeconds(everyMs)))) {
+  if (!(await ctx.deps.stateStore.tryAcquireLock(lockKey, lockToken, fetchLockTtlSeconds(everyMs)))) {
     logger.info(`[Pipeline] poll skipped — another poll holds ${projectId}`, { component: COMPONENT });
     return;
   }
   try {
     // Fail-CLOSED on the claim projection: a duplicate case costs credits and
     // a person's time; rebuilding costs one ledger read. Idempotent (NX).
-    await ensureItemLedger(ctx.deps.stateStore, actRoot, owner, projectId);
+    await ensureItemLedger(ctx.deps.stateStore, actRoot, owner, projectId, pipelineId);
 
     const resolver = ctx.deps.credentialResolverFor?.(owner);
     if (!resolver) return void (await record({ seen: 0, unclaimed: 0, enqueued: 0, error: 'credential store unavailable in this process' }));
@@ -87,7 +95,7 @@ export async function handleFetchPoll(ctx: PipelineRunOps, data: PipelineFetchPo
 
     const unclaimed: PipelineRunItem[] = [];
     for (const item of items) {
-      const itemKey = REDIS_KEYS.PIPE.ITEM(organizationId, userId, projectId, item.key);
+      const itemKey = REDIS_KEYS.PIPE.ITEM(organizationId, userId, projectId, pipelineId, item.key);
       const claim = parseClaimValue(await ctx.deps.stateStore.getKey(itemKey));
       if (claim) {
         // A claim whose fire never produced a run (crash between claim and
@@ -118,6 +126,6 @@ export async function handleFetchPoll(ctx: PipelineRunOps, data: PipelineFetchPo
   } catch (e) {
     await record({ seen: 0, unclaimed: 0, enqueued: 0, error: e instanceof Error ? e.message : String(e) });
   } finally {
-    await ctx.deps.stateStore.releaseLock(lockKey).catch(() => {});
+    await ctx.deps.stateStore.releaseLockIfOwner(lockKey, lockToken).catch(() => {});
   }
 }

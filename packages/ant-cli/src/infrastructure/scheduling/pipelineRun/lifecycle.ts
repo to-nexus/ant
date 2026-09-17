@@ -4,6 +4,7 @@
  * chaining, and the run-finished chat notice.
  */
 
+import { randomUUID } from 'crypto';
 import { UNIVERSAL_FEATURE, runSummaryOf, type RunRecord, type StepRecord } from '@ant/shared';
 import type { PipelineOwner } from '../../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_CHANNELS, REDIS_TTL } from '../../../core/constants/redis';
@@ -170,9 +171,12 @@ const INDEX_LOCK_MAX_RETRIES = 50; // ≈ 1s worst case
  */
 async function appendRunIndexLocked(ctx: PipelineRunOps, owner: PipelineOwner, run: RunRecord): Promise<void> {
   const lockKey = REDIS_KEYS.PIPE.INDEX_LOCK(owner.organizationId, owner.userId, run.projectId);
+  // Per-call token: a holder whose 5s lapsed must not DEL the lock the next
+  // finalizer now owns (releaseLockIfOwner is compare-and-delete).
+  const token = randomUUID();
   let held = false;
   for (let i = 0; i < INDEX_LOCK_MAX_RETRIES && !held; i += 1) {
-    held = await ctx.deps.stateStore.acquireLock(lockKey, REDIS_TTL.PIPE.INDEX_LOCK).catch(() => false);
+    held = await ctx.deps.stateStore.tryAcquireLock(lockKey, token, REDIS_TTL.PIPE.INDEX_LOCK).catch(() => false);
     if (!held) await new Promise((r) => setTimeout(r, INDEX_LOCK_RETRY_MS));
   }
   if (!held) {
@@ -181,7 +185,7 @@ async function appendRunIndexLocked(ctx: PipelineRunOps, owner: PipelineOwner, r
   try {
     await appendRunIndex(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), run.projectId, runSummaryOf(run));
   } finally {
-    if (held) await ctx.deps.stateStore.releaseLock(lockKey).catch(() => {});
+    if (held) await ctx.deps.stateStore.releaseLockIfOwner(lockKey, token).catch(() => {});
   }
 }
 

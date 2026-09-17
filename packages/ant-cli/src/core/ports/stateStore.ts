@@ -936,6 +936,13 @@ export interface StateStorePort {
 
   /** Live holders' members (expired members pruned first). */
   listSlots(setKey: string): Promise<string[]>;
+
+  /**
+   * Live holders with their expiry (ms epoch). `expiresAt − ttl` is when the
+   * holder last reserved/refreshed — the only clock a healer has to tell a
+   * member mid-commit from one whose writer died.
+   */
+  listSlotsWithExpiry(setKey: string): Promise<Array<{ member: string; expiresAt: number }>>;
   
   // ============================================
   // Distributed Locking

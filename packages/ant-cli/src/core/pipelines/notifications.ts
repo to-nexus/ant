@@ -99,7 +99,9 @@ export class InAppChannel implements NotificationChannelPort {
               ...(notice.timeoutAt && { timeoutAt: notice.timeoutAt }),
               ...(notice.onTimeout && { onTimeout: notice.onTimeout }),
               ...(notice.itemKey && { itemKey: notice.itemKey }),
-              ...(notice.assignees && notice.assignees.length > 0 && { assignees: notice.assignees }),
+              // Always present: the FE upserts the held row from this event, so an
+              // absent field would keep a stale badge after a reassign to everyone.
+              assignees: notice.assignees ?? [],
               ...(notice.candidates && notice.candidates.length > 0 && { candidates: notice.candidates }),
               ...(recipient.role === 'approver' && { role: 'approver' as const, ownerUserId: notice.ownerUserId }),
             },

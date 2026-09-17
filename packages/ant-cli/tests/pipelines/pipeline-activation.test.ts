@@ -22,7 +22,8 @@ import {
   findPipelineRoot,
   PipelineValidationError,
 } from '../../src/core/pipelines/store';
-import { reconcilePipelines } from '../../src/infrastructure/scheduling/PipelineReconciler';
+import { reconcilePipelines, SLOT_HEAL_GRACE_MS } from '../../src/infrastructure/scheduling/PipelineReconciler';
+import { REDIS_TTL, parseRunSlotMember } from '../../src/core/constants/redis';
 import { RUN_SESSION_FILE_RETENTION } from '../../src/infrastructure/scheduling/pipelineRun/sessionRetention';
 import { deactivatePipelineBinding } from '../../src/infrastructure/scheduling/deactivateBinding';
 
@@ -261,8 +262,11 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     const everyUpserts: Array<{ id: string; everyMs: number; data: any }> = [];
     const removed: string[] = [];
     const keys = new Map<string, string>();
+    const ttls = new Map<string, number>();
     /** Slot sets (ZSET member → expiry) — the live-run and account caps. */
     const slots = new Map<string, Map<string, number>>();
+    /** Slot-set keys whose listing throws (the per-activation isolation row). */
+    const failingSlotKeys = new Set<string>();
     const setOf = (k: string) => {
       const set = slots.get(k) ?? new Map<string, number>();
       slots.set(k, set);
@@ -273,13 +277,18 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
       everyUpserts,
       removed,
       keys,
+      ttls,
       slots,
+      failingSlotKeys,
       deps: {
         stateStore: {
           acquireLock: async () => true,
           releaseLock: async () => {},
           getKey: async (k: string) => keys.get(k) ?? null,
-          setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
+          setKeyWithTTL: async (k: string, v: string, ttl: number) => {
+            keys.set(k, v);
+            ttls.set(k, ttl);
+          },
           deleteKey: async (k: string) => void keys.delete(k),
           exists: async (k: string) => keys.has(k),
           tryAcquireLock: async (k: string, v: string) => {
@@ -295,6 +304,10 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
           },
           releaseSlot: async (k: string, member: string) => void slots.get(k)?.delete(member),
           listSlots: async (k: string) => [...(slots.get(k)?.keys() ?? [])],
+          listSlotsWithExpiry: async (k: string) => {
+            if (failingSlotKeys.has(k)) throw new Error('redis down');
+            return [...(slots.get(k) ?? [])].map(([member, expiresAt]) => ({ member, expiresAt }));
+          },
           countSlots: async (k: string) => slots.get(k)?.size ?? 0,
         } as any,
         scheduleQueue: {
@@ -409,7 +422,7 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
   });
 
-  it('claim ledger rebuild: live/terminal claims are re-projected, dead claims are not, a present marker is a no-op', async () => {
+  it('claim ledger rebuild (per pipeline): live/terminal claims are re-projected with a fresh TTL, dead claims are not, another pipeline\'s ledger is not read, a present marker is a no-op', async () => {
     writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1', { fetch: true });
     writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
     const actDir = path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations', 'proj-a');
@@ -418,7 +431,7 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     const old = new Date(Date.now() - 60 * 60_000).toISOString();
     const fresh = new Date().toISOString();
     fs.writeFileSync(
-      path.join(actDir, 'items', 'index.jsonl'),
+      path.join(actDir, 'items', 'p1.jsonl'),
       [
         JSON.stringify({ key: 'OPS-1', runId: 'run-live', claimedAt: old }),      // run doc in Redis
         JSON.stringify({ key: 'OPS-2', runId: 'run-sealed', claimedAt: old }),    // run log on disk
@@ -427,18 +440,26 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
         '{"torn":',
       ].join('\n') + '\n',
     );
+    // The project's previous pipeline claimed OPS-9 from ANOTHER source — not p1's to project.
+    fs.writeFileSync(path.join(actDir, 'items', 'staging.jsonl'), JSON.stringify({ key: 'OPS-9', runId: 'run-sealed', claimedAt: old }) + '\n');
     fs.writeFileSync(path.join(actDir, 'runs', 'run-sealed.jsonl'), '{"event":"run_finished"}\n');
-    const { deps, keys } = makeDeps();
+    const { deps, keys, ttls } = makeDeps();
     deps.workspacesPath = tmp;
     keys.set('ant:pipe:run:run-live', JSON.stringify({ runId: 'run-live', status: 'running' }));
+    // A claim whose Redis key is about to lapse (30d) while the item is still open in the source: the rebuild re-sets it.
+    keys.set('ant:pipe:item:local:user:proj-a:p1:OPS-2', 'stale-projection');
     await reconcilePipelines(deps as any);
-    const claim = (k: string) => keys.get(`ant:pipe:item:local:user:proj-a:${k}`);
+    const claimKey = (k: string, pipelineId = 'p1') => `ant:pipe:item:local:user:proj-a:${pipelineId}:${k}`;
+    const claim = (k: string) => keys.get(claimKey(k));
     expect(JSON.parse(claim('OPS-1')!)).toEqual({ runId: 'run-live', claimedAt: old });
-    expect(claim('OPS-2')).toBeDefined();
+    expect(JSON.parse(claim('OPS-2')!)).toEqual({ runId: 'run-sealed', claimedAt: old });
+    expect(ttls.get(claimKey('OPS-2'))).toBe(REDIS_TTL.PIPE.ITEM);
     expect(claim('OPS-3')).toBeUndefined();
     expect(claim('OPS-4')).toBeDefined();
+    expect(keys.get(claimKey('OPS-9'))).toBeUndefined();
+    expect(keys.get(claimKey('OPS-9', 'staging'))).toBeUndefined();
     // Marker present → the next reconcile does not touch the projection even if the ledger grew.
-    fs.appendFileSync(path.join(actDir, 'items', 'index.jsonl'), JSON.stringify({ key: 'OPS-5', runId: 'r5', claimedAt: fresh }) + '\n');
+    fs.appendFileSync(path.join(actDir, 'items', 'p1.jsonl'), JSON.stringify({ key: 'OPS-5', runId: 'r5', claimedAt: fresh }) + '\n');
     await reconcilePipelines(deps as any);
     expect(claim('OPS-5')).toBeUndefined();
   });
@@ -446,20 +467,59 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
   // Liveness is a slot SET (member = runId) on both the activation and the
   // account; the heal releases the members whose run is gone or terminal and
   // leaves a live sibling's alone.
-  it('heals stale live-run slots (activation + account) and keeps a live run\'s', async () => {
+  it('heals stale live-run slots (activation + account), keeps a live run\'s, a just-reserved doc-less member (fire mid-commit), and another project\'s', async () => {
     writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
     writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
     const { deps, keys, slots } = makeDeps();
     deps.workspacesPath = tmp;
     keys.set('ant:pipe:run:run-live', JSON.stringify({ runId: 'run-live', status: 'running' }));
     keys.set('ant:pipe:run:run-done', JSON.stringify({ runId: 'run-done', status: 'completed' }));
-    const far = Date.now() + 60_000;
-    slots.set('ant:pipe:actruns:local:user:proj-a', new Map([['run-live', far], ['run-done', far], ['run-dead', far]]));
-    slots.set('ant:pipe:runslots:local:user', new Map([['proj-a:run-live', far], ['proj-a:run-done', far], ['proj-b:run-x', far]]));
+    // Expiry encodes the last write: ACTIVE from now = reserved this instant; a near expiry = written ~30d ago.
+    const stale = Date.now() + 60_000;
+    const justReserved = Date.now() + REDIS_TTL.PIPE.ACTIVE * 1000;
+    const pastGrace = justReserved - SLOT_HEAL_GRACE_MS - 1;
+    slots.set('ant:pipe:actruns:local:user:proj-a', new Map([['run-live', stale], ['run-done', justReserved], ['run-dead', stale], ['run-committing', justReserved], ['run-crashed', pastGrace]]));
+    slots.set(
+      'ant:pipe:runslots:local:user',
+      // `proj-a:b:run-x` belongs to project `proj-a:b` — a prefix match would hand it to proj-a.
+      new Map([['proj-a:run-live', stale], ['proj-a:run-done', justReserved], ['proj-a:run-committing', justReserved], ['proj-a:run-crashed', pastGrace], ['proj-b:run-x', stale], ['proj-a:b:run-x', stale]]),
+    );
     await reconcilePipelines(deps as any);
-    expect([...slots.get('ant:pipe:actruns:local:user:proj-a')!.keys()]).toEqual(['run-live']);
-    // The other project's member is not this activation's to judge.
-    expect([...slots.get('ant:pipe:runslots:local:user')!.keys()].sort()).toEqual(['proj-a:run-live', 'proj-b:run-x']);
+    expect([...slots.get('ant:pipe:actruns:local:user:proj-a')!.keys()].sort()).toEqual(['run-committing', 'run-live']);
+    expect([...slots.get('ant:pipe:runslots:local:user')!.keys()].sort()).toEqual(['proj-a:b:run-x', 'proj-a:run-committing', 'proj-a:run-live', 'proj-b:run-x']);
+  });
+
+  it('RUN_SLOTS member split is the inverse of the join on the LAST colon (a projectId may carry one; a runId never does)', () => {
+    expect(parseRunSlotMember('proj-a:calm-river')).toEqual({ projectId: 'proj-a', runId: 'calm-river' });
+    expect(parseRunSlotMember('proj-a:b:calm-river')).toEqual({ projectId: 'proj-a:b', runId: 'calm-river' });
+    expect(parseRunSlotMember('no-colon')).toBeNull();
+    expect(parseRunSlotMember(':run')).toBeNull();
+    expect(parseRunSlotMember('proj:')).toBeNull();
+  });
+
+  it('a Redis error in one activation\'s slot heal is contained: the pass continues and that activation skips retention', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-b'));
+    const { deps, keys, failingSlotKeys } = makeDeps();
+    deps.workspacesPath = tmp;
+    failingSlotKeys.add('ant:pipe:actruns:local:user:proj-a');
+    const pruned: string[] = [];
+    // Session-file retention must never run against an unknown live set.
+    const container = path.join(tmp, 'local', 'user', 'proj-a', 'universal');
+    fs.mkdirSync(path.join(container, 'sessions', 'ops'), { recursive: true });
+    for (let i = 0; i < RUN_SESSION_FILE_RETENTION + 3; i += 1) {
+      fs.writeFileSync(path.join(container, 'sessions', 'ops', `collect@run-${i}.json`), '{}');
+    }
+    const containerPathOf = (_o: any, projectId: string) => {
+      pruned.push(projectId);
+      return path.join(tmp, 'local', 'user', projectId, 'universal');
+    };
+    await reconcilePipelines({ ...deps, containerPathOf } as any);
+    expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
+    expect(keys.get('ant:pipe:proj:local:user:proj-b')).toBe('p1');
+    expect(pruned).toEqual(['proj-b']);
+    expect(fs.readdirSync(path.join(container, 'sessions', 'ops'))).toHaveLength(RUN_SESSION_FILE_RETENTION + 3);
   });
 
   it('migrates a live legacy single-value guard into both slot sets and drops the key', async () => {
@@ -632,6 +692,11 @@ describe('approver-of index — advisory discovery projection (activate/PUT/deac
     expect(published[1].msg.data.approval).toMatchObject({ role: 'approver', ownerUserId: 'alice' });
     // Each notice lands on ITS recipient's user channel.
     expect(published[0].ch).not.toBe(published[1].ch);
+    // `assignees` is ALWAYS on the wire: the FE upserts the held row from it, so a
+    // reassign back to everyone must clear the badge rather than keep the old one.
+    expect(published[0].msg.data.approval.assignees).toEqual([]);
+    await channel.notify({ ...base, assignees: ['bob@corp.com'], recipient: { userId: 'alice', organizationId: 'acme', role: 'owner' } });
+    expect(published[2].msg.data.approval.assignees).toEqual(['bob@corp.com']);
   });
 });
 
@@ -654,6 +719,7 @@ describe('mutateRun / commitRun — a run-record write publishes the record it w
     const store = new Map<string, string>([[`ant:pipe:run:${seed.runId}`, JSON.stringify(seed)]]);
     const calls: string[] = [];
     const published: any[] = [];
+    const refreshed: Array<{ key: string; member: string; ttl: number }> = [];
     const deps = {
       workspacesPath: tmp,
       scheduleQueue: { cancelDelayed: async () => {} },
@@ -666,13 +732,17 @@ describe('mutateRun / commitRun — a run-record write publishes the record it w
         deleteKey: async () => {},
         acquireLock: async () => true,
         releaseLock: async () => void calls.push('release'),
+        refreshSlot: async (key: string, member: string, ttl: number) => {
+          refreshed.push({ key, member, ttl });
+          return true;
+        },
         publish: async (_ch: string, msg: any) => {
           calls.push('publish');
           published.push(msg);
         },
       },
     } as any;
-    return { deps, store, calls, published };
+    return { deps, store, calls, published, refreshed };
   }
 
   it('a changed mutator publishes exactly one runUpdate carrying the saved record (def + answers stripped), before the lock is released', async () => {
@@ -709,5 +779,22 @@ describe('mutateRun / commitRun — a run-record write publishes the record it w
     expect(JSON.parse(store.get('ant:pipe:run:r1')!).endedAt).toBe('2026-09-16T00:01:00.000Z');
     expect(published).toHaveLength(1);
     expect(published[0].data.run).toMatchObject({ status: 'completed', endedAt: '2026-09-16T00:01:00.000Z' });
+  });
+
+  // The slot memberships are the run's liveness — reserved once at fire, they
+  // would lapse under a run that waits longer than the ACTIVE bound and drop it
+  // out of every listing while a new fire is admitted past the cap. Every live
+  // write is their heartbeat; a terminal write leaves them for finalize to release.
+  it('saveRun refreshes both slot members (activation + account, ACTIVE TTL) for a live run and not for a terminal one', async () => {
+    const { mutateRun, commitRun } = await import('../../src/infrastructure/scheduling/pipelineRun/runStore');
+    const live = makeRunDeps(RUN());
+    await mutateRun(live.deps, OWNER, 'r1', async (run) => ({ run, dispatches: [] }));
+    expect(live.refreshed).toEqual([
+      { key: 'ant:pipe:actruns:local:user:proj-a', member: 'r1', ttl: REDIS_TTL.PIPE.ACTIVE },
+      { key: 'ant:pipe:runslots:local:user', member: 'proj-a:r1', ttl: REDIS_TTL.PIPE.ACTIVE },
+    ]);
+    const sealed = makeRunDeps(RUN());
+    await commitRun(sealed.deps, OWNER, RUN({ status: 'completed', endedAt: '2026-09-16T00:01:00.000Z' }) as any);
+    expect(sealed.refreshed).toEqual([]);
   });
 });

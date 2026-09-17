@@ -19,7 +19,7 @@ import { INDIVIDUAL_ORG_ID, parsePipelineDuration, type OrganizationKind, type R
 import { logger } from '../../utils/logger';
 import type { StateStorePort } from '../../core/ports/stateStore';
 import type { ScheduleQueuePort, PipelineOwner, PipelineFireJobData, PipelineFetchPollJobData } from '../../core/ports/scheduler';
-import { REDIS_DOMAINS, REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
+import { REDIS_DOMAINS, REDIS_KEYS, REDIS_TTL, parseRunSlotMember } from '../../core/constants/redis';
 import { approverIndexEntry, approverUnion, replaceApproverIndex } from '../../core/pipelines/approverIndex';
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
@@ -30,6 +30,13 @@ import { ensureItemLedger } from './pipelineRun/itemLedger';
 const COMPONENT = 'PipelineReconciler';
 const RECONCILE_LOCK_KEY = 'ant:lock:pipeline-reconcile';
 const RECONCILE_LOCK_TTL = 60;
+/**
+ * A slot member whose run doc is missing is left alone this long after its
+ * last reserve/refresh: the fire path holds both slots for a few round trips
+ * (claim NX, ledger line) before `commitRun` writes the doc, and a reconcile
+ * pass landing in that window must not free a live run's reservation.
+ */
+export const SLOT_HEAL_GRACE_MS = 5 * 60 * 1000;
 
 /** Authorship sidecar written at definition-create time — never the fire identity. */
 export const PIPELINE_OWNER_FILE = 'owner.json';
@@ -163,7 +170,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
         await deps.scheduleQueue.upsertEvery(fetchId, entry.fetchEveryMs, poll);
         scheduled.add(fetchId);
         try {
-          await ensureItemLedger(deps.stateStore, path.join(deps.workspacesPath, owner.organizationId, owner.userId, PIPELINE_ACTIVATIONS_DIRNAME), owner, projectId);
+          await ensureItemLedger(deps.stateStore, path.join(deps.workspacesPath, owner.organizationId, owner.userId, PIPELINE_ACTIVATIONS_DIRNAME), owner, projectId, pipelineId);
         } catch (e) {
           logger.warn(`[Pipeline] item ledger rebuild failed for ${projectId} (non-fatal)`, { component: COMPONENT }, e);
         }
@@ -187,10 +194,17 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
       );
       // Overlap-guard healing: a coordinator crash between acquire and
       // finalize would otherwise block the activation until the 30d TTL.
-      const liveRunIds = await healOverlapGuard(deps.stateStore, owner, projectId);
+      // Per-activation like its siblings — one Redis error must not end the pass.
+      let liveRunIds: Set<string> | null = null;
+      try {
+        liveRunIds = await healOverlapGuard(deps.stateStore, owner, projectId);
+      } catch (e) {
+        logger.warn(`[Pipeline] live-run slot heal failed for ${projectId} (non-fatal)`, { component: COMPONENT }, e);
+      }
       // Sealed run files accumulate one per run — keep the newest K per stem,
-      // judged against the healed live set so a live run's file is never touched.
-      if (deps.containerPathOf) {
+      // judged against the healed live set so a live run's file is never
+      // touched; no healed set (heal failed) = no retention this pass.
+      if (deps.containerPathOf && liveRunIds) {
         try {
           pruneRunSessionFiles(deps.containerPathOf(owner, projectId), liveRunIds);
         } catch (e) {
@@ -225,8 +239,11 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
 /**
  * Release slot memberships whose run doc is missing or terminal — a
  * coordinator crash between reserve and finalize would otherwise hold the
- * activation's (and the account's) slot until the 30d TTL. Returns the
- * activation's live run ids after healing.
+ * activation's (and the account's) slot until the 30d TTL. A member with NO
+ * doc is judged only past `SLOT_HEAL_GRACE_MS` from its last reserve/refresh
+ * (derived from the member's expiry: every writer uses the ACTIVE TTL), so a
+ * fire still committing keeps its slots. Returns the activation's live run
+ * ids after healing (a member inside the grace counts as live).
  */
 async function healOverlapGuard(
   stateStore: StateStorePort,
@@ -236,14 +253,17 @@ async function healOverlapGuard(
   const { organizationId, userId } = owner;
   const activeRunsKey = REDIS_KEYS.PIPE.ACTIVE_RUNS(organizationId, userId, projectId);
   const slotsKey = REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId);
-  const isLive = async (runId: string): Promise<boolean> => {
+  const now = Date.now();
+  const inGrace = (expiresAt: number): boolean => now - (expiresAt - REDIS_TTL.PIPE.ACTIVE * 1000) < SLOT_HEAL_GRACE_MS;
+  const isLive = async (runId: string, expiresAt: number): Promise<boolean> => {
     const raw = await stateStore.getKey(REDIS_KEYS.PIPE.RUN(runId));
-    const run = raw ? (JSON.parse(raw) as RunRecord) : null;
-    return !!run && !['completed', 'failed', 'partial', 'cancelled'].includes(run.status);
+    if (!raw) return inGrace(expiresAt);
+    const run = JSON.parse(raw) as RunRecord;
+    return !['completed', 'failed', 'partial', 'cancelled'].includes(run.status);
   };
   const live = new Set<string>();
-  for (const runId of await stateStore.listSlots(activeRunsKey)) {
-    if (await isLive(runId)) {
+  for (const { member: runId, expiresAt } of await stateStore.listSlotsWithExpiry(activeRunsKey)) {
+    if (await isLive(runId, expiresAt)) {
       live.add(runId);
       continue;
     }
@@ -251,11 +271,11 @@ async function healOverlapGuard(
     await stateStore.releaseSlot(slotsKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
     logger.info(`[Pipeline] healed stale live-run slot: ${projectId} (run ${runId})`, { component: COMPONENT });
   }
-  const prefix = `${projectId}:`;
-  for (const member of await stateStore.listSlots(slotsKey)) {
-    if (!member.startsWith(prefix)) continue;
-    const runId = member.slice(prefix.length);
-    if (await isLive(runId)) continue;
+  for (const { member, expiresAt } of await stateStore.listSlotsWithExpiry(slotsKey)) {
+    const parsed = parseRunSlotMember(member);
+    // Another project's member is not this activation's to judge.
+    if (parsed?.projectId !== projectId) continue;
+    if (await isLive(parsed.runId, expiresAt)) continue;
     await stateStore.releaseSlot(slotsKey, member).catch(() => {});
     logger.info(`[Pipeline] healed stale account slot: ${member}`, { component: COMPONENT });
   }
@@ -266,7 +286,7 @@ async function healOverlapGuard(
   const legacyKey = `${REDIS_DOMAINS.PIPE}:active:${organizationId}:${userId}:${projectId}`;
   const legacyRunId = await stateStore.getKey(legacyKey);
   if (legacyRunId) {
-    if (await isLive(legacyRunId)) {
+    if (await isLive(legacyRunId, 0)) {
       live.add(legacyRunId);
       await stateStore.reserveSlot(activeRunsKey, legacyRunId, Number.MAX_SAFE_INTEGER, REDIS_TTL.PIPE.ACTIVE);
       await stateStore.reserveSlot(

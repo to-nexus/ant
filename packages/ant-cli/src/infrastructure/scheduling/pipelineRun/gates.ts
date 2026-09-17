@@ -48,9 +48,11 @@ export function gateCandidatesOf(ctx: PipelineRunOps, owner: PipelineOwner, proj
 
 /**
  * Gate-notice audience: {activator} ∪ approvers[stepId], NARROWED to the run's
- * assignees when the caller passes them (request/reminder legs) — an assignee
- * the roster has since dropped falls back to the whole roster. The resolved
- * leg passes none: everyone who could have acted learns it is settled.
+ * assignees when the caller passes them (the REMINDER leg only) — an assignee
+ * the roster has since dropped falls back to the whole roster. Arm, reassign,
+ * the S9 roster re-fire and the resolved leg pass none: every candidate holds
+ * the row (the payload's `assignees` is their badge), so a non-assigned
+ * candidate can still see and self-claim it — friction, not a wall.
  */
 export function gateAudience(
   ctx: PipelineRunOps,
@@ -123,7 +125,6 @@ export async function armGate(
     timeoutAt,
     anchorJobId,
     prompt: step.prompt,
-    ...(assignees && { assignees }),
   };
   await ctx.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.HITL(gateId), JSON.stringify(hitl), REDIS_TTL.PIPE.HITL);
   await ctx.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.CARD(cardId), gateId, REDIS_TTL.PIPE.HITL);
@@ -152,30 +153,7 @@ export async function armGate(
 
   // Durable in-app card on the universal session (server-side writer —
   // resume_confirm precedent; ChatAPIClient is job-runner-child-only).
-  if (ctx.deps.chatService) {
-    try {
-      await ctx.deps.chatService.appendChoicePresented(run.projectId, UNIVERSAL_FEATURE, {
-        jobId: anchorJobId,
-        jobType: 'universal',
-        cardId,
-        cardType: 'pipeline_approval',
-        prompt: step.prompt,
-        payload: {
-          gateId,
-          runId: run.runId,
-          stepId: step.id,
-          pipelineId,
-          pipelineName: def.name,
-          ...(run.item && { itemKey: run.item.key }),
-          ...(timeoutAt && { timeoutAt, onTimeout: hitl.onTimeout }),
-          ...(assignees && { assignees }),
-        },
-        userContext: owner,
-      });
-    } catch (e) {
-      logger.warn(`[Pipeline] failed to present gate card ${cardId}`, { component: COMPONENT }, e);
-    }
-  }
+  await presentGateCard(ctx, hitl, def.name, run, assignees);
 
   if (timeoutMs) {
     await ctx.deps.scheduleQueue.armDelayed(`gto-${gateId}`, timeoutMs, {
@@ -237,16 +215,54 @@ export async function armGate(
       ...(assignees && { assignees }),
       candidates,
     },
-    { narrowToAssignees: true },
   );
+}
+
+/**
+ * The gate's chat card — written at arm and RE-WRITTEN (same cardId; the chat
+ * fold is last-presented-wins) whenever its routing changes, so the card never
+ * shows a stale "assigned to X". Failures log; the gate is armed regardless.
+ */
+async function presentGateCard(
+  ctx: PipelineRunOps,
+  hitl: HitlRecord,
+  pipelineName: string,
+  run: Pick<RunRecord, 'runId' | 'item'>,
+  assignees: string[] | undefined,
+): Promise<void> {
+  if (!ctx.deps.chatService) return;
+  try {
+    await ctx.deps.chatService.appendChoicePresented(hitl.projectId, UNIVERSAL_FEATURE, {
+      jobId: hitl.anchorJobId,
+      jobType: 'universal',
+      cardId: hitl.cardId,
+      cardType: 'pipeline_approval',
+      prompt: hitl.prompt,
+      payload: {
+        gateId: hitl.gateId,
+        runId: run.runId,
+        stepId: hitl.stepId,
+        pipelineId: hitl.pipelineId,
+        pipelineName,
+        ...(run.item && { itemKey: run.item.key }),
+        ...(hitl.timeoutAt && { timeoutAt: hitl.timeoutAt, onTimeout: hitl.onTimeout }),
+        ...(assignees && { assignees }),
+      },
+      userContext: hitl.owner,
+    });
+  } catch (e) {
+    logger.warn(`[Pipeline] failed to present gate card ${hitl.cardId}`, { component: COMPONENT }, e);
+  }
 }
 
 /**
  * Reassign an ARMED approval-step gate for this run — a candidate's routing
  * decision (`null` = call everyone again). Authority (activator ∨ candidate)
- * and target ∈ candidates are the route's checks; this is the one write.
- * The request notice re-fires to the FULL roster so every held inbox row
- * updates its badge, not only the new assignee's.
+ * and target ∈ candidates are the route's checks; this is the one write, and
+ * the run record is the only place routing lives (the HITL record carries
+ * none, so a resolve racing this can never be resurrected by it). The request
+ * notice re-fires to the FULL roster so every held inbox row updates its
+ * badge, and the chat card is re-presented with the new routing.
  */
 export async function reassignGate(
   ctx: PipelineRunOps,
@@ -275,12 +291,12 @@ export async function reassignGate(
     return { run: { ...live, steps }, dispatches: [] };
   });
   if (!result || !applied) return false;
-  const { assignees: _prev, ...rest } = hitl;
-  await ctx.deps.stateStore.setKeyWithTTL(
-    REDIS_KEYS.PIPE.HITL(gateId),
-    JSON.stringify({ ...rest, ...(assignees && { assignees }) }),
-    REDIS_TTL.PIPE.HITL,
-  );
+  // A resolve that landed between the HITL read and here has already deleted
+  // the record and decided the gate: the routing write is moot, and a request
+  // row now would be a ghost the resolved fold never clears.
+  const fresh = await getRun(ctx.deps, hitl.runId);
+  const gate = fresh?.steps.find((s) => s.stepId === hitl.stepId)?.gate;
+  if (!gate || gate.decision || !(await ctx.deps.stateStore.getKey(REDIS_KEYS.PIPE.HITL(gateId)))) return false;
   await appendEvent(ctx.deps, hitl.owner, hitl.projectId, {
     ts: at,
     event: 'gate_reassigned',
@@ -289,21 +305,22 @@ export async function reassignGate(
     gateId,
     detail: { ...(assignees ? { assignees } : { assignees: [] }), by, via: 'api' },
   });
-  const gate = result.run.steps.find((s) => s.stepId === hitl.stepId)?.gate;
+  const pipelineName = fresh.defSnapshot?.name ?? hitl.pipelineId;
+  await presentGateCard(ctx, hitl, pipelineName, fresh, assignees);
   await notifyGateAudience(ctx, hitl.owner, {
     kind: 'approvalRequested',
     gateId,
     cardId: hitl.cardId,
     runId: hitl.runId,
     pipelineId: hitl.pipelineId,
-    pipelineName: result.run.defSnapshot?.name ?? hitl.pipelineId,
-    ...(result.run.item && { itemKey: result.run.item.key }),
+    pipelineName,
+    ...(fresh.item && { itemKey: fresh.item.key }),
     projectId: hitl.projectId,
     stepId: hitl.stepId,
     prompt: hitl.prompt,
-    armedAt: gate?.armedAt ?? at,
-    timeoutAt: gate?.timeoutAt,
-    ...(gate?.onTimeout && { onTimeout: gate.onTimeout }),
+    armedAt: gate.armedAt ?? at,
+    timeoutAt: gate.timeoutAt,
+    ...(gate.onTimeout && { onTimeout: gate.onTimeout }),
     ...(assignees && { assignees }),
     candidates: gateCandidatesOf(ctx, hitl.owner, hitl.projectId, hitl.stepId),
   });

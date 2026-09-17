@@ -13,7 +13,7 @@ import { jobExecuteRateLimiter } from '../../middleware/rateLimiter';
 import { REDIS_KEYS } from '../../../../../core/constants/redis';
 import { getNextFires, checkMinInterval } from '../../../../../core/pipelines/cron';
 import { pollFetchSource } from '../../../../../core/pipelines/fetchConnection';
-import { listAccountActivations } from '../../../../../core/pipelines/store';
+import { listAccountActivations, loadActivationByProject } from '../../../../../core/pipelines/store';
 import { isSingleSegment, ownerOf, reject400, type PipelinesRouteContext } from './context';
 
 export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContext): void {
@@ -41,7 +41,9 @@ export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContex
 
   // ── Fetch preview — the editor's "what would a poll see" round-trip ──
   // A dry run with the CALLER's credentials: no claim, no fire, `claimed` per
-  // item when a projectId names one of the caller's activations. An
+  // item when a projectId names one of the caller's activations — judged in
+  // the ledger of the pipeline being edited (`pipelineId`, else the project's
+  // activated one), since claims are namespaced per pipeline. An
   // authenticated egress on a caller-composed request, so it is rate-limited
   // and refused to the self-api pin (a job must not turn the owner's secrets
   // into a proxy).
@@ -56,6 +58,8 @@ export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContex
       }
       const projectId = req.body?.projectId;
       if (projectId !== undefined && !isSingleSegment(projectId)) return void reject400(res, 'projectId');
+      const pipelineIdRaw = req.body?.pipelineId;
+      if (pipelineIdRaw !== undefined && !isSingleSegment(pipelineIdRaw)) return void reject400(res, 'pipelineId');
       if (!deps.credentialResolverFor) {
         res.status(503).json({ error: 'credential store unavailable in this process', code: 'credentials-unavailable' });
         return;
@@ -69,11 +73,20 @@ export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContex
         res.json({ ok: false, error: outcome.error, items: [], seen: 0, skipped: 0 });
         return;
       }
+      let ledgerPipelineId: string | undefined = pipelineIdRaw;
+      if (projectId && !ledgerPipelineId) {
+        try {
+          ledgerPipelineId = loadActivationByProject(actRootOf(owner), projectId)?.pipelineId;
+        } catch {
+          ledgerPipelineId = undefined; // unreadable sidecar — no ledger to judge against
+        }
+      }
       const items = [];
       for (const item of outcome.extracted.items) {
-        const claimed = projectId
-          ? await deps.stateStore.exists(REDIS_KEYS.PIPE.ITEM(owner.organizationId, owner.userId, projectId, item.key)).catch(() => false)
-          : false;
+        const claimed =
+          projectId && ledgerPipelineId
+            ? await deps.stateStore.exists(REDIS_KEYS.PIPE.ITEM(owner.organizationId, owner.userId, projectId, ledgerPipelineId, item.key)).catch(() => false)
+            : false;
         items.push({ ...item, claimed });
       }
       res.json({ ok: true, items, seen: outcome.extracted.seen, skipped: outcome.extracted.skipped });

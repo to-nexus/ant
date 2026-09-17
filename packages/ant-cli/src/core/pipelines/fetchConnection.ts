@@ -71,8 +71,8 @@ export async function pollFetchSource(deps: FetchSourceDeps, trigger: PipelineFe
   if (res.location !== undefined) return fail(`HTTP ${res.status} — redirect not followed by policy`);
   if (res.status >= 400) return fail(`HTTP ${res.status} ${res.statusText}`.trimEnd());
   if (!/json/i.test(res.contentType)) return fail(`response is not JSON (content-type: ${res.contentType || 'none'})`);
-  if (res.body.byteLength > REST_BODY_CAP_BYTES) {
-    return fail(`response body is ${res.body.byteLength} bytes — over the ${REST_BODY_CAP_BYTES}-byte cap; narrow the request (page size / filter)`);
+  if (res.bodyOverCap) {
+    return fail(`response body exceeds the ${REST_BODY_CAP_BYTES}-byte cap; narrow the request (page size / filter)`);
   }
   let json: unknown;
   try {

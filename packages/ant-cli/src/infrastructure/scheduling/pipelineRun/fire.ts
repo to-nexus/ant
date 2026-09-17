@@ -130,6 +130,20 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   );
   if (!(await ctx.deps.stateStore.acquireLock(firedKey, REDIS_TTL.PIPE.FIRED))) return;
 
+  // Cross-run watermark, frozen at fire so every step of this run sees the
+  // same value ({{run.prevSuccess.*}}): the newest COMPLETED run of this
+  // pipeline on this activation. Meaningless per item — a fetch run has none.
+  // Read BEFORE the slots: the only disk I/O between reserve and commit is
+  // then the claim line, keeping the reconciler's heal grace comfortable.
+  let prevSuccessFireEpoch: number | undefined;
+  if (!data.item) {
+    try {
+      prevSuccessFireEpoch = readRunIndex(actRoot, projectId, 50, pipelineId).find((e) => e.status === 'completed')?.fireEpoch;
+    } catch {
+      prevSuccessFireEpoch = undefined;
+    }
+  }
+
   const runId = generateHumanId();
 
   // Per-ACTIVATION live-run slot — the definition's `concurrency` (1 today) is
@@ -155,7 +169,9 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
         { ...data, fireEpoch, requeues: (data.requeues ?? 0) + 1 },
       );
     } else {
-      // A fetch item is never queued: unclaimed, the next poll sees it again.
+      // A fetch pipeline has no `on.schedule` (validator: fetch and schedule
+      // are exclusive), so its fires always land here: the item stays
+      // unclaimed and the next poll sees it again.
       logger.info(`[Pipeline] overlap skip: ${pipelineId} on ${projectId}`, { component: COMPONENT });
     }
     return;
@@ -193,7 +209,7 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   // rebuilt from. Either failing gives everything back, in reverse.
   const startedAt = new Date().toISOString();
   if (data.item) {
-    const itemKey = REDIS_KEYS.PIPE.ITEM(owner.organizationId, owner.userId, projectId, data.item.key);
+    const itemKey = REDIS_KEYS.PIPE.ITEM(owner.organizationId, owner.userId, projectId, pipelineId, data.item.key);
     const claimed = await ctx.deps.stateStore.tryAcquireLock(itemKey, claimValue(runId, startedAt), REDIS_TTL.PIPE.ITEM);
     if (!claimed) {
       logger.info(`[Pipeline] fetch fire skipped — item already claimed: ${data.item.key} (${pipelineId})`, { component: COMPONENT });
@@ -202,25 +218,13 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
       return;
     }
     try {
-      await appendItemClaim(actRoot, projectId, { key: data.item.key, runId, claimedAt: startedAt });
+      await appendItemClaim(actRoot, projectId, pipelineId, { key: data.item.key, runId, claimedAt: startedAt });
     } catch (e) {
       logger.warn(`[Pipeline] fetch fire aborted — claim ledger append failed: ${data.item.key}`, { component: COMPONENT }, e);
       await ctx.deps.stateStore.releaseLockIfOwner(itemKey, claimValue(runId, startedAt)).catch(() => {});
       await ctx.deps.stateStore.releaseSlot(slotKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
       await releaseSlots();
       return;
-    }
-  }
-
-  // Cross-run watermark, frozen at fire so every step of this run sees the
-  // same value ({{run.prevSuccess.*}}): the newest COMPLETED run of this
-  // pipeline on this activation. Meaningless per item — a fetch run has none.
-  let prevSuccessFireEpoch: number | undefined;
-  if (!data.item) {
-    try {
-      prevSuccessFireEpoch = readRunIndex(actRoot, projectId, 50, pipelineId).find((e) => e.status === 'completed')?.fireEpoch;
-    } catch {
-      prevSuccessFireEpoch = undefined;
     }
   }
 
@@ -240,11 +244,14 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     ...(data.item && { item: data.item }),
   };
 
+  // The run doc lands FIRST: the run log is what `isDeadClaim` reads as "this
+  // fire produced a run", so a log line before a failed commit would make the
+  // claim permanent while the reconciler heals the slots under it.
+  const plan = planAdvance(def, run);
+  await commitRun(ctx.deps, owner, plan.run);
   await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId } });
   if (data.item) {
     await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'item_claimed', runId, detail: { key: data.item.key } });
   }
-  const plan = planAdvance(def, run);
-  await commitRun(ctx.deps, owner, plan.run);
   await ctx.executeDispatches(owner, def, plan.run, plan.dispatches);
 }

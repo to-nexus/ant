@@ -340,6 +340,37 @@ describe('executor — result framing', () => {
     expect(res.text.length).toBeLessThan(REST_BODY_CAP_BYTES + 500);
   });
 
+  // The cap bounds what is READ, not only what is shown: a declared oversize
+  // is refused before a byte of body is pulled, and an undeclared one stops
+  // the stream (and the request) as soon as the cap is crossed — never a
+  // whole-body buffer that a 2GB upstream could fill.
+  it('the body cap is enforced on the wire: a declared oversize is never read, a streamed oversize is cut at the cap', async () => {
+    const declared = new Response('x', { status: 200, headers: { 'content-type': 'text/plain', 'content-length': String(REST_BODY_CAP_BYTES + 1) } });
+    const r1 = await executeRestCall(compiled(), 'get', { path: '/x' }, fetchStub(() => declared).impl);
+    // Refused on the header alone — the body stream was never touched.
+    expect(declared.bodyUsed).toBe(false);
+    expect(declared.body!.locked).toBe(false);
+    expect(r1.isError).toBe(false);
+    expect(r1.text).toMatch(/truncated: body exceeds the \d+-byte cap/);
+
+    const chunk = new Uint8Array(64 * 1024).fill(0x78);
+    let enqueued = 0;
+    let cancelled = false;
+    const endless = new Response(
+      new ReadableStream({
+        pull(c) { enqueued += chunk.byteLength; c.enqueue(chunk); },
+        cancel() { cancelled = true; },
+      }),
+      { status: 200, headers: { 'content-type': 'text/plain' } },
+    );
+    const r2 = await executeRestCall(compiled(), 'get', { path: '/x' }, fetchStub(() => endless).impl);
+    expect(r2.text).toMatch(/truncated: body exceeds the \d+-byte cap/);
+    expect(r2.text.length).toBeLessThan(REST_BODY_CAP_BYTES + 500);
+    expect(cancelled).toBe(true);
+    // Read stopped within one chunk of the cap — the endless source was not drained.
+    expect(enqueued).toBeLessThan(REST_BODY_CAP_BYTES + 4 * chunk.byteLength);
+  });
+
   it('binary content is summarized, not inlined', async () => {
     const { impl } = fetchStub(() => new Response(Buffer.from([1, 2, 3]), { status: 200, headers: { 'content-type': 'application/pdf' } }));
     const res = await executeRestCall(compiled(), 'get', { path: '/x' }, impl);

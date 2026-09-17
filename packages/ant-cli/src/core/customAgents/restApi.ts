@@ -57,7 +57,11 @@ import type { ToolDefinition } from '../ports/llm';
 export const REST_CALL_TIMEOUT_DEFAULT_MS = 30_000;
 export const REST_CALL_TIMEOUT_MIN_MS = 1_000;
 export const REST_CALL_TIMEOUT_MAX_MS = 60_000;
-/** Response-body read cap — beyond this the text is truncated with a note. */
+/**
+ * Response-body READ cap — the wire step stops reading (and aborts the
+ * request) once this many bytes have arrived, or refuses up front on a larger
+ * declared Content-Length; the model-facing text is truncated to it with a note.
+ */
 export const REST_BODY_CAP_BYTES = 2 * 1024 * 1024;
 /** Sanitized extract cap for HTML error pages fed back to the model. */
 export const REST_ERROR_HTML_EXTRACT_BYTES = 512;
@@ -532,14 +536,48 @@ export interface RestResponse {
   statusText: string;
   contentType: string;
   location?: string;
+  /** At most `REST_BODY_CAP_BYTES` (+ one chunk) — see `bodyOverCap`. */
   body: Buffer;
+  /**
+   * The upstream body exceeded the cap: `body` holds what was read before the
+   * request was aborted (nothing, when Content-Length declared it up front).
+   */
+  bodyOverCap?: true;
 }
 
 export type PerformRestResult = { ok: true; response: RestResponse } | { ok: false; reason: string };
 
 /**
+ * Stream the body up to the cap; past it, abort the request and return what
+ * arrived. Bytes are identical to a whole-body read for anything in cap.
+ */
+async function readBodyCapped(res: Response, abort: () => void): Promise<{ body: Buffer; bodyOverCap?: true }> {
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > REST_BODY_CAP_BYTES) {
+    abort();
+    return { body: Buffer.alloc(0), bodyOverCap: true };
+  }
+  if (!res.body) return { body: Buffer.alloc(0) };
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(Buffer.from(value));
+    total += value.byteLength;
+    if (total > REST_BODY_CAP_BYTES) {
+      abort();
+      reader.cancel().catch(() => {});
+      return { body: Buffer.concat(chunks), bodyOverCap: true };
+    }
+  }
+  return { body: Buffer.concat(chunks) };
+}
+
+/**
  * The wire step — `redirect: 'manual'`, bounded by the admitted timeout, body
- * read whole. Never throws: a network failure or timeout is a reason string.
+ * read up to the cap. Never throws: a network failure or timeout is a reason string.
  */
 export async function performRestRequest(request: BuiltRestRequest, fetchImpl: typeof fetch = fetch): Promise<PerformRestResult> {
   const controller = new AbortController();
@@ -560,7 +598,8 @@ export async function performRestRequest(request: BuiltRestRequest, fetchImpl: t
         response: { status: res.status, statusText: res.statusText, contentType, location: res.headers.get('location') ?? '(no Location header)', body: Buffer.alloc(0) },
       };
     }
-    return { ok: true, response: { status: res.status, statusText: res.statusText, contentType, body: Buffer.from(await res.arrayBuffer()) } };
+    const read = await readBodyCapped(res, () => controller.abort());
+    return { ok: true, response: { status: res.status, statusText: res.statusText, contentType, ...read } };
   } catch (e) {
     return {
       ok: false,
@@ -597,9 +636,9 @@ export function formatRestResult(serverName: string, request: BuiltRestRequest, 
     // traces), cap hard. JSON/text error bodies stay verbatim below.
     text = sanitizeHtmlErrorBody(text);
     note = `\n\n[HTML error page reduced: ${buf.byteLength} bytes → sanitized extract (cap ${REST_ERROR_HTML_EXTRACT_BYTES}) — the status line is the signal; the request may not have reached the API handler]`;
-  } else if (buf.byteLength > REST_BODY_CAP_BYTES) {
+  } else if (res.bodyOverCap) {
     text = buf.subarray(0, REST_BODY_CAP_BYTES).toString('utf-8');
-    note = `\n\n[... truncated: body is ${buf.byteLength} bytes, cap is ${REST_BODY_CAP_BYTES} ...]`;
+    note = `\n\n[... truncated: body exceeds the ${REST_BODY_CAP_BYTES}-byte cap (read stopped at ${buf.byteLength} bytes) — narrow the request (page size / filter) ...]`;
   }
   // 4xx/5xx are errors (stop-hook evidence must not count a rejected write),
   // but the body rides along — it is what the model plans recovery from.

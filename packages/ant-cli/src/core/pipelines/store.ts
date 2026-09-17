@@ -33,7 +33,7 @@ import type { PipelineScopeRoot } from './scopeRoots';
 import {
   activationDir,
   activationFilePath,
-  activationItemIndexPath,
+  activationItemLedgerPath,
   activationRunIndexPath,
   activationRunLogPath,
   activationRunsDir,
@@ -345,15 +345,15 @@ export interface PipelineItemClaim {
 /** Tail window a ledger rebuild reads — older claims have long since left the source's open set. */
 export const ITEM_CLAIM_READ_LIMIT = 5_000;
 
-export async function appendItemClaim(actRoot: string, projectId: string, claim: PipelineItemClaim): Promise<void> {
-  const indexPath = activationItemIndexPath(actRoot, projectId);
-  fs.mkdirSync(path.dirname(indexPath), { recursive: true });
-  await fs.promises.appendFile(indexPath, `${JSON.stringify(claim)}\n`, 'utf-8');
+export async function appendItemClaim(actRoot: string, projectId: string, pipelineId: string, claim: PipelineItemClaim): Promise<void> {
+  const ledgerPath = activationItemLedgerPath(actRoot, projectId, pipelineId);
+  fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+  await fs.promises.appendFile(ledgerPath, `${JSON.stringify(claim)}\n`, 'utf-8');
 }
 
-/** Newest-last tail of the claim ledger (bounded). */
-export function readItemClaims(actRoot: string, projectId: string, limit = ITEM_CLAIM_READ_LIMIT): PipelineItemClaim[] {
-  return readJsonlSafe<PipelineItemClaim>(activationItemIndexPath(actRoot, projectId)).slice(-limit);
+/** Newest-last tail of one pipeline's claim ledger (bounded). */
+export function readItemClaims(actRoot: string, projectId: string, pipelineId: string, limit = ITEM_CLAIM_READ_LIMIT): PipelineItemClaim[] {
+  return readJsonlSafe<PipelineItemClaim>(activationItemLedgerPath(actRoot, projectId, pipelineId)).slice(-limit);
 }
 
 export function hasRunLog(actRoot: string, projectId: string, runId: string): boolean {

@@ -12,6 +12,7 @@
  *   {ws}/{organizationId}/{userId}/.ant/pipeline-activations/{projectId}/activation.json
  *   {ws}/{organizationId}/{userId}/.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl
  *   {ws}/{organizationId}/{userId}/.ant/pipeline-activations/{projectId}/runs/index.jsonl
+ *   {ws}/{organizationId}/{userId}/.ant/pipeline-activations/{projectId}/items/{pipelineId}.jsonl
  *
  * Runs colocate with the activation and SURVIVE deactivation (deactivate
  * removes only activation.json).
@@ -99,7 +100,12 @@ export function activationRunIndexPath(actRoot: string, projectId: string): stri
   return path.join(actRoot, assertPathSegment('projectId', projectId), 'runs', 'index.jsonl');
 }
 
-/** Fetch-trigger claim ledger (append-only JSONL; the fire path is the single writer). */
-export function activationItemIndexPath(actRoot: string, projectId: string): string {
-  return path.join(actRoot, assertPathSegment('projectId', projectId), 'items', 'index.jsonl');
+/** Fetch-trigger claim ledger, one per PIPELINE (append-only JSONL; the fire path is the single writer). */
+export function activationItemLedgerPath(actRoot: string, projectId: string, pipelineId: string): string {
+  return path.join(
+    actRoot,
+    assertPathSegment('projectId', projectId),
+    'items',
+    `${assertPathSegment('pipelineId', pipelineId)}.jsonl`,
+  );
 }
