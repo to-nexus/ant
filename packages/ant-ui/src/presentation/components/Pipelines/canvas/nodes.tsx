@@ -32,7 +32,7 @@ export const NODE_KIND_STYLE: Record<NodeKind, { accent: string; silhouette: Nod
   gate: { accent: 'var(--amber-500)', silhouette: 'chamfer', icon: ShieldCheck },
 };
 
-export const TRIGGER_MODE_ICON: Record<TriggerMode, LucideIcon> = { schedule: Clock, manual: Zap, runCompleted: Link2, fetch: Inbox };
+export const TRIGGER_MODE_ICON: Record<TriggerMode, LucideIcon> = { schedule: Clock, manual: Zap, upstream: Link2, fetch: Inbox };
 
 /** Corner cut of the gate octagon, px. */
 export const CHAMFER = 12;

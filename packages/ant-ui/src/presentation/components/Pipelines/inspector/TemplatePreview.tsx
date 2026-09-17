@@ -8,7 +8,7 @@
 
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { fetchItemTemplateVars, type PipelineDef } from '@ant/shared';
+import { fetchItemTemplateVars, upstreamTemplateVars, type PipelineDef } from '@ant/shared';
 import { FieldHint } from '../../ConfigEditor/aurora';
 import { HintBadge } from '../../common/HintBadge';
 import { resolveStepIdentity, type IdentityAgentSummary } from '../stepIdentity';
@@ -18,7 +18,8 @@ import { TokenPill } from './chips';
 export function TemplatePreview({ text, def, agents }: { text: string; def: PipelineDef; agents: IdentityAgentSummary[] | undefined }) {
   const { t } = useTranslation('pipelines');
   const itemVars = useMemo(() => fetchItemTemplateVars(def.on?.fetch), [def.on?.fetch]);
-  const segments = useMemo(() => segmentTemplate(text, itemVars), [text, itemVars]);
+  const upstreamVars = useMemo(() => upstreamTemplateVars(def.on?.upstream), [def.on?.upstream]);
+  const segments = useMemo(() => segmentTemplate(text, itemVars, upstreamVars), [text, itemVars, upstreamVars]);
   const stepIds = useMemo(() => new Set(def.steps.map((st) => st.id)), [def.steps]);
   if (!hasTokens(segments)) return null;
   // A dangling step ref is as broken as a typo — the validator refuses both,
@@ -57,6 +58,13 @@ export function TemplatePreview({ text, def, agents }: { text: string; def: Pipe
             return (
               <TokenPill key={i} tone="item" icon={seg.spec.icon} title={`${seg.raw}\n${t(seg.spec.hintKey, seg.spec.hintFallback)}`}>
                 {seg.spec.faceKey === 'step.tokenFace.itemField' ? seg.spec.faceFallback : t(seg.spec.faceKey, seg.spec.faceFallback)}
+              </TokenPill>
+            );
+          }
+          if (seg.kind === 'upstream') {
+            return (
+              <TokenPill key={i} tone="upstream" icon={seg.spec.icon} title={`${seg.raw}\n${t(seg.spec.hintKey, seg.spec.hintFallback)}`}>
+                {t(seg.spec.faceKey, seg.spec.faceFallback)}
               </TokenPill>
             );
           }

@@ -246,10 +246,10 @@ function GateDefinition({ def, step, index, approvers, t }: { def: PipelineDef; 
 function TriggerDefinition({ def, cronSummary, t }: { def: PipelineDef; cronSummary: string; t: T }) {
   const mode = triggerModeOf(def);
   const sched = def.on?.schedule;
-  const chain = def.on?.runCompleted;
+  const upstream = def.on?.upstream;
   const fetch = def.on?.fetch;
   const concurrency = resolveRunConcurrency(def);
-  const modeLabel = t(`canvas.triggerMode.${mode}`, { schedule: 'Schedule', manual: 'Manual', runCompleted: 'Chain', fetch: 'Fetch' }[mode]);
+  const modeLabel = t(`canvas.triggerMode.${mode}`, { schedule: 'Schedule', manual: 'Manual', upstream: 'Upstream', fetch: 'Fetch' }[mode]);
   return (
     <>
       <Field label={t('trigger.mode', 'Trigger')}>
@@ -268,10 +268,18 @@ function TriggerDefinition({ def, cronSummary, t }: { def: PipelineDef; cronSumm
           </Field>
         </>
       )}
-      {chain && (
-        <Field label={t('trigger.chainStatuses', 'On these outcomes')}>
-          <span style={text}>{(chain.statuses ?? ['completed']).map((s) => t(`runs.${s}`, s)).join(', ')}</span>
-        </Field>
+      {upstream && (
+        <>
+          <Field label={t('trigger.upstreamNode', 'Upstream node')}>
+            <span style={text}>{upstream.step ? `${upstream.pipelineId} / ${upstream.step}` : t('trigger.upstreamRunOf', '{{id}} run', { id: upstream.pipelineId })}</span>
+          </Field>
+          <Field label={t('trigger.upstreamWhen', 'Fires when the node')}>
+            <span style={text}>{upstream.when ?? 'success'}</span>
+          </Field>
+          <Field label={t('trigger.overlap', 'If the previous run is still live')}>
+            <span style={text}>{upstream.overlap === 'queue' ? t('trigger.overlapQueue', 'Queue until it finishes') : t('trigger.overlapSkip', 'Skip this fire (default)')}</span>
+          </Field>
+        </>
       )}
       {fetch && (
         <Field label={t('trigger.modeFetch', 'Poll an external queue (fetch)')}>

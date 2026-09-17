@@ -31,6 +31,7 @@ import {
   updateFetch,
   updateFetchBinding,
   updateFetchConnection,
+  updateUpstream,
 } from '../../src/presentation/components/Pipelines/draft';
 import { upstreamStepIds } from '../../src/presentation/components/Pipelines/upstreamOutputs';
 
@@ -206,14 +207,38 @@ describe('renameStep', () => {
 describe('updateSchedule', () => {
   // A hand-authored def may carry BOTH triggers (an error-handler pipeline
   // with a schedule); editing the cron used to rebuild `on` as `{ schedule }`
-  // and silently delete the runCompleted half.
-  it('patches the schedule and keeps a coexisting runCompleted trigger', () => {
+  // and silently delete the upstream half.
+  it('patches the schedule and keeps a coexisting upstream trigger', () => {
     const d = {
       ...def([job('a')]),
-      on: { schedule: { cron: '0 9 * * 1' }, runCompleted: { pipelineId: 'up', statuses: ['failed'] } },
+      on: { schedule: { cron: '0 9 * * 1' }, upstream: { pipelineId: 'up', when: 'failure' } },
     } as PipelineDef;
     const r = updateSchedule(d, { cron: '0 8 * * 1', tz: 'Asia/Seoul' });
-    expect(r.on).toEqual({ schedule: { cron: '0 8 * * 1', tz: 'Asia/Seoul' }, runCompleted: { pipelineId: 'up', statuses: ['failed'] } });
+    expect(r.on).toEqual({ schedule: { cron: '0 8 * * 1', tz: 'Asia/Seoul' }, upstream: { pipelineId: 'up', when: 'failure' } });
+  });
+});
+
+describe('updateUpstream', () => {
+  const base = { ...def([job('a')]), on: { upstream: { pipelineId: 'up', step: 'verify', when: 'verdict:pass' } } } as PipelineDef;
+
+  it('an undefined patch value clears the key — defaults are the absent key, never written', () => {
+    expect(updateUpstream(base, { overlap: 'queue' }).on?.upstream).toEqual({ pipelineId: 'up', step: 'verify', when: 'verdict:pass', overlap: 'queue' });
+    expect(updateUpstream(base, { when: undefined }).on?.upstream).toEqual({ pipelineId: 'up', step: 'verify' });
+  });
+
+  it('dropping the step resets a verdict edge (a run seal carries no verdict) but keeps success/failure/always', () => {
+    expect(updateUpstream(base, { step: undefined }).on?.upstream).toEqual({ pipelineId: 'up' });
+    const failing = updateUpstream(base, { when: 'failure' });
+    expect(updateUpstream(failing, { step: undefined }).on?.upstream).toEqual({ pipelineId: 'up', when: 'failure' });
+  });
+
+  it('moving to another pipeline drops the step (its ids belong to the old one) and with it the verdict edge', () => {
+    expect(updateUpstream(base, { pipelineId: 'other' }).on?.upstream).toEqual({ pipelineId: 'other' });
+  });
+
+  it('keeps a coexisting schedule', () => {
+    const both = { ...base, on: { ...base.on, schedule: { cron: '0 9 * * 1' } } } as PipelineDef;
+    expect(updateUpstream(both, { when: 'always' }).on?.schedule).toEqual({ cron: '0 9 * * 1' });
   });
 });
 
@@ -256,11 +281,12 @@ describe('withAcknowledgement / withoutAcknowledgement', () => {
 });
 
 describe('trigger modes — fetch stands alone, and the mode is read from the one trigger the def carries', () => {
-  it('triggerModeOf: fetch > schedule > runCompleted > manual', () => {
+  it('triggerModeOf: fetch > schedule > upstream > manual', () => {
     expect(triggerModeOf(def([job('a')]))).toBe('schedule');
     expect(triggerModeOf({ ...def([job('a')]), on: { fetch: DEFAULT_FETCH_TRIGGER } })).toBe('fetch');
-    expect(triggerModeOf({ ...def([job('a')]), on: { runCompleted: { pipelineId: 'up' } } })).toBe('runCompleted');
+    expect(triggerModeOf({ ...def([job('a')]), on: { upstream: { pipelineId: 'up' } } })).toBe('upstream');
     expect(triggerModeOf({ ...def([job('a')]), on: undefined })).toBe('manual');
+    expect(setTriggerMode(def([job('a')]), 'upstream').on).toEqual({ upstream: { pipelineId: '' } });
   });
 
   it('setTriggerMode(fetch) replaces the whole `on` block with a blank fetch trigger; switching away drops it', () => {

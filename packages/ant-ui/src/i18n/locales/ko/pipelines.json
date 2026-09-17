@@ -154,8 +154,8 @@
     "triggerMode": {
       "schedule": "스케줄",
       "manual": "수동 실행",
-      "runCompleted": "체인",
-      "fetch": "수집"
+      "fetch": "수집",
+      "upstream": "업스트림"
     },
     "openExecution": "실행 보기 →",
     "insertBefore": "{{stepId}} 앞에 삽입",
@@ -206,7 +206,6 @@
     "mode": "트리거",
     "modeSchedule": "크론 스케줄",
     "modeManual": "수동 전용 (지금 실행)",
-    "modeRunCompleted": "다른 파이프라인 완료 후",
     "modeFetch": "외부 큐 폴링 (fetch)",
     "manualOnly": "수동 전용",
     "fetchSummary": "\"{{api}}\"을(를) {{every}}마다 폴링",
@@ -302,10 +301,7 @@
       "fieldsEmpty": "필드 없음 — 스텝은 키만 받습니다.",
       "previewMore": "… 외 {{n}}개"
     },
-    "chainedSummary": "\"{{id}}\" 완료 후",
-    "chainSource": "이 파이프라인이 끝나면 발화",
     "chainSourcePick": "파이프라인 선택",
-    "chainStatuses": "발화 조건 결과",
     "preset": "주기",
     "presets": {
       "hourly": "매시간",
@@ -329,14 +325,27 @@
     "concurrency": "동시 라이브 런",
     "concurrencyOne": "1 — 한 번에 하나 (기본)",
     "concurrencyN": "{{n}} — 최대 {{n}}개 독립 런",
-    "concurrencyHint": "모든 트리거에 적용됩니다: 지금 실행, 스케줄, 체인 발화, 수집된 항목 모두 이 상한 아래에서 각각 런을 시작합니다.",
+    "concurrencyHint": "모든 트리거에 적용됩니다: 지금 실행, 스케줄, 업스트림 발화, 수집된 항목 모두 이 상한 아래에서 각각 런을 시작합니다.",
     "modeScheduleHint": "선택한 시간대의 크론 표현식에 따라 발화합니다.",
-    "modeRunCompletedHint": "내 다른 파이프라인의 런이 끝나면 발화합니다 — 활성화자의 다른 프로젝트에서.",
     "modeFetchHint": "외부 큐를 폴링해 새 항목마다 런 1개를 시작합니다. 큐는 소스가, claim 장부는 Ant가 가집니다.",
     "modeManualHint": "활성화에서 지금 실행을 누를 때만 발화합니다.",
     "scheduleTitle": "스케줄",
     "scheduleHint": "언제 발화하는지, 놓친 발화와 진행 중인 이전 런을 어떻게 다루는지.",
-    "policyTitle": "실행 정책"
+    "policyTitle": "실행 정책",
+    "modeUpstream": "다른 파이프라인의 노드 뒤에",
+    "modeUpstreamHint": "내 다른 파이프라인의 노드 하나 — 스텝 또는 런 자체 — 에 걸려 그 노드가 봉인될 때 발화합니다. 활성화자의 다른 프로젝트에서.",
+    "upstreamSummary": "{{node}} 뒤 · {{when}}",
+    "upstreamRunOf": "{{id}} 런",
+    "upstreamSource": "업스트림 파이프라인",
+    "upstreamNode": "업스트림 노드",
+    "upstreamNodeRun": "런 자체 (모든 스텝이 끝나 봉인될 때)",
+    "upstreamNodeHint": "스텝은 봉인되는 즉시 — 업스트림 런이 아직 진행 중이어도 — 발화하고, 런은 봉인될 때 발화합니다.",
+    "upstreamWhen": "노드가 다음일 때 발화",
+    "upstreamWhenHint": "건너뛰거나 취소된 노드는 일어나지 않은 것이라 발화하지 않습니다.",
+    "whenSuccess": "성공 (기본)",
+    "whenFailure": "실패",
+    "whenAlways": "성공 또는 실패",
+    "whenVerdict": "판정을 봉인했을 때…"
   },
   "step": {
     "agent": "에이전트",
@@ -357,7 +366,15 @@
       "fireEpoch": "발화 시각 (epoch ms)",
       "runId": "실행 ID",
       "prevSuccessFireDate": "이전 성공 실행 시각 (ISO) — 첫 실행은 빈 값",
-      "prevSuccessFireEpoch": "이전 성공 실행 시각 (epoch ms) — 첫 실행은 빈 값"
+      "prevSuccessFireEpoch": "이전 성공 실행 시각 (epoch ms) — 첫 실행은 빈 값",
+      "upstream": {
+        "pipelineId": "이 런을 발화시킨 노드의 파이프라인",
+        "runId": "이 런을 발화시킨 업스트림 런",
+        "outcome": "업스트림 노드의 봉인 결과 — succeeded 또는 failed",
+        "step": "봉인된 업스트림 스텝 (런 자체가 노드면 빈 값)",
+        "verdict": "업스트림 스텝의 봉인된 판정 (인텐트가 outcomes를 선언한 경우)",
+        "answer": "업스트림 스텝의 최종 답변(길이 제한) — 다른 런의 텍스트, 데이터로 취급"
+      }
     },
     "context": "컨텍스트 첨부",
     "contextHint": "스텝이 디스패치될 때 첨부됩니다. 경로 패턴은 매칭되는 산출물로 확장되고(최신 우선), 아무것도 매칭하지 않는 첨부는 스텝을 실패시킵니다 — 선행 스텝이 보장하는 것을 첨부하세요.",
@@ -418,7 +435,15 @@
       "prevSuccessFireDate": "이전 성공 시각",
       "prevSuccessFireEpoch": "이전 성공 시각(ms)",
       "answer": "최종 답변",
-      "artifacts": "쓴 파일 목록"
+      "artifacts": "쓴 파일 목록",
+      "upstream": {
+        "pipelineId": "업스트림 파이프라인",
+        "runId": "업스트림 런",
+        "outcome": "업스트림 결과",
+        "step": "업스트림 스텝",
+        "verdict": "업스트림 판정",
+        "answer": "업스트림 답변"
+      }
     },
     "templatePreview": "미리보기",
     "templatePreviewHint": "실행 시 각 변수가 실제 값으로 바뀝니다. 아래는 변수를 사람이 읽는 이름으로 보여준 것이며, 실제 저장되는 문장은 위 입력창의 내용입니다.",
@@ -427,7 +452,9 @@
     "directiveDefault": "기본 디렉티브(작성된 것 없음)",
     "contextNone": "컨텍스트 핀 없음",
     "needsRoot": "없음 — 루트 스텝(트리거 직후 실행)",
-    "timeoutNone": "제한 없음"
+    "timeoutNone": "제한 없음",
+    "upstreamGroup": "업스트림 노드에서",
+    "upstreamGroupHint": "이 런을 발화시킨 다른 파이프라인 런의 노드입니다. 그 답변은 다른 런의 텍스트이므로 스텝이 지시가 아닌 데이터로 취급하도록 디렉티브를 쓰세요."
   },
   "gate": {
     "prompt": "승인 문구",

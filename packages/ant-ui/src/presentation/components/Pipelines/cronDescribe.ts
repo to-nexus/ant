@@ -90,7 +90,13 @@ export function describeTrigger(def: PipelineDef, t: DescribeT, locale: string):
     return t('trigger.fetchSummary', 'Polls "{{api}}" every {{every}}', { api: fetchSourceLabel(def.on.fetch), every: def.on.fetch.every });
   }
   if (def.on?.schedule) return describeCron(def.on.schedule.cron, def.on.schedule.tz, t, locale);
-  if (def.on?.runCompleted) return t('trigger.chainedSummary', 'After "{{id}}"', { id: def.on.runCompleted.pipelineId || '…' });
+  if (def.on?.upstream) {
+    const { pipelineId, step, when } = def.on.upstream;
+    return t('trigger.upstreamSummary', 'After {{node}} · {{when}}', {
+      node: step ? `${pipelineId || '…'} / ${step}` : t('trigger.upstreamRunOf', '{{id}} run', { id: pipelineId || '…' }),
+      when: when ?? 'success',
+    });
+  }
   return t('trigger.manualOnly', 'Manual only');
 }
 

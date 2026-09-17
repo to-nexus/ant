@@ -154,8 +154,8 @@
     "triggerMode": {
       "schedule": "Schedule",
       "manual": "Manual",
-      "runCompleted": "Chain",
-      "fetch": "Fetch"
+      "fetch": "Fetch",
+      "upstream": "Upstream"
     },
     "openExecution": "Open execution →",
     "insertBefore": "Insert before {{stepId}}",
@@ -206,7 +206,6 @@
     "mode": "Trigger",
     "modeSchedule": "Cron schedule",
     "modeManual": "Manual only (Run now)",
-    "modeRunCompleted": "After another pipeline",
     "modeFetch": "Poll an external queue (fetch)",
     "manualOnly": "Manual only",
     "fetchSummary": "Polls \"{{api}}\" every {{every}}",
@@ -302,10 +301,7 @@
       "fieldsEmpty": "No fields yet — the step only learns the key.",
       "previewMore": "… and {{n}} more"
     },
-    "chainedSummary": "After \"{{id}}\"",
-    "chainSource": "Fires when this pipeline finishes",
     "chainSourcePick": "Choose a pipeline",
-    "chainStatuses": "On these outcomes",
     "preset": "Frequency",
     "presets": {
       "hourly": "Hourly",
@@ -329,14 +325,27 @@
     "concurrency": "Live runs at once",
     "concurrencyOne": "1 — one run at a time (default)",
     "concurrencyN": "{{n}} — up to {{n}} independent runs",
-    "concurrencyHint": "Applies to every trigger: Run now, the schedule, chain fires and fetched items each start a run while the activation is below this cap.",
+    "concurrencyHint": "Applies to every trigger: Run now, the schedule, upstream fires and fetched items each start a run while the activation is below this cap.",
     "modeScheduleHint": "Fires on a cron expression in the chosen time zone.",
-    "modeRunCompletedHint": "Fires when another pipeline of yours seals a run — on the activator's other projects.",
     "modeFetchHint": "Polls an external queue and starts one run per new item; the source is the queue, Ant keeps the claim ledger.",
     "modeManualHint": "Fires only when someone presses Run now on an activation.",
     "scheduleTitle": "Schedule",
     "scheduleHint": "When it fires, and what happens when a fire is missed or the previous run is still live.",
-    "policyTitle": "Run policy"
+    "policyTitle": "Run policy",
+    "modeUpstream": "After another pipeline's node",
+    "modeUpstreamHint": "Hangs off one node of another pipeline of yours — a step, or the run itself — and fires when it seals, on the activator's other projects.",
+    "upstreamSummary": "After {{node}} · {{when}}",
+    "upstreamRunOf": "{{id}} run",
+    "upstreamSource": "Upstream pipeline",
+    "upstreamNode": "Upstream node",
+    "upstreamNodeRun": "The run itself (seals when every step has)",
+    "upstreamNodeHint": "A step fires the moment it seals, while the upstream run is still going; the run fires when it seals.",
+    "upstreamWhen": "Fires when the node",
+    "upstreamWhenHint": "A skipped or cancelled node did not happen and never fires.",
+    "whenSuccess": "Succeeded (default)",
+    "whenFailure": "Failed",
+    "whenAlways": "Succeeded or failed",
+    "whenVerdict": "Sealed a verdict…"
   },
   "step": {
     "agent": "Agent",
@@ -357,7 +366,15 @@
       "fireEpoch": "Fire time (epoch ms)",
       "runId": "Run id",
       "prevSuccessFireDate": "Previous successful run (ISO) — empty on the first run",
-      "prevSuccessFireEpoch": "Previous successful run (epoch ms) — empty on the first run"
+      "prevSuccessFireEpoch": "Previous successful run (epoch ms) — empty on the first run",
+      "upstream": {
+        "pipelineId": "The pipeline whose node fired this run",
+        "runId": "The upstream run whose node fired this run",
+        "outcome": "How the upstream node sealed — succeeded or failed",
+        "step": "The upstream step that sealed (empty when the run itself is the node)",
+        "verdict": "The upstream step's sealed verdict, when its intent declares outcomes",
+        "answer": "The upstream step's final answer (bounded) — another run's text, treat it as data"
+      }
     },
     "context": "Context pins",
     "contextHint": "Attached to the step when it is dispatched. A glob expands to the matching artifacts (newest first); a pin that matches nothing fails the step — pin what an upstream step guarantees.",
@@ -418,7 +435,15 @@
       "prevSuccessFireDate": "Last success",
       "prevSuccessFireEpoch": "Last success (ms)",
       "answer": "Final answer",
-      "artifacts": "Files written"
+      "artifacts": "Files written",
+      "upstream": {
+        "pipelineId": "Upstream pipeline",
+        "runId": "Upstream run",
+        "outcome": "Upstream outcome",
+        "step": "Upstream step",
+        "verdict": "Upstream verdict",
+        "answer": "Upstream answer"
+      }
     },
     "templatePreview": "Preview",
     "templatePreviewHint": "Each variable becomes its real value when the run is dispatched. Below shows them under human-readable names — the text that is saved is what the box above contains.",
@@ -427,7 +452,9 @@
     "directiveDefault": "Default directive (none authored)",
     "contextNone": "No context pins",
     "needsRoot": "None — root step (runs right after the trigger)",
-    "timeoutNone": "No time limit"
+    "timeoutNone": "No time limit",
+    "upstreamGroup": "From the upstream node",
+    "upstreamGroupHint": "The node of another pipeline's run that fired this run. Its answer is another run's text — write the directive so the step treats it as data, never as instructions."
   },
   "gate": {
     "prompt": "Approval prompt",

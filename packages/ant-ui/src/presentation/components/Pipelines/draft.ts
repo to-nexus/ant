@@ -28,9 +28,9 @@ import {
   type PipelineFetchConnectionSource,
   type PipelineFetchInlineTrigger,
   type PipelineFetchTrigger,
-  PipelineRunCompletedTrigger,
   type PipelineScheduleTrigger,
   type PipelineStepDef,
+  type PipelineUpstreamTrigger,
 } from '@ant/shared';
 
 export const TRIGGER_NODE_ID = 'trigger';
@@ -214,17 +214,17 @@ export function descendantsOf(def: PipelineDef, stepId: string): Set<string> {
 
 export const DEFAULT_SCHEDULE_CRON = '0 9 * * 1';
 
-/** Patch the schedule half of `on` — a coexisting `runCompleted` trigger survives the edit. */
+/** Patch the schedule half of `on` — a coexisting `upstream` trigger survives the edit. */
 export function updateSchedule(def: PipelineDef, patch: Partial<PipelineScheduleTrigger>): PipelineDef {
   return { ...def, on: { ...def.on, schedule: { cron: DEFAULT_SCHEDULE_CRON, ...def.on?.schedule, ...patch } } };
 }
 
-export type TriggerMode = 'schedule' | 'runCompleted' | 'fetch' | 'manual';
+export type TriggerMode = 'schedule' | 'upstream' | 'fetch' | 'manual';
 
 export function triggerModeOf(def: PipelineDef): TriggerMode {
   if (def.on?.fetch) return 'fetch';
   if (def.on?.schedule) return 'schedule';
-  if (def.on?.runCompleted) return 'runCompleted';
+  if (def.on?.upstream) return 'upstream';
   return 'manual';
 }
 
@@ -270,7 +270,7 @@ export function updateFetchConnection(def: PipelineDef, patch: Partial<PipelineF
 
 /**
  * Switch the trigger kind. The inspector edits ONE trigger at a time (a
- * hand-authored def carrying schedule + runCompleted still validates and fires
+ * hand-authored def carrying schedule + upstream still validates and fires
  * on both; the UI shows its schedule half). `fetch` stands alone by contract.
  */
 export function setTriggerMode(def: PipelineDef, mode: TriggerMode): PipelineDef {
@@ -284,11 +284,24 @@ export function setTriggerMode(def: PipelineDef, mode: TriggerMode): PipelineDef
   if (mode === 'fetch') {
     return { ...def, on: { fetch: def.on?.fetch ?? DEFAULT_FETCH_TRIGGER } };
   }
-  return { ...def, on: { runCompleted: def.on?.runCompleted ?? { pipelineId: '' } } };
+  return { ...def, on: { upstream: def.on?.upstream ?? { pipelineId: '' } } };
 }
 
-export function updateRunCompleted(def: PipelineDef, patch: Partial<PipelineRunCompletedTrigger>): PipelineDef {
-  return { ...def, on: { ...def.on, runCompleted: { pipelineId: '', ...def.on?.runCompleted, ...patch } } };
+/**
+ * Patch the upstream edge. An `undefined` in the patch CLEARS that key (the
+ * default is the absent key, never written out). A `verdict:` edge judges a
+ * STEP's sealed decision — a run seal has none — so dropping the step, or
+ * moving to another pipeline, resets `when` to the default.
+ */
+export function updateUpstream(def: PipelineDef, patch: Partial<PipelineUpstreamTrigger>): PipelineDef {
+  const prev = def.on?.upstream ?? { pipelineId: '' };
+  const next: PipelineUpstreamTrigger = { ...prev, ...patch };
+  if ('pipelineId' in patch && patch.pipelineId !== prev.pipelineId) delete next.step;
+  if (next.step === undefined && next.when?.startsWith('verdict:')) delete next.when;
+  for (const key of ['step', 'when', 'overlap'] as const) {
+    if (next[key] === undefined) delete next[key];
+  }
+  return { ...def, on: { ...def.on, upstream: next } };
 }
 
 /** Patch the fetch trigger's non-connection fields (a fetch def has no other trigger half to preserve). */

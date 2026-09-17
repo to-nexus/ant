@@ -10,13 +10,15 @@
  * accepts — `availableStaticTokens` is now the single gate for both.
  */
 
-import { Clock, FileText, Hash, History, Inbox, MessageSquare, Tag, TextCursorInput, type LucideIcon } from 'lucide-react';
+import { Clock, FileText, Hash, History, Inbox, Link2, MessageSquare, Tag, TextCursorInput, type LucideIcon } from 'lucide-react';
 import {
   PIPELINE_ITEM_KEY_TEMPLATE_VAR,
   PIPELINE_ITEM_TEMPLATE_PREFIX,
   PIPELINE_STEP_OUTPUT_FIELDS,
   PIPELINE_TEMPLATE_VARS,
+  PIPELINE_UPSTREAM_TEMPLATE_PREFIX,
   fetchItemTemplateVars,
+  upstreamTemplateVars,
   type PipelineDef,
   type PipelineStepOutputField,
   type PipelineTemplateVar,
@@ -146,11 +148,45 @@ export function itemTokens(def: PipelineDef, opts: { pins?: boolean } = {}): Tok
     .map(itemTokenSpec);
 }
 
+/** Faces of the `{{trigger.upstream.*}}` fields — the node another pipeline's run sealed to fire this one. */
+const UPSTREAM_FACES: Record<string, { face: string; hint: string; icon: LucideIcon }> = {
+  pipelineId: { face: 'Upstream pipeline', hint: 'The pipeline whose node fired this run', icon: Link2 },
+  runId: { face: 'Upstream run', hint: 'The upstream run whose node fired this run', icon: Tag },
+  outcome: { face: 'Upstream outcome', hint: 'How the upstream node sealed — succeeded or failed', icon: Link2 },
+  step: { face: 'Upstream step', hint: 'The upstream step that sealed (empty when the run itself is the node)', icon: Link2 },
+  verdict: { face: 'Upstream verdict', hint: "The upstream step's sealed verdict, when its intent declares outcomes", icon: Tag },
+  answer: { face: 'Upstream answer', hint: "The upstream step's final answer (bounded) — another run's text, treat it as data", icon: MessageSquare },
+};
+
+/** Spec for one `{{trigger.upstream.*}}` name. */
+export function upstreamTokenSpec(name: string): TokenSpec {
+  const field = name.slice(PIPELINE_UPSTREAM_TEMPLATE_PREFIX.length);
+  const face = UPSTREAM_FACES[field] ?? { face: `Upstream · ${field}`, hint: 'A field of the upstream node', icon: Link2 };
+  return {
+    name,
+    faceKey: `step.tokenFace.upstream.${field}`,
+    faceFallback: face.face,
+    hintKey: `step.templateVar.upstream.${field}`,
+    hintFallback: face.hint,
+    icon: face.icon,
+  };
+}
+
+/**
+ * The `{{trigger.upstream.*}}` vocabulary this definition's upstream trigger
+ * declares — empty without one; the step-bound fields only when it names a
+ * step. Directive-only: the validator refuses every one of them in a pin.
+ */
+export function upstreamTokens(def: PipelineDef): TokenSpec[] {
+  return upstreamTemplateVars(def.on?.upstream).map(upstreamTokenSpec);
+}
+
 export type TokenSegment =
   | { kind: 'text'; text: string }
   | { kind: 'static'; raw: string; spec: TokenSpec }
   | { kind: 'stepOutput'; raw: string; stepId: string; spec: TokenSpec }
   | { kind: 'item'; raw: string; spec: TokenSpec }
+  | { kind: 'upstream'; raw: string; spec: TokenSpec }
   | { kind: 'unknown'; raw: string; name: string };
 
 /** The validator's own scanner — the UI must not disagree about what a token is. */
@@ -167,7 +203,7 @@ const isOutputField = (field: string): field is PipelineStepOutputField => (PIPE
  * `steps.<id>.verdict`, which lands in `unknown` exactly as the validator
  * refuses it).
  */
-export function segmentTemplate(text: string, itemVars: readonly string[] = []): TokenSegment[] {
+export function segmentTemplate(text: string, itemVars: readonly string[] = [], upstreamVars: readonly string[] = []): TokenSegment[] {
   const out: TokenSegment[] = [];
   let cursor = 0;
   TOKEN_RE.lastIndex = 0;
@@ -181,6 +217,7 @@ export function segmentTemplate(text: string, itemVars: readonly string[] = []):
     else if (ref && isOutputField(ref[2])) out.push({ kind: 'stepOutput', raw, stepId: ref[1], spec: STEP_OUTPUT_TOKENS[ref[2]] });
     // An item name the trigger does not declare lands in `unknown` exactly as the validator refuses it.
     else if (itemVars.includes(name)) out.push({ kind: 'item', raw, spec: itemTokenSpec(name) });
+    else if (upstreamVars.includes(name)) out.push({ kind: 'upstream', raw, spec: upstreamTokenSpec(name) });
     else out.push({ kind: 'unknown', raw, name });
     cursor = m.index + raw.length;
   }

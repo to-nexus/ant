@@ -15,6 +15,7 @@ import {
   hasTokens,
   itemTokens,
   segmentTemplate,
+  upstreamTokens,
 } from '../../src/presentation/components/Pipelines/templateTokens';
 
 const def = (on: PipelineDef['on']): PipelineDef => ({ version: 2, name: 'p', on, steps: [] }) as PipelineDef;
@@ -40,8 +41,8 @@ describe('availableStaticTokens gates on what the trigger actually provides', ()
     expect(names(def(undefined))).toEqual(['run.id']);
   });
 
-  it('chain (runCompleted): a fire time, but no cross-run watermark', () => {
-    expect(names(def({ runCompleted: { pipelineId: 'up' } } as PipelineDef['on']))).toEqual([
+  it('upstream edge: a fire time, but no cross-run watermark', () => {
+    expect(names(def({ upstream: { pipelineId: 'up' } } as PipelineDef['on']))).toEqual([
       'run.id',
       'trigger.fireDate',
       'trigger.fireEpoch',
@@ -63,6 +64,29 @@ describe('availableStaticTokens gates on what the trigger actually provides', ()
     expect(itemTokens(def(FETCH), { pins: true }).map((s) => s.name)).toEqual(['trigger.item.key']);
     expect(itemTokens(def({ schedule: { cron: '0 9 * * 1' } } as PipelineDef['on']))).toEqual([]);
     expect(itemTokens(def(undefined))).toEqual([]);
+  });
+
+  it('upstreamTokens: run-level fields for a run-node edge, the step-bound ones only when a step is named, nothing without the trigger', () => {
+    expect(upstreamTokens(def({ upstream: { pipelineId: 'up' } } as PipelineDef['on'])).map((s) => s.name)).toEqual([
+      'trigger.upstream.pipelineId',
+      'trigger.upstream.runId',
+      'trigger.upstream.outcome',
+    ]);
+    expect(upstreamTokens(def({ upstream: { pipelineId: 'up', step: 'verify' } } as PipelineDef['on'])).map((s) => s.name)).toEqual([
+      'trigger.upstream.pipelineId',
+      'trigger.upstream.runId',
+      'trigger.upstream.outcome',
+      'trigger.upstream.step',
+      'trigger.upstream.verdict',
+      'trigger.upstream.answer',
+    ]);
+    expect(upstreamTokens(def({ schedule: { cron: '0 9 * * 1' } } as PipelineDef['on']))).toEqual([]);
+  });
+
+  it('segmentTemplate labels a declared upstream var as `upstream` and an undeclared one as `unknown`', () => {
+    const segs = segmentTemplate('{{trigger.upstream.runId}} {{trigger.upstream.verdict}}', [], ['trigger.upstream.runId']);
+    expect(segs.filter((s) => s.kind !== 'text').map((s) => s.kind)).toEqual(['upstream', 'unknown']);
+    expect(segmentTemplate('{{trigger.upstream.runId}}').map((s) => s.kind)).toEqual(['unknown']);
   });
 
   it('segmentTemplate labels a declared item var as `item` and an undeclared one as `unknown` — exactly as the validator judges', () => {

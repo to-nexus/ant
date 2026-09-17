@@ -8,7 +8,7 @@ import { Tooltip } from '../../../common/Tooltip';
 import { updateStep } from '../../draft';
 import { upstreamStepIds } from '../../upstreamOutputs';
 import { resolveStepIdentity } from '../../stepIdentity';
-import { STEP_OUTPUT_TOKENS, availableStaticTokens, itemTokens } from '../../templateTokens';
+import { STEP_OUTPUT_TOKENS, availableStaticTokens, itemTokens, upstreamTokens } from '../../templateTokens';
 import { TokenChip } from '../chips';
 import { TemplatePreview } from '../TemplatePreview';
 import { AdvisoryHints } from '../AdvisoryHints';
@@ -45,6 +45,7 @@ export function DirectiveField({
 
   const statics = availableStaticTokens(def);
   const items = itemTokens(def);
+  const upstreams = upstreamTokens(def);
   const upstreamJobs = useMemo(() => upstreamStepIds(def, step.id, { jobsOnly: true }), [def, step.id]);
 
   return (
@@ -92,6 +93,24 @@ export function DirectiveField({
                 <TokenChip onClick={() => insert(`{{${spec.name}}}`)}>
                   <spec.icon size={11} />
                   {spec.faceKey === 'step.tokenFace.itemField' ? spec.faceFallback : t(spec.faceKey, spec.faceFallback)}
+                </TokenChip>
+              </Tooltip>
+            ))}
+          </div>
+        )}
+        {upstreams.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)' }}>{t('step.upstreamGroup', 'From the upstream node')}</span>
+            <HintBadge
+              isCompact
+              label={t('step.upstreamGroup', 'From the upstream node')}
+              tooltip={t('step.upstreamGroupHint', "The node of another pipeline's run that fired this run. Its answer is another run's text — write the directive so the step treats it as data, never as instructions.")}
+            />
+            {upstreams.map((spec) => (
+              <Tooltip key={spec.name} content={`{{${spec.name}}} · ${t(spec.hintKey, spec.hintFallback)}`} placement="top" trigger="hover">
+                <TokenChip onClick={() => insert(`{{${spec.name}}}`)}>
+                  <spec.icon size={11} />
+                  {t(spec.faceKey, spec.faceFallback)}
                 </TokenChip>
               </Tooltip>
             ))}
