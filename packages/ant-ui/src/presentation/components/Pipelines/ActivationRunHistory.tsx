@@ -14,13 +14,13 @@ import type { PipelineRunSummary, StepRecord } from '@ant/shared';
 import type { AsyncResource } from '@/domain/async';
 import { useStore } from '@/domain/store';
 import { activationRunsKey } from '@/domain/store/slices/pipelineSlice';
-import { FieldHint, StatusPill } from '../ConfigEditor/aurora';
+import { StatusPill } from '../ConfigEditor/aurora';
 import { Badge, Button } from '../aurora';
 import { AsyncBoundary } from '../common/async/boundary/AsyncBoundary';
 import { cancelPipelineRun } from '@/infrastructure/http/api/pipelines';
-import { TokenChip } from './inspector/chips';
 import { FIRED_BY_ICON, FIRED_BY_LABEL } from './runIdentity';
-import { LIVE_STEP_STATUSES, STEP_STATUS_COLOR, gateDecisionLabel, isApprovedDecision, stepStatusLabel } from './runStepPresentation';
+import { LIVE_STEP_STATUSES, STEP_STATUS_COLOR, gateDecisionLabel, isApprovedDecision } from './runStepPresentation';
+import { StepRecordBody } from './StepRecordBody';
 
 const RUN_PILL: Record<string, { state: any; labelKey: string; fallback: string }> = {
   running: { state: 'checking', labelKey: 'runs.running', fallback: 'Running' },
@@ -169,7 +169,6 @@ export function RunTimeline({
   onOpenArtifact?: (path: string) => void;
 }) {
   const { t } = useTranslation('pipelines');
-  const selectJobId = useStore((s) => (s as any).selectJobId);
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -191,91 +190,7 @@ export function RunTimeline({
                 {i < steps.length - 1 && <span style={{ flex: 1, width: 2, background: 'var(--border-1)', minHeight: 22 }} />}
               </div>
               <div style={{ paddingBottom: 16, minWidth: 0, flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{step.stepId}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color }}>{stepStatusLabel(t, step.status)}</span>
-                  {step.verdict && (
-                    <Badge size="sm" tone="brand" title={t('runs.verdictHint', 'The intent\'s sealed decision — verdict edges route on it')}>
-                      {t('runs.verdict', 'Verdict: {{v}}', { v: step.verdict })}
-                    </Badge>
-                  )}
-                  {(step.retriesUsed ?? 0) > 0 && (
-                    <Badge size="sm" tone="warning" title={(step.attempts ?? []).map((a) => a.error).join('\n')}>
-                      {t('runs.retries', '{{n}} retr(y/ies)', { n: step.retriesUsed })}
-                    </Badge>
-                  )}
-                  {step.jobId &&
-                    (jobLink ? (
-                      <button
-                        onClick={() => typeof selectJobId === 'function' && selectJobId(step.jobId, { jobType: 'universal' })}
-                        title={step.jobId}
-                        style={{ fontSize: 10, ...mono, padding: '1px 7px', borderRadius: 999, background: 'var(--bg-surface-2)', border: '1px solid var(--border-1)', color: 'var(--text-3)', cursor: 'pointer' }}
-                      >
-                        {step.jobId}
-                      </button>
-                    ) : (
-                      <span title={step.jobId} style={{ fontSize: 10, ...mono, padding: '1px 7px', borderRadius: 999, background: 'var(--bg-surface-2)', border: '1px solid var(--border-1)', color: 'var(--text-3)' }}>
-                        {step.jobId}
-                      </span>
-                    ))}
-                </div>
-                {step.error && <div style={{ fontSize: 11, color: 'var(--status-error-fg)', marginTop: 3 }}>{step.error}</div>}
-                {step.dispatch?.unresolvedTemplates && step.dispatch.unresolvedTemplates.length > 0 && (
-                  <FieldHint tone="warn" spacing="above">
-                    {t('runs.unresolvedTemplates', 'Rendered empty: {{refs}} — the referenced step had no output at dispatch', { refs: step.dispatch.unresolvedTemplates.map((r) => `{{${r}}}`).join(', ') })}
-                  </FieldHint>
-                )}
-                {step.output?.answer && (
-                  <details style={{ marginTop: 3 }}>
-                    <summary style={{ fontSize: 11, color: 'var(--text-2)', cursor: 'pointer' }}>
-                      {step.output.answer.split('\n').find((l) => l.trim())?.slice(0, 120)}
-                      {step.output.answerTruncated ? ' …' : ''}
-                    </summary>
-                    <div style={{ fontSize: 11, color: 'var(--text-2)', whiteSpace: 'pre-wrap', marginTop: 4, maxHeight: 240, overflowY: 'auto', padding: '6px 8px', background: 'var(--bg-surface-2)', borderRadius: 'var(--r-sm)' }}>
-                      {step.output.answer}
-                    </div>
-                  </details>
-                )}
-                {step.output?.artifacts && step.output.artifacts.length > 0 && (
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                    {step.output.artifacts.map((path) => (
-                      <TokenChip key={path} disabled={!onOpenArtifact} title={onOpenArtifact ? t('runs.openArtifact', 'Open in the editor') : path} onClick={() => onOpenArtifact?.(path)}>
-                        {path}
-                      </TokenChip>
-                    ))}
-                  </div>
-                )}
-                {step.clarify && (
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-                    {t('runs.clarifyAsked', 'Q{{round}}: {{question}}', { round: step.clarify.round, question: step.clarify.question })}
-                    {step.clarify.answeredAt
-                      ? ` · ${t('runs.clarifyAnswered', 'answered by {{who}}', { who: step.clarify.answeredBy ?? t('runs.unknownActor', 'unknown') })} · ${new Date(step.clarify.answeredAt).toLocaleTimeString()}${step.clarify.via ? ` · ${step.clarify.via}` : ''}`
-                      : ` · ${t('runs.clarifyWaiting', 'awaiting answer')}`}
-                    {step.clarify.answer && (
-                      <div style={{ marginTop: 3, padding: '3px 8px', borderLeft: '2px solid var(--border-2)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
-                        {step.clarify.answer}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {step.gate?.assignees && step.gate.assignees.length > 0 && (
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-                    {t('runs.gateAssignedTo', 'assigned to {{who}}', { who: step.gate.assignees.join(', ') })}
-                    {step.gate.assigneeSource === 'human' && step.gate.assignedBy && ` · ${t('runs.gateAssignedBy', 'by {{who}}', { who: step.gate.assignedBy })}`}
-                  </div>
-                )}
-                {step.gate?.decision && (
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-                    {gateDecisionLabel(t, step.gate.decision, step.gate.decidedBy)}
-                    {step.gate.decidedAt && ` · ${new Date(step.gate.decidedAt).toLocaleTimeString()}`}
-                    {step.gate.via && ` · ${step.gate.via}`}
-                    {step.gate.decisionNote && (
-                      <div style={{ marginTop: 3, padding: '3px 8px', borderLeft: '2px solid var(--border-2)', fontStyle: 'italic', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
-                        {step.gate.decisionNote}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <StepRecordBody step={step} jobLink={jobLink} onOpenArtifact={onOpenArtifact} />
               </div>
             </div>
           );

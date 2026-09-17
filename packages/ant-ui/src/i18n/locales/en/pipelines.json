@@ -182,9 +182,18 @@
       "wiringHint": "Which steps must finish first, and on which of their outcomes this one runs.",
       "workHint": "The instruction the run receives — with the values substituted at dispatch.",
       "inputsHint": "Artifacts attached when the step is dispatched — pin what upstream steps guarantee.",
-      "policyHint": "Retries, the time limit, and how a missing verdict is read."
+      "policyHint": "Retries, the time limit, and how a missing verdict is read.",
+      "run": "Run",
+      "definition": "Definition"
     },
-    "unknownValue": "Unknown value: {{v}}"
+    "unknownValue": "Unknown value: {{v}}",
+    "readOnlyHint": "Read-only — the live run and the saved definition",
+    "run": {
+      "noLiveRuns": "No live runs — the definition below is what will run.",
+      "detailLoading": "Loading run detail…",
+      "notReached": "Run {{label}} has not reached this step yet.",
+      "focused": "Showing run {{label}}"
+    }
   },
   "settings": {
     "title": "Pipeline settings",
@@ -415,7 +424,11 @@
     "templatePreview": "Preview",
     "templatePreviewHint": "Each variable becomes its real value when the run is dispatched. Below shows them under human-readable names — the text that is saved is what the box above contains.",
     "tokenUnknown": "Unknown variable — this will not save",
-    "tokenUnknownStep": "Points at a step that does not exist"
+    "tokenUnknownStep": "Points at a step that does not exist",
+    "directiveDefault": "Default directive (none authored)",
+    "contextNone": "No context pins",
+    "needsRoot": "None — root step (runs right after the trigger)",
+    "timeoutNone": "No time limit"
   },
   "gate": {
     "prompt": "Approval prompt",
@@ -436,7 +449,10 @@
     "customTimeoutPlaceholder": "e.g. 36h",
     "decisionTitle": "Decision",
     "decisionHint": "A person approves or rejects here; the run waits until they do.",
-    "policyHint": "How long the gate waits, what a timeout decides, and where the request is delivered."
+    "policyHint": "How long the gate waits, what a timeout decides, and where the request is delivered.",
+    "approvers": "Approvers",
+    "approversNone": "No approvers assigned on this activation",
+    "remindNone": "No reminders"
   },
   "runs": {
     "empty": "No runs yet — press Run now to test this pipeline.",
@@ -481,7 +497,10 @@
     "openArtifact": "Open in the editor",
     "loadError": "Could not load the run history.",
     "gateAssignedTo": "assigned to {{who}}",
-    "gateAssignedBy": "by {{who}}"
+    "gateAssignedBy": "by {{who}}",
+    "started": "Started {{when}}",
+    "ended": "Ended {{when}}",
+    "elapsed": "Elapsed {{d}}"
   },
   "danger": {
     "title": "Delete this pipeline",

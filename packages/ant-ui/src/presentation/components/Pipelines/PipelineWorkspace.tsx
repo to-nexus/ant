@@ -11,13 +11,15 @@
  * drafts and cron validity); only the presentation moved.
  *
  * There is no edit mode. `editable` is derived from the BE availability gate
- * — a new draft, or a writable pipeline that is disabled — and a locked
- * canvas explains itself with a banner. All editor surfaces write ONE draft
- * (dirty-buffer doctrine); Save is gated by the shared validator + the server
- * cron preview only when the DEFINITION is dirty.
+ * — a new draft, or a writable pipeline that is disabled — and governs WRITES
+ * only: a locked canvas explains itself with a banner but stays inspectable —
+ * a node click opens the read-only StepRunInspector instead of the editor.
+ * All editor surfaces write ONE draft (dirty-buffer doctrine); Save is gated
+ * by the shared validator + the server cron preview only when the DEFINITION
+ * is dirty.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { resolvePipelineAdvisories, validatePipelineDef, type CustomAgentSummary, type PipelineAdvisory, type PipelineAdvisoryResolution, type PipelineDef, type PipelineListEntry, type PipelineLiveRun } from '@ant/shared';
 
@@ -27,14 +29,13 @@ import { activationRunsKey, selectPipelineDirty } from '@/domain/store/slices/pi
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeTrigger } from './cronDescribe';
 import { StepInspector } from './StepInspector';
+import { StepRunInspector } from './StepRunInspector';
 import { PipelineSettingsPanel } from './PipelineSettingsPanel';
 import { PipelineHeader } from './PipelineHeader';
 import { PipelineExecutionView } from './PipelineExecutionView';
 import { EMPTY_ADVISORY_VIEW, type AdvisoryActions, type AdvisoryStripItem, type AdvisoryView } from './AdvisoryStrip';
 import { CanvasNotice, type CanvasNoticeKind } from './CanvasNotice';
 import { TRIGGER_NODE_ID, addBranchAfter, insertStepAfter, makeGateStep, makeJobStep } from './draft';
-
-const noop = () => {};
 
 export function PipelineWorkspace() {
   const { t, i18n } = useTranslation('pipelines');
@@ -55,6 +56,8 @@ export function PipelineWorkspace() {
   const runDetails = useStore((s) => s.pipelineRunDetails);
   const selectedRunByActivation = useStore((s) => s.pipelineSelectedRunByActivation);
   const selectActivationRun = useStore((s) => s.selectActivationRun);
+  const loadPipelineRunDetail = useStore((s) => s.loadPipelineRunDetail);
+  const selectFile = useStore((s) => s.selectFile);
   const pipelines = useStore((s) => s.pipelines);
   const accountAgents = useStore((s) => s.accountAgents) as CustomAgentSummary[];
   const serverJudgement = useStore((s) => s.pipelineServerJudgement);
@@ -110,6 +113,21 @@ export function PipelineWorkspace() {
   const stepAdvisories = useMemo(() => [...resolution.open, ...resolution.acknowledged], [resolution]);
   const definitionValid = validationErrors.length === 0 && cronOk && (draft?.steps.length ?? 0) > 0;
   const canSave = !!dirty && (!dirty.definition || definitionValid);
+
+  // Design-view run overlay context: my activation on the selected project.
+  const overlayActivation = entry?.activations.find((a) => a.mine && a.projectId === selectedProject);
+  const overlayLiveRuns = overlayActivation?.liveRuns ?? NO_LIVE_RUNS;
+  // The read-only inspector reads the focused run's step record; the execution
+  // view loads details only under its own progress canvas, so load them here
+  // while a node is open.
+  const overlayLiveRunIds = overlayLiveRuns.map((r) => r.runId).join('|');
+  useEffect(() => {
+    if (!selectedNodeId || !selectedProject) return;
+    for (const runId of overlayLiveRunIds.split('|')) {
+      if (runId && !runDetails[runId]) void loadPipelineRunDetail(runId, selectedProject);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- details are read once per live-set change, not re-fetched per detail fold
+  }, [selectedNodeId, overlayLiveRunIds, selectedProject, loadPipelineRunDetail]);
   const saveBlockedReason =
     dirty && !canSave
       ? validationErrors[0] ??
@@ -132,10 +150,11 @@ export function PipelineWorkspace() {
     if (!editable) return;
     setPipelineDraft(next);
   };
-  // Acknowledging is a definition edit — the same editability gate as any field.
-  const advisoryActions: AdvisoryActions = editable
-    ? { onSelectStep: selectPipelineNode, onAcknowledge: acknowledgePipelineAdvisory, onUnacknowledge: removePipelineAcknowledgement }
-    : {};
+  // Focusing a step is a read; acknowledging is a definition edit — the same editability gate as any field.
+  const advisoryActions: AdvisoryActions = {
+    onSelectStep: selectPipelineNode,
+    ...(editable && { onAcknowledge: acknowledgePipelineAdvisory, onUnacknowledge: removePipelineAcknowledgement }),
+  };
 
   const cronSummary = describeTrigger(draft, t, i18n.language);
   const canvasNotice: CanvasNoticeKind | null =
@@ -144,7 +163,6 @@ export function PipelineWorkspace() {
       : editable && draft.steps.length === 0
         ? { kind: 'empty' }
         : null;
-  const overlayLiveRuns = entry?.activations.find((a) => a.mine && a.projectId === selectedProject)?.liveRuns ?? NO_LIVE_RUNS;
   const overlayKey = entry && selectedProject ? activationRunsKey(entry.id, selectedProject) : null;
   const overlaySelectedRunId = overlayKey ? selectedRunByActivation[overlayKey] ?? null : null;
 
@@ -203,24 +221,41 @@ export function PipelineWorkspace() {
               selectedRunId={overlaySelectedRunId}
               onSelectRun={overlayKey && selectedProject ? (runId) => selectActivationRun(overlayKey, runId, selectedProject) : undefined}
               advisoryStepIds={advisoryStepIds}
-              selectedNodeId={editable ? selectedNodeId : null}
-              onSelectNode={editable ? selectPipelineNode : noop}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={selectPipelineNode}
               onAddAfter={editable ? handleAddAfter : undefined}
               showLegend
             />
             <CanvasNotice notice={canvasNotice} />
           </div>
-          {/* Inspector slot: a node while editable, otherwise the pipeline's own settings. */}
-          {editable && nodeExists && selectedNodeId ? (
-            <StepInspector
-              def={draft}
-              nodeId={selectedNodeId}
-              onChange={patch}
-              onClose={() => selectPipelineNode(null)}
-              onCronValidity={setCronOk}
-              advisories={stepAdvisories.filter((a) => a.stepId === selectedNodeId)}
-              onStepRenamed={selectPipelineNode}
-            />
+          {/* Inspector slot: a selected node — the editor while editable, the read-only
+              run inspector while locked — otherwise the pipeline's own settings. */}
+          {nodeExists && selectedNodeId ? (
+            editable ? (
+              <StepInspector
+                def={draft}
+                nodeId={selectedNodeId}
+                onChange={patch}
+                onClose={() => selectPipelineNode(null)}
+                onCronValidity={setCronOk}
+                advisories={stepAdvisories.filter((a) => a.stepId === selectedNodeId)}
+                onStepRenamed={selectPipelineNode}
+              />
+            ) : (
+              <StepRunInspector
+                def={draft}
+                nodeId={selectedNodeId}
+                onClose={() => selectPipelineNode(null)}
+                customAgents={accountAgents}
+                cronSummary={cronSummary}
+                liveRuns={overlayLiveRuns}
+                runDetails={runDetails}
+                selectedRunId={overlaySelectedRunId}
+                onSelectRun={overlayKey && selectedProject ? (runId) => selectActivationRun(overlayKey, runId, selectedProject) : undefined}
+                approversByGate={overlayActivation?.approvers}
+                onOpenArtifact={overlayActivation ? (path) => selectFile(path) : undefined}
+              />
+            )
           ) : (
             <PipelineSettingsPanel
               draft={draft}

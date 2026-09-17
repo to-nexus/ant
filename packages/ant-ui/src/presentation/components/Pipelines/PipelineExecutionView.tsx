@@ -4,7 +4,9 @@
  * first; expanding a LIVE own activation reveals the live-run rows (one per
  * run — the only cancel point of this view) and the on-demand progress monitor
  * (the ONE read-only canvas with per-node run chips) above the run history.
- * Other members' activations are status + history only — run detail and the
+ * A node click on that canvas opens the read-only StepRunInspector on the
+ * right — the run is locked against edits, never against looking. Other
+ * members' activations are status + history only — run detail and the
  * runUpdate SSE are activator-scoped, and so are the controls (B7).
  *
  * The pinned footer replaces the old project dropdown: it acts on the
@@ -26,6 +28,8 @@ import { StatusPill } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeTrigger } from './cronDescribe';
 import { ActivationRunHistory } from './ActivationRunHistory';
+import { StepRunInspector } from './StepRunInspector';
+import { TRIGGER_NODE_ID } from './draft';
 import { ApproversEditor, type ApproverGateInfo } from './ApproversEditor';
 import { FIRED_BY_ICON, FIRED_BY_LABEL, runHue, runLabel, runTintFg } from './runIdentity';
 
@@ -53,6 +57,11 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
   const runPipelineNowById = useStore((s) => s.runPipelineNowById);
   const enablePipelineById = useStore((s) => s.enablePipelineById);
   const loadActivationRuns = useStore((s) => s.loadActivationRuns);
+  const selectedNodeId = useStore((s) => s.selectedPipelineNodeId);
+  const selectPipelineNode = useStore((s) => s.selectPipelineNode);
+  const runDetails = useStore((s) => s.pipelineRunDetails);
+  const selectActivationRun = useStore((s) => s.selectActivationRun);
+  const selectFile = useStore((s) => s.selectFile);
 
   const [busy, setBusy] = useState(false);
   const [runNowNote, setRunNowNote] = useState<string | null>(null);
@@ -92,6 +101,22 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
     [activations, selectedProject],
   );
 
+  // The activation whose progress canvas is mounted — the same predicate as
+  // `showProgress` below. The node inspector reads its run context from here.
+  const host = useMemo(
+    () => activations.find((a) => a.projectId === expanded && a.mine && (a.liveRuns?.length ?? 0) > 0) ?? null,
+    [activations, expanded],
+  );
+  const hostKey = host ? activationRunsKey(host.pipelineId, host.projectId) : null;
+  const hostSelectedRunId = useStore((s) => (hostKey ? s.pipelineSelectedRunByActivation[hostKey] ?? null : null));
+  // This view owns the node selection only while it hosts an inspector: a
+  // different (or no) host clears it, so a node picked in project A never
+  // pops open over project B's canvas.
+  const hostProjectId = host?.projectId ?? null;
+  useEffect(() => {
+    selectPipelineNode(null);
+  }, [hostProjectId, selectPipelineNode]);
+
   if (draftIsNew || !pipelineId) {
     return (
       <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 13, textAlign: 'center', lineHeight: 1.7, padding: 24 }}>
@@ -126,195 +151,217 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
     footerAction = 'activate';
   }
 
+  const nodeExists = !!selectedNodeId && (selectedNodeId === TRIGGER_NODE_ID || def.steps.some((s) => s.id === selectedNodeId));
+  const inspectedNodeId = host && hostKey && nodeExists ? selectedNodeId : null;
+
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
-            {t('execution.activationsTitle', 'Activations')}
-          </span>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-            {t('execution.activationsCount', '{{n}} project(s)', { n: activations.length })}
-          </span>
+    <div style={{ height: '100%', display: 'flex', minHeight: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
+              {t('execution.activationsTitle', 'Activations')}
+            </span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+              {t('execution.activationsCount', '{{n}} project(s)', { n: activations.length })}
+            </span>
+          </div>
+
+          {unsavedChanges && (
+            <Badge tone="warning" size="sm" style={{ alignSelf: 'flex-start' }}>
+              {t('execution.unsavedChanges', 'Unsaved design changes — execution follows the saved definition')}
+            </Badge>
+          )}
+
+          {(activationError || runNowNote) && (
+            <div style={{ fontSize: 12, color: activationError ? 'var(--red-500)' : 'var(--text-2)' }}>
+              {activationError ?? runNowNote}
+            </div>
+          )}
+
+          {sorted.length === 0 && (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 12.5, textAlign: 'center', lineHeight: 1.7 }}>
+              {t('execution.noActivations', 'Not activated anywhere yet.')}
+            </div>
+          )}
+
+          {sorted.map((a) => (
+            <ActivationSection
+              key={`${a.projectId}:${a.activatedBy}`}
+              view={a}
+              def={def}
+              gateInfos={gateInfos}
+              accountAgents={accountAgents}
+              cronSummary={cronSummary}
+              projectName={projectNameOf(a.projectId)}
+              isCurrentProject={a.projectId === selectedProject}
+              expanded={expanded === a.projectId}
+              onToggle={() => setExpanded((cur) => (cur === a.projectId ? null : a.projectId))}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={selectPipelineNode}
+              busy={busy}
+              onRunNow={async () => {
+                setBusy(true);
+                setRunNowNote(null);
+                const err = await runPipelineNowById(pipelineId, a.projectId);
+                setBusy(false);
+                if (err) {
+                  setRunNowNote(err);
+                  return;
+                }
+                // The run lands in THIS section's history — open it and fetch,
+                // instead of a note promising it will appear somewhere below.
+                setExpanded(a.projectId);
+                void loadActivationRuns(pipelineId, a.projectId);
+                setRunNowNote(
+                  def.on?.fetch
+                    ? t('execution.pollNowAccepted', 'Poll requested — new items start runs below as they are claimed.')
+                    : t('execution.runNowAccepted', 'Run started — follow it in the history below.'),
+                );
+                window.setTimeout(() => setRunNowNote((cur) => (cur === null ? cur : null)), 4000);
+              }}
+              onDeactivate={async () => {
+                setBusy(true);
+                await deactivatePipelineById(pipelineId, a.projectId);
+                setBusy(false);
+              }}
+            />
+          ))}
         </div>
 
-        {unsavedChanges && (
-          <Badge tone="warning" size="sm" style={{ alignSelf: 'flex-start' }}>
-            {t('execution.unsavedChanges', 'Unsaved design changes — execution follows the saved definition')}
-          </Badge>
-        )}
-
-        {(activationError || runNowNote) && (
-          <div style={{ fontSize: 12, color: activationError ? 'var(--red-500)' : 'var(--text-2)' }}>
-            {activationError ?? runNowNote}
-          </div>
-        )}
-
-        {sorted.length === 0 && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 12.5, textAlign: 'center', lineHeight: 1.7 }}>
-            {t('execution.noActivations', 'Not activated anywhere yet.')}
-          </div>
-        )}
-
-        {sorted.map((a) => (
-          <ActivationSection
-            key={`${a.projectId}:${a.activatedBy}`}
-            view={a}
-            def={def}
-            gateInfos={gateInfos}
-            accountAgents={accountAgents}
-            cronSummary={cronSummary}
-            projectName={projectNameOf(a.projectId)}
-            isCurrentProject={a.projectId === selectedProject}
-            expanded={expanded === a.projectId}
-            onToggle={() => setExpanded((cur) => (cur === a.projectId ? null : a.projectId))}
-            busy={busy}
-            onRunNow={async () => {
-              setBusy(true);
-              setRunNowNote(null);
-              const err = await runPipelineNowById(pipelineId, a.projectId);
-              setBusy(false);
-              if (err) {
-                setRunNowNote(err);
-                return;
-              }
-              // The run lands in THIS section's history — open it and fetch,
-              // instead of a note promising it will appear somewhere below.
-              setExpanded(a.projectId);
-              void loadActivationRuns(pipelineId, a.projectId);
-              setRunNowNote(
-                def.on?.fetch
-                  ? t('execution.pollNowAccepted', 'Poll requested — new items start runs below as they are claimed.')
-                  : t('execution.runNowAccepted', 'Run started — follow it in the history below.'),
-              );
-              window.setTimeout(() => setRunNowNote((cur) => (cur === null ? cur : null)), 4000);
-            }}
-            onDeactivate={async () => {
-              setBusy(true);
-              await deactivatePipelineById(pipelineId, a.projectId);
-              setBusy(false);
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Pinned footer — activation acts on the CURRENT project. */}
-      <div style={{ position: 'relative' }}>
-        {activateOpen && (
+        {/* Pinned footer — activation acts on the CURRENT project. */}
+        <div style={{ position: 'relative' }}>
+          {activateOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '100%',
+                right: 12,
+                marginBottom: 8,
+                width: 420,
+                maxWidth: 'calc(100% - 24px)',
+                maxHeight: 380,
+                overflowY: 'auto',
+                zIndex: 20,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-1)',
+                borderRadius: 'var(--r-md)',
+                boxShadow: 'var(--shadow-lg)',
+                padding: 14,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                <Zap size={12} style={{ color: 'var(--violet-500)' }} />
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
+                  {t('approvers.activateTitle', 'Activate in this project — {{project}}', {
+                    project: projectNameOf(selectedProject!) ?? selectedProject,
+                  })}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>
+                {t('approvers.sectionTitle', 'Gate approvers (per gate)')}
+              </div>
+              <ApproversEditor gates={gateInfos} value={draftApprovers} onChange={setDraftApprovers} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setActivateOpen(false)}>
+                  {t('approvers.cancel', 'Cancel')}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!selectedProject) return;
+                    setBusy(true);
+                    const ok = await activatePipelineTo(pipelineId, selectedProject, draftApprovers);
+                    setBusy(false);
+                    if (ok) {
+                      setActivateOpen(false);
+                      setDraftApprovers({});
+                    }
+                  }}
+                >
+                  <Zap size={13} /> {t('execution.activateHere', 'Activate in this project')}
+                </Button>
+              </div>
+            </div>
+          )}
           <div
             style={{
-              position: 'absolute',
-              bottom: '100%',
-              right: 12,
-              marginBottom: 8,
-              width: 420,
-              maxWidth: 'calc(100% - 24px)',
-              maxHeight: 380,
-              overflowY: 'auto',
-              zIndex: 20,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 14px',
+              borderTop: '1px solid var(--border-1)',
               background: 'var(--bg-surface)',
-              border: '1px solid var(--border-1)',
-              borderRadius: 'var(--r-md)',
-              boxShadow: 'var(--shadow-lg)',
-              padding: 14,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-              <Zap size={12} style={{ color: 'var(--violet-500)' }} />
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
-                {t('approvers.activateTitle', 'Activate in this project — {{project}}', {
-                  project: projectNameOf(selectedProject!) ?? selectedProject,
-                })}
-              </span>
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>
-              {t('approvers.sectionTitle', 'Gate approvers (per gate)')}
-            </div>
-            <ApproversEditor gates={gateInfos} value={draftApprovers} onChange={setDraftApprovers} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setActivateOpen(false)}>
-                {t('approvers.cancel', 'Cancel')}
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {footerAction === 'badge'
+                ? (projectNameOf(selectedProject!) ?? selectedProject)
+                : footerHint ?? (projectNameOf(selectedProject!) ?? selectedProject)}
+            </span>
+            {footerAction === 'badge' ? (
+              <Badge tone="success" dot title={activeHere && !activeHere.mine ? activeHere.activatedBy : undefined}>
+                {activeHere && !activeHere.mine
+                  ? t('execution.activeHereBy', 'Active here — by {{who}}', { who: activeHere.activatedBy })
+                  : t('execution.activeHere', 'Active in this project')}
+              </Badge>
+            ) : footerAction === 'publish' ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={busy || unsavedChanges}
+                title={footerHint ?? undefined}
+                onClick={async () => {
+                  setBusy(true);
+                  await enablePipelineById(pipelineId);
+                  setBusy(false);
+                }}
+              >
+                <Zap size={13} /> {t('availability.publish', 'Publish')}
               </Button>
+            ) : (
               <Button
                 variant="primary"
                 size="sm"
-                disabled={busy}
+                disabled={footerAction !== 'activate' || busy}
+                title={footerHint ?? undefined}
                 onClick={async () => {
                   if (!selectedProject) return;
-                  setBusy(true);
-                  const ok = await activatePipelineTo(pipelineId, selectedProject, draftApprovers);
-                  setBusy(false);
-                  if (ok) {
-                    setActivateOpen(false);
+                  // Team org + gates → the per-gate approver popover (S1);
+                  // otherwise the original one-click activation.
+                  if (isTeam && gateInfos.length > 0) {
                     setDraftApprovers({});
+                    setActivateOpen((v) => !v);
+                    return;
                   }
+                  setBusy(true);
+                  await activatePipelineTo(pipelineId, selectedProject);
+                  setBusy(false);
                 }}
               >
                 <Zap size={13} /> {t('execution.activateHere', 'Activate in this project')}
               </Button>
-            </div>
+            )}
           </div>
-        )}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '10px 14px',
-            borderTop: '1px solid var(--border-1)',
-            background: 'var(--bg-surface)',
-          }}
-        >
-          <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {footerAction === 'badge'
-              ? (projectNameOf(selectedProject!) ?? selectedProject)
-              : footerHint ?? (projectNameOf(selectedProject!) ?? selectedProject)}
-          </span>
-          {footerAction === 'badge' ? (
-            <Badge tone="success" dot title={activeHere && !activeHere.mine ? activeHere.activatedBy : undefined}>
-              {activeHere && !activeHere.mine
-                ? t('execution.activeHereBy', 'Active here — by {{who}}', { who: activeHere.activatedBy })
-                : t('execution.activeHere', 'Active in this project')}
-            </Badge>
-          ) : footerAction === 'publish' ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={busy || unsavedChanges}
-              title={footerHint ?? undefined}
-              onClick={async () => {
-                setBusy(true);
-                await enablePipelineById(pipelineId);
-                setBusy(false);
-              }}
-            >
-              <Zap size={13} /> {t('availability.publish', 'Publish')}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={footerAction !== 'activate' || busy}
-              title={footerHint ?? undefined}
-              onClick={async () => {
-                if (!selectedProject) return;
-                // Team org + gates → the per-gate approver popover (S1);
-                // otherwise the original one-click activation.
-                if (isTeam && gateInfos.length > 0) {
-                  setDraftApprovers({});
-                  setActivateOpen((v) => !v);
-                  return;
-                }
-                setBusy(true);
-                await activatePipelineTo(pipelineId, selectedProject);
-                setBusy(false);
-              }}
-            >
-              <Zap size={13} /> {t('execution.activateHere', 'Activate in this project')}
-            </Button>
-          )}
         </div>
       </div>
+      {inspectedNodeId && host && hostKey && (
+        <StepRunInspector
+          def={def}
+          nodeId={inspectedNodeId}
+          onClose={() => selectPipelineNode(null)}
+          customAgents={accountAgents}
+          cronSummary={cronSummary}
+          liveRuns={host.liveRuns}
+          runDetails={runDetails}
+          selectedRunId={hostSelectedRunId}
+          onSelectRun={(runId) => selectActivationRun(hostKey, runId, host.projectId)}
+          approversByGate={host.approvers}
+          onOpenArtifact={selectedProject === host.projectId ? (path) => selectFile(path) : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -329,6 +376,8 @@ function ActivationSection({
   isCurrentProject,
   expanded,
   onToggle,
+  selectedNodeId,
+  onSelectNode,
   busy,
   onRunNow,
   onDeactivate,
@@ -342,6 +391,9 @@ function ActivationSection({
   isCurrentProject: boolean;
   expanded: boolean;
   onToggle: () => void;
+  /** Canvas node selection — the store slot the workspace shares across views. */
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string | null) => void;
   busy: boolean;
   onRunNow: () => void;
   onDeactivate: () => void;
@@ -537,8 +589,8 @@ function ActivationSection({
                   selectedRunId={selectedRunId ?? null}
                   onSelectRun={(runId) => selectActivationRun(runsKey, runId, view.projectId)}
                   approversByGate={view.approvers}
-                  selectedNodeId={null}
-                  onSelectNode={() => {}}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={onSelectNode}
                 />
               </div>
             </>

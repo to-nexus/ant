@@ -182,9 +182,18 @@
       "wiringHint": "먼저 끝나야 하는 스텝과, 그 결과 중 어느 경우에 이 스텝이 실행되는지.",
       "workHint": "실행이 받는 지시문 — 변수는 디스패치 시점에 실제 값으로 치환됩니다.",
       "inputsHint": "디스패치 시 스텝에 첨부되는 아티팩트 — 상류 스텝이 보장하는 것을 핀하세요.",
-      "policyHint": "재시도, 시간 제한, 판정이 없을 때의 해석."
+      "policyHint": "재시도, 시간 제한, 판정이 없을 때의 해석.",
+      "run": "실행",
+      "definition": "정의"
     },
-    "unknownValue": "알 수 없는 값: {{v}}"
+    "unknownValue": "알 수 없는 값: {{v}}",
+    "readOnlyHint": "읽기 전용 — 진행 중 실행과 저장된 정의",
+    "run": {
+      "noLiveRuns": "진행 중 실행 없음 — 아래 정의대로 실행됩니다.",
+      "detailLoading": "실행 상세 불러오는 중…",
+      "notReached": "실행 {{label}}은(는) 아직 이 스텝에 도달하지 않았습니다.",
+      "focused": "실행 {{label}} 표시 중"
+    }
   },
   "settings": {
     "title": "파이프라인 설정",
@@ -415,7 +424,11 @@
     "templatePreview": "미리보기",
     "templatePreviewHint": "실행 시 각 변수가 실제 값으로 바뀝니다. 아래는 변수를 사람이 읽는 이름으로 보여준 것이며, 실제 저장되는 문장은 위 입력창의 내용입니다.",
     "tokenUnknown": "알 수 없는 변수 — 저장할 수 없습니다",
-    "tokenUnknownStep": "없는 스텝을 가리킵니다"
+    "tokenUnknownStep": "없는 스텝을 가리킵니다",
+    "directiveDefault": "기본 디렉티브(작성된 것 없음)",
+    "contextNone": "컨텍스트 핀 없음",
+    "needsRoot": "없음 — 루트 스텝(트리거 직후 실행)",
+    "timeoutNone": "제한 없음"
   },
   "gate": {
     "prompt": "승인 문구",
@@ -436,7 +449,10 @@
     "customTimeoutPlaceholder": "예: 36h",
     "decisionTitle": "결정",
     "decisionHint": "사람이 여기서 승인 또는 거절합니다. 그때까지 런은 대기합니다.",
-    "policyHint": "게이트가 얼마나 기다리는지, 타임아웃이 무엇을 결정하는지, 요청이 어디로 전달되는지."
+    "policyHint": "게이트가 얼마나 기다리는지, 타임아웃이 무엇을 결정하는지, 요청이 어디로 전달되는지.",
+    "approvers": "승인자",
+    "approversNone": "이 활성화에 지정된 승인자 없음",
+    "remindNone": "리마인드 없음"
   },
   "runs": {
     "empty": "아직 실행 이력이 없습니다 — 지금 실행으로 테스트해 보세요.",
@@ -481,7 +497,10 @@
     "openArtifact": "편집기에서 열기",
     "loadError": "실행 이력을 불러오지 못했습니다.",
     "gateAssignedTo": "{{who}}에게 배정",
-    "gateAssignedBy": "{{who}} 지정"
+    "gateAssignedBy": "{{who}} 지정",
+    "started": "시작 {{when}}",
+    "ended": "종료 {{when}}",
+    "elapsed": "경과 {{d}}"
   },
   "danger": {
     "title": "이 파이프라인 삭제",
