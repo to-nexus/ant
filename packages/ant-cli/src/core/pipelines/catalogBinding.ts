@@ -15,6 +15,7 @@
  */
 
 import {
+  fetchConnectionSource,
   hasPipelineAdvisories,
   parseCustomJobRef,
   parseRestAllowLine,
@@ -47,9 +48,9 @@ export function resolvePipelineCatalog(tenant: CustomAgentTenantContext): Pipeli
  */
 export function fetchAllowErrors(def: PipelineDef, agents: PipelineCatalogAgent[]): string[] {
   const fetch = def.on?.fetch;
-  if (!fetch) return [];
+  if (!fetch || fetchConnectionSource(fetch) === 'inline') return [];
   const ref = parseCustomJobRef(fetch.customJobRef);
-  const api = ref ? agents.find((a) => a.id === ref.agentId)?.jobs.find((j) => j.id === ref.jobId)?.apis?.[fetch.api] : undefined;
+  const api = ref ? agents.find((a) => a.id === ref.agentId)?.jobs.find((j) => j.id === ref.jobId)?.apis?.[fetch.api ?? ''] : undefined;
   if (!api || api.self || !api.allow) return [];
   const rules = api.allow.map((l) => parseRestAllowLine(l)).filter((r): r is RestAllowRule => typeof r !== 'string');
   if (isAllowedByRules(rules, fetch.request.method, fetch.request.path)) return [];

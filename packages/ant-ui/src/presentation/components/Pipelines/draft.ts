@@ -21,7 +21,12 @@ import {
   type ApprovalStepDef,
   type JobStepDef,
   type PipelineAdvisoryCode,
+  fetchConnectionSource,
   type PipelineDef,
+  type PipelineFetchBoundTrigger,
+  type PipelineFetchConnection,
+  type PipelineFetchConnectionSource,
+  type PipelineFetchInlineTrigger,
   type PipelineFetchTrigger,
   PipelineRunCompletedTrigger,
   type PipelineScheduleTrigger,
@@ -223,8 +228,8 @@ export function triggerModeOf(def: PipelineDef): TriggerMode {
   return 'manual';
 }
 
-/** A blank fetch trigger — every field the validator requires, none filled with a guess an author would keep. */
-export const DEFAULT_FETCH_TRIGGER: PipelineFetchTrigger = {
+/** A blank fetch trigger (bound form) — every field the validator requires, none filled with a guess an author would keep. */
+export const DEFAULT_FETCH_TRIGGER: PipelineFetchBoundTrigger = {
   customJobRef: '',
   api: '',
   request: { method: 'GET', path: '/' },
@@ -232,6 +237,36 @@ export const DEFAULT_FETCH_TRIGGER: PipelineFetchTrigger = {
   key: '$.id',
   every: '5m',
 };
+
+/** Everything a fetch trigger carries besides its connection form — what `updateFetch` may patch. */
+type FetchTriggerFields = Omit<PipelineFetchTrigger, 'customJobRef' | 'api' | 'connection'>;
+
+/**
+ * Switch the connection form, keeping every other field. Bound → inline drops
+ * the job binding and starts an empty connection; inline → bound drops the
+ * connection and starts an empty binding.
+ */
+export function setFetchConnectionSource(def: PipelineDef, source: PipelineFetchConnectionSource): PipelineDef {
+  const cur: PipelineFetchTrigger = def.on?.fetch ?? DEFAULT_FETCH_TRIGGER;
+  if (fetchConnectionSource(cur) === source) return def;
+  const { customJobRef: _j, api: _a, connection: _c, ...fields } = cur;
+  const next: PipelineFetchTrigger = source === 'inline' ? { ...fields, connection: { baseUrl: '' } } : { ...fields, customJobRef: '', api: '' };
+  return { ...def, on: { fetch: next } };
+}
+
+/** Patch the bound form's job binding (`customJobRef` / `api`); a non-bound trigger becomes bound. */
+export function updateFetchBinding(def: PipelineDef, patch: Partial<Pick<PipelineFetchBoundTrigger, 'customJobRef' | 'api'>>): PipelineDef {
+  const cur = setFetchConnectionSource(def, 'bound').on?.fetch as PipelineFetchBoundTrigger;
+  return { ...def, on: { fetch: { ...cur, ...patch } } };
+}
+
+/** Patch the inline connection; a non-inline trigger becomes inline. */
+export function updateFetchConnection(def: PipelineDef, patch: Partial<PipelineFetchConnection>): PipelineDef {
+  const cur = setFetchConnectionSource(def, 'inline').on?.fetch as PipelineFetchInlineTrigger;
+  const connection = { ...cur.connection, ...patch };
+  if (connection.headers !== undefined && Object.keys(connection.headers).length === 0) delete connection.headers;
+  return { ...def, on: { fetch: { ...cur, connection } } };
+}
 
 /**
  * Switch the trigger kind. The inspector edits ONE trigger at a time (a
@@ -256,9 +291,10 @@ export function updateRunCompleted(def: PipelineDef, patch: Partial<PipelineRunC
   return { ...def, on: { ...def.on, runCompleted: { pipelineId: '', ...def.on?.runCompleted, ...patch } } };
 }
 
-/** Patch the fetch trigger (a fetch def has no other trigger half to preserve). */
-export function updateFetch(def: PipelineDef, patch: Partial<PipelineFetchTrigger>): PipelineDef {
-  return { ...def, on: { fetch: { ...DEFAULT_FETCH_TRIGGER, ...def.on?.fetch, ...patch } } };
+/** Patch the fetch trigger's non-connection fields (a fetch def has no other trigger half to preserve). */
+export function updateFetch(def: PipelineDef, patch: Partial<FetchTriggerFields>): PipelineDef {
+  const cur: PipelineFetchTrigger = def.on?.fetch ?? DEFAULT_FETCH_TRIGGER;
+  return { ...def, on: { fetch: { ...cur, ...patch } } };
 }
 
 /** The validator's step-id shape — ids are the handles `needs` and `{{steps.<id>.*}}` refer to. */

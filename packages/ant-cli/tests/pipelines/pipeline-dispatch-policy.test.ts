@@ -702,6 +702,10 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
     expect(connection).toMatch(/buildRestRequest\(/);
     expect(connection).toMatch(/performRestRequest\(/);
     expect(connection).not.toMatch(/executeRestCall|\bfetch\(|process\.env/);
+    // The bound and the inline connection forms meet at ONE compile point — neither reaches an origin the other could not.
+    expect(connection.match(/compileRestServer\(/g)?.length).toBe(1);
+    expect(connection.match(/assertPublicApiBaseUrl\(/g)?.length).toBe(1);
+    expect(connection).toMatch(/fetchConnectionSource\(trigger\)/);
     const planning = read('periphery/adapters/http/routes/pipelines/planning.routes.ts');
     expect(planning).toMatch(/pollFetchSource\(/);
     expect(planning).not.toMatch(/\bfetch\(|buildRestRequest|process\.env/);

@@ -781,16 +781,20 @@ export function isForbiddenMcpEnvKey(key: string): boolean {
  * messages onto `errors`; `label` names the declaring channel.
  */
 function checkSecretableValue(errors: string[], label: string, name: string, slot: string, value: unknown): void {
+  const err = secretableValueError(slot, value);
+  if (err) errors.push(`${label} "${name}": ${err}`);
+}
+
+/** The unprefixed form of {@link checkSecretableValue} — the caller names the declaring slot. */
+function secretableValueError(slot: string, value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') {
-    errors.push(`${label} "${name}": ${slot} must be a non-empty string (got: ${String(value)})`);
-    return;
+    return `${slot} must be a non-empty string (got: ${String(value)})`;
   }
-  if (MCP_SECRET_REF_PATTERN.test(value)) return;
+  if (MCP_SECRET_REF_PATTERN.test(value)) return null;
   if (value.startsWith('${secret:')) {
-    errors.push(
-      `${label} "${name}": ${slot} looks like a credential reference but is malformed — use \${secret:KEY} with KEY matching ${String(MCP_ENV_VAR_NAME_PATTERN)}`,
-    );
+    return `${slot} looks like a credential reference but is malformed — use \${secret:KEY} with KEY matching ${String(MCP_ENV_VAR_NAME_PATTERN)}`;
   }
+  return null;
 }
 
 /**
@@ -954,6 +958,53 @@ export function parseRestAllowLine(line: unknown): RestAllowRule | string {
   return { method: method as RestAllowMethod, pattern };
 }
 
+/** Keys of the external connection shape — what an `apis` entry and a fetch trigger's inline connection share. */
+export const REST_EXTERNAL_CONNECTION_KEYS = ['baseUrl', 'headers'] as const;
+
+/**
+ * The external-connection rules (`baseUrl` + `headers`) — ONE owner for an
+ * `apis` entry and for a pipeline fetch trigger's inline connection. Messages
+ * carry no prefix; the caller names the declaring slot.
+ */
+export function restExternalConnectionErrors(
+  raw: Record<string, unknown> | null | undefined,
+  opts: { baseUrlMissingHint?: string } = {},
+): string[] {
+  const errors: string[] = [];
+  const baseUrl = raw?.baseUrl;
+  if (typeof baseUrl !== 'string' || baseUrl.trim() === '') {
+    errors.push(`"baseUrl" is required (absolute http(s) URL)${opts.baseUrlMissingHint ?? ''}`);
+  } else {
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(baseUrl);
+    } catch {
+      errors.push(`baseUrl "${baseUrl}" is not a valid absolute URL`);
+    }
+    if (parsed) {
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        errors.push(`baseUrl must be http(s), got "${parsed.protocol}"`);
+      }
+      if (parsed.search !== '' || parsed.hash !== '') {
+        errors.push('baseUrl must not carry a query string or fragment');
+      }
+    }
+  }
+  const headers = raw?.headers;
+  if (headers !== undefined && (typeof headers !== 'object' || headers === null || Array.isArray(headers))) {
+    errors.push('"headers" must be an object of header name → value');
+  } else {
+    for (const [key, value] of Object.entries((headers ?? {}) as Record<string, unknown>)) {
+      if (!MCP_HEADER_NAME_PATTERN.test(key)) {
+        errors.push(`headers."${key}" is not a valid HTTP header name`);
+      }
+      const err = secretableValueError(`headers.${key}`, value);
+      if (err) errors.push(err);
+    }
+  }
+  return errors;
+}
+
 /**
  * Every rule for the `apis` map, as plain messages (same three-failure-shape
  * contract as {@link validateMcpServers}: loader throw / HTTP 400 / form
@@ -987,36 +1038,9 @@ export function validateApiServers(servers: Record<string, RestApiServerConfig> 
         }
       }
     } else {
-      const baseUrl = raw?.baseUrl;
-      if (typeof baseUrl !== 'string' || baseUrl.trim() === '') {
-        errors.push(`API server "${name}": "baseUrl" is required (absolute http(s) URL), or declare "self: true" to target this Ant server`);
-      } else {
-        let parsed: URL | null = null;
-        try {
-          parsed = new URL(baseUrl);
-        } catch {
-          errors.push(`API server "${name}": baseUrl "${baseUrl}" is not a valid absolute URL`);
-        }
-        if (parsed) {
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            errors.push(`API server "${name}": baseUrl must be http(s), got "${parsed.protocol}"`);
-          }
-          if (parsed.search !== '' || parsed.hash !== '') {
-            errors.push(`API server "${name}": baseUrl must not carry a query string or fragment`);
-          }
-        }
-      }
-      const headers = raw?.headers;
-      if (headers !== undefined && (typeof headers !== 'object' || headers === null || Array.isArray(headers))) {
-        errors.push(`API server "${name}": "headers" must be an object of header name → value`);
-      } else {
-        for (const [key, value] of Object.entries((headers ?? {}) as Record<string, unknown>)) {
-          if (!MCP_HEADER_NAME_PATTERN.test(key)) {
-            errors.push(`API server "${name}": headers."${key}" is not a valid HTTP header name`);
-          }
-          checkSecretableValue(errors, 'API server', name, `headers.${key}`, value);
-        }
-      }
+      errors.push(
+        ...restExternalConnectionErrors(raw, { baseUrlMissingHint: ', or declare "self: true" to target this Ant server' }).map((e) => `API server "${name}": ${e}`),
+      );
     }
 
     if (raw?.allow !== undefined) {

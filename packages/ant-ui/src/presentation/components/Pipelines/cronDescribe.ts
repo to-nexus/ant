@@ -7,7 +7,7 @@
  * timezone is always appended so the silent-UTC default is visible.
  */
 
-import type { PipelineDef } from '@ant/shared';
+import { fetchConnectionSource, type PipelineDef, type PipelineFetchTrigger } from '@ant/shared';
 
 interface DescribeT {
   (key: string, defaultValue: string, options?: Record<string, unknown>): string;
@@ -86,8 +86,20 @@ export function describeCron(cron: string, tz: string | undefined, t: DescribeT,
 
 /** The trigger summary the canvas trigger node and the activation rows share. */
 export function describeTrigger(def: PipelineDef, t: DescribeT, locale: string): string {
-  if (def.on?.fetch) return t('trigger.fetchSummary', 'Polls "{{api}}" every {{every}}', { api: def.on.fetch.api || '…', every: def.on.fetch.every });
+  if (def.on?.fetch) {
+    return t('trigger.fetchSummary', 'Polls "{{api}}" every {{every}}', { api: fetchSourceLabel(def.on.fetch), every: def.on.fetch.every });
+  }
   if (def.on?.schedule) return describeCron(def.on.schedule.cron, def.on.schedule.tz, t, locale);
   if (def.on?.runCompleted) return t('trigger.chainedSummary', 'After "{{id}}"', { id: def.on.runCompleted.pipelineId || '…' });
   return t('trigger.manualOnly', 'Manual only');
+}
+
+/** What a fetch trigger polls, for a one-line summary: the bound connection's name, or the inline connection's host. */
+export function fetchSourceLabel(fetch: PipelineFetchTrigger): string {
+  if (fetchConnectionSource(fetch) === 'bound') return fetch.api || '…';
+  try {
+    return new URL(fetch.connection?.baseUrl ?? '').host || '…';
+  } catch {
+    return '…';
+  }
 }

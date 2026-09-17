@@ -24,9 +24,17 @@
  * store throws, the HTTP gate answers 400, the editor form disables saving.
  */
 
-import { parseCustomJobRef, isValidCustomId, validateArtifactGlob, GENERAL_INTENT, UNIVERSAL_PIPELINES_DIRNAME } from './custom-agents';
+import {
+  parseCustomJobRef,
+  isValidCustomId,
+  validateArtifactGlob,
+  restExternalConnectionErrors,
+  GENERAL_INTENT,
+  REST_EXTERNAL_CONNECTION_KEYS,
+  UNIVERSAL_PIPELINES_DIRNAME,
+} from './custom-agents';
 import { DIRECTIVE_MAX_CHARS } from './session-log';
-import type { CustomAgentOrgPermissions } from './custom-agents';
+import type { CustomAgentOrgPermissions, RestApiExternalConfig } from './custom-agents';
 
 /** Definition scope — agents precedent minus builtin (pipelines ship no samples). */
 export type PipelineScope = 'user' | 'org';
@@ -95,21 +103,56 @@ export interface PipelineRunCompletedTrigger {
 }
 
 /**
- * Pull trigger: a DETERMINISTIC poller in the control plane (no LLM) calls a
- * declared REST connection (`apis`) of one of the activator's jobs, selects
- * the items of the response, and fires ONE run per not-yet-claimed item —
- * the external system is the queue, Ant keeps the claim ledger. Items are
- * admitted only while the activation has room under `concurrency`; an item
- * left unclaimed is simply seen again by the next poll (backpressure).
- * `request` is trigger CONFIGURATION (the cron expression's sibling) — it is
- * never rendered to a model and never becomes a tool, so the `apis` doctrine
- * ("connectivity only, knowledge is prose") is intact.
+ * The connection an INLINE fetch trigger carries — the external `apis` shape
+ * minus `allow` and `self`: the one declared `request` is its whole scope, and
+ * a poll needs an external API. `${secret:KEY}` headers resolve from the
+ * ACTIVATOR's credential store exactly as a job's `apis` headers do.
  */
-export interface PipelineFetchTrigger {
+export type PipelineFetchConnection = Pick<RestApiExternalConfig, 'baseUrl' | 'headers'>;
+
+/** Label the poller compiles an inline connection under (`compileRestServer` names its server). */
+export const PIPELINE_FETCH_INLINE_CONNECTION_NAME = 'fetch';
+
+/**
+ * Pull trigger: a DETERMINISTIC poller in the control plane (no LLM) calls a
+ * REST connection — either a declared `apis` entry of one of the activator's
+ * jobs (the BOUND form: the steps already reach that system) or the trigger's
+ * own inline connection (the source is only a queue; declaring an `apis` entry
+ * for it would hand a job's model tools it has no use for) — selects the items
+ * of the response, and fires ONE run per not-yet-claimed item — the external
+ * system is the queue, Ant keeps the claim ledger. Items are admitted only
+ * while the activation has room under `concurrency`; an item left unclaimed is
+ * simply seen again by the next poll (backpressure). `request` is trigger
+ * CONFIGURATION (the cron expression's sibling) — it is never rendered to a
+ * model and never becomes a tool, so the `apis` doctrine ("connectivity only,
+ * knowledge is prose") is intact in both forms.
+ */
+export type PipelineFetchTrigger = PipelineFetchBoundTrigger | PipelineFetchInlineTrigger;
+
+/** Bound form — the connection is a job's declared external `apis` entry. */
+export interface PipelineFetchBoundTrigger extends PipelineFetchTriggerBase {
   /** `{agentId}/{jobId}` whose merged `apis` map names the connection — resolved in the ACTIVATOR's scope roots. */
   customJobRef: string;
   /** Connection name in that job's `apis` map. `self: true` entries are refused. */
   api: string;
+  connection?: undefined;
+}
+
+/** Inline form — the trigger carries its own connection; no job is involved. */
+export interface PipelineFetchInlineTrigger extends PipelineFetchTriggerBase {
+  connection: PipelineFetchConnection;
+  customJobRef?: undefined;
+  api?: undefined;
+}
+
+export type PipelineFetchConnectionSource = 'bound' | 'inline';
+
+/** The ONE discriminator of the two connection forms — validator, catalog binding, poller and editor all read it. */
+export function fetchConnectionSource(trigger: Pick<PipelineFetchTrigger, 'connection'>): PipelineFetchConnectionSource {
+  return trigger.connection !== undefined ? 'inline' : 'bound';
+}
+
+export interface PipelineFetchTriggerBase {
   request: {
     /** A poll READS: GET, or POST for search endpoints. Writes are refused. */
     method: 'GET' | 'POST';
@@ -1109,8 +1152,17 @@ const RESERVED_DEF_KEYS: Record<string, string> = {
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
 const ON_KEYS = ['schedule', 'runCompleted', 'fetch'];
-const FETCH_KEYS = ['customJobRef', 'api', 'request', 'items', 'key', 'fields', 'every', 'batch'];
+const FETCH_KEYS = ['customJobRef', 'api', 'connection', 'request', 'items', 'key', 'fields', 'every', 'batch'];
 const FETCH_REQUEST_KEYS = ['method', 'path', 'query', 'body'];
+const FETCH_CONNECTION_FORMS_HINT = 'exactly one connection form: { customJobRef, api } (a job\'s declared apis entry) or { connection: { baseUrl, headers? } } (inline)';
+/** `apis`-entry knobs an author may carry into an inline connection — say why they do not apply. */
+const FETCH_CONNECTION_RESERVED_KEYS: Record<string, string> = {
+  allow: '"allow" does not apply to an inline connection — the declared request is its whole scope',
+  self: '"self" targets this Ant server — a poll needs an external API with a baseUrl',
+  ...Object.fromEntries(
+    ['transport', 'command', 'args', 'env', 'url'].map((k) => [k, `"${k}" belongs to mcp.servers — a connection declares baseUrl / headers only`]),
+  ),
+};
 /** Schedule-only knobs an author may reach for on a poll — say why they do not apply. */
 const FETCH_RESERVED_KEYS: Record<string, string> = {
   overlap: '"overlap" does not apply to on.fetch — a poll admits items only while the activation has room under "concurrency"; unclaimed items are seen again next poll',
@@ -1267,14 +1319,27 @@ function pinTemplateErrors(pin: string, stepId: string, itemVars: string[] | nul
 
 /** Fetch-trigger shape rules — plain messages, `on.fetch.` prefixed. */
 function fetchTriggerErrors(raw: unknown, caps: Pick<PipelineCaps, 'minFetchIntervalMinutes' | 'maxFetchBatch'>): string[] {
-  if (!isPlainObject(raw)) return ['on.fetch must be a mapping { customJobRef, api, request, items, key, every, fields?, batch? }'];
+  if (!isPlainObject(raw)) return [`on.fetch must be a mapping { request, items, key, every, fields?, batch? } plus ${FETCH_CONNECTION_FORMS_HINT}`];
   const errors: string[] = [];
   errors.push(...unknownKeyErrors(raw, FETCH_KEYS, 'on.fetch', FETCH_RESERVED_KEYS));
-  if (typeof raw.customJobRef !== 'string' || parseCustomJobRef(raw.customJobRef) === null) {
-    errors.push(`on.fetch.customJobRef must be "{agentId}/{jobId}" — the job whose apis map names the connection (got: ${String(raw.customJobRef)})`);
+  const bound = raw.customJobRef !== undefined || raw.api !== undefined;
+  const inline = raw.connection !== undefined;
+  if (bound === inline) errors.push(`on.fetch needs ${FETCH_CONNECTION_FORMS_HINT}`);
+  if (bound) {
+    if (typeof raw.customJobRef !== 'string' || parseCustomJobRef(raw.customJobRef) === null) {
+      errors.push(`on.fetch.customJobRef must be "{agentId}/{jobId}" — the job whose apis map names the connection (got: ${String(raw.customJobRef)})`);
+    }
+    if (typeof raw.api !== 'string' || !isValidCustomId(raw.api)) {
+      errors.push(`on.fetch.api must be a connection name from that job's apis map (${STEP_ID_HINT})`);
+    }
   }
-  if (typeof raw.api !== 'string' || !isValidCustomId(raw.api)) {
-    errors.push(`on.fetch.api must be a connection name from that job's apis map (${STEP_ID_HINT})`);
+  if (inline) {
+    if (!isPlainObject(raw.connection)) {
+      errors.push('on.fetch.connection must be a mapping { baseUrl, headers? }');
+    } else {
+      errors.push(...unknownKeyErrors(raw.connection, [...REST_EXTERNAL_CONNECTION_KEYS], 'on.fetch.connection', FETCH_CONNECTION_RESERVED_KEYS));
+      errors.push(...restExternalConnectionErrors(raw.connection).map((e) => `on.fetch.connection: ${e}`));
+    }
   }
   if (!isPlainObject(raw.request)) {
     errors.push('on.fetch.request must be a mapping { method, path, query?, body? }');
@@ -1833,12 +1898,13 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
     }
   });
 
-  // The fetch trigger's connection: the named job must exist in the caller's
-  // catalog and declare the connection as an EXTERNAL api (a self entry
-  // targets this Ant server — polling it is not a case source). The allow
-  // rules are judged server-side with the executor's own matcher.
+  // The fetch trigger's BOUND connection: the named job must exist in the
+  // caller's catalog and declare the connection as an EXTERNAL api (a self
+  // entry targets this Ant server — polling it is not a case source). The
+  // allow rules are judged server-side with the executor's own matcher. An
+  // inline connection names no job and binds against nothing here.
   const fetch = def.on?.fetch;
-  if (fetch) {
+  if (fetch && fetchConnectionSource(fetch) === 'bound') {
     const ref = parseCustomJobRef(fetch.customJobRef);
     const agent = ref ? agentById.get(ref.agentId) : undefined;
     const job = ref ? agent?.jobs.find((j) => j.id === ref.jobId) : undefined;
@@ -1847,7 +1913,7 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
     } else if (ref && job === undefined) {
       errors.push(`on.fetch: agent "${ref.agentId}" has no job "${ref.jobId}" — ${remedy}, or fix its definition in Agent Settings`);
     } else if (job?.apis !== undefined) {
-      const api = job.apis[fetch.api];
+      const api = job.apis[fetch.api ?? ''];
       if (api === undefined) {
         const names = Object.keys(job.apis);
         errors.push(

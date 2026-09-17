@@ -515,6 +515,34 @@ describe('fetch trigger — poll-now, the every-poller, preview-fetch', () => {
     expect((await noStore.json()).code).toBe('credentials-unavailable');
   });
 
+  it('an inline connection needs no catalog api: save, enable and activate pass with no apis entry named', async () => {
+    const def = FETCH_DEF();
+    def.on.fetch = {
+      connection: { baseUrl: 'https://queue.example.com', headers: { Authorization: '${secret:QUEUE_TOKEN}' } },
+      request: { method: 'GET', path: '/items' },
+      items: '$.items',
+      key: '$.id',
+      every: '5m',
+    } as never;
+    makeUniversalProject('proj-b');
+    const saved = await api('', { method: 'POST', body: JSON.stringify({ id: 'inbox', def }) });
+    expect(saved.status).toBe(201);
+    expect((await saved.json()).catalogWarnings).toBeUndefined();
+    await enable('inbox');
+    expect((await activate('inbox', 'proj-b')).status).toBe(200);
+    const list = await (await api('')).json();
+    expect(list.pipelines.find((p: any) => p.id === 'inbox').every).toBe('5m');
+  });
+
+  it('preview-fetch accepts the inline form (the block validates; this harness then answers 503) and refuses both forms at once', async () => {
+    const inline = { connection: { baseUrl: 'https://queue.example.com' }, request: { method: 'GET', path: '/items' }, items: '$.items', key: '$.id', every: '5m' };
+    const ok = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: inline }) });
+    expect(ok.status).toBe(503);
+    const both = await api('/preview-fetch', { method: 'POST', body: JSON.stringify({ fetch: { ...FETCH_DEF().on.fetch, connection: inline.connection } }) });
+    expect(both.status).toBe(400);
+    expect((await both.json()).errors.join('\n')).toMatch(/exactly one connection form/);
+  });
+
   it('preview-fetch is registered as a LITERAL — it never resolves as a pipeline id', async () => {
     const res = await api('/preview-fetch');
     expect([404, 405]).toContain(res.status);

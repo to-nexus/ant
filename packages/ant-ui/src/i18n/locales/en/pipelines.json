@@ -198,7 +198,7 @@
     "fetchSummary": "Polls \"{{api}}\" every {{every}}",
     "fetch": {
       "connection": "Connection",
-      "connectionHint": "A REST connection one of your agents declares under apis. The poll runs with your own credentials for that connection.",
+      "connectionHint": "The poll runs with the activator's own credentials for this connection.",
       "agent": "Agent",
       "job": "Job",
       "api": "API connection",
@@ -234,7 +234,18 @@
       "previewNeedsProject": "Pass a project to see which items are already claimed.",
       "previewSeen": "{{n}} item(s) seen, {{skipped}} skipped",
       "previewEmpty": "The poll returned no items.",
-      "claimed": "claimed"
+      "claimed": "claimed",
+      "source": "Connection source",
+      "sourceBound": "An agent's declared apis entry",
+      "sourceInline": "Inline — this pipeline only",
+      "sourceHint": "Reuse a job's apis entry when a step already reaches this system; otherwise declare the connection here, so no agent gains tools it has no use for.",
+      "baseUrl": "Base URL",
+      "headers": "Headers",
+      "addHeader": "Add header",
+      "removeHeader": "Remove header",
+      "headerName": "Header",
+      "headerValue": "Value",
+      "secretHint": "Write credentials as ${secret:KEY} — the value stays in credential settings, registered by whoever activates the pipeline."
     },
     "chainedSummary": "After \"{{id}}\"",
     "chainSource": "Fires when this pipeline finishes",

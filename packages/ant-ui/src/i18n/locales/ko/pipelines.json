@@ -198,7 +198,7 @@
     "fetchSummary": "\"{{api}}\"을(를) {{every}}마다 폴링",
     "fetch": {
       "connection": "연결",
-      "connectionHint": "에이전트가 apis에 선언한 REST 연결입니다. 폴링은 그 연결에 등록된 내 자격증명으로 실행됩니다.",
+      "connectionHint": "폴링은 이 연결에 대해 활성화한 사람의 자격증명으로 실행됩니다.",
       "agent": "에이전트",
       "job": "잡",
       "api": "API 연결",
@@ -234,7 +234,18 @@
       "previewNeedsProject": "프로젝트를 지정하면 이미 처리 중인 항목을 표시합니다.",
       "previewSeen": "{{n}}개 항목, {{skipped}}개 건너뜀",
       "previewEmpty": "폴링 결과 항목이 없습니다.",
-      "claimed": "처리 중"
+      "claimed": "처리 중",
+      "source": "연결 출처",
+      "sourceBound": "에이전트가 선언한 apis 항목",
+      "sourceInline": "인라인 — 이 파이프라인 전용",
+      "sourceHint": "스텝이 이미 이 시스템을 호출한다면 그 잡의 apis 항목을 재사용하고, 그렇지 않으면 여기에 연결을 선언하세요 — 쓰지 않을 툴이 에이전트에 부여되지 않습니다.",
+      "baseUrl": "기본 URL",
+      "headers": "헤더",
+      "addHeader": "헤더 추가",
+      "removeHeader": "헤더 삭제",
+      "headerName": "헤더",
+      "headerValue": "값",
+      "secretHint": "자격증명은 ${secret:KEY}로 쓰세요 — 값은 자격증명 설정에 남고, 파이프라인을 활성화하는 사람이 등록합니다."
     },
     "chainedSummary": "\"{{id}}\" 완료 후",
     "chainSource": "이 파이프라인이 끝나면 발화",

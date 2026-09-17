@@ -25,9 +25,12 @@ import {
   withAcknowledgement,
   withoutAcknowledgement,
   DEFAULT_FETCH_TRIGGER,
+  setFetchConnectionSource,
   setTriggerMode,
   triggerModeOf,
   updateFetch,
+  updateFetchBinding,
+  updateFetchConnection,
 } from '../../src/presentation/components/Pipelines/draft';
 import { upstreamStepIds } from '../../src/presentation/components/Pipelines/upstreamOutputs';
 
@@ -273,5 +276,27 @@ describe('trigger modes — fetch stands alone, and the mode is read from the on
   it('updateFetch patches onto the defaults and never re-introduces another trigger half', () => {
     const d = updateFetch({ ...def([job('a')]), on: undefined }, { items: '$.rows', batch: 3 });
     expect(d.on).toEqual({ fetch: { ...DEFAULT_FETCH_TRIGGER, items: '$.rows', batch: 3 } });
+  });
+
+  it('setFetchConnectionSource swaps the connection form and keeps every other field; the opposite form\'s keys are gone', () => {
+    const bound = updateFetch(setTriggerMode(def([job('a')]), 'fetch'), { items: '$.rows', every: '1h' });
+    const inline = setFetchConnectionSource(bound, 'inline');
+    expect(inline.on?.fetch).toEqual({ ...DEFAULT_FETCH_TRIGGER, customJobRef: undefined, api: undefined, items: '$.rows', every: '1h', connection: { baseUrl: '' } });
+    expect('customJobRef' in (inline.on?.fetch as object)).toBe(false);
+    expect(setFetchConnectionSource(inline, 'inline')).toBe(inline);
+    const back = setFetchConnectionSource(updateFetchConnection(inline, { baseUrl: 'https://q.example', headers: { Authorization: '${secret:T}' } }), 'bound');
+    expect(back.on?.fetch).toEqual({ ...DEFAULT_FETCH_TRIGGER, items: '$.rows', every: '1h' });
+    expect('connection' in (back.on?.fetch as object)).toBe(false);
+  });
+
+  it('updateFetchBinding / updateFetchConnection patch their own form and convert a trigger of the other form', () => {
+    const inline = setFetchConnectionSource(setTriggerMode(def([job('a')]), 'fetch'), 'inline');
+    const withHeaders = updateFetchConnection(inline, { headers: { Authorization: '${secret:T}' } });
+    expect(withHeaders.on?.fetch?.connection).toEqual({ baseUrl: '', headers: { Authorization: '${secret:T}' } });
+    // Clearing the last header removes the key rather than leaving `headers: {}` (the validator accepts both; the yaml stays minimal).
+    expect(updateFetchConnection(withHeaders, { headers: {} }).on?.fetch?.connection).toEqual({ baseUrl: '' });
+    const rebound = updateFetchBinding(withHeaders, { customJobRef: 'ops/tickets', api: 'jira' });
+    expect(rebound.on?.fetch).toMatchObject({ customJobRef: 'ops/tickets', api: 'jira' });
+    expect('connection' in (rebound.on?.fetch as object)).toBe(false);
   });
 });

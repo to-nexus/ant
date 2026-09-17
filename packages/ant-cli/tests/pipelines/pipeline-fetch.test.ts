@@ -135,6 +135,31 @@ describe('pollFetchSource — the activator\'s connection, the executor\'s admis
     expect(calls).toHaveLength(0);
   });
 
+  const INLINE: PipelineFetchTrigger = {
+    ...TRIGGER,
+    customJobRef: undefined,
+    api: undefined,
+    connection: { baseUrl: 'https://queue.example.com/api', headers: { Authorization: '${secret:QUEUE_TOKEN}', Accept: 'application/json' } },
+  };
+
+  it('an inline connection sends the declared request with resolved secret headers — no job is loaded', async () => {
+    // No agent scaffolded at all: an inline connection resolves nothing in the scope roots.
+    const { impl, calls } = fetchStub(json(RESPONSE));
+    const r = await pollFetchSource({ tenant: { ...TENANT, workspacesPath: tmp }, credentialResolver: resolver({ QUEUE_TOKEN: 'q-live' }), fetchImpl: impl }, INLINE);
+    expect(r.ok).toBe(true);
+    expect(calls[0].url).toBe('https://queue.example.com/api/rest/api/3/search?jql=status+%3D+Open');
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('q-live');
+    expect((calls[0].init.headers as Record<string, string>).Accept).toBe('application/json');
+    expect(calls[0].init.redirect).toBe('manual');
+  });
+
+  it('an inline connection with an unregistered secret is the config_invalid reason, no egress', async () => {
+    const { impl, calls } = fetchStub(json(RESPONSE));
+    const r = await pollFetchSource({ tenant: { ...TENANT, workspacesPath: tmp }, credentialResolver: resolver({}), fetchImpl: impl }, INLINE);
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/credential key "QUEUE_TOKEN" which is not registered/) });
+    expect(calls).toHaveLength(0);
+  });
+
   it('a missing agent is a reason, not a throw', async () => {
     const r = await pollFetchSource({ tenant: { ...TENANT, workspacesPath: tmp }, credentialResolver: resolver({}) }, TRIGGER);
     expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/failed to load/) });

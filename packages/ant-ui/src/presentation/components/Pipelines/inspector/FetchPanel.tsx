@@ -1,9 +1,9 @@
 /**
- * The fetch trigger's form — connection (agent → job → declared external api),
- * the polled request, the item selection (items / key / fields), and the poll
- * cadence. The validator owns every rule; this form only shapes the object and
- * round-trips "what would a poll see" through `preview-fetch` (the caller's
- * own credentials, no claim).
+ * The fetch trigger's form — connection (a job's declared external api, or an
+ * inline baseUrl + headers), the polled request, the item selection (items /
+ * key / fields), and the poll cadence. The validator owns every rule; this
+ * form only shapes the object and round-trips "what would a poll see" through
+ * `preview-fetch` (the caller's own credentials, no claim).
  */
 
 import { useMemo, useState } from 'react';
@@ -11,10 +11,13 @@ import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import {
   DEFAULT_PIPELINE_CAPS,
+  fetchConnectionSource,
+  MCP_HEADER_NAME_PATTERN,
   parseCustomJobRef,
   PIPELINE_FETCH_FIELD_NAME_PATTERN,
   type CustomAgentSummary,
   type PipelineDef,
+  type PipelineFetchConnectionSource,
   type PipelineFetchTrigger,
 } from '@ant/shared';
 import { useStore } from '@/domain/store';
@@ -23,7 +26,7 @@ import { AuroraInput, AuroraSelect, FieldHint, FieldLabel } from '../../ConfigEd
 import { Textarea } from '../../aurora';
 import { Badge, Button } from '../../aurora';
 import { HintBadge } from '../../common/HintBadge';
-import { DEFAULT_FETCH_TRIGGER, updateFetch } from '../draft';
+import { DEFAULT_FETCH_TRIGGER, setFetchConnectionSource, updateFetch, updateFetchBinding, updateFetchConnection } from '../draft';
 import { SectionHeading } from './SectionHeading';
 import { withCurrentValue } from './selectOptions';
 
@@ -49,12 +52,22 @@ function linesToQuery(text: string): Record<string, string> | undefined {
 
 export function FetchPanel({ def, onChange, customAgents }: { def: PipelineDef; onChange: (d: PipelineDef) => void; customAgents: CustomAgentSummary[] }) {
   const { t } = useTranslation('pipelines');
-  const fetch = def.on?.fetch ?? DEFAULT_FETCH_TRIGGER;
-  const patch = (p: Partial<PipelineFetchTrigger>) => onChange(updateFetch(def, p));
+  const fetch: PipelineFetchTrigger = def.on?.fetch ?? DEFAULT_FETCH_TRIGGER;
+  const patch = (p: Parameters<typeof updateFetch>[1]) => onChange(updateFetch(def, p));
   const patchRequest = (p: Partial<PipelineFetchTrigger['request']>) => patch({ request: { ...fetch.request, ...p } });
   const unknown = (v: string) => t('inspector.unknownValue', 'Unknown value: {{v}}', { v });
 
-  const ref = parseCustomJobRef(fetch.customJobRef);
+  const source = fetchConnectionSource(fetch);
+  const connection = fetch.connection ?? { baseUrl: '' };
+  const headerRows = useMemo(() => Object.entries(connection.headers ?? {}), [connection.headers]);
+  const setHeaders = (rows: Array<[string, string]>) => {
+    const next: Record<string, string> = {};
+    for (const [k, v] of rows) next[k] = v;
+    onChange(updateFetchConnection(def, { headers: rows.length > 0 ? next : undefined }));
+  };
+  const connectionReady = source === 'inline' ? connection.baseUrl.trim() !== '' : Boolean(fetch.api && parseCustomJobRef(fetch.customJobRef ?? ''));
+
+  const ref = parseCustomJobRef(fetch.customJobRef ?? '');
   const agent = customAgents.find((a) => a.id === ref?.agentId);
   const job = agent?.jobs.find((j) => j.id === ref?.jobId);
   // External connections only — a self entry targets this Ant server, which is not a case source.
@@ -63,7 +76,7 @@ export function FetchPanel({ def, onChange, customAgents }: { def: PipelineDef; 
     .map(([name]) => name);
   const agentSel = withCurrentValue(customAgents.map((a) => ({ value: a.id, label: a.name })), ref?.agentId, unknown);
   const jobSel = withCurrentValue((agent?.jobs ?? []).map((j) => ({ value: j.id, label: j.name })), ref?.jobId, unknown);
-  const apiSel = withCurrentValue(apiNames.map((n) => ({ value: n, label: n })), fetch.api, unknown);
+  const apiSel = withCurrentValue(apiNames.map((n) => ({ value: n, label: n })), fetch.api ?? '', unknown);
 
   const [queryText, setQueryText] = useState(() => queryToLines(fetch.request.query));
   const [bodyText, setBodyText] = useState(() => (fetch.request.body ? JSON.stringify(fetch.request.body, null, 2) : ''));
@@ -95,50 +108,120 @@ export function FetchPanel({ def, onChange, customAgents }: { def: PipelineDef; 
   return (
     <>
       <SectionHeading>{t('trigger.fetch.connection', 'Connection')}</SectionHeading>
-      <FieldHint tone="muted">
-        {t('trigger.fetch.connectionHint', 'A REST connection one of your agents declares under apis. The poll runs with your own credentials for that connection.')}
-      </FieldHint>
       <div>
-        <FieldLabel required>{t('trigger.fetch.agent', 'Agent')}</FieldLabel>
+        <FieldLabel>{t('trigger.fetch.source', 'Connection source')}</FieldLabel>
         <AuroraSelect
-          value={ref?.agentId ?? ''}
-          hasError={agentSel.hasError}
-          onChange={(agentId) => {
-            const firstJob = customAgents.find((a) => a.id === agentId)?.jobs[0]?.id ?? '';
-            patch({ customJobRef: firstJob ? `${agentId}/${firstJob}` : '', api: '' });
-          }}
-          placeholder={t('step.pickAgent', 'Choose an agent')}
-          options={agentSel.options}
+          value={source}
+          onChange={(v) => onChange(setFetchConnectionSource(def, v as PipelineFetchConnectionSource))}
+          options={[
+            { value: 'bound', label: t('trigger.fetch.sourceBound', "An agent's declared apis entry") },
+            { value: 'inline', label: t('trigger.fetch.sourceInline', 'Inline — this pipeline only') },
+          ]}
         />
+        <FieldHint tone="muted">
+          {t(
+            'trigger.fetch.sourceHint',
+            "Reuse a job's apis entry when a step already reaches this system; otherwise declare the connection here, so no agent gains tools it has no use for.",
+          )}
+        </FieldHint>
       </div>
-      <div>
-        <FieldLabel required>{t('trigger.fetch.job', 'Job')}</FieldLabel>
-        <AuroraSelect
-          value={ref?.jobId ?? ''}
-          hasError={jobSel.hasError}
-          disabled={!agent}
-          onChange={(jobId) => {
-            if (ref) patch({ customJobRef: `${ref.agentId}/${jobId}`, api: '' });
-          }}
-          placeholder={t('step.pickJob', 'Choose a job')}
-          options={jobSel.options}
-        />
-      </div>
-      <div>
-        <FieldLabel required>{t('trigger.fetch.api', 'API connection')}</FieldLabel>
-        {job && apiNames.length === 0 && !fetch.api ? (
-          <FieldHint tone="warn">{t('trigger.fetch.apiNone', 'This job declares no external API connection — add one under apis in Agent Settings.')}</FieldHint>
-        ) : (
-          <AuroraSelect
-            value={fetch.api}
-            hasError={apiSel.hasError}
-            disabled={!job}
-            onChange={(api) => patch({ api })}
-            placeholder={t('trigger.fetch.apiPick', 'Choose a connection')}
-            options={apiSel.options}
-          />
-        )}
-      </div>
+      <FieldHint tone="muted">{t('trigger.fetch.connectionHint', "The poll runs with the activator's own credentials for this connection.")}</FieldHint>
+      {source === 'bound' ? (
+        <>
+          <div>
+            <FieldLabel required>{t('trigger.fetch.agent', 'Agent')}</FieldLabel>
+            <AuroraSelect
+              value={ref?.agentId ?? ''}
+              hasError={agentSel.hasError}
+              onChange={(agentId) => {
+                const firstJob = customAgents.find((a) => a.id === agentId)?.jobs[0]?.id ?? '';
+                onChange(updateFetchBinding(def, { customJobRef: firstJob ? `${agentId}/${firstJob}` : '', api: '' }));
+              }}
+              placeholder={t('step.pickAgent', 'Choose an agent')}
+              options={agentSel.options}
+            />
+          </div>
+          <div>
+            <FieldLabel required>{t('trigger.fetch.job', 'Job')}</FieldLabel>
+            <AuroraSelect
+              value={ref?.jobId ?? ''}
+              hasError={jobSel.hasError}
+              disabled={!agent}
+              onChange={(jobId) => {
+                if (ref) onChange(updateFetchBinding(def, { customJobRef: `${ref.agentId}/${jobId}`, api: '' }));
+              }}
+              placeholder={t('step.pickJob', 'Choose a job')}
+              options={jobSel.options}
+            />
+          </div>
+          <div>
+            <FieldLabel required>{t('trigger.fetch.api', 'API connection')}</FieldLabel>
+            {job && apiNames.length === 0 && !fetch.api ? (
+              <FieldHint tone="warn">{t('trigger.fetch.apiNone', 'This job declares no external API connection — add one under apis in Agent Settings.')}</FieldHint>
+            ) : (
+              <AuroraSelect
+                value={fetch.api ?? ''}
+                hasError={apiSel.hasError}
+                disabled={!job}
+                onChange={(api) => onChange(updateFetchBinding(def, { api }))}
+                placeholder={t('trigger.fetch.apiPick', 'Choose a connection')}
+                options={apiSel.options}
+              />
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div>
+            <FieldLabel required>{t('trigger.fetch.baseUrl', 'Base URL')}</FieldLabel>
+            <AuroraInput mono value={connection.baseUrl} placeholder="https://jira.example.com/rest" onChange={(v) => onChange(updateFetchConnection(def, { baseUrl: v }))} />
+          </div>
+          <div>
+            <FieldLabel
+              optional
+              action={
+                <button
+                  onClick={() => setHeaders([...headerRows, ['', '']])}
+                  style={{ background: 'none', border: 'none', color: 'var(--violet-500)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}
+                >
+                  <Plus size={11} /> {t('trigger.fetch.addHeader', 'Add header')}
+                </button>
+              }
+            >
+              {t('trigger.fetch.headers', 'Headers')}
+            </FieldLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {headerRows.map(([name, value], i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 6, alignItems: 'center' }}>
+                  <AuroraInput
+                    mono
+                    value={name}
+                    hasError={name.length > 0 && !MCP_HEADER_NAME_PATTERN.test(name)}
+                    placeholder={t('trigger.fetch.headerName', 'Header')}
+                    onChange={(v) => setHeaders(headerRows.map((row, j) => (j === i ? [v, row[1]] : row)))}
+                  />
+                  <AuroraInput
+                    mono
+                    value={value}
+                    placeholder={t('trigger.fetch.headerValue', 'Value')}
+                    onChange={(v) => setHeaders(headerRows.map((row, j) => (j === i ? [row[0], v] : row)))}
+                  />
+                  <button
+                    aria-label={t('trigger.fetch.removeHeader', 'Remove header')}
+                    onClick={() => setHeaders(headerRows.filter((_, j) => j !== i))}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer' }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <FieldHint tone="muted">
+              {t('trigger.fetch.secretHint', 'Write credentials as ${secret:KEY} — the value stays in credential settings, registered by whoever activates the pipeline.')}
+            </FieldHint>
+          </div>
+        </>
+      )}
 
       <SectionHeading>{t('trigger.fetch.request', 'Request')}</SectionHeading>
       <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 6 }}>
@@ -286,7 +369,7 @@ export function FetchPanel({ def, onChange, customAgents }: { def: PipelineDef; 
       </FieldHint>
 
       <div>
-        <Button variant="secondary" size="xs" disabled={previewing || !fetch.api || !ref} onClick={runPreview}>
+        <Button variant="secondary" size="xs" disabled={previewing || !connectionReady} onClick={runPreview}>
           {previewing ? t('trigger.fetch.previewing', 'Polling…') : t('trigger.fetch.preview', 'Preview items')}
         </Button>
         {preview && (

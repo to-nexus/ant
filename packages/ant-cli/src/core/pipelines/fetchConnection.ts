@@ -1,16 +1,26 @@
 /**
- * One poll of a fetch trigger's source, in the API process: resolve the named
- * job's `apis` connection in the OWNER's scope roots, resolve its `${secret:}`
+ * One poll of a fetch trigger's source, in the API process: resolve the
+ * connection — a named job's `apis` entry in the OWNER's scope roots (bound
+ * form) or the trigger's own inline connection — resolve its `${secret:}`
  * headers through the owner's credential store, and issue the declared
  * request through the SAME admission owner the tool executor uses
  * (`buildRestRequest` → `performRestRequest`). No LLM, no tool, no credits.
+ * Both forms meet at ONE `compileRestServer` call: neither can reach an
+ * origin, path or header the other could not.
  *
  * Never throws — every failure is a reason string the caller records as the
  * poll's status (a status line or a policy sentence; never a response body,
  * never a header). Shared by the scheduler's poller and the editor's preview.
  */
 
-import { isSelfApiConfig, parseCustomJobRef, type PipelineFetchTrigger } from '@ant/shared';
+import {
+  fetchConnectionSource,
+  isSelfApiConfig,
+  parseCustomJobRef,
+  PIPELINE_FETCH_INLINE_CONNECTION_NAME,
+  type PipelineFetchTrigger,
+  type RestApiServerConfig,
+} from '@ant/shared';
 import { deriveCustomAgentScopeRootsForTenant, type CustomAgentTenantContext } from '../customAgents/scopeRoots';
 import { loadCustomJob } from '../customAgents/CustomAgentLoader';
 import type { McpCredentialResolver } from '../customAgents/McpCredentialResolver';
@@ -35,24 +45,32 @@ export type FetchSourceOutcome = { ok: true; extracted: ExtractedFetchItems } | 
 
 export async function pollFetchSource(deps: FetchSourceDeps, trigger: PipelineFetchTrigger): Promise<FetchSourceOutcome> {
   const fail = (error: string): FetchSourceOutcome => ({ ok: false, error });
-  const ref = parseCustomJobRef(trigger.customJobRef);
-  if (!ref) return fail(`on.fetch.customJobRef is malformed: ${trigger.customJobRef}`);
 
-  let cfg;
-  try {
-    const resolved = loadCustomJob(deriveCustomAgentScopeRootsForTenant(deps.tenant), ref.agentId, ref.jobId);
-    cfg = resolved.apiServers[trigger.api];
-  } catch (e) {
-    return fail(`definition "${trigger.customJobRef}" failed to load: ${e instanceof Error ? e.message : String(e)}`);
+  let name: string;
+  let cfg: RestApiServerConfig | undefined;
+  if (fetchConnectionSource(trigger) === 'inline') {
+    name = PIPELINE_FETCH_INLINE_CONNECTION_NAME;
+    cfg = trigger.connection;
+  } else {
+    name = trigger.api ?? '';
+    const ref = parseCustomJobRef(trigger.customJobRef ?? '');
+    if (!ref) return fail(`on.fetch.customJobRef is malformed: ${String(trigger.customJobRef)}`);
+    try {
+      const resolved = loadCustomJob(deriveCustomAgentScopeRootsForTenant(deps.tenant), ref.agentId, ref.jobId);
+      cfg = resolved.apiServers[name];
+    } catch (e) {
+      return fail(`definition "${trigger.customJobRef}" failed to load: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (!cfg) return fail(`job "${trigger.customJobRef}" declares no API connection "${name}"`);
   }
-  if (!cfg) return fail(`job "${trigger.customJobRef}" declares no API connection "${trigger.api}"`);
-  if (isSelfApiConfig(cfg)) return fail(`connection "${trigger.api}" is a self entry — a poll needs an external API`);
+  if (!cfg) return fail('on.fetch carries no connection');
+  if (isSelfApiConfig(cfg)) return fail(`connection "${name}" is a self entry — a poll needs an external API`);
 
   let compiled;
   try {
-    const headers = await resolveDeclaredCredentials(cfg.headers, 'headers', trigger.api, deps.credentialResolver, 'API server');
-    compiled = compileRestServer(trigger.api, cfg, resolveRestConnectivity(trigger.api, cfg, headers));
-    await assertPublicApiBaseUrl(trigger.api, compiled.baseUrl.href);
+    const headers = await resolveDeclaredCredentials(cfg.headers, 'headers', name, deps.credentialResolver, 'API server');
+    compiled = compileRestServer(name, cfg, resolveRestConnectivity(name, cfg, headers));
+    await assertPublicApiBaseUrl(name, compiled.baseUrl.href);
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e));
   }

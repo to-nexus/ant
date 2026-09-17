@@ -309,6 +309,9 @@ describe('validatePipelineDef — on.fetch (the pull trigger: a deterministic po
     ])],
     ['concurrency alongside fetch (N items in flight)', fetchDef({ }, {}, undefined)],
     ['every in hours/days', fetchDef({ every: '2h' })],
+    // The INLINE connection form: no job, the trigger carries baseUrl + headers; the secret ref is the same grammar as an apis entry.
+    ['inline connection with a ${secret:} header', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: 'https://jira.example.com/rest', headers: { Authorization: '${secret:JIRA_TOKEN}', Accept: 'application/json' } } })],
+    ['inline connection, baseUrl only', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: 'https://queue.example.com' } })],
   ];
   it.each(valid)('accepts: %s', (_label, def) => {
     expect(validatePipelineDef(def)).toEqual([]);
@@ -321,6 +324,17 @@ describe('validatePipelineDef — on.fetch (the pull trigger: a deterministic po
     ['onMissed on fetch is named, not ignored', fetchDef({ onMissed: 'runOnce' }), /"onMissed" does not apply to on\.fetch/],
     ['unknown fetch key', fetchDef({ webhook: true }), /on\.fetch: unknown key "webhook"/],
     ['malformed customJobRef', fetchDef({ customJobRef: 'jira' }), /on\.fetch\.customJobRef must be "\{agentId\}\/\{jobId\}"/],
+    // Exactly one connection form — both, or neither, is named as such.
+    ['both connection forms', fetchDef({ connection: { baseUrl: 'https://jira.example.com/rest', headers: { Authorization: '${secret:JIRA_TOKEN}', Accept: 'application/json' } } }), /on\.fetch needs exactly one connection form/],
+    ['neither connection form', fetchDef({ customJobRef: undefined, api: undefined }), /on\.fetch needs exactly one connection form/],
+    ['inline connection that is not a mapping', fetchDef({ customJobRef: undefined, api: undefined, connection: 'https://x' }), /on\.fetch\.connection must be a mapping/],
+    ['inline connection with allow (the request is the scope)', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: 'https://x.example', allow: ['GET *'] } }), /"allow" does not apply to an inline connection/],
+    ['inline connection with self (a poll needs an external API)', fetchDef({ customJobRef: undefined, api: undefined, connection: { self: true } }), /"self" targets this Ant server/],
+    ['inline connection with an mcp key', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: 'https://x.example', url: 'https://x.example/mcp' } }), /"url" belongs to mcp\.servers/],
+    ['inline connection with a relative baseUrl', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: '/rest' } }), /on\.fetch\.connection: baseUrl "\/rest" is not a valid absolute URL/],
+    ['inline connection with a query string on baseUrl', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: 'https://x.example/?a=1' } }), /must not carry a query string/],
+    ['inline connection with a malformed secret ref', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: 'https://x.example', headers: { Authorization: '${secret:lower}' } } }), /headers\.Authorization looks like a credential reference but is malformed/],
+    ['inline connection with a bad header name', fetchDef({ customJobRef: undefined, api: undefined, connection: { baseUrl: 'https://x.example', headers: { 'X Auth': 'v' } } }), /headers\."X Auth" is not a valid HTTP header name/],
     ['bad api name', fetchDef({ api: 'Jira Cloud' }), /on\.fetch\.api must be a connection name/],
     ['PUT method (a write)', fetchDef({}, { method: 'PUT' }), /"PUT" is a write — a poll reads/],
     ['DELETE method (a write)', fetchDef({}, { method: 'DELETE' }), /"DELETE" is a write/],
@@ -651,6 +665,19 @@ describe('validatePipelineCatalogBinding — on.fetch names a job\'s EXTERNAL ap
   });
   it('a job whose apis projection is absent (lenient parse failed) is not judged — its own rule owns that', () => {
     expect(validatePipelineCatalogBinding(withFetch('jira', 'ops/legacy'), CATALOG)).toEqual([]);
+  });
+  it('an inline connection names no job and binds against nothing — an empty agent catalog still passes the fetch block', () => {
+    const inline = withFetch('jira');
+    (inline.on as unknown as { fetch: Record<string, unknown> }).fetch = {
+      connection: { baseUrl: 'https://queue.example.com', headers: { Authorization: '${secret:QUEUE_TOKEN}' } },
+      request: { method: 'GET', path: '/items' },
+      items: '$.items',
+      key: '$.id',
+      every: '5m',
+    };
+    // The step's own catalog binding still applies (it names ops/tickets), so the catalog is kept for it.
+    expect(validatePipelineCatalogBinding(inline, CATALOG)).toEqual([]);
+    expect(validatePipelineCatalogBinding(inline, []).filter((e) => e.startsWith('on.fetch'))).toEqual([]);
   });
 });
 
