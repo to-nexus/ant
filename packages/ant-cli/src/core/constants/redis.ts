@@ -488,6 +488,16 @@ export const REDIS_KEYS = {
     ACTIVATION: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.PIPE}:actv:${org}:${user}:${projectId}`,
     /**
+     * Which projects of one account hold an ACTIVATION projection (slot set,
+     * member = projectId, same TTL). The list paths (catalog, activatable
+     * projects, pending approvals, upstream fan-out) enumerate activations by
+     * readdir, and a pod holding a negative NFS lookup enumerates NOTHING for a
+     * project another pod activated seconds ago — this is how those readers
+     * find the projections `resolveActivation` bridges one project at a time.
+     * - ant:pipe:actv-idx:{orgId}:{userId}
+     */
+    ACTIVATION_INDEX: (org: string, user: string): string => `${REDIS_DOMAINS.PIPE}:actv-idx:${org}:${user}`,
+    /**
      * Deactivation tombstone (JSON `{pipelineId, at}`). The unlink of
      * `activation.json` is not verifiable from the deleting pod (an NFS client
      * holding a negative lookup answers ENOENT without asking the server), so

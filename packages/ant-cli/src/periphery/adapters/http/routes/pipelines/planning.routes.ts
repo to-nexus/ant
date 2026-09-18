@@ -15,11 +15,12 @@ import { getNextFires, checkMinInterval } from '../../../../../core/pipelines/cr
 import { fetchSourceJson } from '../../../../../core/pipelines/fetchConnection';
 import { sampleOf } from '../../../../../core/pipelines/fetchSample';
 import { extractFetchItems } from '../../../../../core/pipelines/fetchSource';
-import { listAccountActivations, loadActivationByProject } from '../../../../../core/pipelines/store';
+import { loadActivationByProject } from '../../../../../core/pipelines/store';
+import { listAccountActivationsResolved } from '../../../../../infrastructure/scheduling/resolveActivation';
 import { isSingleSegment, ownerOf, reject400, type PipelinesRouteContext } from './context';
 
 export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContext): void {
-  const { deps, actRootOf } = ctx;
+  const { deps, actRootOf, ctxOf } = ctx;
 
   // ── Cron preview (also the editor's validation leg) ────────────────
   router.post('/preview-fires', async (req: Request, res: Response) => {
@@ -130,7 +131,7 @@ export function registerPlanningRoutes(router: Router, ctx: PipelinesRouteContex
         names = [];
       }
       const activations = new Map<string, string>();
-      for (const activation of listAccountActivations(actRootOf(owner))) {
+      for (const activation of await listAccountActivationsResolved(deps.stateStore, ctxOf(owner).workspacesPath, owner)) {
         activations.set(activation.projectId, activation.pipelineId);
       }
       const projects = names

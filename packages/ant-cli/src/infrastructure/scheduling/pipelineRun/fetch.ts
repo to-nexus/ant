@@ -45,7 +45,7 @@ export function fetchLockTtlSeconds(everyMs: number): number {
 export async function handleFetchPoll(ctx: PipelineRunOps, data: PipelineFetchPollJobData): Promise<void> {
   const { owner, pipelineId, projectId } = data;
   const { organizationId, userId } = owner;
-  const authority = loadFireAuthority(ctx, owner, pipelineId, projectId, 'poll');
+  const authority = await loadFireAuthority(ctx, owner, pipelineId, projectId, 'poll');
   if (!authority) return;
   const { def, actRoot } = authority;
   const trigger = def.on?.fetch;

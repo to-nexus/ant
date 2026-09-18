@@ -366,9 +366,11 @@ describe('upstream edges (pipeline → pipeline)', () => {
     expect(coordinator).toMatch(/firedBy: 'event'/);
     // The loop guard lives at FIRE (caps doctrine), not at publish.
     expect(coordinator).toMatch(/data\.chainDepth \?\? 0\) > MAX_CHAIN_DEPTH/);
-    // Candidates come from the activator's own bounded disk scan — never a
-    // Redis reverse index (doc 46 §1 doctrine).
-    expect(coordinator.match(/listAccountActivations\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // Candidates come from the activator's OWN account enumeration (bounded
+    // disk scan + that account's activation index bridging NFS lag) — never a
+    // per-pipeline reverse index across accounts (doc 46 §1 doctrine).
+    expect(lifecycle.match(/listAccountActivationsResolved\(/g)?.length ?? 0).toBe(1);
+    expect(lifecycle).not.toMatch(/findActivationsForPipeline\(/);
   });
 
   it('the edge predicate is the executor\'s — the coordinator judges `when` through edgeMatches, never a second implementation', () => {

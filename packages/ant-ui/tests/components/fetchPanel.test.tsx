@@ -104,6 +104,16 @@ describe('FetchPanel — the four-card flow', () => {
     expect(tree.root.findAll((n) => n.props?.['data-secret-ref'] !== undefined).length).toBe(1);
   });
 
+  // JetBrains Mono at 13px packs `//` one pixel apart and a typed `http://l`
+  // read as `http:/l` on a 1x display (2026-09-18, twice) — value fields keep
+  // tracking so the two slashes stay two glyphs.
+  it('the Base URL field is a tracked mono input, so `//` cannot render as one slash', async () => {
+    const tree = await render(DEF);
+    const input = tree.root.findAll((n) => n.type === 'input' && n.props.placeholder === 'https://jira.example.com/rest')[0];
+    expect(input.props.style.fontFamily).toBe('var(--font-mono)');
+    expect(parseFloat(String(input.props.style.letterSpacing))).toBeGreaterThan(0);
+  });
+
   it('registering the value in place PUTs the account credential and flips the state to registered', async () => {
     const tree = await render(DEF);
     const editor = byProp(tree, 'data-cred-editor', 'VOC_TOKEN')[0];

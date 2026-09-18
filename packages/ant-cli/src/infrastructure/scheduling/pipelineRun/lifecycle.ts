@@ -10,6 +10,7 @@ import {
   PIPELINE_UPSTREAM_ANSWER_MAX_CHARS,
   UNIVERSAL_FEATURE,
   runSummaryOf,
+  type PipelineActivation,
   type PipelineRunUpstream,
   type RunRecord,
   type StepRecord,
@@ -22,11 +23,10 @@ import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../core/pipelines/scopeRoots';
 import {
   appendRunIndex,
-  listAccountActivations,
-  loadActivationByProject,
   loadAvailability,
   loadPipeline,
 } from '../../../core/pipelines/store';
+import { listAccountActivationsResolved } from '../resolveActivation';
 import { appendEvent, commitRun, getRun, isTerminal, listActiveRunIds, mutateRun, publicRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
@@ -268,19 +268,18 @@ async function fireUpstreamTriggers(ctx: PipelineRunOps, owner: PipelineOwner, r
   const outcome = source.node.status === 'succeeded' || source.node.status === 'failed' ? source.node.status : null;
   if (!outcome) return;
   const depth = (run.chainDepth ?? 0) + 1;
-  let activations: Array<{ projectId: string }>;
+  let activations: PipelineActivation[];
   try {
-    activations = listAccountActivations(deriveActivationsRoot(tenantCtx(ctx.deps, owner)));
+    activations = await listAccountActivationsResolved(ctx.deps.stateStore, ctx.deps.workspacesPath, owner);
   } catch {
     return;
   }
   const nodeLabel = `${run.pipelineId}/${source.step ?? 'run'}`;
-  for (const { projectId } of activations) {
+  for (const activation of activations) {
+    const { projectId } = activation;
     // A pipeline never fires its own project — that activation runs the upstream itself.
     if (projectId === run.projectId) continue;
     try {
-      const activation = loadActivationByProject(deriveActivationsRoot(tenantCtx(ctx.deps, owner)), projectId);
-      if (!activation) continue;
       const defRoot = resolveDefRoot(tenantCtx(ctx.deps, owner), activation.pipelineScope);
       const def = loadPipeline(defRoot, activation.pipelineId);
       const trigger = def.on?.upstream;

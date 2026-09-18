@@ -29,7 +29,8 @@ import type { StepDispatch } from '../../../core/pipelines/ChainExecutor';
 import { parseApproverIndexEntry, readApproverIndex } from '../../../core/pipelines/approverIndex';
 import { gateCandidates } from '../../../core/pipelines/assignees';
 import { deriveActivationsRoot, type PipelineTenantContext } from '../../../core/pipelines/paths';
-import { appendRunEvent, hasRunLog, listAccountActivations, loadActivationByProject, readRunEvents } from '../../../core/pipelines/store';
+import { appendRunEvent, hasRunLog, loadActivationByProject, readRunEvents } from '../../../core/pipelines/store';
+import { listAccountActivationsResolved } from '../resolveActivation';
 import { COMPONENT, type HitlRecord, type PipelineCoordinatorDeps } from './types';
 
 const RUN_LOCK_RETRIES = 20;
@@ -191,7 +192,7 @@ export async function listPendingApprovals(
   owner: PipelineOwner,
 ): Promise<PipelinePendingApproval[]> {
   const out: PipelinePendingApproval[] = [];
-  for (const activation of listAccountActivations(deriveActivationsRoot(tenantCtx(deps, owner)))) {
+  for (const activation of await listAccountActivationsResolved(deps.stateStore, deps.workspacesPath, owner)) {
     const { projectId } = activation;
     for (const runId of await listActiveRunIds(deps, owner, projectId)) {
     const run = await getRun(deps, runId);

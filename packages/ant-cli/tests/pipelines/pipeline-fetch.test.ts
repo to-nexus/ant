@@ -328,6 +328,24 @@ const CLAIM_KEY = (key: string, pipelineId = 'p1') => `ant:pipe:item:local:user:
 const POLL = { kind: 'fetch-poll' as const, owner: OWNER, pipelineId: 'p1', pipelineScope: 'user' as const, projectId: 'proj-a' };
 
 describe('handleFetchPoll — room under concurrency, one fire per unclaimed item, telemetry on every exit', () => {
+  // The job pod reads the activation over NFS too: a record the activate route
+  // wrote seconds ago can still be ENOENT there, and a poll that skipped on that
+  // answer was a run that silently never started. The projection bridges it;
+  // a newer tombstone still wins.
+  it('a poll whose disk view lacks the record still polls from the projection; a newer tombstone stands it down', async () => {
+    const { impl } = fetchStub(json(RESPONSE));
+    const { ctx, keys, enqueued } = makeCtx(tmp, impl, 2);
+    fs.rmSync(path.join(ACT_ROOT(tmp), 'proj-a', 'activation.json'));
+    keys.set('ant:pipe:actv:local:user:proj-a', JSON.stringify({ pipelineId: 'p1', pipelineScope: 'user', projectId: 'proj-a', activatedAt: '2026-09-16T00:00:00.000Z' }));
+    await handleFetchPoll(ctx, POLL);
+    expect(enqueued.map((d) => d.kind)).toEqual(['fire', 'fire']);
+    keys.set('ant:pipe:deact:local:user:proj-a', JSON.stringify({ pipelineId: 'p1', at: '2026-09-17T00:00:00.000Z' }));
+    keys.delete('ant:lock:pipe-fetch:local:user:proj-a');
+    enqueued.length = 0;
+    await handleFetchPoll(ctx, POLL);
+    expect(enqueued).toEqual([]);
+  });
+
   it('admits every unclaimed item with room under concurrency as a fire job carrying the item; records seen/unclaimed/enqueued; builds the ledger marker', async () => {
     const { impl } = fetchStub(json(RESPONSE));
     const { ctx, keys, enqueued, published } = makeCtx(tmp, impl, 2);

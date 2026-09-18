@@ -21,7 +21,8 @@ import { logger } from '../../../utils/logger';
 import { buildInitialSteps, planAdvance } from '../../../core/pipelines/ChainExecutor';
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../core/pipelines/scopeRoots';
-import { appendItemClaim, loadActivationByProject, loadAvailability, loadPipeline, readRunIndex } from '../../../core/pipelines/store';
+import { appendItemClaim, loadAvailability, loadPipeline, readRunIndex } from '../../../core/pipelines/store';
+import { resolveActivation } from '../resolveActivation';
 import { claimValue } from './itemLedger';
 import { appendEvent, commitRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
@@ -55,21 +56,23 @@ export interface FireAuthority {
  * definition that no longer resolves at the PINNED scope, or a disabled
  * sidecar (the availability machine forbids this live; hand edits happen).
  */
-export function loadFireAuthority(
+export async function loadFireAuthority(
   ctx: PipelineRunOps,
   owner: PipelineOwner,
   pipelineId: string,
   projectId: string,
   verb: 'fire' | 'poll' = 'fire',
-): FireAuthority | null {
+): Promise<FireAuthority | null> {
   const actRoot = deriveActivationsRoot(tenantCtx(ctx.deps, owner));
-  let activation: PipelineActivation | null;
-  try {
-    activation = loadActivationByProject(actRoot, projectId);
-  } catch (e) {
-    logger.warn(`[Pipeline] ${verb} skipped — activation invalid: ${projectId}`, { component: COMPONENT }, e);
+  // Disk, then the projection: the job pod's NFS view may still answer ENOENT
+  // for a record the activate route wrote seconds ago — a fire or poll that
+  // skips on that answer is a run that silently never happens.
+  const resolved = await resolveActivation(ctx.deps.stateStore, ctx.deps.workspacesPath, owner, projectId);
+  if (resolved.unreadable) {
+    logger.warn(`[Pipeline] ${verb} skipped — activation invalid: ${projectId}`, { component: COMPONENT });
     return null;
   }
+  const activation: PipelineActivation | null = resolved.activation;
   if (!activation) {
     logger.info(`[Pipeline] ${verb} skipped — not activated: ${projectId}`, { component: COMPONENT });
     return null;
@@ -104,7 +107,7 @@ export function loadFireAuthority(
 
 export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData, intendedFireAt: number): Promise<void> {
   const { owner, pipelineId, projectId } = data;
-  const authority = loadFireAuthority(ctx, owner, pipelineId, projectId);
+  const authority = await loadFireAuthority(ctx, owner, pipelineId, projectId);
   if (!authority) return;
   const { activation, def, actRoot } = authority;
 

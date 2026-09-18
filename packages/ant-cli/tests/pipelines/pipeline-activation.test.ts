@@ -26,6 +26,7 @@ import { reconcilePipelines, SLOT_HEAL_GRACE_MS } from '../../src/infrastructure
 import { REDIS_TTL, parseRunSlotMember } from '../../src/core/constants/redis';
 import { RUN_SESSION_FILE_RETENTION } from '../../src/infrastructure/scheduling/pipelineRun/sessionRetention';
 import { deactivatePipelineBinding } from '../../src/infrastructure/scheduling/deactivateBinding';
+import { listAccountActivationsResolved } from '../../src/infrastructure/scheduling/resolveActivation';
 
 let tmp: string;
 
@@ -110,12 +111,14 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     const deactivated: string[] = [];
     const deletedKeys: string[] = [];
     const published: any[] = [];
+    const released: string[] = [];
     const keys = new Map<string, string>(Object.entries(seed));
     return {
       removed,
       deactivated,
       deletedKeys,
       published,
+      released,
       keys,
       deps: {
         workspacesPath: tmp,
@@ -129,6 +132,7 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
             keys.delete(k);
           },
           publish: async (_ch: string, msg: any) => void published.push(msg),
+          releaseSlot: async (k: string, member: string) => void released.push(`${k}|${member}`),
         },
       },
     };
@@ -140,9 +144,11 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
     fs.mkdirSync(path.join(actRoot(), 'proj-a', 'runs'), { recursive: true });
     fs.writeFileSync(path.join(actRoot(), 'proj-a', 'runs', 'index.jsonl'), '');
-    const { deps, removed, deactivated, deletedKeys, published, keys } = makeBindingDeps();
+    const { deps, removed, deactivated, deletedKeys, published, released, keys } = makeBindingDeps();
     const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a');
     expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
+    // The list-path index goes with the projection.
+    expect(released).toEqual(['ant:pipe:actv-idx:local:user|proj-a']);
     // The tombstone lands before the unlink — the unlink is not verifiable from here.
     expect(JSON.parse(keys.get('ant:pipe:deact:local:user:proj-a') ?? '{}')).toMatchObject({ pipelineId: 'p1' });
     // Both scheduler ids go (a cron's and a fetch poller's — the binding does not know which it had).
@@ -366,12 +372,14 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
   it('schedules an activation of an enabled def and projects both Redis keys (projectId-keyed)', async () => {
     writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
     writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
-    const { deps, upserts, keys } = makeDeps();
+    const { deps, upserts, keys, slots } = makeDeps();
     deps.workspacesPath = tmp;
     await reconcilePipelines(deps as any);
     expect(upserts).toEqual(['pipe|local|user|proj-a']);
     expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
     expect(JSON.parse(keys.get('ant:pipe:actv:local:user:proj-a') ?? '{}').pipelineId).toBe('p1');
+    // The refresh also (re)indexes the project for the list-path bridge.
+    expect([...(slots.get('ant:pipe:actv-idx:local:user')?.keys() ?? [])]).toEqual(['proj-a']);
   });
 
   it('one pipeline, two projects (even across users) — both activations schedule', async () => {
@@ -950,5 +958,70 @@ describe('clarify answer authority — every fate is a typed outcome; an early a
     expect(await answer(ctx)).toBe('lock-starved');
     expect(dispatched).toEqual([]);
     expect(store.has('ant:pipe:clarify-held:j1')).toBe(false);
+  });
+});
+
+// The list paths (catalog, activatable-projects, pending approvals, upstream
+// fan-out) enumerate by readdir, and a pod holding a negative NFS lookup
+// enumerates nothing for a project another pod activated seconds ago — the
+// execution view then lost its activation row (and its progress canvas) on
+// every snapshot that pod answered. One resolved enumeration: disk minus
+// tombstoned records, plus indexed projections the readdir could not see.
+describe('listAccountActivationsResolved — the list-path visibility bridge', () => {
+  const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
+  const actRoot = () => path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations');
+
+  function makeStore(seed: Record<string, string> = {}, indexed: string[] = []) {
+    const keys = new Map<string, string>(Object.entries(seed));
+    const idx = new Set<string>(indexed);
+    let listSlotsFails = false;
+    const store = {
+      getKey: async (k: string) => keys.get(k) ?? null,
+      listSlots: async (k: string) => {
+        if (listSlotsFails) throw new Error('redis down');
+        return k === 'ant:pipe:actv-idx:local:user' ? [...idx] : [];
+      },
+    };
+    return { store, keys, idx, failListSlots: () => void (listSlotsFails = true) };
+  }
+
+  it('disk records come back as-is; a record the tombstone covers is dropped', async () => {
+    await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
+    await saveActivationRecord(actRoot(), ACT('p2', 'proj-b'));
+    const { store } = makeStore({ 'ant:pipe:deact:local:user:proj-b': JSON.stringify({ pipelineId: 'p2', at: '2026-08-21T00:00:00.000Z' }) });
+    const out = await listAccountActivationsResolved(store as any, tmp, OWNER);
+    expect(out.map((a) => a.projectId)).toEqual(['proj-a']);
+  });
+
+  it('an indexed projection the readdir cannot see is answered from Redis; a disk record wins over its own projection', async () => {
+    await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
+    const { store } = makeStore(
+      {
+        'ant:pipe:actv:local:user:proj-a': JSON.stringify(ACT('stale', 'proj-a')),
+        'ant:pipe:actv:local:user:proj-b': JSON.stringify(ACT('p2', 'proj-b')),
+      },
+      ['proj-a', 'proj-b'],
+    );
+    const out = await listAccountActivationsResolved(store as any, tmp, OWNER);
+    expect(out.map((a) => [a.projectId, a.pipelineId])).toEqual([['proj-a', 'p1'], ['proj-b', 'p2']]);
+  });
+
+  it('an indexed project with no projection (expired) and a projection under a newer tombstone contribute nothing', async () => {
+    const { store } = makeStore(
+      {
+        'ant:pipe:actv:local:user:proj-b': JSON.stringify(ACT('p2', 'proj-b', '2026-08-20T00:00:00.000Z')),
+        'ant:pipe:deact:local:user:proj-b': JSON.stringify({ pipelineId: 'p2', at: '2026-08-21T00:00:00.000Z' }),
+      },
+      ['proj-b', 'proj-gone'],
+    );
+    expect(await listAccountActivationsResolved(store as any, tmp, OWNER)).toEqual([]);
+  });
+
+  it('fails OPEN to the disk view when the index read throws', async () => {
+    await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
+    const { store, failListSlots } = makeStore({}, ['proj-b']);
+    failListSlots();
+    const out = await listAccountActivationsResolved(store as any, tmp, OWNER);
+    expect(out.map((a) => a.projectId)).toEqual(['proj-a']);
   });
 });

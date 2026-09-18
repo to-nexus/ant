@@ -24,7 +24,7 @@ import { approverIndexEntry, approverUnion, replaceApproverIndex } from '../../c
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import { loadActivationByProject, loadAvailability, loadPipeline } from '../../core/pipelines/store';
-import { finishTombstonedDeactivation, readDeactivationTombstone, tombstoneCovers } from './resolveActivation';
+import { finishTombstonedDeactivation, indexActivationProjection, readDeactivationTombstone, tombstoneCovers } from './resolveActivation';
 import { pruneRunSessionFiles } from './pipelineRun/sessionRetention';
 import { ensureItemLedger } from './pipelineRun/itemLedger';
 
@@ -200,6 +200,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
         pipelineId,
         REDIS_TTL.PIPE.ACTIVATION,
       );
+      await indexActivationProjection(deps.stateStore, owner, projectId);
       // Overlap-guard healing: a coordinator crash between acquire and
       // finalize would otherwise block the activation until the 30d TTL.
       // Per-activation like its siblings — one Redis error must not end the pass.

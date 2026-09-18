@@ -37,10 +37,10 @@ import {
 import {
   findActivationsForPipeline,
   findPipelineRoot,
-  listAccountActivations,
   loadAvailability,
   readRunIndex,
 } from '../../../../../core/pipelines/store';
+import { indexActivationProjection, listAccountActivationsResolved } from '../../../../../infrastructure/scheduling/resolveActivation';
 import type { OrganizationRepositoryPort } from '../../../../../core/ports/organizationRepository';
 import type { ScheduleQueuePort, PipelineOwner } from '../../../../../core/ports/scheduler';
 import type { PipelineRunCoordinator } from '../../../../../infrastructure/scheduling/PipelineRunCoordinator';
@@ -226,6 +226,7 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
       activation.pipelineId,
       REDIS_TTL.PIPE.ACTIVATION,
     );
+    await indexActivationProjection(deps.stateStore, owner, activation.projectId);
   }
 
   /** One activation row hydrated with live state (Redis) + last run (disk). */
@@ -282,7 +283,7 @@ export function buildPipelinesRouteContext(deps: PipelinesRoutesDeps) {
     fetch?: PipelineFetchTrigger,
   ): Promise<PipelineActivationView[]> {
     const views: PipelineActivationView[] = [];
-    const own = listAccountActivations(actRootOf(owner)).filter(
+    const own = (await listAccountActivationsResolved(deps.stateStore, ctxOf(owner).workspacesPath, owner)).filter(
       (a) => a.pipelineId === pipelineId && a.pipelineScope === scope,
     );
     for (const activation of own) {

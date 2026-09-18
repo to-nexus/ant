@@ -20,13 +20,13 @@ import { deleteActivationRecord } from '../../core/pipelines/store';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import { fetchSchedulerIdFor, schedulerIdFor } from './PipelineReconciler';
 import type { PipelineRunCoordinator } from './PipelineRunCoordinator';
-import { resolveActivation, type DeactivationTombstone } from './resolveActivation';
+import { resolveActivation, unindexActivationProjection, type DeactivationTombstone } from './resolveActivation';
 
 export interface DeactivateBindingDeps {
   workspacesPath: string;
   scheduleQueue: Pick<ScheduleQueuePort, 'removeCron'>;
   coordinator: Pick<PipelineRunCoordinator, 'deactivate'>;
-  stateStore: Pick<StateStorePort, 'deleteKey' | 'publish' | 'getKey' | 'setKeyWithTTL'>;
+  stateStore: Pick<StateStorePort, 'deleteKey' | 'publish' | 'getKey' | 'setKeyWithTTL' | 'releaseSlot'>;
 }
 
 export async function deactivatePipelineBinding(
@@ -77,6 +77,7 @@ export async function deactivatePipelineBinding(
   await deps.stateStore
     .deleteKey(REDIS_KEYS.PIPE.ACTIVATION(owner.organizationId, owner.userId, projectId))
     .catch(() => {});
+  await unindexActivationProjection(deps.stateStore, owner, projectId);
   await deps.stateStore
     .deleteKey(REDIS_KEYS.PIPE.PROJECT(owner.organizationId, owner.userId, projectId))
     .catch(() => {});

@@ -30,6 +30,7 @@ let baseUrl: string;
 let liveJobs: Array<{ jobId: string; status: string; type?: string }> = [];
 let liveRunIds: string[] = [];
 const redisKeys = new Map<string, string>();
+const redisSlots = new Map<string, Set<string>>();
 const cronUpserts: string[] = [];
 const cronRemoved: string[] = [];
 const everyUpserts: Array<{ id: string; everyMs: number }> = [];
@@ -129,6 +130,15 @@ beforeAll(async () => {
       return true;
     },
     publish: async () => {},
+    // Slot sets — the activation index the list paths read.
+    reserveSlot: async (k: string, member: string) => {
+      const set = redisSlots.get(k) ?? new Set<string>();
+      redisSlots.set(k, set);
+      set.add(member);
+      return true;
+    },
+    releaseSlot: async (k: string, member: string) => void redisSlots.get(k)?.delete(member),
+    listSlots: async (k: string) => [...(redisSlots.get(k) ?? [])],
   };
 
   const app = express();
@@ -167,6 +177,7 @@ beforeEach(() => {
   everyUpserts.length = 0;
   addedNow.length = 0;
   redisKeys.clear();
+  redisSlots.clear();
   fs.rmSync(path.join(userDir, '.ant'), { recursive: true, force: true });
   for (const entry of fs.readdirSync(userDir)) {
     if (entry !== '.ant') fs.rmSync(path.join(userDir, entry), { recursive: true, force: true });
@@ -422,6 +433,30 @@ describe('activation — one per project, many per pipeline', () => {
     expect(mismatch.status).toBe(409);
     expect(await mismatch.json()).toMatchObject({ code: 'activation-mismatch', pipelineId: 'digest' });
     expect(fs.existsSync(path.join(userDir, '.ant/pipeline-activations/proj-a/activation.json'))).toBe(true);
+  });
+
+  // The list and activatable-projects enumerate by readdir; a pod whose NFS
+  // view has not seen the record yet answered `activations: []`, and every
+  // snapshot it served emptied the execution view (the 1 s canvas flicker on
+  // cloud dev, 2026-09-18). The activation index + projection bridge the list
+  // paths the same way `resolveActivation` bridges the request paths.
+  it('list and activatable-projects answer from the projection when the record is not visible on disk; a newer tombstone hides it', async () => {
+    await createPipeline();
+    await enable();
+    makeUniversalProject('proj-a');
+    expect((await activate('digest', 'proj-a')).status).toBe(200);
+    expect([...(redisSlots.get('ant:pipe:actv-idx:localorg:localuser') ?? [])]).toEqual(['proj-a']);
+    fs.rmSync(path.join(userDir, '.ant/pipeline-activations/proj-a/activation.json'));
+
+    const list = await (await api('')).json();
+    expect(list.pipelines[0].activations.map((a: any) => [a.projectId, a.mine])).toEqual([['proj-a', true]]);
+    const activatable = await (await api('/activatable-projects')).json();
+    expect(activatable.projects.find((p: any) => p.id === 'proj-a')?.activePipelineId).toBe('digest');
+
+    redisKeys.set('ant:pipe:deact:localorg:localuser:proj-a', JSON.stringify({ pipelineId: 'digest', at: new Date(Date.now() + 1000).toISOString() }));
+    const after = await (await api('')).json();
+    expect(after.pipelines[0].activations).toEqual([]);
+    expect((await (await api('/activatable-projects')).json()).projects.find((p: any) => p.id === 'proj-a')?.activePipelineId).toBeNull();
   });
 
   it('run-now requires the caller\'s own activation on that project', async () => {
@@ -1628,5 +1663,30 @@ describe('advisory lifecycle — recomputed on save and read, acknowledged in th
     expect('catalogWarnings' in body).toBe(false);
     expect('advisories' in body).toBe(false);
     expect(body.entry.openAdvisoryCount).toBe(0);
+  });
+});
+
+// Adoption is a property of the read, not of one call name: a route or a
+// fire-path module that enumerates activations by readdir, or loads one
+// straight from disk, re-creates the per-pod NFS blind spot.
+describe('activation reads — the list paths and the fire authority go through the resolved owner', () => {
+  const src = (rel: string) => fs.readFileSync(path.resolve(__dirname, '../../src', rel), 'utf8');
+
+  it('no route under routes/pipelines enumerates activations by readdir', () => {
+    const dir = path.resolve(__dirname, '../../src/periphery/adapters/http/routes/pipelines');
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+      const body = fs.readFileSync(path.join(dir, file), 'utf8').replace(/^import[\s\S]*?from '[^']+';$/gm, '');
+      expect(body.includes('listAccountActivations('), `${file} enumerates by readdir`).toBe(false);
+    }
+  });
+
+  it('the fire authority, pending-approval scan and upstream fan-out resolve activations, never read the sidecar alone', () => {
+    for (const rel of ['fire.ts', 'runStore.ts', 'lifecycle.ts']) {
+      const body = src(`infrastructure/scheduling/pipelineRun/${rel}`).replace(/^import[\s\S]*?from '[^']+';$/gm, '');
+      expect(body.includes('listAccountActivations('), `${rel} enumerates by readdir`).toBe(false);
+    }
+    const fire = src('infrastructure/scheduling/pipelineRun/fire.ts');
+    expect(fire.includes('loadActivationByProject(')).toBe(false);
+    expect(fire.includes('resolveActivation(')).toBe(true);
   });
 });

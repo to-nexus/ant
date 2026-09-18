@@ -78,7 +78,16 @@ approver-roster PUT). Disk first; when disk says ENOENT the Redis projection
 VISIBILITY BRIDGE, never the record: in cloud the API pods read the workspace
 over NFS, and a pod that looked a path up while it did not exist caches that
 negative answer for tens of seconds, so `activation.json` written by pod A
-was refused as `not-activated` by pod B (2026-09-18). Two corollaries:
+was refused as `not-activated` by pod B (2026-09-18). The LIST paths (catalog
+list, `activatable-projects`, pending approvals, upstream fan-out) and the
+fire/poll authority on the job pod read through the same owner —
+`listAccountActivationsResolved` / `resolveActivation` — because a readdir on
+that pod enumerated NOTHING for the project and every list snapshot it served
+emptied the activation row (the execution view's progress canvas blinked on
+each one). The projections are found through `ant:pipe:actv-idx:{org}:{user}`
+(slot set of projectIds, same TTL), written wherever `ant:pipe:actv` is
+written (activate, reconciler refresh) and released on deactivate. Two
+corollaries:
 - **Deactivate is the idempotent authority, not a second existence judge.**
   `POST …/deactivate` calls `deactivatePipelineBinding` unconditionally and
   answers `200 { hadActivation }`; the only refusal is `409

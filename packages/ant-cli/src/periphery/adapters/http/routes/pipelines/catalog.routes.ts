@@ -19,7 +19,6 @@ import { sendErrorResponse } from '../helpers/errorResponse';
 import { judgePipelineForCatalog, judgementResponseFields, resolvePipelineCatalog, upstreamLoaderFor, type PipelineJudgement } from '../../../../../core/pipelines/catalogBinding';
 import { derivePipelinesRoot, pipelineDir } from '../../../../../core/pipelines/paths';
 import {
-  listAccountActivations,
   listPipelines,
   parsePipelineYaml,
   saveAvailability,
@@ -30,10 +29,11 @@ import {
 import { validateBody } from '../../middleware/validateBody';
 import { PipelineImportBodySchema } from '../helpers/pipelineImportSchema';
 import { PIPELINE_OWNER_FILE } from '../../../../../infrastructure/scheduling/PipelineReconciler';
+import { listAccountActivationsResolved } from '../../../../../infrastructure/scheduling/resolveActivation';
 import { ownerOf, type PipelinesRouteContext } from './context';
 
 export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext): void {
-  const { deps, orgGateFor, ctxOf, scopeRootsOf, actRootOf, findPipelineRoot, findWritablePipeline, refuseWhileEnabled, publishPipelineEvent, activationView, buildListEntry } = ctx;
+  const { deps, orgGateFor, ctxOf, scopeRootsOf, findPipelineRoot, findWritablePipeline, refuseWhileEnabled, publishPipelineEvent, activationView, buildListEntry } = ctx;
 
   // ── List ────────────────────────────────────────────────────────────
   router.get('/', async (req: Request, res: Response) => {
@@ -64,7 +64,7 @@ export function registerCatalogRoutes(router: Router, ctx: PipelinesRouteContext
       // Own activations whose pinned definition no longer resolves — surfaced,
       // never auto-deleted (the execution view offers deactivate).
       const orphanActivations: PipelineActivationView[] = [];
-      for (const activation of listAccountActivations(actRootOf(owner))) {
+      for (const activation of await listAccountActivationsResolved(deps.stateStore, ctxOf(owner).workspacesPath, owner)) {
         if (resolvable.has(`${activation.pipelineScope}:${activation.pipelineId}`)) continue;
         orphanActivations.push(await activationView(owner, activation, true, undefined, true));
       }

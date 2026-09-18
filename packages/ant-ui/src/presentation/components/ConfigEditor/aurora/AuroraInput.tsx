@@ -99,6 +99,9 @@ export function AuroraInput({
           // rather than silently truncating mid-character.
           textOverflow: 'ellipsis',
           fontFamily: mono ? 'var(--font-mono)' : 'inherit',
+          // JetBrains Mono at 13px packs adjacent slashes one pixel apart, so a
+          // typed `://` reads as `:/` on a 1x display; tracking keeps `//` two glyphs.
+          letterSpacing: mono ? '0.04em' : undefined,
           background: 'transparent',
           border: 'none',
           outline: 'none',
