@@ -10,15 +10,49 @@ const FILE_STREAMING_STATUS_TYPES = new Set([
 export interface TurnInfo {
   jobType?: string;
   jobId?: string;
+  /** The scheduler minted this turn (pipeline step) — no person asked for it. */
+  unattended?: boolean;
+}
+
+type TurnOriginLine = { turnId?: string; jobType?: string; jobId?: string; pipeline?: unknown };
+type ActiveJobAttribution = Record<string, { pipelineRunId?: string } | undefined>;
+
+/**
+ * Single owner of "was this turn minted by the scheduler?". Two facts, in
+ * order: the durable `user_turn.pipeline` block (appended before enqueue), then
+ * the job's kanban attribution (`activeJobs[jobId].pipelineRunId`) for when the
+ * chat window no longer holds the user_turn. Neither present → a person's turn.
+ */
+export function resolveTurnUnattended(args: {
+  pipeline?: unknown;
+  jobId?: string;
+  activeJobs?: ActiveJobAttribution;
+}): boolean {
+  if (args.pipeline) return true;
+  return !!(args.jobId && args.activeJobs?.[args.jobId]?.pipelineRunId);
+}
+
+export function isUnattendedTurn(info: { unattended?: boolean } | undefined): boolean {
+  return info?.unattended === true;
 }
 
 export function buildTurnInfoMap(
-  chatEvents: Array<{ turnId?: string; jobType?: string; jobId?: string }>,
+  chatEvents: TurnOriginLine[],
+  activeJobs?: ActiveJobAttribution,
 ): Map<string, TurnInfo> {
   const turnInfo = new Map<string, TurnInfo>();
   for (const line of chatEvents) {
-    if (!line?.turnId || turnInfo.has(line.turnId)) continue;
-    turnInfo.set(line.turnId, { jobType: line.jobType, jobId: line.jobId });
+    if (!line?.turnId) continue;
+    const existing = turnInfo.get(line.turnId);
+    if (existing) {
+      if (!existing.unattended && line.pipeline) existing.unattended = true;
+      continue;
+    }
+    turnInfo.set(line.turnId, {
+      jobType: line.jobType,
+      jobId: line.jobId,
+      unattended: resolveTurnUnattended({ pipeline: line.pipeline, jobId: line.jobId, activeJobs }),
+    });
   }
   return turnInfo;
 }
@@ -68,6 +102,13 @@ export function isFileStreamingPendingCard(card: PendingCardSnapshot): boolean {
 
 /**
  * Single owner of "does the preview surface render this artifact?".
+ *
+ * The preview surface exists for documents a human reads — and only for turns
+ * a human asked for. A scheduler-minted turn (`isUnattendedTurn`) never mints
+ * or promotes a tab: its writes stay a chat file card, exactly as in the code
+ * job, so a cron/fetch pipeline cannot pile tabs onto a viewport nobody
+ * pointed at them. Tab minting, terminal promotion and chat suppression all
+ * check that predicate alongside this one.
  *
  * The preview surface exists for documents a human reads. `VirtualDocumentViewer`
  * markdown-renders `.md`; everything else lands in a monospace `<pre>`, so a

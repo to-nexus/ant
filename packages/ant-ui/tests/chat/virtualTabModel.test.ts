@@ -3,6 +3,8 @@ import {
   buildTurnInfoMap,
   getPendingCardFilePath,
   isPreviewSurfaceArtifactPath,
+  isUnattendedTurn,
+  resolveTurnUnattended,
   resolveVirtualTabSource,
   shouldRenderVirtualPreviewCard,
 } from '../../src/domain/store/editor/virtualTabModel';
@@ -105,6 +107,38 @@ describe('virtualTabModel', () => {
         selectedJobType: 'code',
       }),
     ).toBeUndefined();
+  });
+
+  // A scheduler-minted turn never owns a preview tab: the durable user_turn
+  // `pipeline` block is the primary fact, the kanban attribution the fallback
+  // for when the chat window no longer holds the user_turn.
+  it.each([
+    ['pipeline block on the user_turn', { pipeline: { runId: 'r1' } }, undefined, true],
+    ['activeJobs attribution only', {}, { 'job-p': { pipelineRunId: 'r1' } }, true],
+    ['activeJobs entry without a run', {}, { 'job-p': {} }, false],
+    ['neither fact', {}, undefined, false],
+  ])('resolveTurnUnattended — %s', (_label, line, activeJobs, expected) => {
+    expect(resolveTurnUnattended({ ...line, jobId: 'job-p', activeJobs })).toBe(expected);
+    const turnInfo = buildTurnInfoMap(
+      [{ turnId: 'turn-p', jobType: 'universal', jobId: 'job-p', ...line }] as any,
+      activeJobs,
+    );
+    expect(isUnattendedTurn(turnInfo.get('turn-p'))).toBe(expected);
+    // Job type resolution is untouched by origin.
+    expect(resolveVirtualTabSource({ turnInfo, turnId: 'turn-p' })).toBe('universal');
+  });
+
+  it('isUnattendedTurn treats an unknown turn as a person\'s', () => {
+    expect(isUnattendedTurn(undefined)).toBe(false);
+    expect(isUnattendedTurn({})).toBe(false);
+  });
+
+  it('a later line carrying the pipeline block upgrades an already-seen turn', () => {
+    const turnInfo = buildTurnInfoMap([
+      { turnId: 'turn-p', jobType: 'universal', jobId: 'job-p' },
+      { turnId: 'turn-p', jobType: 'universal', jobId: 'job-p', pipeline: { runId: 'r1' } },
+    ] as any);
+    expect(isUnattendedTurn(turnInfo.get('turn-p'))).toBe(true);
   });
 
   it('universal is a virtual-tab job (streaming artifact editor)', () => {

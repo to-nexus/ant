@@ -1317,7 +1317,12 @@ Chat surfaces: `useChatPolicy` locks the input with `pipeline-active` /
 `pipeline-running` (judged BEFORE `isRunning`), `PipelineActiveBanner` sits
 in the chat input, the stop button on a pipeline step confirms and routes to
 `cancelPipelineRun` (never raw stopJob), and pipeline-originated turns / the
-work board carry `PipelineOriginChip`. The `pipeline_approval` chat card is a
+work board carry `PipelineOriginChip`. A pipeline-minted turn's document
+writes never mint or promote a main-panel editor tab (`isUnattendedTurn` in
+`virtualTabModel.ts`, read by tab minting, terminal promotion and the chat-card
+suppression alike): the viewport follows a person's act only, so a cron/fetch
+run cannot evict the screen someone is on or pile up tabs — its writes stay
+chat file cards, as in the code job. The `pipeline_approval` chat card is a
 standard ChoiceCard variant. A UI-authored chain stays implicit-linear
 (`needs` omitted, zero YAML churn); the two structural gestures on the canvas
 are the node "+"'s sections, and both go through `draft.ts`. **Insert**

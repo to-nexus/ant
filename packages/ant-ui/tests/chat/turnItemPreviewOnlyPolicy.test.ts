@@ -119,6 +119,21 @@ describe('turn item preview-only policy', () => {
     ).toBe(false);
   });
 
+  // No editor tab is minted for a scheduler-minted turn, so the chat card is
+  // the only surface — suppressing it would hide the write everywhere.
+  it.each(['file_creating', 'file_create', 'file_editing', 'file_edit'])(
+    'keeps %s in chat for a pipeline-minted universal turn',
+    (statusType) => {
+      const line = makeLine({
+        jobType: 'universal',
+        statusType: statusType as any,
+        metadata: { filePath: 'reports/weekly.md' },
+      });
+      expect(shouldSuppressPreviewOnlyStatusCard(line, { unattended: true })).toBe(false);
+      expect(shouldSuppressPreviewOnlyStatusCard(line, { unattended: false })).toBe(true);
+    },
+  );
+
   it('does not suppress statuses for code jobs', () => {
     expect(
       shouldSuppressPreviewOnlyStatusCard(

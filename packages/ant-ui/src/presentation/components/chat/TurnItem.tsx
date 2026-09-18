@@ -64,6 +64,8 @@ import { useRegisterBubble } from './pinRegistry';
 import { WorkerGroupSection } from './WorkerGroupSection';
 import { isWorkerGroupScope } from './workerGroupPolicy';
 import { shouldSuppressPreviewOnlyStatusCard } from './statusCardVisibility';
+import { resolveTurnUnattended } from '@/domain/store/editor/virtualTabModel';
+import { useStore } from '@/domain/store';
 import {
   buildTrailingThinkingMerge,
   type RenderEntry,
@@ -87,6 +89,11 @@ export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
     () => turn.sections.filter((s) => isWorkerGroupScope(s.workerScope)).length,
     [turn.sections],
   );
+  // Selected as a boolean so a kanban frame re-renders this turn only when
+  // its origin verdict actually flips.
+  const unattended = useStore((s) =>
+    resolveTurnUnattended({ pipeline: turn.user?.pipeline, jobId: turn.jobId, activeJobs: s.activeJobs }),
+  );
   return (
     <div className="w-full min-w-0">
       {turn.user && <UserBubble turnId={turn.turnId} user={turn.user} />}
@@ -98,6 +105,7 @@ export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
               turnId={turn.turnId}
               turnJobType={turn.jobType}
               section={section}
+              unattended={unattended}
               suppressHeader={isWorkerGroupScope(section.workerScope)}
             />
           );
@@ -178,11 +186,13 @@ const SectionStack = memo(function SectionStack({
   turnId,
   turnJobType,
   section,
+  unattended,
   suppressHeader,
 }: {
   turnId: string;
   turnJobType: Turn['jobType'];
   section: TurnSection;
+  unattended: boolean;
   /** WorkerGroupSection renders its own rich header — skip the 11px label. */
   suppressHeader?: boolean;
 }) {
@@ -234,6 +244,7 @@ const SectionStack = memo(function SectionStack({
           key={entry.key ?? idx}
           entry={entry}
           isStreaming={isStreaming}
+          unattended={unattended}
           trailingThinkingMerge={trailingThinkingMerge}
           renderIndex={idx}
         />
@@ -255,6 +266,7 @@ const SectionStack = memo(function SectionStack({
             turnId={turnId}
             turnJobType={turnJobType}
             workerScope={section.workerScope}
+            unattended={unattended}
             isStreaming
           />
         );
@@ -393,11 +405,13 @@ function buildRenderItems(section: TurnSection): RenderEntry[] {
 const RenderEntry = memo(function RenderEntry({
   entry,
   isStreaming,
+  unattended,
   trailingThinkingMerge,
   renderIndex,
 }: {
   entry: RenderEntry;
   isStreaming: boolean;
+  unattended: boolean;
   trailingThinkingMerge: TrailingThinkingMerge | null;
   renderIndex: number;
 }) {
@@ -432,7 +446,14 @@ const RenderEntry = memo(function RenderEntry({
     case 'assistant_message':
       return <AssistantTextBlock text={entry.line.text} isStreaming={false} />;
     case 'status':
-      return <StatusCardDispatch line={entry.line} pending={entry.pending} isStreaming={isStreaming} />;
+      return (
+        <StatusCardDispatch
+          line={entry.line}
+          pending={entry.pending}
+          isStreaming={isStreaming}
+          unattended={unattended}
+        />
+      );
     case 'choice':
       return <ChoiceCard presented={entry.presented} resolved={entry.resolved} />;
   }
@@ -446,14 +467,16 @@ interface StatusCardDispatchProps {
   line: ChatStatusLine;
   pending?: PendingCardSnapshot;
   isStreaming: boolean;
+  unattended: boolean;
 }
 
 const StatusCardDispatch = memo(function StatusCardDispatch({
   line,
   pending,
   isStreaming,
+  unattended,
 }: StatusCardDispatchProps) {
-  if (shouldSuppressPreviewOnlyStatusCard(line)) {
+  if (shouldSuppressPreviewOnlyStatusCard(line, { unattended })) {
     return null;
   }
 
@@ -591,12 +614,14 @@ const PendingStatusCard = memo(function PendingStatusCard({
   turnId,
   turnJobType,
   workerScope,
+  unattended,
   isStreaming,
 }: {
   pending: PendingCardSnapshot;
   turnId: string;
   turnJobType: Turn['jobType'];
   workerScope: string;
+  unattended: boolean;
   isStreaming: boolean;
 }) {
   // Synthesize a ChatStatusLine from the pending snapshot so the same
@@ -623,7 +648,9 @@ const PendingStatusCard = memo(function PendingStatusCard({
     }),
     [pending, turnId, turnJobType, workerScope],
   );
-  return <StatusCardDispatch line={line} pending={pending} isStreaming={isStreaming} />;
+  return (
+    <StatusCardDispatch line={line} pending={pending} isStreaming={isStreaming} unattended={unattended} />
+  );
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

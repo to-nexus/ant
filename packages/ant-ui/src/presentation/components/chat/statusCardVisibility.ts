@@ -42,13 +42,17 @@ const PREVIEW_ONLY_STATUS_TYPES = new Set<ChatStatusType>([
   'task_response',
 ]);
 
-export function shouldSuppressPreviewOnlyStatusCard(line: ChatStatusLine): boolean {
+export function shouldSuppressPreviewOnlyStatusCard(
+  line: ChatStatusLine,
+  ctx: { unattended: boolean } = { unattended: false },
+): boolean {
   if (PATHLESS_PREVIEW_JOB_TYPES.has(line.jobType) && PREVIEW_ONLY_STATUS_TYPES.has(line.statusType)) {
     return true;
   }
   // File-op suppression must mirror the tab-minting gate exactly
-  // (VIRTUAL_TAB_JOB_TYPES is the single owner) — drift double-renders the
-  // card in chat AND the editor tab.
+  // (VIRTUAL_TAB_JOB_TYPES + isUnattendedTurn are the single owners) — drift
+  // either double-renders the card or hides the write on every surface.
+  if (ctx.unattended) return false;
   if (!(VIRTUAL_TAB_JOB_TYPES as Set<string>).has(line.jobType)) return false;
   if (!PREVIEW_ONLY_FILE_STATUS_TYPES.has(line.statusType)) return false;
 

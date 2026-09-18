@@ -22,6 +22,7 @@ import {
   buildTurnInfoMap,
   getPendingCardFilePath,
   isAppendPendingCard,
+  isUnattendedTurn,
   resolveVirtualTabSource,
   shouldRenderVirtualPreviewCard,
 } from '../editor/virtualTabModel';
@@ -1131,7 +1132,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const byId = new Map(tabs.map((tab) => [tab.id, tab]));
       const seenVirtualIds = new Set<string>();
       const seenStreamingRealIds = new Set<string>();
-      const turnInfo = buildTurnInfoMap(s.chatEvents ?? []);
+      const turnInfo = buildTurnInfoMap(s.chatEvents ?? [], s.activeJobs);
       const createdIds: Array<`editor:virtual:${string}`> = [];
       const activatedStreamingIds: Array<`editor:${string}`> = [];
 
@@ -1144,6 +1145,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         });
         if (!source) continue;
         const meta = turnInfo.get(snapshot.turnId);
+        if (isUnattendedTurn(meta)) continue;
 
         for (const pending of Object.values(pendingCards)) {
           const card = pending as import('@ant/shared').PendingCardSnapshot;

@@ -155,6 +155,42 @@ describe('chatSseHandler virtual editor tab bridge', () => {
     });
   });
 
+  it('a pipeline-minted turn\'s file_create never promotes — the write stays a chat card', () => {
+    const h = createHarness({
+      chatEvents: [
+        {
+          type: 'user_turn',
+          turnId: 'turn-p',
+          jobId: 'job-p',
+          jobType: 'universal',
+          pipeline: { pipelineId: 'p', runId: 'r1', stepId: 's', firedBy: 'cron' },
+        },
+      ],
+    });
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'chat_event_appended',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+      event: {
+        type: 'chat_status',
+        ts: new Date().toISOString(),
+        jobId: 'job-p',
+        turnId: 'turn-p',
+        jobType: 'universal',
+        cardId: 'card-p',
+        statusType: 'file_create',
+        metadata: { filePath: 'reports/weekly.md' },
+      },
+    });
+
+    expect(h.state().promoteVirtualEditorTabToReal).not.toHaveBeenCalled();
+    // The rest of the terminal handling is untouched.
+    expect(h.state().clearPendingCardFromBuffers).toHaveBeenCalledWith('card-p');
+    expect(h.state().appendChatEvent).toHaveBeenCalledTimes(1);
+  });
+
   it('parallel worker file_edit finalization also promotes virtual tab', () => {
     const h = createHarness();
     const handler = createChatSseHandler(h.set as any, h.get as any);

@@ -109,6 +109,94 @@ describe('uiSlice editor tab transitions', () => {
     expect(h.state().mainPanelOpenTabs.fileEdit).toBe(false);
   });
 
+  // A pipeline step's write never reaches the editor surface — no virtual
+  // tab, no focus steal — whatever tab the person is on.
+  it('mints no virtual tab and keeps the active tab for a pipeline-minted turn', () => {
+    const h = createHarness({
+      selectedJobType: 'design',
+      chatEvents: [
+        { turnId: 'turn-p', jobType: 'universal', jobId: 'job-p', pipeline: { pipelineId: 'p', runId: 'r1', stepId: 's', firedBy: 'cron' } },
+      ],
+      mainPanelActiveTab: 'pipelines',
+      mainPanelOpenTabs: { pipelines: true, fileEdit: false },
+      mainPanelTabOrder: ['pipelines'],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-p:_main_': {
+        turnId: 'turn-p',
+        pendingCards: {
+          'card-p': {
+            cardId: 'card-p',
+            statusType: 'file_creating',
+            metadata: { filePath: 'reports/weekly.md' },
+            streamedOutput: 'draft chunk',
+          },
+        },
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(0);
+    expect(h.state().mainPanelActiveTab).toBe('pipelines');
+    expect(h.state().mainPanelOpenTabs.fileEdit).toBe(false);
+  });
+
+  it('resolves the pipeline origin from activeJobs when the user_turn is outside the chat window', () => {
+    const h = createHarness({
+      selectedJobType: 'design',
+      chatEvents: [{ turnId: 'turn-p', jobType: 'universal', jobId: 'job-p' }],
+      activeJobs: { 'job-p': { jobId: 'job-p', jobType: 'universal', status: 'running', pipelineRunId: 'r1' } },
+      mainPanelActiveTab: 'pipelines',
+      mainPanelOpenTabs: { pipelines: true, fileEdit: false },
+      mainPanelTabOrder: ['pipelines'],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-p:_main_': {
+        turnId: 'turn-p',
+        pendingCards: {
+          'card-p': { cardId: 'card-p', statusType: 'file_creating', metadata: { filePath: 'reports/weekly.md' } },
+        },
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(0);
+    expect(h.state().mainPanelActiveTab).toBe('pipelines');
+  });
+
+  it('a pipeline-minted edit leaves an already-open real tab on its disk view', () => {
+    const realTab = makeRealTab({
+      id: 'editor:real:reports/weekly.md',
+      title: 'weekly.md',
+      path: 'reports/weekly.md',
+      source: 'universal',
+    });
+    const h = createHarness({
+      selectedJobType: 'design',
+      chatEvents: [
+        { turnId: 'turn-p', jobType: 'universal', jobId: 'job-p', pipeline: { pipelineId: 'p', runId: 'r1', stepId: 's', firedBy: 'fetch' } },
+      ],
+      editorTabs: [realTab],
+      activeEditorTabId: null,
+      mainPanelActiveTab: 'pipelines',
+      mainPanelOpenTabs: { pipelines: true, fileEdit: true },
+      mainPanelTabOrder: ['pipelines', realTab.id],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-p:_main_': {
+        turnId: 'turn-p',
+        pendingCards: {
+          'card-p': { cardId: 'card-p', statusType: 'file_editing', metadata: { filePath: 'reports/weekly.md' }, streamedOutput: 'x' },
+        },
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(1);
+    expect(h.state().editorTabs[0]).toMatchObject({ id: realTab.id, status: 'ready' });
+    expect(h.state().mainPanelActiveTab).toBe('pipelines');
+  });
+
   it('creates virtual tabs for parallel worker outputs in one turn', () => {
     const h = createHarness({
       selectedJobType: 'design',

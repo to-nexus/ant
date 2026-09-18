@@ -27,7 +27,9 @@ import {
 } from './streamingDeltaBatch';
 import { isStaleJobUpdate } from './isStaleJobUpdate';
 import {
+  buildTurnInfoMap,
   isPreviewSurfaceArtifactPath,
+  isUnattendedTurn,
   VIRTUAL_TAB_JOB_TYPES,
   type VirtualTabSource,
 } from '@/domain/store/editor/virtualTabModel';
@@ -128,11 +130,15 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
           // Promotion opens the file and focuses the main panel, so it must
           // fire only for artifacts the preview surface actually renders —
           // same gate `shouldRenderVirtualPreviewCard` applies when minting
-          // the virtual tab this promotes.
+          // the virtual tab this promotes — and only for a turn a person
+          // asked for: a pipeline step's write stays a chat card.
           if (
             (VIRTUAL_TAB_JOB_TYPES as Set<string>).has(statusLine.jobType) &&
             STREAMING_FILE_STATUS.has(statusLine.statusType) &&
-            isPreviewSurfaceArtifactPath(filePath)
+            isPreviewSurfaceArtifactPath(filePath) &&
+            !isUnattendedTurn(
+              buildTurnInfoMap(get().chatEvents ?? [], get().activeJobs).get(statusLine.turnId),
+            )
           ) {
             get().promoteVirtualEditorTabToReal?.({
               cardId: statusLine.cardId,
