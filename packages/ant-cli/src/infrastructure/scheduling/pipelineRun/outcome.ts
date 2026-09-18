@@ -161,16 +161,30 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
     return;
   }
 
-  await appendEvent(ctx.deps, owner, projectId, {
-    ts: new Date().toISOString(),
-    event: 'step_completed',
+  const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }), ...(assignee && { assignee }) };
+  // The audit line rides `onOutcomeLanded` — written ONLY by the call that
+  // actually sealed the step, and still before the step_dispatched /
+  // run_finished fan-out. Appended ahead of the funnel it would be written by
+  // every process this broadcast reached, and a stale outcome-retry would add
+  // one more: an audit trail saying a step completed twice.
+  const applied = await ctx.applyOutcome(
+    owner,
     runId,
     stepId,
-    jobId: data.jobId,
-    detail: { outcome, ...(error && { error }), ...(output && { outputCaptured: true }) },
-  });
-  const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }), ...(assignee && { assignee }) };
-  const applied = await ctx.applyOutcome(owner, runId, stepId, outcome, Object.keys(patch).length > 0 ? patch : undefined, undefined, data.jobId);
+    outcome,
+    Object.keys(patch).length > 0 ? patch : undefined,
+    undefined,
+    data.jobId,
+    () =>
+      appendEvent(ctx.deps, owner, projectId, {
+        ts: new Date().toISOString(),
+        event: 'step_completed',
+        runId,
+        stepId,
+        jobId: data.jobId,
+        detail: { outcome, ...(error && { error }), ...(output && { outputCaptured: true }) },
+      }),
+  );
   if (applied) {
     await ctx.deps.scheduleQueue.cancelDelayed(`sto-${runId}-${stepId}`);
   } else {
@@ -316,14 +330,15 @@ export async function failStepOrRetry(
   if (!held) {
     // Budget exhausted (or no retry declared): the normal failure path,
     // with its step_completed audit line.
-    await appendEvent(ctx.deps, owner, result.run.projectId, {
-      ts: new Date().toISOString(),
-      event: 'step_completed',
-      runId,
-      stepId,
-      detail: { outcome: 'failed', error },
-    });
-    return ctx.applyOutcome(owner, runId, stepId, 'failed', { error }, undefined, expectedJobId);
+    return ctx.applyOutcome(owner, runId, stepId, 'failed', { error }, undefined, expectedJobId, () =>
+      appendEvent(ctx.deps, owner, result.run.projectId, {
+        ts: new Date().toISOString(),
+        event: 'step_completed',
+        runId,
+        stepId,
+        detail: { outcome: 'failed', error },
+      }),
+    );
   }
   if (held.oldJobId) {
     await ctx.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(held.oldJobId)).catch(() => {});

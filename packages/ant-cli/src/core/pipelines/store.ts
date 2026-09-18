@@ -316,9 +316,15 @@ export function readRunEvents(actRoot: string, projectId: string, runId: string)
 }
 
 /**
- * Most-recent-first. `limit` bounds the tail read (index lines are terminal
- * runs only). `pipelineId` filters to one pipeline's runs — a project's run
+ * Most-recent-first, ONE row per run. `limit` bounds the tail read (in runs,
+ * not lines). `pipelineId` filters to one pipeline's runs — a project's run
  * index interleaves every pipeline it ever hosted.
+ *
+ * The file is append-only across pods, so a run can hold several lines: the
+ * reader folds them by `runId` (last line wins, first position kept) rather
+ * than trusting one-line-per-run. A duplicate row is a duplicate React key on
+ * the FE — the same run rendered twice, which is what made the activation's
+ * run list flicker — and it silently eats the tail window here.
  */
 export function readRunIndex(
   actRoot: string,
@@ -328,7 +334,9 @@ export function readRunIndex(
 ): PipelineRunSummary[] {
   let entries = readJsonlSafe<PipelineRunSummary>(activationRunIndexPath(actRoot, projectId));
   if (pipelineId) entries = entries.filter((e) => e.pipelineId === pipelineId);
-  return entries.slice(-limit).reverse();
+  const byRun = new Map<string, PipelineRunSummary>();
+  for (const entry of entries) byRun.set(entry.runId, entry);
+  return [...byRun.values()].slice(-limit).reverse();
 }
 
 // ============================================

@@ -866,6 +866,107 @@ describe('mutateRun / commitRun — a run-record write publishes the record it w
   });
 });
 
+/**
+ * `job:status:updates` is a pub/sub BROADCAST, so every API process runs the
+ * same outcome handler and each one reaches finalize holding the snapshot it
+ * read before its own mutation. The seal has to be decided against the LIVE
+ * record, or one run sealsN times: N run_finished lines, N index rows (the
+ * same run rendered twice on the FE, duplicate React key, flickering list),
+ * N chat notices and N chained fires.
+ */
+describe('finalizeRun — the seal is claimed once, against the live record', () => {
+  const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
+  const TERMINAL = {
+    runId: 'r1',
+    pipelineId: 'p1',
+    projectId: 'proj-a',
+    firedBy: 'manual',
+    fireEpoch: 1,
+    status: 'completed',
+    startedAt: '2026-09-16T00:00:00.000Z',
+    defSnapshot: { version: 2, name: 'P', steps: [] },
+    steps: [{ stepId: 's1', status: 'succeeded', jobId: 'j1' }],
+  };
+
+  function makeCtx(seed: Record<string, unknown>) {
+    const store = new Map<string, string>([[`ant:pipe:run:${seed.runId}`, JSON.stringify(seed)]]);
+    const deps = {
+      workspacesPath: tmp,
+      scheduleQueue: { cancelDelayed: async () => {} },
+      stateStore: {
+        getKey: async (k: string) => store.get(k) ?? null,
+        setKeyWithTTL: async (k: string, v: string) => void store.set(k, v),
+        deleteKey: async () => {},
+        acquireLock: async () => true,
+        releaseLock: async () => {},
+        tryAcquireLock: async () => true,
+        releaseLockIfOwner: async () => {},
+        releaseSlot: async () => true,
+        refreshSlot: async () => true,
+        publish: async () => {},
+      },
+    } as any;
+    return { ctx: { deps } as any, store };
+  }
+
+  const rawLines = (file: string) =>
+    fs.existsSync(file) ? fs.readFileSync(file, 'utf-8').split('\n').filter((l) => l.trim().length > 0) : [];
+
+  it('a second finalizer holding a pre-seal snapshot appends no second run_finished and no second index row', async () => {
+    const { finalizeRun } = await import('../../src/infrastructure/scheduling/pipelineRun/lifecycle');
+    const { deriveActivationsRoot, activationRunIndexPath, activationRunLogPath } = await import('../../src/core/pipelines/paths');
+    const { ctx, store } = makeCtx(TERMINAL);
+
+    // Both callers hold the SAME record they read before the seal.
+    await finalizeRun(ctx, OWNER, TERMINAL as any);
+    const sealedAt = JSON.parse(store.get('ant:pipe:run:r1')!).endedAt;
+    await finalizeRun(ctx, OWNER, TERMINAL as any);
+
+    const actRoot = deriveActivationsRoot({ workspacesPath: tmp, ...OWNER });
+    expect(rawLines(activationRunIndexPath(actRoot, 'proj-a'))).toHaveLength(1);
+    expect(rawLines(activationRunLogPath(actRoot, 'proj-a', 'r1')).filter((l) => l.includes('"run_finished"'))).toHaveLength(1);
+    // The first seal's `endedAt` stands — a re-seal would re-stamp it.
+    expect(sealedAt).toBeTruthy();
+    expect(JSON.parse(store.get('ant:pipe:run:r1')!).endedAt).toBe(sealedAt);
+  });
+
+  it('a run whose record is gone has nothing to seal — no index row is written for it', async () => {
+    const { finalizeRun } = await import('../../src/infrastructure/scheduling/pipelineRun/lifecycle');
+    const { deriveActivationsRoot, activationRunIndexPath } = await import('../../src/core/pipelines/paths');
+    const { ctx, store } = makeCtx({ ...TERMINAL, runId: 'r2', projectId: 'proj-b' });
+    store.clear();
+    await finalizeRun(ctx, OWNER, { ...TERMINAL, runId: 'r2', projectId: 'proj-b' } as any);
+    expect(rawLines(activationRunIndexPath(deriveActivationsRoot({ workspacesPath: tmp, ...OWNER }), 'proj-b'))).toHaveLength(0);
+  });
+});
+
+/**
+ * The index is append-only across pods — the reader owns "one run, one row".
+ */
+describe('readRunIndex — an append-only index is folded by runId', () => {
+  it('collapses repeated lines for one run to its newest, and `limit` counts runs', async () => {
+    const { readRunIndex } = await import('../../src/core/pipelines/store');
+    const { activationRunIndexPath } = await import('../../src/core/pipelines/paths');
+    const actRoot = path.join(tmp, 'actv');
+    const indexPath = activationRunIndexPath(actRoot, 'proj-a');
+    fs.mkdirSync(path.dirname(indexPath), { recursive: true });
+    const line = (runId: string, over: Record<string, unknown> = {}) =>
+      JSON.stringify({ runId, pipelineId: 'p1', projectId: 'proj-a', status: 'completed', firedBy: 'manual', startedAt: '2026-09-16T00:00:00.000Z', ...over });
+    fs.writeFileSync(
+      indexPath,
+      [line('a'), line('b'), line('a', { status: 'partial', endedAt: '2026-09-16T00:02:00.000Z' }), line('c')].join('\n') + '\n',
+      'utf-8',
+    );
+
+    const all = readRunIndex(actRoot, 'proj-a');
+    expect(all.map((r) => r.runId)).toEqual(['c', 'b', 'a']);
+    // Last line wins — the fold is a fold, not a first-seen dedupe.
+    expect(all.find((r) => r.runId === 'a')).toMatchObject({ status: 'partial', endedAt: '2026-09-16T00:02:00.000Z' });
+    // 4 lines, 3 runs: the tail window is spent on runs, never on duplicates.
+    expect(readRunIndex(actRoot, 'proj-a', 2).map((r) => r.runId)).toEqual(['c', 'b']);
+  });
+});
+
 describe('clarify answer authority — every fate is a typed outcome; an early answer is held, then applied on park', () => {
   const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
   const DEF = { version: 2, name: 'P', steps: [{ id: 's1', customJobRef: 'x/a', directive: 'd' }] };

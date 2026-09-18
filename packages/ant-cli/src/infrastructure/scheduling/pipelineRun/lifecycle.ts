@@ -27,7 +27,7 @@ import {
   loadPipeline,
 } from '../../../core/pipelines/store';
 import { listAccountActivationsResolved } from '../resolveActivation';
-import { appendEvent, commitRun, getRun, isTerminal, listActiveRunIds, mutateRun, publicRun, tenantCtx } from './runStore';
+import { appendEvent, getRun, isTerminal, listActiveRunIds, mutateRun, publicRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
 /**
@@ -212,21 +212,36 @@ async function appendRunIndexLocked(ctx: PipelineRunOps, owner: PipelineOwner, r
 }
 
 export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run: RunRecord): Promise<void> {
-  const endedAt = run.endedAt ?? new Date().toISOString();
-  // A failed/partial run names its cause: the first failed step's error.
-  // (No other producer writes run.error — without this the field is dead.)
-  const firstFailed = run.error
-    ? undefined
-    : run.steps.find((s) => s.status === 'failed' && s.error);
-  const error =
-    run.error ?? ((run.status === 'failed' || run.status === 'partial') && firstFailed ? `${firstFailed.stepId}: ${firstFailed.error}` : undefined);
-  const sealed: RunRecord = { ...run, endedAt, ...(error && { error }) };
-  await commitRun(ctx.deps, owner, sealed);
-  await appendEvent(ctx.deps, owner, run.projectId, {
+  // WHO seals a run is decided under the run lock, against the live record —
+  // never against the caller's snapshot. Every caller here holds one it read
+  // before its own mutation, and `job:status:updates` is a pub/sub BROADCAST
+  // (every API process runs the same handler), so a snapshot-keyed guard let
+  // a second finalizer re-seal an already-sealed run: a duplicate
+  // run_finished line, a duplicate index row (one run, two rows, two React
+  // keys), a second chat notice and a second chained fire. `endedAt` is
+  // written here and nowhere else, so its presence IS the seal.
+  let endedAt: string | undefined;
+  const result = await mutateRun(ctx.deps, owner, run.runId, async (live) => {
+    if (live.endedAt) return { run: live, dispatches: [] };
+    endedAt = new Date().toISOString();
+    // A failed/partial run names its cause: the first failed step's error.
+    // (No other producer writes run.error — without this the field is dead.)
+    const firstFailed = live.error
+      ? undefined
+      : live.steps.find((s) => s.status === 'failed' && s.error);
+    const error =
+      live.error ?? ((live.status === 'failed' || live.status === 'partial') && firstFailed ? `${firstFailed.stepId}: ${firstFailed.error}` : undefined);
+    return { run: { ...live, endedAt, ...(error && { error }) }, dispatches: [] };
+  });
+  // Lock starvation here means another finalizer holds the run — it seals it.
+  // A run whose record is gone has nothing to seal (mutateRun returns null).
+  if (!result || !endedAt) return;
+  const sealed = result.run;
+  await appendEvent(ctx.deps, owner, sealed.projectId, {
     ts: endedAt,
     event: 'run_finished',
-    runId: run.runId,
-    detail: { status: run.status, run: publicRun(sealed) },
+    runId: sealed.runId,
+    detail: { status: sealed.status, run: publicRun(sealed) },
   });
   // The index line is the shared summary shape — gate decisions (approval
   // STEPS only) ride it as the org observer's "who opened this gate" channel.

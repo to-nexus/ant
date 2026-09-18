@@ -886,7 +886,9 @@ describe('run-record write → publish has ONE owner (runStore)', () => {
       expect(fs.readFileSync(file, 'utf-8'), path.basename(file)).not.toMatch(/\bsaveRun\(/);
     }
     expect(read('infrastructure/scheduling/pipelineRun/fire.ts')).toMatch(/commitRun\(ctx\.deps, owner, plan\.run\)/);
-    expect(read('infrastructure/scheduling/pipelineRun/lifecycle.ts')).toMatch(/commitRun\(ctx\.deps, owner, sealed\)/);
+    // The seal writes through mutateRun (which commits under the run lock) —
+    // a bare commitRun here would seal a caller's snapshot, not the live run.
+    expect(read('infrastructure/scheduling/pipelineRun/lifecycle.ts')).not.toMatch(/\bcommitRun\(/);
   });
 
   it('the run summary line has ONE shape (shared runSummaryOf) — index line, live runs row, no inline gate filter', () => {
