@@ -204,7 +204,10 @@
     "resolvedPartial": "{{answered}}/{{total}}개 질문 응답",
     "partialHint": "답변하지 않은 질문은 건너뜁니다. 채팅창에 자유 입력도 가능합니다.",
     "skipped": "건너뜀",
-    "allSkipped": "모든 질문 건너뜀"
+    "allSkipped": "모든 질문 건너뜀",
+    "submitFailed": "답변이 전달되지 않았습니다. 다시 제출해 주세요.",
+    "retry": "실행이 잠시 바쁩니다. 잠시 후 다시 제출해 주세요.",
+    "alreadyAnswered": "이 질문은 이미 처리되었거나 실행이 다음 단계로 넘어갔습니다."
   },
   "resumeConfirm": {
     "title": "중단된 {{work}} 작업을 재개할까요?",

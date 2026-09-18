@@ -70,6 +70,29 @@ billing follows: every step of a fired run bills the ACTIVATOR, whose
 standing is re-judged per dispatch. Every step's session/artifacts land in
 the bound universal container.
 
+**The record is read through ONE owner, `resolveActivation`
+(`infrastructure/scheduling/resolveActivation.ts`), on every request path**
+(activate's holder check, deactivate, run-now, the chat-lock read, the
+approver-roster PUT). Disk first; when disk says ENOENT the Redis projection
+`ant:pipe:actv` (activate + reconciler refresh, 10 min TTL) answers — it is a
+VISIBILITY BRIDGE, never the record: in cloud the API pods read the workspace
+over NFS, and a pod that looked a path up while it did not exist caches that
+negative answer for tens of seconds, so `activation.json` written by pod A
+was refused as `not-activated` by pod B (2026-09-18). Two corollaries:
+- **Deactivate is the idempotent authority, not a second existence judge.**
+  `POST …/deactivate` calls `deactivatePipelineBinding` unconditionally and
+  answers `200 { hadActivation }`; the only refusal is `409
+  activation-mismatch` (the project is bound to ANOTHER pipeline). Never
+  reintroduce a 404 on "nothing visible from this pod".
+- **A deactivate leaves a tombstone** (`ant:pipe:deact:{org}:{user}:{project}`
+  = `{pipelineId, at}`, 15 min) BEFORE it unlinks: the unlink is not
+  verifiable from the deleting pod (a cached negative lookup returns ENOENT
+  without asking the server, and `rmSync(force)` swallows it), so the
+  reconciler finishes the delete from whichever pass still sees the file
+  (`finishTombstonedDeactivation`) instead of re-arming its schedulers, and
+  `resolveActivation` treats a record no newer than the tombstone as gone.
+  Activate deletes the tombstone after it writes the new record.
+
 **Availability (`availability.json`, missing = disabled/draft)** gates
 ACTIVATABILITY, not execution, and binds the whole write surface:
 - editing / deleting / promoting a definition requires **disabled**;
@@ -902,14 +925,34 @@ answer       → applyClarifyAnswer (guard: awaiting_clarify ∧ clarify.jobId m
   projection's are re-set to the `ACTIVE` bound (30d) on entering the wait —
   `saveRun` derives the TTL from awaiting state, so an open-ended human wait
   never outlives its own projection.
-- **Two answer channels, one authority.** The chat clarify card (child-minted,
-  carries `customJobRef`) resolves through the NX choice-resolved and then the
-  `clarifying` branch calls `applyClarifyAnswer` — interactive clarify cards
-  no-op instantly (no `ant:pipe:job` mapping). The inbox/API channel is
+- **Two answer channels, one authority, one typed verdict.**
+  `applyClarifyAnswer` returns a `ClarifyAnswerOutcome`, never a boolean:
+  `applied` (step re-dispatched) · `held` (the step is still `running` under
+  the asking job — the chat card is child-minted mid-job and the park lands
+  only after the job's status update; the answer is stored under the run lock
+  in `ant:pipe:clarify-held:{jobId}` and `enterAwaitingClarify` applies it
+  right after parking, through the same function) · `not-pipeline`
+  (interactive clarify — the caller's own path) · `not-awaiting` (answered
+  elsewhere / cancelled / another round) · `lock-starved` (retryable). Every
+  non-applied fate is SURFACED: a boolean hid all four behind one `false` and
+  the chat route answered 200 while the answer vanished (2026-09-18).
+  The chat clarify card (child-minted, carries `customJobRef`) is
+  **coordinator-first**: the `clarifying` branch calls `applyClarifyAnswer`
+  BEFORE the NX choice-resolved, writes the `choice_resolved` line only for
+  `applied`/`held`/`not-pipeline`, and answers `409 clarify-not-awaiting` /
+  `503 clarify-retry` / `400 clarify-answer-required` otherwise — the NX flag
+  stays unburned so the card is still answerable (the FE rolls its optimistic
+  disable back and says why). The card's `cardType` comes from the Redis card
+  index (`ant:choice:card:{cardId}` carries `cardType`); the chat.jsonl
+  re-read is the fallback only. The index SET and the chat.jsonl append of a
+  `choice_presented` line are AWAITED before the card is broadcast, and the
+  worker drains pending appends before `process.exit` — a human answers the
+  card after the process is gone. The inbox/API channel is
   `POST /api/definitions/pipelines/runs/:runId/steps/:stepId/clarify` (own-run
-  `hasRunLog` check). The coordinator's status guard is the double-submit
-  authority; an API-path answer leaves the chat card visually open but inert
-  (a later click no-ops). The FE card skips `runJob` on a pipeline-owned
+  `hasRunLog` check) and maps the same outcomes (`409` / `503`). The
+  coordinator's status guard is the double-submit authority; an API-path
+  answer leaves the chat card visually open but inert (a later click gets the
+  409 and closes). The FE card skips `runJob` on a pipeline-owned
   project — dispatch is the coordinator's, and the interactive route would
   409 anyway.
 - **The wait is open-ended — no timeout arm.** Pipelines are long-running by

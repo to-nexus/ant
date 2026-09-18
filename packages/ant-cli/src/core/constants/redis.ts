@@ -469,6 +469,12 @@ export const REDIS_KEYS = {
       `${REDIS_DOMAINS.PIPE}:fetch:${org}:${user}:${projectId}`,
     /** jobId → {runId, stepId} reverse mapping for the status-update consumer - ant:pipe:job:{jobId} */
     JOB: (jobId: string): string => `${REDIS_DOMAINS.PIPE}:job:${jobId}`,
+    /**
+     * A clarify answer that arrived while its step was still `running` (the
+     * chat card is child-minted mid-job; the park lands after the job ends).
+     * `enterAwaitingClarify` consumes it right after parking. - ant:pipe:clarify-held:{jobId}
+     */
+    CLARIFY_HELD: (jobId: string): string => `${REDIS_DOMAINS.PIPE}:clarify-held:${jobId}`,
     /** Armed HITL gate (JSON) - ant:pipe:hitl:{gateId} */
     HITL: (gateId: string): string => `${REDIS_DOMAINS.PIPE}:hitl:${gateId}`,
     /** cardId → gateId reverse mapping for the choice-resolved consumer - ant:pipe:card:{cardId} */
@@ -481,6 +487,16 @@ export const REDIS_KEYS = {
     /** Activation record projection (JSON PipelineActivation) - ant:pipe:actv:{orgId}:{userId}:{projectId} */
     ACTIVATION: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.PIPE}:actv:${org}:${user}:${projectId}`,
+    /**
+     * Deactivation tombstone (JSON `{pipelineId, at}`). The unlink of
+     * `activation.json` is not verifiable from the deleting pod (an NFS client
+     * holding a negative lookup answers ENOENT without asking the server), so
+     * the reconciler finishes the delete from whichever pod still sees the
+     * file, and the projection read stands down while the tombstone is newer
+     * than the record. - ant:pipe:deact:{orgId}:{userId}:{projectId}
+     */
+    DEACTIVATED: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:deact:${org}:${user}:${projectId}`,
     /** projectId → pipelineId reverse mapping — the job-start mutual-exclusion
      *  gate read. TTL-bounded and refreshed by the reconciler: a stale entry
      *  self-clears, so the gate fails OPEN, never closed. - ant:pipe:proj:{orgId}:{userId}:{projectId} */
@@ -615,6 +631,10 @@ export const REDIS_TTL = {
      * crash between disk unlink and Redis delete self-clears within this.
      */
     ACTIVATION: 10 * 60,
+    /** Deactivation tombstone — outlives the NFS negative-lookup window plus several reconciler passes. */
+    DEACTIVATED: 15 * 60,
+    /** A clarify answer held for a step that has not parked yet — the park follows the job's end within seconds. */
+    CLARIFY_HELD: 10 * 60,
     /**
      * Approver-of discovery index — same refresh contract as ACTIVATION
      * (reconciler-rebuilt, activate/PUT/deactivate write synchronously). A

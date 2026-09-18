@@ -258,13 +258,35 @@ describe('clarify funnel', () => {
     expect(coordinator).not.toMatch(/cto-/);
   });
 
-  it('both funnels exist: chat clarify-card branch (NX-first) and the account-scoped clarify route', () => {
+  it('both funnels exist: chat clarify-card branch (coordinator-first, typed) and the account-scoped clarify route', () => {
     const chat = read('periphery/adapters/http/routes/chat.routes.ts');
-    expect(chat).toMatch(/clarifying' && result\.resolved/);
+    // The coordinator decides BEFORE the NX choice_resolved is burned — an
+    // early or lock-starved answer stays answerable instead of vanishing.
+    expect(chat).toMatch(/cardType === 'clarifying' && deps\.pipelineCoordinator/);
+    expect(chat.indexOf('applyClarifyAnswer(')).toBeLessThan(chat.indexOf('appendChoiceResolved('));
+    // Every non-applied fate is a typed refusal, never a silent 200.
+    expect(chat).toMatch(/code: 'clarify-not-awaiting'/);
+    expect(chat).toMatch(/code: 'clarify-retry'/);
+    expect(chat).toMatch(/code: 'clarify-answer-required'/);
     const routes = pipeRoutesAll();
     expect(routes).toMatch(/\/runs\/:runId\/steps\/:stepId\/clarify/);
     // Own-run check parity with run detail/cancel.
     expect(routes).toMatch(/clarify-already-resolved/);
+    expect(routes).toMatch(/code: 'clarify-retry'/);
+  });
+
+  it('the answer authority returns a typed outcome and HOLDS an answer that beats the park', () => {
+    const hitl = read('infrastructure/scheduling/pipelineRun/hitl.ts');
+    expect(hitl).toMatch(/Promise<ClarifyAnswerOutcome>/);
+    for (const v of ['applied', 'held', 'not-pipeline', 'not-awaiting', 'lock-starved']) {
+      expect(hitl).toContain(`'${v}'`);
+    }
+    // The hold is written UNDER the run lock (inside the mutateRun callback) and
+    // consumed by the park through the same authority — no second apply path.
+    const mutateBody = hitl.slice(hitl.indexOf('let held = false'), hitl.indexOf("if (!result) return 'lock-starved'"));
+    expect(mutateBody).toMatch(/REDIS_KEYS\.PIPE\.CLARIFY_HELD\(params\.jobId\)/);
+    expect(hitl).toMatch(/consumeHeldClarifyAnswer\(ctx, jobId, runId, stepId\)/);
+    expect(hitl.match(/await applyClarifyAnswer\(ctx,/g)?.length ?? 0).toBe(1);
   });
 
   it('cancel sweeps awaiting_clarify and stale outcomes cannot clobber a waiting step', () => {

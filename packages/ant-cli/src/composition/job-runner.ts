@@ -470,7 +470,12 @@ async function main(): Promise<void> {
 
   try {
     await runJob(params);
-    
+
+    // chat.jsonl appends are fire-and-forget during the turn; a human answers
+    // the last card after this process is gone, so nothing may still be in
+    // flight when we exit.
+    await drainChatLog();
+
     // Ensure stdout is fully flushed before exiting.
     // process.exit() terminates immediately, dropping any data still queued
     // in libuv's write buffer. For large RESULT JSON (e.g. 28k+ chars of
@@ -483,10 +488,20 @@ async function main(): Promise<void> {
     
   } catch (error: any) {
     console.error(`Job runner error: ${error.message}`);
+    await drainChatLog();
     await new Promise<void>((resolve) => {
       process.stdout.write('', () => resolve());
     });
     process.exit(1);
+  }
+}
+
+async function drainChatLog(): Promise<void> {
+  try {
+    const { getChatLogAppender } = await import('../core/llm-response/chatLogAppenderRegistry');
+    await getChatLogAppender()?.drain();
+  } catch {
+    /* best-effort: the appender is process-local and may already be disposed */
   }
 }
 

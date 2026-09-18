@@ -16,6 +16,7 @@ import {
   runSummaryOf,
   type PipelineRunSummary,
 } from '@ant/shared';
+import { REDIS_KEYS } from '../../../../../core/constants/redis';
 import { approverUnion, syncApproverIndexForActivation } from '../../../../../core/pipelines/approverIndex';
 import { extractUserContext } from '../helpers/userContext';
 import { sendErrorResponse } from '../helpers/errorResponse';
@@ -34,6 +35,7 @@ import { findDuplicateActiveJob } from '../../../../../core/scheduling/Universal
 import { fetchSchedulerIdFor, schedulerIdFor } from '../../../../../infrastructure/scheduling/PipelineReconciler';
 import { ensureItemLedger } from '../../../../../infrastructure/scheduling/pipelineRun/itemLedger';
 import { deactivatePipelineBinding } from '../../../../../infrastructure/scheduling/deactivateBinding';
+import { resolveActivation } from '../../../../../infrastructure/scheduling/resolveActivation';
 import { isSingleSegment, reject400 } from './context';
 import { ownerOf, type PipelinesRouteContext } from './context';
 
@@ -117,10 +119,8 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
       // Gate 2 — one active pipeline per project (structural: one dir per
       // projectId). The pipeline side is unbounded — more projects welcome.
       const actRoot = actRootOf(owner);
-      let holder: PipelineActivation | null = null;
-      try {
-        holder = loadActivationByProject(actRoot, projectId);
-      } catch {
+      const holderRead = await resolveActivation(deps.stateStore, deps.workspaceResolver.getPhysicalWorkspacesPath(), owner, projectId);
+      if (holderRead.unreadable) {
         // Unreadable sidecar still means "this project is taken" — refuse;
         // deactivate clears it.
         res.status(409).json({
@@ -129,6 +129,7 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         });
         return;
       }
+      const holder: PipelineActivation | null = holderRead.activation;
       if (holder && !(holder.pipelineId === pipelineId && holder.pipelineScope === found.scopeRoot.scope)) {
         res.status(409).json({
           error: `Project "${projectId}" already has an active pipeline ("${holder.pipelineId}")`,
@@ -206,6 +207,10 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
             ...(approvers ? { approvers } : {}),
           };
       await saveActivationRecord(actRoot, activation);
+      // A new record outranks any pending deactivation tombstone.
+      await deps.stateStore
+        .deleteKey(REDIS_KEYS.PIPE.DEACTIVATED(owner.organizationId, owner.userId, projectId))
+        .catch(() => {});
       await syncApproverIndexForActivation(
         deps.stateStore,
         owner.organizationId,
@@ -281,30 +286,22 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         return;
       }
       if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
-      const actRoot = actRootOf(owner);
-      let activation: PipelineActivation | null = null;
-      let unreadable = false;
-      try {
-        activation = loadActivationByProject(actRoot, projectId);
-      } catch {
-        unreadable = true; // unreadable sidecar: deactivate clears it below
-      }
-      if (!unreadable) {
-        if (!activation) {
-          res.status(404).json({ error: `No activation on project "${projectId}"`, code: 'not-activated' });
-          return;
-        }
-        if (activation.pipelineId !== pipelineId) {
-          res.status(404).json({
-            error: `Project "${projectId}" is activated with "${activation.pipelineId}", not "${pipelineId}"`,
-            code: 'not-activated',
-          });
-          return;
-        }
+      // The only refusal is a REAL conflict: the project is bound to another
+      // pipeline. "No record visible from this pod" is not one — the binding
+      // authority is idempotent, and a record another pod wrote seconds ago
+      // may not be in this pod's NFS view yet (the 2026-09-18 404s).
+      const current = await resolveActivation(deps.stateStore, deps.workspaceResolver.getPhysicalWorkspacesPath(), owner, projectId);
+      if (current.activation && current.activation.pipelineId !== pipelineId) {
+        res.status(409).json({
+          error: `Project "${projectId}" is activated with "${current.activation.pipelineId}", not "${pipelineId}"`,
+          code: 'activation-mismatch',
+          pipelineId: current.activation.pipelineId,
+        });
+        return;
       }
       // Legs live in `deactivatePipelineBinding` — the ONE deactivation
       // authority, shared with the project delete/rename cascade.
-      await deactivatePipelineBinding(
+      const { hadActivation } = await deactivatePipelineBinding(
         {
           workspacesPath: deps.workspaceResolver.getPhysicalWorkspacesPath(),
           scheduleQueue: deps.scheduleQueue,
@@ -315,7 +312,7 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         projectId,
         { pipelineIdHint: pipelineId },
       );
-      res.json({ success: true });
+      res.json({ success: true, hadActivation });
     } catch (error) {
       sendErrorResponse(res, 500, error, 'PipelinesDeactivate');
     }
@@ -333,12 +330,7 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
       }
       if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
       // A run needs an activation — run-now fires the caller's own binding.
-      let activation: PipelineActivation | null = null;
-      try {
-        activation = loadActivationByProject(actRootOf(owner), projectId);
-      } catch {
-        activation = null;
-      }
+      const activation = (await resolveActivation(deps.stateStore, deps.workspaceResolver.getPhysicalWorkspacesPath(), owner, projectId)).activation;
       if (!activation || activation.pipelineId !== pipelineId) {
         res.status(409).json({
           error: `Pipeline "${pipelineId}" is not activated on project "${projectId}" — activate it first`,

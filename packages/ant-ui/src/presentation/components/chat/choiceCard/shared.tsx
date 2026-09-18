@@ -18,6 +18,7 @@ import { Spinner } from '@/presentation/components/common/async';
 import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
 import { useStore } from '@/domain/store';
 import { resolveChoice } from '@/infrastructure/http/api';
+import { ApiError } from '@/infrastructure/http/api/client';
 import type {
   ChatChoicePresentedLine,
   ChatChoiceResolvedLine,
@@ -53,6 +54,20 @@ export interface UseChoiceCardStateParams {
 }
 
 /**
+ * What the BE did with the click. A failure is the caller's to surface: the
+ * optimistic disable is applied before the request, so a swallowed error left
+ * a card that looked answered and a run that never moved (2026-09-18 report).
+ */
+export interface PersistChoiceResult {
+  ok: boolean;
+  status?: number;
+  /** Typed BE code — `clarify-not-awaiting` / `clarify-retry` / `clarify-answer-required` / transport codes. */
+  code?: string;
+  /** Pipeline clarify fate when the BE reported one (`applied` | `held`). */
+  clarify?: string;
+}
+
+/**
  * Common state plumbing for every choice-card variant.
  *
  * Phase 11 chat-SSOT — choice cards now consume the SSOT pair
@@ -84,17 +99,20 @@ export function useChoiceCardState({ presented, resolved }: UseChoiceCardStatePa
     choiceAction: string,
     label: string,
     extraMetadata?: Record<string, any>,
-  ) => {
-    if (!selectedProject || !selectedFeature || !presented.cardId) return;
+  ): Promise<PersistChoiceResult> => {
+    if (!selectedProject || !selectedFeature || !presented.cardId) return { ok: false, code: 'no-selection' };
     try {
-      await resolveChoice(selectedProject, selectedFeature, {
+      const res = (await resolveChoice(selectedProject, selectedFeature, {
         cardId: presented.cardId,
         choiceSelected: choiceAction,
         resolvedLabel: label,
         answer: extraMetadata,
-      });
+      })) as { clarify?: string } | undefined;
+      return { ok: true, ...(res?.clarify ? { clarify: res.clarify } : {}) };
     } catch (error) {
-      console.warn('[ChoiceCard] resolveChoice API failed (non-blocking):', error);
+      console.warn('[ChoiceCard] resolveChoice API failed:', error);
+      const api = error instanceof ApiError ? error : null;
+      return { ok: false, ...(api ? { status: api.status, code: api.code } : {}) };
     }
   }, [selectedProject, selectedFeature, presented.cardId]);
 

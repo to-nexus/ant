@@ -24,6 +24,7 @@ import { approverIndexEntry, approverUnion, replaceApproverIndex } from '../../c
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import { loadActivationByProject, loadAvailability, loadPipeline } from '../../core/pipelines/store';
+import { finishTombstonedDeactivation, readDeactivationTombstone, tombstoneCovers } from './resolveActivation';
 import { pruneRunSessionFiles } from './pipelineRun/sessionRetention';
 import { ensureItemLedger } from './pipelineRun/itemLedger';
 
@@ -119,6 +120,13 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
       try {
         const activation = loadActivationByProject(path.dirname(dir), projectId);
         if (!activation) continue;
+        // A deactivate whose unlink this pod (or the deactivating pod) could
+        // not see through lands here: finish the delete, never re-arm.
+        if (tombstoneCovers(await readDeactivationTombstone(deps.stateStore, owner, projectId), activation)) {
+          finishTombstonedDeactivation(path.dirname(dir), projectId);
+          logger.info(`[Pipeline] finished tombstoned deactivation on ${projectId}`, { component: COMPONENT });
+          continue;
+        }
         for (const approverId of approverUnion(activation)) {
           const key = `${owner.organizationId}\n${approverId}`;
           const set = approverIndex.get(key) ?? new Set<string>();

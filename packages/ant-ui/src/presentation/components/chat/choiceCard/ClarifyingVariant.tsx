@@ -50,7 +50,7 @@ import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { useImagePreview } from '../useImagePreview';
 import { DraftLightbox } from '../ImageLightbox';
-import type { VariantProps } from './shared';
+import type { VariantProps, PersistChoiceResult } from './shared';
 import { useChoiceCardState, ChoiceCardShell } from './shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -703,6 +703,21 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     setPendingClarifyAnswer(questionIndex, answer);
   };
 
+  // A refused persist rolls the optimistic disable back so the answer can be
+  // retried; `clarify-not-awaiting` keeps the card closed (already handled
+  // elsewhere — inbox, cancel, deactivate). Returns whether to proceed.
+  const settlePersist = (persisted: PersistChoiceResult): boolean => {
+    if (persisted.ok) return true;
+    if (persisted.code === 'clarify-not-awaiting') {
+      toast.error(t('clarify.alreadyAnswered'));
+      return false;
+    }
+    cardState.setLocalSelectedChoice(null);
+    cardState.setLocalResolvedLabel(null);
+    toast.error(persisted.code === 'clarify-retry' ? t('clarify.retry') : t('clarify.submitFailed'));
+    return false;
+  };
+
   // Compound submit for text blocks.
   const handleSubmitAll = async () => {
     if (
@@ -734,7 +749,11 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     // `directive` rides the answer payload so the BE clarify branch can
     // resume a pipeline step without re-deriving the composed text.
-    await cardState.persistToBackend('submitted', label, { resolvedAnswers, directive });
+    const persisted = await cardState.persistToBackend('submitted', label, { resolvedAnswers, directive });
+    if (!settlePersist(persisted)) {
+      cardState.setIsLoading(false);
+      return;
+    }
 
     try {
       clearPendingClarify();
@@ -770,7 +789,10 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     const label = t('draftSelection.draftSelected', { number: sketchIndex + 1 });
     cardState.setLocalSelectedChoice(value);
     cardState.setLocalResolvedLabel(label);
-    await cardState.persistToBackend(value, label, { selectedSketchIndex: sketchIndex });
+    if (!settlePersist(await cardState.persistToBackend(value, label, { selectedSketchIndex: sketchIndex }))) {
+      cardState.setIsLoading(false);
+      return;
+    }
 
     setLightboxOpen(false);
 
@@ -794,7 +816,10 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     cardState.setLocalSelectedChoice('custom');
     cardState.setLocalResolvedLabel(label);
 
-    await cardState.persistToBackend('custom', label, { customText: text });
+    if (!settlePersist(await cardState.persistToBackend('custom', label, { customText: text }))) {
+      cardState.setIsLoading(false);
+      return;
+    }
 
     try {
       clearPendingClarify();
@@ -814,7 +839,10 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     const label = t('draftSelection.regenerateLabel');
     cardState.setLocalSelectedChoice('regenerate');
     cardState.setLocalResolvedLabel(label);
-    await cardState.persistToBackend('regenerate', label, {});
+    if (!settlePersist(await cardState.persistToBackend('regenerate', label, {}))) {
+      cardState.setIsLoading(false);
+      return;
+    }
 
     try {
       clearPendingClarify();

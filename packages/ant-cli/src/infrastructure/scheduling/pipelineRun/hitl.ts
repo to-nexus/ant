@@ -229,7 +229,53 @@ export async function enterAwaitingClarify(ctx: PipelineRunOps, data: PipelineCl
       jobId,
     },
   });
+
+  // An answer that arrived before this park (the chat card is child-minted
+  // mid-job) was held under the run lock; consume it through the same
+  // authority now that the step is parked.
+  await consumeHeldClarifyAnswer(ctx, jobId, runId, stepId);
 }
+
+/** The answer a human gave while the step had not parked yet — written under the run lock, consumed right after the park. */
+interface HeldClarifyAnswer {
+  answer: string;
+  answeredBy?: string;
+  via: 'in-app' | 'api';
+  at: string;
+}
+
+async function consumeHeldClarifyAnswer(ctx: PipelineRunOps, jobId: string, runId: string, stepId: string): Promise<void> {
+  const key = REDIS_KEYS.PIPE.CLARIFY_HELD(jobId);
+  let held: HeldClarifyAnswer | null = null;
+  try {
+    const raw = await ctx.deps.stateStore.getKey(key);
+    held = raw ? (JSON.parse(raw) as HeldClarifyAnswer) : null;
+  } catch {
+    held = null;
+  }
+  if (!held || typeof held.answer !== 'string') return;
+  const outcome = await applyClarifyAnswer(ctx, { jobId, answer: held.answer, answeredBy: held.answeredBy, via: held.via });
+  if (outcome === 'lock-starved') {
+    // Left in place for a later pass — the TTL bounds it; never silently dropped.
+    logger.warn(`[Pipeline] held clarify answer not applied (lock starvation): ${runId}/${stepId}`, { component: COMPONENT });
+    return;
+  }
+  await ctx.deps.stateStore.deleteKey(key).catch(() => {});
+  logger.info(`[Pipeline] held clarify answer applied on park: ${runId}/${stepId} → ${outcome}`, { component: COMPONENT });
+}
+
+/**
+ * What became of a clarify answer. Every value is a decision the caller must
+ * surface — a boolean hid four different fates behind one `false`, and the
+ * chat route turned all of them into a silent 200 (2026-09-18 report).
+ *
+ * - `applied`       the step was awaiting this job's clarify; re-dispatched with the answer
+ * - `held`          the step is still `running` under this job (card minted, park not landed) — stored, applied on park
+ * - `not-pipeline`  the job is not a pipeline step (interactive clarify) — the caller's own path
+ * - `not-awaiting`  the step is past this clarify (answered elsewhere, cancelled, deactivated, or a different round)
+ * - `lock-starved`  the run lock could not be taken — retryable, nothing changed
+ */
+export type ClarifyAnswerOutcome = 'applied' | 'held' | 'not-pipeline' | 'not-awaiting' | 'lock-starved';
 
 /**
  * Clarify answer funnel — called by the chat choice-resolved branch
@@ -246,9 +292,9 @@ export async function applyClarifyAnswer(ctx: PipelineRunOps, params: {
   answer: string;
   answeredBy?: string;
   via: 'in-app' | 'api';
-}): Promise<boolean> {
+}): Promise<ClarifyAnswerOutcome> {
   const raw = await ctx.deps.stateStore.getKey(REDIS_KEYS.PIPE.JOB(params.jobId));
-  if (!raw) return false;
+  if (!raw) return 'not-pipeline';
   const { runId, stepId, pipelineId, projectId, owner } = JSON.parse(raw) as {
     runId: string;
     stepId: string;
@@ -259,14 +305,23 @@ export async function applyClarifyAnswer(ctx: PipelineRunOps, params: {
 
   const answeredAt = new Date().toISOString();
   let resolved: ClarifyRecord | undefined;
+  let held = false;
   const result = await mutateRun(ctx.deps, owner, runId, async (live) => {
     const step = live.steps.find((s) => s.stepId === stepId);
-    if (
-      !step ||
-      isTerminal(live.status) ||
-      step.status !== 'awaiting_clarify' ||
-      step.clarify?.jobId !== params.jobId
-    ) {
+    if (!step || isTerminal(live.status)) return { run: live, dispatches: [] };
+    if (step.status === 'running' && step.jobId === params.jobId) {
+      // The card is on screen but the seal has not been consumed yet. Hold
+      // the answer UNDER the run lock: the park takes the same lock next and
+      // reads the key right after, so the hand-off cannot fall between them.
+      await ctx.deps.stateStore.setKeyWithTTL(
+        REDIS_KEYS.PIPE.CLARIFY_HELD(params.jobId),
+        JSON.stringify({ answer: params.answer, answeredBy: params.answeredBy, via: params.via, at: answeredAt } satisfies HeldClarifyAnswer),
+        REDIS_TTL.PIPE.CLARIFY_HELD,
+      );
+      held = true;
+      return { run: live, dispatches: [] };
+    }
+    if (step.status !== 'awaiting_clarify' || step.clarify?.jobId !== params.jobId) {
       return { run: live, dispatches: [] };
     }
     resolved = {
@@ -282,7 +337,12 @@ export async function applyClarifyAnswer(ctx: PipelineRunOps, params: {
     const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
     return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
   });
-  if (!result || !resolved) return false;
+  if (!result) return 'lock-starved';
+  if (held) {
+    logger.info(`[Pipeline] clarify answer held until the step parks: ${runId}/${stepId}`, { component: COMPONENT });
+    return 'held';
+  }
+  if (!resolved) return 'not-awaiting';
 
   // Post-apply ordering (gate precedent): the funnel key dies only after
   // the flip landed, so a crash mid-apply keeps the answer recoverable.
@@ -317,5 +377,5 @@ export async function applyClarifyAnswer(ctx: PipelineRunOps, params: {
   if (def && stepDef && !isApprovalStep(stepDef)) {
     await ctx.dispatchJobStep(owner, def, result.run, stepDef, 0, params.answer);
   }
-  return true;
+  return 'applied';
 }

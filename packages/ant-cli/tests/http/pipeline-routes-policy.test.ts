@@ -389,6 +389,41 @@ describe('activation — one per project, many per pipeline', () => {
     expect(fs.existsSync(path.join(userDir, '.ant/pipeline-activations/proj-a/runs/index.jsonl'))).toBe(true);
   });
 
+  // Deactivate is the idempotent authority, not a second existence judge: a
+  // record another pod wrote seconds ago may be invisible to this pod's NFS
+  // view (the 2026-09-18 `not-activated` 404s), so "nothing visible" is a
+  // no-op success, the projection bridges the gap, and only a binding to a
+  // DIFFERENT pipeline is refused.
+  it('deactivate: no visible record → 200 idempotent; projection-only → 200 held; other pipeline → 409 mismatch', async () => {
+    await createPipeline();
+    await enable();
+    makeUniversalProject('proj-a');
+
+    const ghost = await api('/digest/deactivate', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) });
+    expect(ghost.status).toBe(200);
+    expect(await ghost.json()).toEqual({ success: true, hadActivation: false });
+    redisKeys.delete('ant:pipe:deact:localorg:localuser:proj-a');
+
+    redisKeys.set(
+      'ant:pipe:actv:localorg:localuser:proj-a',
+      JSON.stringify({ pipelineId: 'digest', pipelineScope: 'user', projectId: 'proj-a', activatedAt: new Date().toISOString() }),
+    );
+    const bridged = await api('/digest/deactivate', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) });
+    expect(bridged.status).toBe(200);
+    expect(await bridged.json()).toEqual({ success: true, hadActivation: true });
+    expect(cronRemoved).toContain('pipe|localorg|localuser|proj-a');
+    expect(redisKeys.has('ant:pipe:deact:localorg:localuser:proj-a')).toBe(true);
+
+    await activate('digest', 'proj-a');
+    // Activate outranks the pending tombstone.
+    expect(redisKeys.has('ant:pipe:deact:localorg:localuser:proj-a')).toBe(false);
+    await createPipeline('other');
+    const mismatch = await api('/other/deactivate', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) });
+    expect(mismatch.status).toBe(409);
+    expect(await mismatch.json()).toMatchObject({ code: 'activation-mismatch', pipelineId: 'digest' });
+    expect(fs.existsSync(path.join(userDir, '.ant/pipeline-activations/proj-a/activation.json'))).toBe(true);
+  });
+
   it('run-now requires the caller\'s own activation on that project', async () => {
     await createPipeline();
     await enable();
@@ -715,13 +750,17 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
       const bobViews = await (await fetch(`${bob.url}/shared/activations`)).json();
       expect(bobViews.activations[0]).toMatchObject({ projectId: 'proj-b', mine: true });
 
-      // Alice cannot deactivate Bob's activation (no own binding on proj-b).
+      // Alice cannot deactivate Bob's activation: her own account holds no
+      // binding on proj-b, so the idempotent authority is a no-op there and
+      // Bob's record stands.
       const steal = await fetch(`${alice.url}/shared/deactivate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: 'proj-b' }),
       });
-      expect(steal.status).toBe(404);
+      expect(steal.status).toBe(200);
+      expect(await steal.json()).toEqual({ success: true, hadActivation: false });
+      expect(fs.existsSync(path.join(wsRoot, 'localorg', 'bob', '.ant', 'pipeline-activations', 'proj-b', 'activation.json'))).toBe(true);
 
       // Owner disable is blocked while Bob holds an activation.
       const disable = await fetch(`${alice.url}/shared/disable`, { method: 'POST' });

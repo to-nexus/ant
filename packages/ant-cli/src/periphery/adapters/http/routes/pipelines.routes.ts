@@ -22,9 +22,10 @@ import { Router, Request, Response } from 'express';
 import { activationStateOf, type ActivePipelineInfo, type PipelineActivation } from '@ant/shared';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { getNextFires } from '../../../../core/pipelines/cron';
-import { deriveActivationsRoot, type PipelineTenantContext } from '../../../../core/pipelines/paths';
+import type { PipelineTenantContext } from '../../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../../core/pipelines/scopeRoots';
-import { loadActivationByProject, loadPipeline } from '../../../../core/pipelines/store';
+import { loadPipeline } from '../../../../core/pipelines/store';
+import { resolveActivation } from '../../../../infrastructure/scheduling/resolveActivation';
 import {
   buildPipelinesRouteContext,
   isSingleSegment,
@@ -72,13 +73,9 @@ export function createActivePipelineRoute(deps: PipelinesRoutesDeps): Router {
       const projectId = req.params.projectId;
       if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
       const ctx: PipelineTenantContext = { workspacesPath: deps.workspaceResolver.getPhysicalWorkspacesPath(), ...owner };
-      let bound: PipelineActivation | null = null;
-      try {
-        bound = loadActivationByProject(deriveActivationsRoot(ctx), projectId);
-      } catch {
-        // Unreadable sidecar: the chat lock stays engaged with what we know.
-        bound = null;
-      }
+      // Disk record, else the projection — a just-written activation must lock
+      // the chat even from a pod whose NFS view has not caught up.
+      const bound: PipelineActivation | null = (await resolveActivation(deps.stateStore, ctx.workspacesPath, owner, projectId)).activation;
       if (!bound) {
         res.json({ active: null });
         return;

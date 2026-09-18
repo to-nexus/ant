@@ -579,7 +579,7 @@ describe('ChatService — Phase 9 emission contract', () => {
     });
 
     const ctx = await service.findTurnIdByCardId('proj', 'feat-a', 'card-locate', USER_CTX);
-    expect(ctx).toEqual({ turnId: 't-aa', jobId: 'job-1', jobType: 'code' });
+    expect(ctx).toEqual({ turnId: 't-aa', jobId: 'job-1', jobType: 'code', cardType: 'eval_save' });
   });
 
   it('findTurnIdByCardId returns null when no matching presentation exists', async () => {
@@ -615,7 +615,9 @@ describe('ChatService — Phase 9 emission contract', () => {
     expect(setCall!.key).toBe('ant:choice:card:card-redis-set');
     expect(setCall!.ttl).toBe(604800);
     const parsed = JSON.parse(setCall!.value);
-    expect(parsed).toEqual({ turnId: 't-redis-aa', jobId: 'job-redis-1', jobType: 'code' });
+    // cardType rides the index: the resolve route must not need the chat.jsonl
+    // re-read (another NFS client's file) to know a clarifying card is one.
+    expect(parsed).toEqual({ turnId: 't-redis-aa', jobId: 'job-redis-1', jobType: 'code', cardType: 'eval_save' });
   });
 
   it('appendAndBroadcast does NOT touch the cardId index for non-choice_presented lines', async () => {
@@ -702,7 +704,7 @@ describe('ChatService — Phase 9 emission contract', () => {
       'card-redis-fallback',
       USER_CTX,
     );
-    expect(ctx).toEqual({ turnId: 't-redis-fallback', jobId: 'job-redis-fallback', jobType: 'code' });
+    expect(ctx).toEqual({ turnId: 't-redis-fallback', jobId: 'job-redis-fallback', jobType: 'code', cardType: 'eval_save' });
   });
 
   // ─────────────────────────────────────────────────────────────────

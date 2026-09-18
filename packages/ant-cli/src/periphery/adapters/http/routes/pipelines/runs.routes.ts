@@ -156,17 +156,21 @@ export function registerRunRoutes(router: Router, ctx: PipelinesRouteContext): v
         res.status(409).json({ error: 'clarify-already-resolved', stepId: req.params.stepId });
         return;
       }
-      const ok = await deps.coordinator.applyClarifyAnswer({
+      const outcome = await deps.coordinator.applyClarifyAnswer({
         jobId: step.clarify.jobId,
         answer,
         answeredBy: owner.userId,
         via: 'api',
       });
-      if (!ok) {
+      if (outcome === 'lock-starved') {
+        res.status(503).json({ error: 'The run is busy — retry in a moment', code: 'clarify-retry', stepId: req.params.stepId });
+        return;
+      }
+      if (outcome !== 'applied' && outcome !== 'held') {
         res.status(409).json({ error: 'clarify-already-resolved', stepId: req.params.stepId });
         return;
       }
-      res.json({ success: true });
+      res.json({ success: true, clarify: outcome });
     } catch (error) {
       sendErrorResponse(res, 500, error, 'PipelinesClarify');
     }

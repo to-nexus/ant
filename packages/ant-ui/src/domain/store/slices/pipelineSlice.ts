@@ -225,6 +225,8 @@ export interface PipelineSliceActions {
   openApproverPanel: (approval: PipelinePendingApproval) => void;
   closeApproverPanel: () => void;
   deactivatePipelineById: (pipelineId: string, projectId: string) => Promise<boolean>;
+  /** Authoritative re-read of every activation surface after the server refused a binding change (stale rows). */
+  resyncActivationViews: (pipelineId: string, projectId: string) => Promise<void>;
   loadActivatableProjects: () => Promise<void>;
   loadActivePipeline: (projectId: string) => Promise<void>;
   loadActivationRuns: (pipelineId: string, projectId: string, userId?: string) => Promise<void>;
@@ -574,8 +576,17 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       return true;
     } catch (e) {
       set({ pipelineActivationError: e instanceof Error ? e.message : String(e) });
+      // A refused binding change means this view's rows are stale — re-read them.
+      if (e instanceof ApiError && (e.status === 404 || e.status === 409)) void get().resyncActivationViews(pipelineId, projectId);
       return false;
     }
+  },
+
+  resyncActivationViews: async (pipelineId: string, projectId: string) => {
+    void get().loadPipelines();
+    void get().loadActivatableProjects();
+    void get().loadActivePipeline(projectId);
+    if (get().selectedPipelineId === pipelineId) await get().selectPipeline(pipelineId);
   },
 
   deactivatePipelineById: async (pipelineId: string, projectId: string) => {
@@ -597,6 +608,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       return true;
     } catch (e) {
       set({ pipelineActivationError: e instanceof Error ? e.message : String(e) });
+      if (e instanceof ApiError && (e.status === 404 || e.status === 409)) void get().resyncActivationViews(pipelineId, projectId);
       return false;
     }
   },

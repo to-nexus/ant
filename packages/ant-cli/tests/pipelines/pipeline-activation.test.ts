@@ -105,22 +105,29 @@ describe('activation store round-trip (activator account, projectId-keyed)', () 
 describe('deactivatePipelineBinding — the ONE deactivation authority (route + delete/rename cascade)', () => {
   const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
 
-  function makeBindingDeps() {
+  function makeBindingDeps(seed: Record<string, string> = {}) {
     const removed: string[] = [];
     const deactivated: string[] = [];
     const deletedKeys: string[] = [];
     const published: any[] = [];
+    const keys = new Map<string, string>(Object.entries(seed));
     return {
       removed,
       deactivated,
       deletedKeys,
       published,
+      keys,
       deps: {
         workspacesPath: tmp,
         scheduleQueue: { removeCron: async (id: string) => void removed.push(id) },
         coordinator: { deactivate: async (_o: any, projectId: string) => void deactivated.push(projectId) },
         stateStore: {
-          deleteKey: async (k: string) => void deletedKeys.push(k),
+          getKey: async (k: string) => keys.get(k) ?? null,
+          setKeyWithTTL: async (k: string, v: string) => void keys.set(k, v),
+          deleteKey: async (k: string) => {
+            deletedKeys.push(k);
+            keys.delete(k);
+          },
           publish: async (_ch: string, msg: any) => void published.push(msg),
         },
       },
@@ -133,9 +140,11 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
     fs.mkdirSync(path.join(actRoot(), 'proj-a', 'runs'), { recursive: true });
     fs.writeFileSync(path.join(actRoot(), 'proj-a', 'runs', 'index.jsonl'), '');
-    const { deps, removed, deactivated, deletedKeys, published } = makeBindingDeps();
+    const { deps, removed, deactivated, deletedKeys, published, keys } = makeBindingDeps();
     const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a');
     expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
+    // The tombstone lands before the unlink — the unlink is not verifiable from here.
+    expect(JSON.parse(keys.get('ant:pipe:deact:local:user:proj-a') ?? '{}')).toMatchObject({ pipelineId: 'p1' });
     // Both scheduler ids go (a cron's and a fetch poller's — the binding does not know which it had).
     expect(removed).toEqual(['pipe|local|user|proj-a', 'fetch|local|user|proj-a']);
     expect(deactivated).toEqual(['proj-a']);
@@ -163,6 +172,31 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     expect(result).toEqual({ hadActivation: false, pipelineId: null });
     expect(removed).toEqual(['pipe|local|user|ghost', 'fetch|local|user|ghost']);
     expect(deletedKeys).toHaveLength(4);
+    expect(published).toEqual([]);
+  });
+
+  // The 2026-09-18 404s: activate on pod A wrote the record; pod B's NFS view
+  // still answered ENOENT and the route refused. The projection bridges that
+  // window — the binding is held, every leg runs, the SSE names the pipeline.
+  it('a record visible only through the Redis projection still deactivates (hadActivation true)', async () => {
+    const { deps, removed, deactivated, published, keys } = makeBindingDeps({
+      'ant:pipe:actv:local:user:proj-a': JSON.stringify(ACT('p1', 'proj-a')),
+    });
+    const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a');
+    expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
+    expect(removed).toEqual(['pipe|local|user|proj-a', 'fetch|local|user|proj-a']);
+    expect(deactivated).toEqual(['proj-a']);
+    expect(published[0].data).toMatchObject({ cause: 'activationChanged', pipelineId: 'p1', activation: null });
+    expect(keys.has('ant:pipe:deact:local:user:proj-a')).toBe(true);
+  });
+
+  it('a projection older than the tombstone is dead — no activation, no SSE', async () => {
+    const { deps, published } = makeBindingDeps({
+      'ant:pipe:actv:local:user:proj-a': JSON.stringify(ACT('p1', 'proj-a', '2026-08-20T00:00:00.000Z')),
+      'ant:pipe:deact:local:user:proj-a': JSON.stringify({ pipelineId: 'p1', at: '2026-08-21T00:00:00.000Z' }),
+    });
+    const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a');
+    expect(result).toEqual({ hadActivation: false, pipelineId: null });
     expect(published).toEqual([]);
   });
 
@@ -376,6 +410,31 @@ describe('reconciler — activations drive scheduling; pinned scope; availabilit
     await reconcilePipelines(deps as any);
     expect(upserts).toEqual([]);
     expect(fs.existsSync(path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations', 'proj-a', 'activation.json'))).toBe(true);
+  });
+
+  // The deactivating pod's unlink can be swallowed by its own NFS negative
+  // lookup; the tombstone lets the pass that SEES the file finish the delete
+  // instead of re-arming the schedulers (a zombie activation).
+  it('a disk record covered by a newer deactivation tombstone is deleted and never scheduled', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a', '2026-08-20T00:00:00.000Z'));
+    const { deps, upserts, keys } = makeDeps();
+    deps.workspacesPath = tmp;
+    keys.set('ant:pipe:deact:local:user:proj-a', JSON.stringify({ pipelineId: 'p1', at: '2026-08-20T00:00:01.000Z' }));
+    await reconcilePipelines(deps as any);
+    expect(upserts).toEqual([]);
+    expect(fs.existsSync(path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations', 'proj-a', 'activation.json'))).toBe(false);
+    expect(keys.has('ant:pipe:proj:local:user:proj-a')).toBe(false);
+  });
+
+  it('a record NEWER than the tombstone (re-activated) schedules normally', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a', '2026-08-22T00:00:00.000Z'));
+    const { deps, upserts, keys } = makeDeps();
+    deps.workspacesPath = tmp;
+    keys.set('ant:pipe:deact:local:user:proj-a', JSON.stringify({ pipelineId: 'p1', at: '2026-08-21T00:00:00.000Z' }));
+    await reconcilePipelines(deps as any);
+    expect(upserts).toEqual(['pipe|local|user|proj-a']);
   });
 
   it('sweeps orphan crons, including old-format (pipelineId-keyed) scheduler ids', async () => {
@@ -796,5 +855,100 @@ describe('mutateRun / commitRun — a run-record write publishes the record it w
     const sealed = makeRunDeps(RUN());
     await commitRun(sealed.deps, OWNER, RUN({ status: 'completed', endedAt: '2026-09-16T00:01:00.000Z' }) as any);
     expect(sealed.refreshed).toEqual([]);
+  });
+});
+
+describe('clarify answer authority — every fate is a typed outcome; an early answer is held, then applied on park', () => {
+  const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
+  const DEF = { version: 2, name: 'P', steps: [{ id: 's1', customJobRef: 'x/a', directive: 'd' }] };
+  const RUN = (step: Record<string, unknown>) => ({
+    runId: 'r1',
+    pipelineId: 'p1',
+    projectId: 'proj-a',
+    firedBy: 'manual',
+    fireEpoch: 1,
+    status: 'running',
+    startedAt: '2026-09-18T00:00:00.000Z',
+    defSnapshot: DEF,
+    steps: [{ stepId: 's1', ...step }],
+  });
+  const FUNNEL = JSON.stringify({ runId: 'r1', stepId: 's1', pipelineId: 'p1', projectId: 'proj-a', owner: OWNER });
+
+  function makeCtx(run: Record<string, unknown> | null, opts: { funnel?: boolean; lock?: boolean } = {}) {
+    const store = new Map<string, string>();
+    if (run) store.set('ant:pipe:run:r1', JSON.stringify(run));
+    if (opts.funnel !== false) store.set('ant:pipe:job:j1', FUNNEL);
+    const dispatched: string[] = [];
+    const published: any[] = [];
+    const ctx = {
+      deps: {
+        workspacesPath: tmp,
+        scheduleQueue: { cancelDelayed: async () => {}, armDelayed: async () => {} },
+        stateStore: {
+          getKey: async (k: string) => store.get(k) ?? null,
+          setKeyWithTTL: async (k: string, v: string) => void store.set(k, v),
+          deleteKey: async (k: string) => void store.delete(k),
+          acquireLock: async () => opts.lock !== false,
+          releaseLock: async () => {},
+          refreshSlot: async () => true,
+          publish: async (_ch: string, msg: any) => void published.push(msg),
+        },
+      },
+      dispatchJobStep: async (_o: any, _d: any, _r: any, step: any, _retries: number, directive?: string) =>
+        void dispatched.push(`${step.id}:${directive}`),
+    } as any;
+    return { ctx, store, dispatched, published };
+  }
+  const answer = (ctx: any, over: Record<string, unknown> = {}) =>
+    import('../../src/infrastructure/scheduling/pipelineRun/hitl').then((m) =>
+      m.applyClarifyAnswer(ctx, { jobId: 'j1', answer: 'yes', answeredBy: 'user', via: 'in-app', ...over }),
+    );
+
+  it('no funnel key → not-pipeline (an interactive clarify card is the caller\'s own business)', async () => {
+    const { ctx, dispatched } = makeCtx(RUN({ status: 'awaiting_clarify', jobId: 'j1', clarify: { clarifyId: 'c', jobId: 'j1', question: 'q', round: 1, askedAt: 't' } }), { funnel: false });
+    expect(await answer(ctx)).toBe('not-pipeline');
+    expect(dispatched).toEqual([]);
+  });
+
+  it('awaiting this job\'s clarify → applied: step dispatched with the answer, funnel key gone', async () => {
+    const { ctx, store, dispatched, published } = makeCtx(RUN({ status: 'awaiting_clarify', jobId: 'j1', clarify: { clarifyId: 'c', jobId: 'j1', question: 'q', round: 1, askedAt: 't' } }));
+    expect(await answer(ctx)).toBe('applied');
+    expect(dispatched).toEqual(['s1:yes']);
+    expect(store.has('ant:pipe:job:j1')).toBe(false);
+    expect(published.some((m) => m.data?.cause === 'clarifyAnswered')).toBe(true);
+  });
+
+  // The chat card is minted by the child BEFORE the job ends; the park lands
+  // after the status update. An answer in that window used to hit the
+  // awaiting guard and vanish behind a `false` — now it is held under the run
+  // lock and the park applies it (one dispatch, no human re-ask).
+  it('step still running under this job → held; enterAwaitingClarify then parks AND applies it (one dispatch)', async () => {
+    const { ctx, store, dispatched } = makeCtx(RUN({ status: 'running', jobId: 'j1' }));
+    expect(await answer(ctx)).toBe('held');
+    expect(JSON.parse(store.get('ant:pipe:clarify-held:j1') ?? '{}')).toMatchObject({ answer: 'yes', via: 'in-app' });
+    expect(dispatched).toEqual([]);
+
+    const { enterAwaitingClarify } = await import('../../src/infrastructure/scheduling/pipelineRun/hitl');
+    await enterAwaitingClarify(ctx, {
+      kind: 'clarify-enter', owner: OWNER, pipelineId: 'p1', projectId: 'proj-a', runId: 'r1', stepId: 's1', jobId: 'j1', question: 'q?', retries: 0,
+    } as any);
+    expect(dispatched).toEqual(['s1:yes']);
+    expect(store.has('ant:pipe:clarify-held:j1')).toBe(false);
+    const run = JSON.parse(store.get('ant:pipe:run:r1')!);
+    expect(run.steps[0]).toMatchObject({ status: 'dispatched', clarify: { answer: 'yes', answeredBy: 'user' } });
+  });
+
+  it('a different job or round → not-awaiting; the record is untouched', async () => {
+    const { ctx, store, dispatched } = makeCtx(RUN({ status: 'awaiting_clarify', jobId: 'j2', clarify: { clarifyId: 'c', jobId: 'j2', question: 'q', round: 2, askedAt: 't' } }));
+    expect(await answer(ctx)).toBe('not-awaiting');
+    expect(dispatched).toEqual([]);
+    expect(store.has('ant:pipe:job:j1')).toBe(true);
+  });
+
+  it('run lock unavailable → lock-starved (retryable; nothing written, nothing held)', async () => {
+    const { ctx, store, dispatched } = makeCtx(RUN({ status: 'running', jobId: 'j1' }), { lock: false });
+    expect(await answer(ctx)).toBe('lock-starved');
+    expect(dispatched).toEqual([]);
+    expect(store.has('ant:pipe:clarify-held:j1')).toBe(false);
   });
 });

@@ -11,15 +11,16 @@
  */
 
 import type { PipelineActivation } from '@ant/shared';
-import { REDIS_KEYS } from '../../core/constants/redis';
+import { REDIS_KEYS, REDIS_TTL } from '../../core/constants/redis';
 import type { PipelineOwner, ScheduleQueuePort } from '../../core/ports/scheduler';
 import type { StateStorePort } from '../../core/ports/stateStore';
 import { approverUnion, syncApproverIndexForActivation } from '../../core/pipelines/approverIndex';
 import { deriveActivationsRoot } from '../../core/pipelines/paths';
-import { deleteActivationRecord, loadActivationByProject } from '../../core/pipelines/store';
+import { deleteActivationRecord } from '../../core/pipelines/store';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import { fetchSchedulerIdFor, schedulerIdFor } from './PipelineReconciler';
 import type { PipelineRunCoordinator } from './PipelineRunCoordinator';
+import { resolveActivation, type DeactivationTombstone } from './resolveActivation';
 
 export interface DeactivateBindingDeps {
   workspacesPath: string;
@@ -38,14 +39,26 @@ export async function deactivatePipelineBinding(
   } = {},
 ): Promise<{ hadActivation: boolean; pipelineId: string | null }> {
   const actRoot = deriveActivationsRoot({ workspacesPath: deps.workspacesPath, ...owner });
-  let activation: PipelineActivation | null = null;
-  let unreadable = false;
-  try {
-    activation = loadActivationByProject(actRoot, projectId);
-  } catch {
-    unreadable = true; // unreadable sidecar: the legs below clear it anyway
-  }
-  const hadActivation = activation !== null || unreadable;
+  // Disk, then the projection: the record may exist on the server while this
+  // pod's NFS view still answers ENOENT (an unreadable sidecar counts as held).
+  const resolved = await resolveActivation(deps.stateStore, deps.workspacesPath, owner, projectId);
+  const activation: PipelineActivation | null = resolved.activation;
+  const hadActivation = activation !== null || resolved.unreadable;
+
+  // Tombstone FIRST: the unlink below is not verifiable from here, so the
+  // reconciler finishes it from a pod that sees the file, and every reader
+  // treats a record no newer than this as gone. Activate clears it.
+  const tombstone: DeactivationTombstone = {
+    pipelineId: activation?.pipelineId ?? opts.pipelineIdHint ?? null,
+    at: new Date().toISOString(),
+  };
+  await deps.stateStore
+    .setKeyWithTTL(
+      REDIS_KEYS.PIPE.DEACTIVATED(owner.organizationId, owner.userId, projectId),
+      JSON.stringify(tombstone),
+      REDIS_TTL.PIPE.DEACTIVATED,
+    )
+    .catch(() => {});
 
   await deps.scheduleQueue.removeCron(schedulerIdFor(owner, projectId));
   await deps.scheduleQueue.removeCron(fetchSchedulerIdFor(owner, projectId));

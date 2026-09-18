@@ -27,6 +27,7 @@ import {
   saveActivationRecord,
   PipelineValidationError,
 } from '../../../../../core/pipelines/store';
+import { resolveActivation } from '../../../../../infrastructure/scheduling/resolveActivation';
 import { isSingleSegment, reject400, ownerOf, type PipelinesRouteContext } from './context';
 
 /** Empty rosters normalize away — an empty array means "activator only" exactly like absence. */
@@ -154,13 +155,12 @@ export function registerApprovalRoutes(router: Router, ctx: PipelinesRouteContex
         res.status(400).json({ error: 'approvers must be a map of { <gateStepId>: [memberId, …] }' });
         return;
       }
-      let activation: PipelineActivation | null = null;
-      try {
-        activation = loadActivationByProject(actRootOf(owner), projectId);
-      } catch {
+      const read = await resolveActivation(deps.stateStore, deps.workspaceResolver.getPhysicalWorkspacesPath(), owner, projectId);
+      if (read.unreadable) {
         res.status(409).json({ error: `Project "${projectId}" has an unreadable activation record`, code: 'invalid-pipeline-activation' });
         return;
       }
+      const activation = read.activation;
       if (!activation) {
         res.status(404).json({ error: `No activation on project "${projectId}"`, code: 'not-activated' });
         return;

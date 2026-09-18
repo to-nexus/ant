@@ -301,7 +301,7 @@ Activation, runs, and the human gates:
 |------|------|-------|
 | GET  | `/api/definitions/pipelines/:pipelineId/activations` | Every binding, including other members' (`mine: false`, read-only). |
 | POST | `/api/definitions/pipelines/:pipelineId/activate` | Body `{ projectId }`. Gates in order: enabled → universal project → project free → no live job. |
-| POST | `/api/definitions/pipelines/:pipelineId/deactivate` | Body `{ projectId }`, own activation only. Cancels the live run, kills running step jobs, keeps run history. |
+| POST | `/api/definitions/pipelines/:pipelineId/deactivate` | Body `{ projectId }`, own account only. Idempotent authority: `200 { success, hadActivation }` whether or not a record is visible from this pod (the Redis projection bridges NFS lag; a tombstone lets the reconciler finish the unlink); `409 activation-mismatch` only when the project is bound to another pipeline. Cancels the live run, kills running step jobs, keeps run history. |
 | POST | `/api/definitions/pipelines/:pipelineId/run-now` | Fire once through the same path a cron fire takes. |
 | GET  | `/api/definitions/pipelines/:pipelineId/runs` · `/api/definitions/pipelines/runs/:runId` | Run index and one run's history. |
 | POST | `/api/definitions/pipelines/runs/:runId/cancel` | Cancel a live run. |

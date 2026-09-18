@@ -3,6 +3,7 @@ import { registerFeatureParamDecoders } from './helpers/featureParam';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ChatService } from '../services';
+import type { ClarifyAnswerOutcome } from '../../../../infrastructure/scheduling/pipelineRun/hitl';
 import { extractUserContext } from './helpers/userContext';
 import { checkTeamMembership } from './helpers/approvalGate';
 import { MEMBERSHIP_REQUIRED } from '@ant/shared';
@@ -40,7 +41,8 @@ export function createChatRoutes(deps: {
   /** Advances pipeline approval gates / clarify waits after an NX-winning choice-resolved. */
   pipelineCoordinator?: {
     applyResolvedGate(cardId: string, decision: string, decidedBy: string | undefined, via: 'in-app' | 'api'): Promise<boolean>;
-    applyClarifyAnswer(params: { jobId: string; answer: string; answeredBy?: string; via: 'in-app' | 'api' }): Promise<boolean>;
+    applyClarifyAnswer(params: { jobId: string; answer: string; answeredBy?: string; via: 'in-app' | 'api' }): Promise<ClarifyAnswerOutcome>;
+    isPipelineStepJob(jobId: string): Promise<boolean>;
   };
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
   stateStore?: {
@@ -285,16 +287,55 @@ export function createChatRoutes(deps: {
         return;
       }
 
-      // 2. cardType-specific side-effects. We re-read the chat.jsonl
-      //    line to inspect cardType because the FE only carries cardId
-      //    + choiceSelected (the legacy contract).
+      // 2. cardType-specific side-effects. The card index carries cardType
+      //    (the FE only sends cardId + choiceSelected); the chat.jsonl
+      //    re-read is the fallback for pre-index lines — the worker wrote that
+      //    file from another NFS client, so this pod's view may lag.
       const events = await deps.chatService.loadEventsAsync(projectId, featureName, userContext);
       const presented = events.find(
         (l) => l.type === 'choice_presented' && (l as any).cardId === cardId,
       ) as
         | { type: 'choice_presented'; cardType: string; payload?: Record<string, any> }
         | undefined;
-      const cardType = presented?.cardType ?? '';
+      const cardType = ctx.cardType ?? presented?.cardType ?? '';
+
+      // 2b. clarifying card of a PIPELINE step — the coordinator decides
+      //     FIRST (its run-status guard is the double-submit authority, doc 46
+      //     §5b), and the choice_resolved line is written only for an answer
+      //     that was applied or held. A refused answer keeps the card live:
+      //     burning the NX flag on a `false` here is exactly what made an
+      //     early or lock-starved answer vanish (2026-09-18 report).
+      let clarifyOutcome: ClarifyAnswerOutcome | null = null;
+      if (cardType === 'clarifying' && deps.pipelineCoordinator) {
+        const a = (answer ?? {}) as { directive?: string; resolvedAnswers?: Record<string, string> };
+        const text =
+          typeof a.directive === 'string' && a.directive.trim()
+            ? a.directive
+            : Object.values(a.resolvedAnswers ?? {}).join('\n');
+        if (!text.trim()) {
+          if (await deps.pipelineCoordinator.isPipelineStepJob(ctx.jobId)) {
+            res.status(400).json({ error: 'A pipeline clarify needs an answer', code: 'clarify-answer-required', cardId });
+            return;
+          }
+        } else {
+          clarifyOutcome = await deps.pipelineCoordinator.applyClarifyAnswer({
+            jobId: ctx.jobId,
+            answer: text,
+            answeredBy: userContext.userId,
+            via: 'in-app',
+          });
+          if (clarifyOutcome === 'not-awaiting') {
+            logger.warn(`Clarify answer refused — step is past this clarify (job ${ctx.jobId}, card ${cardId})`, { component: 'Chat' });
+            res.status(409).json({ error: 'This question has already been answered or the run has moved on', code: 'clarify-not-awaiting', cardId });
+            return;
+          }
+          if (clarifyOutcome === 'lock-starved') {
+            logger.warn(`Clarify answer not applied — run lock starvation (job ${ctx.jobId}, card ${cardId})`, { component: 'Chat' });
+            res.status(503).json({ error: 'The run is busy — retry in a moment', code: 'clarify-retry', cardId });
+            return;
+          }
+        }
+      }
 
       let routingResponse: any = null;
 
@@ -429,31 +470,12 @@ export function createChatRoutes(deps: {
         }
       }
 
-      // 3c. clarifying card — if the asking job is a pipeline step, funnel
-      //     the answer to the coordinator (same NX-first ordering as gates).
-      //     Interactive clarify cards no-op instantly: their jobId has no
-      //     `ant:pipe:job` mapping, so applyClarifyAnswer returns false.
-      if (cardType === 'clarifying' && result.resolved && deps.pipelineCoordinator) {
-        const a = (answer ?? {}) as { directive?: string; resolvedAnswers?: Record<string, string> };
-        const text =
-          typeof a.directive === 'string' && a.directive.trim()
-            ? a.directive
-            : Object.values(a.resolvedAnswers ?? {}).join('\n');
-        if (text.trim()) {
-          try {
-            await deps.pipelineCoordinator.applyClarifyAnswer({
-              jobId: ctx.jobId,
-              answer: text,
-              answeredBy: userContext.userId,
-              via: 'in-app',
-            });
-          } catch (err) {
-            logger.error('Pipeline clarify resume failed after choice-resolved', { component: 'Chat' }, err);
-          }
-        }
-      }
-
-      res.json({ success: true, resolved: result.resolved, ...(routingResponse ? { routing: routingResponse } : {}) });
+      res.json({
+        success: true,
+        resolved: result.resolved,
+        ...(clarifyOutcome && clarifyOutcome !== 'not-pipeline' ? { clarify: clarifyOutcome } : {}),
+        ...(routingResponse ? { routing: routingResponse } : {}),
+      });
     } catch (error: any) {
       logger.error('Choice resolution error', { component: 'Chat' }, error);
       res.status(500).json({ error: 'Failed to resolve choice' });

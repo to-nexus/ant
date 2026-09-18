@@ -320,6 +320,29 @@ describe('LLMResponseService — finalized line emission', () => {
     expect((lines[0] as any).workerScope).toBeUndefined();
   });
 
+  // A human answers the card after this process may have exited (a clarify
+  // pause ends the job right behind it): the card index SET must have settled
+  // before the card is broadcast — a fire-and-forget SET raced process.exit
+  // and the resolve route then 404'd on the index miss (2026-09-18 report).
+  it('appendChoicePresented settles the card index (with cardType) BEFORE broadcasting the card', async () => {
+    const { service, store } = makeService();
+    const order: string[] = [];
+    store.setKeyWithTTL = async (key: string, value: string, ttl: number) => {
+      await new Promise((r) => setTimeout(r, 15));
+      store.setKeyWithTTLCalls.push({ key, value, ttl });
+      order.push('index');
+    };
+    const publish = store.publish.bind(store);
+    store.publish = async (channel: string, message: any) => {
+      if (message?.data?.type === 'chat_event_appended') order.push('broadcast');
+      return publish(channel, message);
+    };
+    await service.appendChoicePresented({ cardId: 'card-durable', cardType: 'clarifying', prompt: 'q?' });
+    expect(order).toEqual(['index', 'broadcast']);
+    const indexed = store.setKeyWithTTLCalls.find((c) => c.key === 'ant:choice:card:card-durable');
+    expect(JSON.parse(indexed!.value)).toMatchObject({ cardType: 'clarifying', turnId: 'turn-1' });
+  });
+
   it('appendChoicePresented keeps plan_complete on _main_ — universal is single-scope', async () => {
     // The synthetic-scope branch exists only for parallel-TaskWorker jobs
     // (spec_complete); universal's linear graph orders by ts within _main_,

@@ -1148,11 +1148,17 @@ export class LLMResponseService {
     if (line.type !== 'assistant_message') {
       await this.commitBufferedTextBeforeNewSegment();
     }
+    // A choice card is answered by a human AFTER this process may have exited
+    // (a clarify pause ends the job right behind it), so its durable copies —
+    // the chat.jsonl line and the card index — must land before the card is
+    // broadcast. Every other line stays fire-and-forget and is drained at exit.
+    const durable: Promise<void>[] = [];
     if (this.chatLogAppender) {
-      this.chatLogAppender.appendChatLine(line);
+      durable.push(this.chatLogAppender.appendChatLine(line));
     }
     if (line.type === 'choice_presented') {
-      this.indexChoicePresented(line as ChatChoicePresentedLine);
+      durable.push(this.indexChoicePresented(line as ChatChoicePresentedLine));
+      await Promise.all(durable);
     }
     this.broadcaster.broadcastChatLine(
       this.turnContext.context.projectId,
@@ -1168,21 +1174,24 @@ export class LLMResponseService {
    * waiting for NFS read-after-write visibility on the worker-written
    * `chat.jsonl`. Fire-and-forget — file remains the durable record.
    */
-  private indexChoicePresented(line: ChatChoicePresentedLine): void {
+  private async indexChoicePresented(line: ChatChoicePresentedLine): Promise<void> {
     if (!line.cardId || !line.turnId) return;
     const key = `${REDIS_KEYS.CHOICE.CARD_INDEX}${line.cardId}`;
     const value = JSON.stringify({
       turnId: line.turnId,
       jobId: line.jobId,
       jobType: line.jobType,
+      cardType: line.cardType,
       ...(line.workerScope ? { workerScope: line.workerScope } : {}),
     });
-    this.stateStore.setKeyWithTTL(key, value, CHOICE_CARD_INDEX_TTL_SECONDS).catch((err) => {
+    try {
+      await this.stateStore.setKeyWithTTL(key, value, CHOICE_CARD_INDEX_TTL_SECONDS);
+    } catch (err) {
       logger.warn(
         `[LLMResponseService] choice-card index SET failed: ${(err as Error)?.message ?? err}`,
         { component: 'LLMResponseService' },
       );
-    });
+    }
   }
 
   private async appendBufferKind(

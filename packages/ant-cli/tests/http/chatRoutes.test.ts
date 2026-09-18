@@ -362,6 +362,107 @@ describe('chat.routes — Phase 9/13 contract', () => {
       expect(resolvedLines).toHaveLength(1);
     });
 
+    // A clarifying card of a PIPELINE step: the coordinator decides first and
+    // the choice_resolved line is written only for an applied/held answer —
+    // a refused one keeps the card answerable (no NX burn), with a typed code.
+    describe('clarifying card × pipeline step (coordinator-first)', () => {
+      function harnessWith(outcome: string, isPipeline = true) {
+        const calls: any[] = [];
+        const coordinator = {
+          applyResolvedGate: async () => true,
+          applyClarifyAnswer: async (params: any) => {
+            calls.push(params);
+            return outcome;
+          },
+          isPipelineStepJob: async () => isPipeline,
+        };
+        return { calls, coordinator };
+      }
+      async function presentClarify(cardId: string) {
+        await seedTurn('job-1', 't-aa');
+        await chatService.appendChoicePresented('proj', 'feat-a', {
+          jobId: 'job-1',
+          cardId,
+          cardType: 'clarifying',
+          userContext: USER_CTX,
+        });
+      }
+      const answerBody = (cardId: string, directive = '- q: a') => ({
+        body: { cardId, choiceSelected: 'submitted', resolvedLabel: 'Answered', answer: { resolvedAnswers: { 0: 'a' }, directive } },
+      });
+
+      it.each([
+        ['applied', 200],
+        ['held', 200],
+      ])('%s → 200 with the outcome, one choice_resolved line', async (outcome, status) => {
+        await stopHarness(harness);
+        const { calls, coordinator } = harnessWith(outcome);
+        harness = await startHarness({ chatService, workspaceResolver: { getFeaturePath: () => featurePath } as any, pipelineCoordinator: coordinator as any });
+        await presentClarify('card-pipe');
+        const res = await harness.call('POST', '/projects/proj/features/feat-a/chat/choice-resolved', answerBody('card-pipe'));
+        expect(res.status).toBe(status);
+        expect(res.body).toMatchObject({ success: true, resolved: true, clarify: outcome });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({ jobId: 'job-1', answer: '- q: a', via: 'in-app' });
+        expect(chatEvents(store).filter((l) => l.type === 'choice_resolved')).toHaveLength(1);
+      });
+
+      it.each([
+        ['not-awaiting', 409, 'clarify-not-awaiting'],
+        ['lock-starved', 503, 'clarify-retry'],
+      ])('%s → %s %s and NO choice_resolved line (the card stays answerable)', async (outcome, status, code) => {
+        await stopHarness(harness);
+        const { coordinator } = harnessWith(outcome);
+        harness = await startHarness({ chatService, workspaceResolver: { getFeaturePath: () => featurePath } as any, pipelineCoordinator: coordinator as any });
+        await presentClarify('card-refused');
+        const res = await harness.call('POST', '/projects/proj/features/feat-a/chat/choice-resolved', answerBody('card-refused'));
+        expect(res.status).toBe(status);
+        expect(res.body.code).toBe(code);
+        expect(chatEvents(store).filter((l) => l.type === 'choice_resolved')).toHaveLength(0);
+        // The NX flag was not burned: a later answer can still resolve the card.
+        expect([...store.acquiredLocks].some((k) => k.includes('card-refused'))).toBe(false);
+      });
+
+      it('not-pipeline → the interactive path: choice_resolved written, no clarify field', async () => {
+        await stopHarness(harness);
+        const { coordinator } = harnessWith('not-pipeline');
+        harness = await startHarness({ chatService, workspaceResolver: { getFeaturePath: () => featurePath } as any, pipelineCoordinator: coordinator as any });
+        await presentClarify('card-interactive');
+        const res = await harness.call('POST', '/projects/proj/features/feat-a/chat/choice-resolved', answerBody('card-interactive'));
+        expect(res.status).toBe(200);
+        expect(res.body.clarify).toBeUndefined();
+        expect(chatEvents(store).filter((l) => l.type === 'choice_resolved')).toHaveLength(1);
+      });
+
+      it('an empty answer for a pipeline step → 400 clarify-answer-required (never burns the NX with nothing)', async () => {
+        await stopHarness(harness);
+        const { calls, coordinator } = harnessWith('applied');
+        harness = await startHarness({ chatService, workspaceResolver: { getFeaturePath: () => featurePath } as any, pipelineCoordinator: coordinator as any });
+        await presentClarify('card-empty');
+        const res = await harness.call('POST', '/projects/proj/features/feat-a/chat/choice-resolved', {
+          body: { cardId: 'card-empty', choiceSelected: 'skipped', resolvedLabel: 'Skipped', answer: { resolvedAnswers: {} } },
+        });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('clarify-answer-required');
+        expect(calls).toHaveLength(0);
+        expect(chatEvents(store).filter((l) => l.type === 'choice_resolved')).toHaveLength(0);
+      });
+
+      it('cardType comes from the card index — the funnel runs even when the presented line is not readable from this pod', async () => {
+        await stopHarness(harness);
+        const { calls, coordinator } = harnessWith('applied');
+        harness = await startHarness({ chatService, workspaceResolver: { getFeaturePath: () => featurePath } as any, pipelineCoordinator: coordinator as any });
+        await presentClarify('card-indexed');
+        // Simulate the NFS lag: the file view has no presented line, the index does.
+        const loadSpy = vi.spyOn(chatService, 'loadEventsAsync').mockResolvedValue([]);
+        const res = await harness.call('POST', '/projects/proj/features/feat-a/chat/choice-resolved', answerBody('card-indexed'));
+        loadSpy.mockRestore();
+        expect(res.status).toBe(200);
+        expect(res.body.clarify).toBe('applied');
+        expect(calls).toHaveLength(1);
+      });
+    });
+
     it('eval_save card with answer.evalType + content writes the artifact and stamps savedPath into answer', async () => {
       await seedTurn('job-1', 't-aa');
       await chatService.appendChoicePresented('proj', 'feat-a', {

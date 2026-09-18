@@ -204,7 +204,10 @@
     "resolvedPartial": "{{answered}}/{{total}} questions answered",
     "partialHint": "Unanswered questions will be skipped. You can also type freely in the chat input.",
     "skipped": "Skipped",
-    "allSkipped": "All questions skipped"
+    "allSkipped": "All questions skipped",
+    "submitFailed": "Your answer was not delivered. Please submit it again.",
+    "retry": "The run is busy for a moment. Please submit again shortly.",
+    "alreadyAnswered": "This question was already answered or the run has moved on."
   },
   "resumeConfirm": {
     "title": "Resume the interrupted {{work}} job?",

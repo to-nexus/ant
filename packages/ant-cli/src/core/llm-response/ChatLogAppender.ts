@@ -59,6 +59,8 @@ export interface ChatLogAppenderConfig {
 export class ChatLogAppender {
   private readonly session: FileSessionAdapter;
   private turnId: string | null = null;
+  /** In-flight appends — `drain()` waits on them so a worker exit cannot drop a line. */
+  private readonly pending = new Set<Promise<void>>();
 
   constructor(private readonly cfg: ChatLogAppenderConfig, session?: FileSessionAdapter) {
     this.session =
@@ -173,9 +175,16 @@ export class ChatLogAppender {
    * Skips silently when `turnId` is unset to mirror the existing typed
    * method semantics.
    */
-  appendChatLine(line: ChatLine): void {
-    if (!this.turnId) return;
-    this.safeAppend(line as Parameters<ChatLogAppender['safeAppend']>[0]);
+  appendChatLine(line: ChatLine): Promise<void> {
+    if (!this.turnId) return Promise.resolve();
+    return this.safeAppend(line as Parameters<ChatLogAppender['safeAppend']>[0]);
+  }
+
+  /** Resolve once every append issued so far has settled (the worker calls this before `process.exit`). */
+  async drain(): Promise<void> {
+    while (this.pending.size > 0) {
+      await Promise.all([...this.pending]);
+    }
   }
 
   private base() {
@@ -187,12 +196,15 @@ export class ChatLogAppender {
     } as const;
   }
 
-  private safeAppend(line: ChatLine): void {
-    this.session.appendLine('chat', line).catch((err) => {
+  private safeAppend(line: ChatLine): Promise<void> {
+    const settled = this.session.appendLine('chat', line).catch((err) => {
       logger.warn(
         `[ChatLog] appendLine(${line.type}) failed: ${(err as Error)?.message ?? err}`,
         { component: 'ChatLogAppender' },
       );
     });
+    this.pending.add(settled);
+    void settled.then(() => this.pending.delete(settled));
+    return settled;
   }
 }

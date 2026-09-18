@@ -1516,6 +1516,8 @@ export class ChatService {
     jobId: string;
     jobType: LogJobType;
     workerScope?: string;
+    /** From the index or the presented line; absent only for pre-index lines the file scan did not reach. */
+    cardType?: string;
   } | null> {
     const ctx = userContext ?? this.defaultUserContext;
 
@@ -1534,6 +1536,7 @@ export class ChatService {
             jobId: string;
             jobType: LogJobType;
             workerScope?: string;
+            cardType?: string;
           };
           if (parsed?.turnId && parsed?.jobId && parsed?.jobType) {
             return {
@@ -1541,6 +1544,7 @@ export class ChatService {
               jobId: parsed.jobId,
               jobType: parsed.jobType,
               workerScope: parsed.workerScope,
+              ...(typeof parsed.cardType === 'string' ? { cardType: parsed.cardType } : {}),
             };
           }
         }
@@ -1575,6 +1579,7 @@ export class ChatService {
             jobId: line.jobId,
             jobType: line.jobType,
             workerScope: line.workerScope,
+            cardType: (line as ChatChoicePresentedLine).cardType,
           };
         }
       }
@@ -1653,6 +1658,7 @@ export class ChatService {
       turnId: line.turnId,
       jobId: line.jobId,
       jobType: line.jobType,
+      cardType: line.cardType,
       ...(line.workerScope ? { workerScope: line.workerScope } : {}),
     });
     this.stateStore.setKeyWithTTL(key, value, CHOICE_CARD_INDEX_TTL_SECONDS).catch((err) =>

@@ -26,7 +26,7 @@
 
 import type { GateDecision, PipelineLiveRun, PipelinePendingApproval, RunRecord } from '@ant/shared';
 import type { PipelineControlJobData, PipelineOwner } from '../../core/ports/scheduler';
-import { REDIS_CHANNELS } from '../../core/constants/redis';
+import { REDIS_CHANNELS, REDIS_KEYS } from '../../core/constants/redis';
 import { InAppChannel, type NotificationChannelPort } from '../../core/pipelines/notifications';
 import { logger } from '../../utils/logger';
 import { COMPONENT, type HitlRecord, type PipelineCoordinatorDeps, type PipelineRunOps } from './pipelineRun/types';
@@ -34,7 +34,7 @@ import { handleFire } from './pipelineRun/fire';
 import { handleFetchPoll } from './pipelineRun/fetch';
 import { dispatchJobStep, executeDispatches, handleStepRetry } from './pipelineRun/dispatch';
 import { failStepOrRetry, handleJobStatusUpdate, handleOutcomeRetry, handleStepTimeout } from './pipelineRun/outcome';
-import { applyClarifyAnswer, enterAwaitingClarify, enterAwaitingToolApproval } from './pipelineRun/hitl';
+import { applyClarifyAnswer, enterAwaitingClarify, enterAwaitingToolApproval, type ClarifyAnswerOutcome } from './pipelineRun/hitl';
 import { applyResolvedGate, armGate, gateCandidatesOf, handleGateRemind, handleGateTimeout, reassignGate, republishArmedGates } from './pipelineRun/gates';
 import { applyOutcome, cancelRun, deactivate, finalizeRun, killStepJob } from './pipelineRun/lifecycle';
 import {
@@ -144,8 +144,17 @@ export class PipelineRunCoordinator {
    * Clarify answer funnel — chat clarify-card branch (in-app) and the
    * pipelines clarify route (inbox/API).
    */
-  async applyClarifyAnswer(params: { jobId: string; answer: string; answeredBy?: string; via: 'in-app' | 'api' }): Promise<boolean> {
+  async applyClarifyAnswer(params: { jobId: string; answer: string; answeredBy?: string; via: 'in-app' | 'api' }): Promise<ClarifyAnswerOutcome> {
     return applyClarifyAnswer(this.ctx, params);
+  }
+
+  /** Is this job a pipeline step (the reverse map exists)? The chat route asks before it refuses an empty clarify answer. */
+  async isPipelineStepJob(jobId: string): Promise<boolean> {
+    try {
+      return (await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.JOB(jobId))) !== null;
+    } catch {
+      return false;
+    }
   }
 
   /** Cancel a live run — the ONE kill/stop authority for its step jobs. */

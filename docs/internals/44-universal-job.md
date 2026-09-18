@@ -902,7 +902,13 @@ verdicts, each load-bearing:
   closer needs no pipeline awareness. The composer stays pipeline-locked;
   the clarify card is the in-app answer surface (its submit skips `runJob`
   on a pipeline-owned project), and the approvals inbox/API is the second
-  channel.
+  channel. The answer's fate is a typed `ClarifyAnswerOutcome`
+  (`applied | held | not-pipeline | not-awaiting | lock-starved`, doc 46
+  §5b): an answer that arrives before the park is HELD and applied on park,
+  and a refused one is a typed 409/503 the card rolls back on — never a
+  silent 200. Because the human answers after this process has exited, the
+  card's chat.jsonl line and Redis index are awaited before the card is
+  broadcast, and the runner drains pending chat appends before `process.exit`.
 
 Guard: `tests/customAgents/universal-clarify.test.ts` (seal/restore rows) and
 `tests/customAgents/universal-turn-context.test.ts` (inheritance ladder rows).
