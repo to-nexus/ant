@@ -475,3 +475,123 @@ describe('gate assignee — inbox rows fold routing, never duplicate (doc 46 §5
     expect(useStore.getState().pipelineApprovals[0]).not.toHaveProperty('assignees');
   });
 });
+
+// A clarify answer returned 200 while the screen kept the question (2026-09-21
+// cloud report). Three FE gaps made "nothing changed" possible after a 200:
+// the inbox row was folded only by a best-effort SSE event or its own action,
+// a refetch in flight during the answer re-installed the row, and the fate the
+// server reported was discarded. The rows below pin the closed shape.
+describe('clarify inbox rows — answer fold, runUpdate reconcile, stale refetch', () => {
+  const CLARIFY_ROW = (over: Record<string, unknown> = {}) => ({
+    kind: 'clarify',
+    gateId: 'clr-r1-s1-1',
+    cardId: 'clr-r1-s1-1',
+    runId: 'r1',
+    pipelineId: 'p1',
+    pipelineName: 'Digest',
+    projectId: 'proj-a',
+    stepId: 's1',
+    prompt: 'code?',
+    armedAt: '2026-09-21T00:00:00.000Z',
+    jobId: 'j1',
+    ...over,
+  });
+  const GATE_ROW = (over: Record<string, unknown> = {}) => ({
+    gateId: 'gate-r1-g1',
+    cardId: 'pipe-gate-r1-g1',
+    runId: 'r1',
+    pipelineId: 'p1',
+    pipelineName: 'Digest',
+    projectId: 'proj-a',
+    stepId: 'g1',
+    prompt: 'Approve?',
+    armedAt: '2026-09-21T00:00:00.000Z',
+    ...over,
+  });
+  const RUN = (steps: Array<Record<string, unknown>>, status = 'running') => ({
+    runId: 'r1',
+    pipelineId: 'p1',
+    projectId: 'proj-a',
+    firedBy: 'manual',
+    fireEpoch: 1,
+    status,
+    startedAt: '2026-09-21T00:00:00.000Z',
+    steps,
+  });
+  const runUpdate = (useStore: any, run: unknown) =>
+    useStore.getState().applyPipelineEvent({ cause: 'runUpdate', pipelineId: 'p1', projectId: 'proj-a', run } as any);
+
+  it('answer success folds the row and returns the fate; 409/404 fold + rethrow; a plain failure keeps the row', async () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelineApprovals: [CLARIFY_ROW()] });
+    api.answerPipelineClarify.mockResolvedValueOnce({ success: true, clarify: 'applied' });
+    await expect(useStore.getState().answerPipelineClarifyById('clr-r1-s1-1', 'r1', 's1', 'PROBE')).resolves.toBe('applied');
+    expect(api.answerPipelineClarify).toHaveBeenCalledWith('r1', 's1', 'PROBE');
+    expect(useStore.getState().pipelineApprovals).toEqual([]);
+
+    const { ApiError } = await import('../../src/infrastructure/http/api/client');
+    for (const status of [409, 404]) {
+      useStore.setState({ pipelineApprovals: [CLARIFY_ROW()] });
+      api.answerPipelineClarify.mockRejectedValueOnce(new ApiError('dead', status));
+      await expect(useStore.getState().answerPipelineClarifyById('clr-r1-s1-1', 'r1', 's1', 'x')).rejects.toMatchObject({ status });
+      expect(useStore.getState().pipelineApprovals).toEqual([]);
+    }
+
+    useStore.setState({ pipelineApprovals: [CLARIFY_ROW()] });
+    api.answerPipelineClarify.mockRejectedValueOnce(new ApiError('busy', 503, { code: 'clarify-retry' }));
+    await expect(useStore.getState().answerPipelineClarifyById('clr-r1-s1-1', 'r1', 's1', 'x')).rejects.toMatchObject({ status: 503 });
+    expect(useStore.getState().pipelineApprovals).toHaveLength(1);
+  });
+
+  it('runUpdate on a LIVE run drops the rows whose step left its wait state and keeps every other row', () => {
+    const useStore = buildStore();
+    const otherRun = CLARIFY_ROW({ gateId: 'clr-r2-s1-1', runId: 'r2' });
+    const approverRow = GATE_ROW({ gateId: 'gate-r1-g2', stepId: 'g2', role: 'approver', ownerUserId: 'peer@x.io' });
+    useStore.setState({ pipelineApprovals: [CLARIFY_ROW(), GATE_ROW(), otherRun, approverRow] });
+
+    // Both steps still parked: nothing moves.
+    runUpdate(useStore, RUN([
+      { stepId: 's1', status: 'awaiting_clarify', clarify: { clarifyId: 'clr-r1-s1-1', jobId: 'j1', question: 'code?', round: 1, askedAt: 't' } },
+      { stepId: 'g1', status: 'awaiting_gate', gate: { gateId: 'gate-r1-g1', cardId: 'c', prompt: 'Approve?', armedAt: 't' } },
+    ], 'awaiting_human'));
+    expect(useStore.getState().pipelineApprovals.map((r) => r.gateId)).toEqual(['clr-r1-s1-1', 'gate-r1-g1', 'clr-r2-s1-1', 'gate-r1-g2']);
+
+    // The clarify step re-dispatched (answer applied elsewhere / event lost): its row dies, the gate row stays.
+    runUpdate(useStore, RUN([
+      { stepId: 's1', status: 'dispatched', clarify: { clarifyId: 'clr-r1-s1-1', jobId: 'j1', question: 'code?', round: 1, askedAt: 't', answeredAt: 't2' } },
+      { stepId: 'g1', status: 'awaiting_gate', gate: { gateId: 'gate-r1-g1', cardId: 'c', prompt: 'Approve?', armedAt: 't' } },
+    ]));
+    expect(useStore.getState().pipelineApprovals.map((r) => r.gateId)).toEqual(['gate-r1-g1', 'clr-r2-s1-1', 'gate-r1-g2']);
+
+    // A round-2 question is a NEW row (different clarifyId): the old one never matches.
+    runUpdate(useStore, RUN([
+      { stepId: 's1', status: 'awaiting_clarify', clarify: { clarifyId: 'clr-r1-s1-2', jobId: 'j2', question: 'code?', round: 2, askedAt: 't3' } },
+      { stepId: 'g1', status: 'awaiting_gate', gate: { gateId: 'gate-r1-g1', cardId: 'c', prompt: 'Approve?', armedAt: 't', decision: 'approved' } },
+    ], 'awaiting_human'));
+    // The decided gate leaves; the approver row (another owner's run) and r2 are never touched.
+    expect(useStore.getState().pipelineApprovals.map((r) => r.gateId)).toEqual(['clr-r2-s1-1', 'gate-r1-g2']);
+  });
+
+  it('a stale approvals refetch cannot re-install a row folded after the request began, and still refills the rest', async () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelineApprovals: [CLARIFY_ROW()] });
+    let release!: (v: { approvals: unknown[] }) => void;
+    api.fetchPipelineApprovals.mockReturnValueOnce(new Promise((r) => (release = r)));
+    const refetch = useStore.getState().loadPipelineApprovals();
+
+    api.answerPipelineClarify.mockResolvedValueOnce({ success: true, clarify: 'applied' });
+    await useStore.getState().answerPipelineClarifyById('clr-r1-s1-1', 'r1', 's1', 'PROBE');
+    expect(useStore.getState().pipelineApprovals).toEqual([]);
+
+    // The snapshot was taken before the answer: it still carries the dead row, plus a row armed meanwhile.
+    const fresh = CLARIFY_ROW({ gateId: 'clr-r3-s1-1', runId: 'r3' });
+    release({ approvals: [CLARIFY_ROW(), fresh] });
+    await refetch;
+    expect(useStore.getState().pipelineApprovals).toEqual([fresh]);
+
+    // A refetch issued AFTER the fold trusts the server again (the tombstone predates it).
+    api.fetchPipelineApprovals.mockResolvedValueOnce({ approvals: [CLARIFY_ROW()] });
+    await useStore.getState().loadPipelineApprovals();
+    expect(useStore.getState().pipelineApprovals).toEqual([CLARIFY_ROW()]);
+  });
+});

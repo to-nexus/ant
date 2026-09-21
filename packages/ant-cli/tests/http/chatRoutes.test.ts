@@ -448,6 +448,28 @@ describe('chat.routes — Phase 9/13 contract', () => {
         expect(chatEvents(store).filter((l) => l.type === 'choice_resolved')).toHaveLength(0);
       });
 
+      // Pipeline services boot non-fatally; a pod without them used to answer a
+      // pipeline step's clarify card with a plain 200 — NX burned, run parked
+      // forever. The funnel key alone identifies the step; the refusal is the
+      // same retryable code as lock starvation.
+      it('no coordinator on this pod + a pipeline step card → 503 clarify-retry, no line, NX intact', async () => {
+        await stopHarness(harness);
+        harness = await startHarness({ chatService, workspaceResolver: { getFeaturePath: () => featurePath } as any, stateStore: store as any });
+        await presentClarify('card-nocoord');
+        await store.setKeyWithTTL('ant:pipe:job:job-1', JSON.stringify({ runId: 'r1', stepId: 's1' }), 60);
+        const res = await harness.call('POST', '/projects/proj/features/feat-a/chat/choice-resolved', answerBody('card-nocoord'));
+        expect(res.status).toBe(503);
+        expect(res.body.code).toBe('clarify-retry');
+        expect(chatEvents(store).filter((l) => l.type === 'choice_resolved')).toHaveLength(0);
+        expect([...store.acquiredLocks].some((k) => k.includes('card-nocoord'))).toBe(false);
+        // An interactive clarify card (no funnel key) keeps its ordinary path.
+        await store.kv.delete('ant:pipe:job:job-1');
+        await presentClarify('card-nocoord-2');
+        const plain = await harness.call('POST', '/projects/proj/features/feat-a/chat/choice-resolved', answerBody('card-nocoord-2'));
+        expect(plain.status).toBe(200);
+        expect(plain.body.clarify).toBeUndefined();
+      });
+
       it('cardType comes from the card index — the funnel runs even when the presented line is not readable from this pod', async () => {
         await stopHarness(harness);
         const { calls, coordinator } = harnessWith('applied');

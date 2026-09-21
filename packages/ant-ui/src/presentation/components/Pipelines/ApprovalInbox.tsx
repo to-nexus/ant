@@ -228,7 +228,7 @@ function ClarifyAnswerForm({
   onNotice,
 }: {
   approval: PipelinePendingApproval;
-  onSubmit: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
+  onSubmit: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<unknown>;
   onOpenContext: () => void;
   onNotice: (msg: string | null) => void;
 }) {
@@ -255,6 +255,10 @@ function ClarifyAnswerForm({
         onNotice(t('inbox.clarifyAlreadyAnswered', 'This question was already answered or the run is no longer waiting.'));
       } else if (e instanceof ApiError && e.status === 404) {
         onNotice(t('inbox.clarifyRunGone', 'This run is no longer available.'));
+      } else if (e instanceof ApiError && e.status === 503) {
+        onNotice(t('inbox.clarifyRetry', 'The run is busy — try again in a moment. Your answer was not applied.'));
+      } else if (e instanceof ApiError && e.status === 413) {
+        onNotice(t('inbox.clarifyTooLong', 'The answer is too long — shorten it or answer with an artifact path.'));
       } else {
         onNotice(e instanceof Error ? e.message : String(e));
       }

@@ -64,6 +64,7 @@ export async function dispatchJobStep(
   retries: number,
   directiveOverride?: string,
   approvalGrantTool?: string,
+  awaitedToolUseId?: string,
 ): Promise<void> {
   const pipelineId = run.pipelineId;
   // Standing failures (approval/membership/credits/definition/meta) never
@@ -184,6 +185,9 @@ export async function dispatchJobStep(
         ...(meta.meta?.plan && { plan: true }),
         unattended: true,
         ...(approvalGrantTool && { approvalGrantTool }),
+        // A resume names the call it closes; the child waits for that seal
+        // to be visible rather than opening a fresh turn that re-asks.
+        ...(awaitedToolUseId && { awaitedToolUseId }),
         // Memory boundary: this run's steps share a conversation channel,
         // and no other run's.
         runId: run.runId,

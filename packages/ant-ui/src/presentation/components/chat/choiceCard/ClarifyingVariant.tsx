@@ -51,7 +51,7 @@ import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { useImagePreview } from '../useImagePreview';
 import { DraftLightbox } from '../ImageLightbox';
 import type { VariantProps, PersistChoiceResult } from './shared';
-import { useChoiceCardState, ChoiceCardShell } from './shared';
+import { useChoiceCardState, ChoiceCardShell, coordinatorTookAnswer } from './shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Types & guards
@@ -754,12 +754,18 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
       cardState.setIsLoading(false);
       return;
     }
+    // The step had not parked yet: the answer waits server-side and is
+    // applied on park — say so, or the card looks answered while the run
+    // still shows the question for a moment.
+    if (persisted.clarify === 'held') toast.success(t('clarify.held'));
 
     try {
       clearPendingClarify();
       // Pipeline step: choice-resolved already funneled the answer to the
-      // coordinator — it re-dispatches the step (jobId re-pointing).
-      if (pipelineOwned) return;
+      // coordinator — it re-dispatches the step (jobId re-pointing). The
+      // server's verdict outranks the local activation projection, which can
+      // be missing (failed load) on a project the coordinator does own.
+      if (pipelineOwned || coordinatorTookAnswer(persisted)) return;
       // Universal: the answer must return to the job that asked. The card
       // carries its `customJobRef` (BE stamps it at pause time); re-select it
       // before dispatch so the live composer selection — which may have
@@ -789,7 +795,8 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     const label = t('draftSelection.draftSelected', { number: sketchIndex + 1 });
     cardState.setLocalSelectedChoice(value);
     cardState.setLocalResolvedLabel(label);
-    if (!settlePersist(await cardState.persistToBackend(value, label, { selectedSketchIndex: sketchIndex }))) {
+    const persisted = await cardState.persistToBackend(value, label, { selectedSketchIndex: sketchIndex });
+    if (!settlePersist(persisted)) {
       cardState.setIsLoading(false);
       return;
     }
@@ -798,7 +805,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
-      if (pipelineOwned) return; // interactive dispatch is 409-gated on a pipeline-owned project
+      if (pipelineOwned || coordinatorTookAnswer(persisted)) return; // interactive dispatch is 409-gated on a pipeline-owned project
       await runJob(enqueueAgent, enqueueJobType, `[SKETCH_FINALIZE:${sketchIndex}]`);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Sketch select failed:', error);
@@ -816,14 +823,15 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     cardState.setLocalSelectedChoice('custom');
     cardState.setLocalResolvedLabel(label);
 
-    if (!settlePersist(await cardState.persistToBackend('custom', label, { customText: text }))) {
+    const persisted = await cardState.persistToBackend('custom', label, { customText: text });
+    if (!settlePersist(persisted)) {
       cardState.setIsLoading(false);
       return;
     }
 
     try {
       clearPendingClarify();
-      if (pipelineOwned) return;
+      if (pipelineOwned || coordinatorTookAnswer(persisted)) return;
       await runJob(enqueueAgent, enqueueJobType, `[SKETCH_FEEDBACK] ${text}`);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Custom input failed:', error);
@@ -839,14 +847,15 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     const label = t('draftSelection.regenerateLabel');
     cardState.setLocalSelectedChoice('regenerate');
     cardState.setLocalResolvedLabel(label);
-    if (!settlePersist(await cardState.persistToBackend('regenerate', label, {}))) {
+    const persisted = await cardState.persistToBackend('regenerate', label, {});
+    if (!settlePersist(persisted)) {
       cardState.setIsLoading(false);
       return;
     }
 
     try {
       clearPendingClarify();
-      if (pipelineOwned) return;
+      if (pipelineOwned || coordinatorTookAnswer(persisted)) return;
       await runJob(enqueueAgent, enqueueJobType, '[SKETCH_REGENERATE]');
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Regenerate failed:', error);

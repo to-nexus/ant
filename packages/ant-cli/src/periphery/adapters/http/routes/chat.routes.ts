@@ -11,6 +11,7 @@ import { ensureSubmitUserTurn, directiveTooLarge } from './helpers/submitUserTur
 import { ChoiceService } from '../../../../infrastructure/choice';
 import type { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
+import { REDIS_KEYS } from '../../../../core/constants/redis';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, chatUserMessageSchema, chatJobErrorSchema, choiceResolvedSchema } from '../middleware/validateBody';
 import { toBaseRelative, mkdirpContainedBase, writeTextContainedBase } from '../../../../core/config/containedIo';
@@ -49,6 +50,8 @@ export function createChatRoutes(deps: {
     addUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void>;
     getUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<string[]>;
     publish(channel: string, message: any): Promise<void>;
+    /** The pipeline funnel key read — lets a coordinator-less pod still recognise a pipeline step's card. */
+    getKey?(key: string): Promise<string | null>;
   };
   /**
    * Optional terminator for a still-running job. Wired by the http
@@ -306,6 +309,17 @@ export function createChatRoutes(deps: {
       //     burning the NX flag on a `false` here is exactly what made an
       //     early or lock-starved answer vanish (2026-09-18 report).
       let clarifyOutcome: ClarifyAnswerOutcome | null = null;
+      if (cardType === 'clarifying' && !deps.pipelineCoordinator && deps.stateStore?.getKey) {
+        // Pipeline services failed to boot on THIS pod (non-fatal boot): a
+        // plain 200 here would burn the card's NX flag while the run stays
+        // parked forever. Refuse with the same retry code as lock starvation.
+        const funnel = await deps.stateStore.getKey(REDIS_KEYS.PIPE.JOB(ctx.jobId)).catch(() => null);
+        if (funnel) {
+          logger.warn(`Clarify answer refused — pipeline services unavailable on this pod (job ${ctx.jobId}, card ${cardId})`, { component: 'Chat' });
+          res.status(503).json({ error: 'The run coordinator is unavailable — retry in a moment', code: 'clarify-retry', cardId });
+          return;
+        }
+      }
       if (cardType === 'clarifying' && deps.pipelineCoordinator) {
         const a = (answer ?? {}) as { directive?: string; resolvedAnswers?: Record<string, string> };
         const text =
@@ -470,6 +484,12 @@ export function createChatRoutes(deps: {
         }
       }
 
+      if (!result.resolved && clarifyOutcome && clarifyOutcome !== 'not-pipeline') {
+        // The coordinator took the answer but the card's NX flag was already
+        // burned (a retried click) — no choice_resolved line is broadcast, so
+        // the card closes only on reload. Recorded, not refused: the run moved.
+        logger.warn(`Clarify answer ${clarifyOutcome} but the card was already resolved (job ${ctx.jobId}, card ${cardId})`, { component: 'Chat' });
+      }
       res.json({
         success: true,
         resolved: result.resolved,

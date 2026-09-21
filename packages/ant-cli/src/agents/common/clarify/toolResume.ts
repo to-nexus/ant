@@ -106,3 +106,32 @@ export function buildToolResultTurn(
     ],
   };
 }
+
+/**
+ * Re-load a transcript until its tail holds the awaited dangling tool_use.
+ * A clarify answer / approval re-dispatch runs on whichever node picks the
+ * job up, and the seal it must close was written by another node on a shared
+ * mount that can answer ENOENT or stale bytes for a while. Opening a fresh
+ * turn on that view re-asks the question the human just answered, so the
+ * caller waits (bounded) and gives up loudly. Returns whether the call is
+ * present after the last load.
+ */
+export async function waitForAwaitedToolUse(
+  load: () => Promise<void>,
+  history: () => MessageLike[] | undefined,
+  awaitedToolUseId: string,
+  opts: { waitMs: number; pollMs: number; sleep?: (ms: number) => Promise<void>; onRetry?: (attempt: number) => void },
+): Promise<boolean> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const present = () => findDanglingToolUse(history())?.toolUseId === awaitedToolUseId;
+  const deadline = Date.now() + opts.waitMs;
+  let attempt = 0;
+  while (!present()) {
+    if (Date.now() >= deadline) return false;
+    attempt += 1;
+    opts.onRetry?.(attempt);
+    await sleep(opts.pollMs);
+    await load();
+  }
+  return true;
+}

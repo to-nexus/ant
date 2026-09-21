@@ -59,8 +59,8 @@ export class PipelineRunCoordinator {
       deps,
       notify: (notice) => channel.notify(notice),
       executeDispatches: (owner, def, run, dispatches) => executeDispatches(this.ctx, owner, def, run, dispatches),
-      dispatchJobStep: (owner, def, run, step, retries, directiveOverride, approvalGrantTool) =>
-        dispatchJobStep(this.ctx, owner, def, run, step, retries, directiveOverride, approvalGrantTool),
+      dispatchJobStep: (owner, def, run, step, retries, directiveOverride, approvalGrantTool, awaitedToolUseId) =>
+        dispatchJobStep(this.ctx, owner, def, run, step, retries, directiveOverride, approvalGrantTool, awaitedToolUseId),
       armGate: (owner, def, run, step) => armGate(this.ctx, owner, def, run, step),
       applyOutcome: (owner, runId, stepId, outcome, patch, decorate, expectedJobId, onOutcomeLanded) =>
         applyOutcome(this.ctx, owner, runId, stepId, outcome, patch, decorate, expectedJobId, onOutcomeLanded),

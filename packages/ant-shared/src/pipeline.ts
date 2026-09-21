@@ -900,6 +900,14 @@ export interface ClarifyRecord {
 }
 
 /**
+ * What a 200 on a clarify answer means: `applied` = the step re-dispatched
+ * with the answer; `held` = the step had not parked yet, the answer is stored
+ * and applied on park (chat-card channel only — the inbox route refuses
+ * anything but `awaiting_clarify`, so it never says `held`).
+ */
+export type PipelineClarifyAnswerOutcome = 'applied' | 'held';
+
+/**
  * Captured on step completion — the `{{steps.*}}` substitution source and the
  * run history's business-readable summary. `answer` = the job's final
  * assistant text (session-seal read, jobId-guarded — clarify re-pointing means

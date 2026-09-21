@@ -105,6 +105,7 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
         jobId: data.jobId,
         toolName: approvalSeal.toolName,
         argsSummary: approvalSeal.argsSummary,
+        toolUseId: approvalSeal.toolUseId,
         retries: 0,
       });
       return;

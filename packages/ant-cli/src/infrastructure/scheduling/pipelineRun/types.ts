@@ -107,6 +107,7 @@ export interface PipelineRunOps {
     retries: number,
     directiveOverride?: string,
     approvalGrantTool?: string,
+    awaitedToolUseId?: string,
   ): Promise<void>;
   armGate(owner: PipelineOwner, def: PipelineDef, run: RunRecord, step: ApprovalStepDef): Promise<void>;
   applyOutcome(
@@ -153,4 +154,6 @@ export interface HitlRecord {
   tool?: string;
   /** kind:'tool' — the paused job (stale-arm guard on resume). */
   jobId?: string;
+  /** kind:'tool' — the paused call; the approve re-dispatch must close exactly this tool_use. */
+  toolUseId?: string;
 }

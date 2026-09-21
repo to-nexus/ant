@@ -68,6 +68,15 @@ export interface PersistChoiceResult {
 }
 
 /**
+ * The server said the run coordinator took this answer (`applied` / `held`).
+ * That verdict outranks any client-side "is this project pipeline-owned"
+ * projection: dispatching a job here would 409 against the activation gate
+ * and swallow the error while the card looks answered.
+ */
+export const coordinatorTookAnswer = (persisted: PersistChoiceResult): boolean =>
+  persisted.clarify === 'applied' || persisted.clarify === 'held';
+
+/**
  * Common state plumbing for every choice-card variant.
  *
  * Phase 11 chat-SSOT — choice cards now consume the SSOT pair

@@ -88,6 +88,7 @@ export async function enterAwaitingToolApproval(ctx: PipelineRunOps, data: Pipel
     prompt,
     tool: toolName,
     jobId,
+    ...(data.toolUseId && { toolUseId: data.toolUseId }),
   };
   await ctx.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.HITL(gateId), JSON.stringify(hitl), REDIS_TTL.PIPE.HITL);
   await ctx.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.CARD(cardId), gateId, REDIS_TTL.PIPE.HITL);
@@ -162,6 +163,16 @@ export async function enterAwaitingClarify(ctx: PipelineRunOps, data: PipelineCl
       return { run: live, dispatches: [] };
     }
     const round = (step.clarify?.round ?? 0) + 1;
+    if (step.clarify?.answeredAt && step.clarify.question === data.question) {
+      // The resumed job asked the very question that was just answered: it
+      // opened a fresh turn instead of closing the sealed call — its node
+      // could not see the seal. The runner now waits for it; this stays as
+      // the cloud-side tripwire.
+      logger.warn(
+        `[Pipeline] clarify re-asked verbatim after an answer (round ${round}) — the resumed job did not see its transcript: ${runId}/${stepId}`,
+        { component: COMPONENT },
+      );
+    }
     record = {
       clarifyId: `clr-${runId}-${stepId}-${round}`,
       jobId,
@@ -375,7 +386,7 @@ export async function applyClarifyAnswer(ctx: PipelineRunOps, params: {
   const def = result.run.defSnapshot;
   const stepDef = def?.steps.find((s) => s.id === stepId);
   if (def && stepDef && !isApprovalStep(stepDef)) {
-    await ctx.dispatchJobStep(owner, def, result.run, stepDef, 0, params.answer);
+    await ctx.dispatchJobStep(owner, def, result.run, stepDef, 0, params.answer, undefined, resolved.toolUseId);
   }
   return 'applied';
 }

@@ -117,6 +117,8 @@
     "alreadyDecidedBy": "Already decided by {{who}}.",
     "authorityRevoked": "Your approval authority for this gate was revoked.",
     "clarifyAlreadyAnswered": "This question was already answered or the run is no longer waiting.",
+    "clarifyRetry": "The run is busy — try again in a moment. Your answer was not applied.",
+    "clarifyTooLong": "The answer is too long — shorten it or answer with an artifact path.",
     "clarifyRunGone": "This run is no longer available.",
     "timeoutApprove": "Auto-approves {{when}}",
     "timeoutReject": "Auto-rejects {{when}}",

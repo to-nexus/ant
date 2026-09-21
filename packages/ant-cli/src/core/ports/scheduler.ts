@@ -150,6 +150,8 @@ export interface PipelineApprovalEnterJobData {
   jobId: string;
   toolName: string;
   argsSummary: string;
+  /** The paused call — the approve re-dispatch names it as the turn's awaited tool_use. */
+  toolUseId?: string;
   retries: number;
 }
 

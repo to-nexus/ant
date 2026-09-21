@@ -9,6 +9,7 @@
 import { API_BASE, apiGet, apiPost, apiPut, apiDelete } from './client';
 import { downloadAttachment } from './download';
 import type {
+  PipelineClarifyAnswerOutcome,
   PipelineFetchTrigger,
   PipelineFetchPreview,
   ActivePipelineInfo,
@@ -219,6 +220,10 @@ export function reassignPipelineGate(
   return apiPut(`${base()}/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(stepId)}/assignee`, { userId });
 }
 
-export function answerPipelineClarify(runId: string, stepId: string, answer: string): Promise<{ success: boolean }> {
+export function answerPipelineClarify(
+  runId: string,
+  stepId: string,
+  answer: string,
+): Promise<{ success: boolean; clarify: PipelineClarifyAnswerOutcome }> {
   return apiPost(`${base()}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/clarify`, { answer });
 }

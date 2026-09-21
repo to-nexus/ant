@@ -1122,6 +1122,15 @@ export interface UniversalTurnMeta {
    * validator's `{intents, context, plan}` and never from the request body.
    */
   runId?: string;
+  /**
+   * The dangling `tool_use` this turn MUST close (a clarify answer or a tool
+   * approval re-dispatch). The runner refuses to open a fresh turn until the
+   * restored transcript holds this call — the seal is another pod's write, and
+   * a fresh turn on an invisible transcript re-asks the same question (the
+   * 2026-09-21 "answered, 200, nothing moved" report). Set ONLY by the
+   * pipeline coordinator.
+   */
+  awaitedToolUseId?: string;
 }
 
 // ── Definition file surface (account-scoped agent settings API) ─────────────

@@ -1003,8 +1003,8 @@ describe('clarify answer authority — every fate is a typed outcome; an early a
           publish: async (_ch: string, msg: any) => void published.push(msg),
         },
       },
-      dispatchJobStep: async (_o: any, _d: any, _r: any, step: any, _retries: number, directive?: string) =>
-        void dispatched.push(`${step.id}:${directive}`),
+      dispatchJobStep: async (_o: any, _d: any, _r: any, step: any, _retries: number, directive?: string, _grant?: string, awaited?: string) =>
+        void dispatched.push(`${step.id}:${directive}${awaited ? `@${awaited}` : ''}`),
     } as any;
     return { ctx, store, dispatched, published };
   }
@@ -1019,10 +1019,12 @@ describe('clarify answer authority — every fate is a typed outcome; an early a
     expect(dispatched).toEqual([]);
   });
 
-  it('awaiting this job\'s clarify → applied: step dispatched with the answer, funnel key gone', async () => {
-    const { ctx, store, dispatched, published } = makeCtx(RUN({ status: 'awaiting_clarify', jobId: 'j1', clarify: { clarifyId: 'c', jobId: 'j1', question: 'q', round: 1, askedAt: 't' } }));
+  it('awaiting this job\'s clarify → applied: step dispatched with the answer AND the call it must close, funnel key gone', async () => {
+    const { ctx, store, dispatched, published } = makeCtx(RUN({ status: 'awaiting_clarify', jobId: 'j1', clarify: { clarifyId: 'c', jobId: 'j1', question: 'q', toolUseId: 'tu-1', round: 1, askedAt: 't' } }));
     expect(await answer(ctx)).toBe('applied');
-    expect(dispatched).toEqual(['s1:yes']);
+    // The re-dispatch names the dangling tool_use: the child waits for that seal
+    // instead of opening a fresh turn that re-asks (2026-09-21 report).
+    expect(dispatched).toEqual(['s1:yes@tu-1']);
     expect(store.has('ant:pipe:job:j1')).toBe(false);
     expect(published.some((m) => m.data?.cause === 'clarifyAnswered')).toBe(true);
   });

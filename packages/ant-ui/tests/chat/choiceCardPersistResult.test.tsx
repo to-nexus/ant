@@ -33,7 +33,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k, i18n: { exists: () => false, language: 'en' } }),
 }));
 
-import { useChoiceCardState } from '../../src/presentation/components/chat/choiceCard/shared';
+import { useChoiceCardState, coordinatorTookAnswer } from '../../src/presentation/components/chat/choiceCard/shared';
 
 const presented = { type: 'choice_presented', ts: 't0', jobId: 'j1', turnId: 't1', jobType: 'universal', cardId: 'card-1', cardType: 'clarifying' } as any;
 
@@ -88,5 +88,19 @@ describe('useChoiceCardState.persistToBackend — typed result', () => {
     expect(result).toEqual({ ok: false, code: 'no-selection' });
     storeState.selectedProject = 'proj';
     unmount();
+  });
+});
+
+// The server's verdict decides whether the card may dispatch a job itself: a
+// pipeline answer the coordinator took (`applied` / `held`) must never fall
+// through to `runJob` because the local activation projection was missing.
+describe('coordinatorTookAnswer — the fate, not the projection, gates the interactive fallback', () => {
+  it.each([
+    [{ ok: true, clarify: 'applied' }, true],
+    [{ ok: true, clarify: 'held' }, true],
+    [{ ok: true }, false],
+    [{ ok: false, status: 503, code: 'clarify-retry' }, false],
+  ])('%j → %s', (persisted, took) => {
+    expect(coordinatorTookAnswer(persisted as any)).toBe(took);
   });
 });

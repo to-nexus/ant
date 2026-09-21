@@ -964,6 +964,25 @@ answer       → applyClarifyAnswer (guard: awaiting_clarify ∧ clarify.jobId m
   409 and closes). The FE card skips `runJob` on a pipeline-owned
   project — dispatch is the coordinator's, and the interactive route would
   409 anyway.
+- **A resume names the call it must close, and the child waits for that
+  seal to be visible.** The answer re-dispatch (and the tool-approval
+  re-dispatch) carries `universalTurnMeta.awaitedToolUseId` — the dangling
+  `tool_use` recorded on the `ClarifyRecord` / `HitlRecord` when the seal was
+  parked. The runner's session restore is re-runnable: when the restored
+  transcript does not end in that call it re-reads the run session file
+  (`waitForAwaitedToolUse`, 3s poll, 75s bound — just past a shared mount's
+  default negative-lookup cache) and, if the seal never appears, FAILS the job
+  instead of opening a fresh turn. A fresh turn on an incomplete transcript is
+  exactly the 2026-09-21 cloud report: the answer returned 200, the run
+  re-dispatched, and the child — which could not see the seal another node
+  wrote — treated the answer as a new instruction and asked the same question
+  again as round 2. The inbox card and the chat card came back identical and
+  empty, so the screen looked frozen while the backend "continued".
+  Reproduced locally by hiding `{job}@{runId}.json` for the re-dispatch.
+  `enterAwaitingClarify` logs a verbatim re-ask after an answer as the
+  cloud-side tripwire. The failure is a plain job failure: a declared step
+  retry re-runs the step from its template (the answer is not replayed),
+  which re-asks visibly with an attempt recorded — never silently.
 - **The wait is open-ended — no timeout arm.** Pipelines are long-running by
   design; the escape hatches are run cancel (sweeps `awaiting_clarify`,
   deletes the funnel key) and deactivation. `saveRun` re-arms the run doc AND
@@ -1177,7 +1196,16 @@ SSE: ONE `pipeline` event, cause-discriminated
 (`runUpdate | approvalRequested | approvalResolved | clarifyRequested |
 clarifyAnswered | defChanged | availabilityChanged | activationChanged`) —
 the gitState pattern. Clarify rows ride the same inbox fold as gates
-(`approvalRequested` adds, `clarifyAnswered` removes by clarifyId).
+(`approvalRequested`/`clarifyRequested` add; `approvalResolved`/`clarifyAnswered`
+remove). Those removals are best-effort publishes, so the inbox also follows
+the STEP STATE on every `runUpdate`: a row whose step is no longer
+`awaiting_gate` on its undecided gate / `awaiting_clarify` on its round is
+folded out (`stepHoldsRow`); approver-role rows ride another owner's run and
+are exempt. Every inbox removal goes through ONE helper (`foldApprovalsOut`)
+that records a tombstone on the shared fold clock (`pipelineSealSeq`), and
+`loadPipelineApprovals` filters a snapshot issued before those folds through
+them — an approvals refetch in flight while a card was answered used to
+re-install the answered row as an empty card.
 `activationChanged` carries `activation | null` + `activatedBy` plus the
 projectId (on deactivate: the PREVIOUS project, so the FE can clear its
 lock). Published **user-scoped** (no projectId on the envelope) so the

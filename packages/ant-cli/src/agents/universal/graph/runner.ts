@@ -23,7 +23,12 @@ import { isTurnAlreadyOpened } from './session/historyProjection';
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
-import { buildClarifyToolResultTurn, buildToolResultTurn, findDanglingToolUse } from '../../common/clarify/toolResume';
+import {
+  buildClarifyToolResultTurn,
+  buildToolResultTurn,
+  findDanglingToolUse,
+  waitForAwaitedToolUse,
+} from '../../common/clarify/toolResume';
 import { CLARIFY_TOOL_NAME } from '../../common/clarify/tool';
 import { parseSealedHookLedger, type StopHookCheck, type StopHookLedger } from '../../../core/customAgents/stopHooks';
 import { carriedSealChannels, universalConversationChannel } from '../../../core/customAgents/universalConversation';
@@ -37,6 +42,15 @@ import {
 } from '../../../core/customAgents/connectionReport';
 import { buildUniversalRegistry, setUniversalMcp } from './runtime';
 import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../composition/gracefulShutdown';
+
+/**
+ * How long a resume waits for the seal it must close to become visible. A
+ * shared-mount client caches a negative lookup for up to its acdirmax (60s by
+ * default); the bound sits just past that so a fresh turn is never opened on
+ * an incomplete transcript within the ordinary lag window.
+ */
+export const AWAITED_TOOL_USE_WAIT_MS = 75_000;
+const AWAITED_TOOL_USE_POLL_MS = 3_000;
 
 export interface UniversalRunnerParams {
   /** The user's message for this run (overrideDirective / input). */
@@ -57,6 +71,12 @@ export interface UniversalRunnerParams {
   pipelineRunId?: string;
   /** One-turn approval grant (approve re-dispatch), by tool name. */
   approvalGrantTool?: string;
+  /**
+   * The dangling tool_use this turn must close (clarify answer / approval
+   * re-dispatch). The restore waits for the seal holding it to be visible
+   * before any turn opens — a fresh turn would re-ask what was just answered.
+   */
+  awaitedToolUseId?: string;
   deps: {
     llm: any;
     session?: any;
@@ -125,7 +145,23 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   // self-check on restore.
   const sessionStem = universalSessionStem(resolved.jobId, params.pipelineRunId);
   let carriedChannels: Record<string, ConversationMessage[]> = {};
-  if (params.deps.session) {
+  // Restore is re-runnable: a resume that names the call it must close
+  // re-reads until that seal is visible (see `waitForAwaitedToolUse`).
+  const restoreSession = async (): Promise<void> => {
+    restoredConversations = undefined;
+    restoredTokenUsage = undefined;
+    restoredTokenUsageByModel = undefined;
+    restoredChecklist = undefined;
+    restoredClarifyRounds = undefined;
+    restoredClarifyContext = undefined;
+    restoredHookLedger = undefined;
+    restoredHookContext = undefined;
+    sealedAwaitingStopHooks = false;
+    sealedApprovalToolUseId = undefined;
+    restoredApprovalContext = undefined;
+    knownBadServers = new Set<string>();
+    carriedChannels = {};
+    if (!params.deps.session) return;
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, sessionStem);
       let sessionState = session?.state;
@@ -172,6 +208,27 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
       }
     } catch (e) {
       console.warn('⚠️ [Universal] Session restore failed (fresh session):', e instanceof Error ? e.message : String(e));
+    }
+  };
+  await restoreSession();
+  if (params.awaitedToolUseId) {
+    const awaited = params.awaitedToolUseId;
+    const visible = await waitForAwaitedToolUse(
+      restoreSession,
+      () => restoredConversations?.[CONV_KEYS.SESSION_MAIN],
+      awaited,
+      {
+        waitMs: AWAITED_TOOL_USE_WAIT_MS,
+        pollMs: AWAITED_TOOL_USE_POLL_MS,
+        onRetry: (attempt) =>
+          console.warn(`⏳ [Universal] awaited tool_use ${awaited} not in ${sessionStem} yet (attempt ${attempt}) — re-reading the seal`),
+      },
+    );
+    if (!visible) {
+      throw new Error(
+        `[Universal] awaited tool_use ${awaited} never became visible in ${sessionStem} within ${AWAITED_TOOL_USE_WAIT_MS}ms — ` +
+          'refusing to open a fresh turn on an incomplete transcript (it would re-ask the question just answered)',
+      );
     }
   }
 

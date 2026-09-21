@@ -424,6 +424,7 @@ export async function applyResolvedGate(
         0,
         `APPROVED by a human reviewer — the "${hitl.tool}" call is authorized. Re-issue the exact same tool call now and continue the work.`,
         hitl.tool,
+        hitl.toolUseId,
       );
     }
     return true;

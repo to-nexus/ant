@@ -61,7 +61,7 @@ export async function detectApprovalSeal(
   runId: string,
   stepId: string,
   jobId: string,
-): Promise<{ toolName: string; argsSummary: string } | null> {
+): Promise<{ toolName: string; argsSummary: string; toolUseId?: string } | null> {
   try {
     const run = await getRun(deps, runId);
     const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
@@ -78,6 +78,7 @@ export async function detectApprovalSeal(
     return {
       toolName: state.approvalTool,
       argsSummary: typeof state.approvalArgsSummary === 'string' ? state.approvalArgsSummary : '',
+      ...(typeof state.approvalToolUseId === 'string' && { toolUseId: state.approvalToolUseId }),
     };
   } catch {
     return null;

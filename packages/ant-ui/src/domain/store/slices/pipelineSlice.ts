@@ -11,6 +11,7 @@ import type {
   PipelineLiveRun,
   PipelineLiveState,
   PipelinePendingApproval,
+  PipelineClarifyAnswerOutcome,
   PipelineRunSummary,
   PipelineScope,
   RunRecord,
@@ -91,6 +92,49 @@ export const parseActivationRunsKey = (key: string): { pipelineId: string; proje
 };
 
 const SEALED_RUNS_KEPT = 32;
+const APPROVAL_TOMBSTONES_KEPT = 64;
+
+/** A REST approvals snapshot issued at `seqAtRequest` predates every inbox fold after it — those rows must not come back. */
+const removedSince =
+  (tombstones: ReadonlyArray<{ gateId: string; seq: number }>, seqAtRequest: number) =>
+  (gateId: string): boolean =>
+    tombstones.some((t) => t.gateId === gateId && t.seq > seqAtRequest);
+
+/**
+ * The ONE inbox removal. Every fold that drops rows (a decision, an answer,
+ * an SSE resolve, a runUpdate reconcile) records a tombstone on the shared
+ * fold clock, so a refetch that was in flight when the row died cannot
+ * re-install it (the answered card came back empty — 2026-09-21 report).
+ */
+function foldApprovalsOut(
+  s: Pick<PipelineSliceState, 'pipelineApprovals' | 'pipelineApprovalTombstones' | 'pipelineSealSeq'>,
+  dead: (a: PipelinePendingApproval) => boolean,
+): Partial<PipelineSliceState> {
+  const gone = s.pipelineApprovals.filter(dead);
+  if (gone.length === 0) return {};
+  const seq = s.pipelineSealSeq + 1;
+  return {
+    pipelineApprovals: s.pipelineApprovals.filter((a) => !dead(a)),
+    pipelineSealSeq: seq,
+    pipelineApprovalTombstones: [...s.pipelineApprovalTombstones, ...gone.map((a) => ({ gateId: a.gateId, seq }))].slice(
+      -APPROVAL_TOMBSTONES_KEPT,
+    ),
+  };
+}
+
+/**
+ * Does the run's step still hold this inbox row? Gate and tool rows park the
+ * step `awaiting_gate` on an undecided gate; clarify rows park it
+ * `awaiting_clarify` on the round the row names. Anything else — the step
+ * re-dispatched, decided, or moved on — is a dead row.
+ */
+const stepHoldsRow = (run: PipelineRunPublic, row: PipelinePendingApproval): boolean => {
+  const step = run.steps.find((st) => st.stepId === row.stepId);
+  if (!step) return false;
+  return row.kind === 'clarify'
+    ? step.status === 'awaiting_clarify' && step.clarify?.clarifyId === row.gateId
+    : step.status === 'awaiting_gate' && step.gate?.gateId === row.gateId && !step.gate.decision;
+};
 
 /** A REST snapshot issued at `seqAtRequest` predates every seal folded after it — those runs must not come back live. */
 const sealedSince =
@@ -179,6 +223,8 @@ export interface PipelineSliceState {
   /** Runs sealed by a live fold and the seq they sealed at (bounded, oldest first). */
   pipelineSealedRuns: Array<{ runId: string; seq: number }>;
   pipelineApprovals: PipelinePendingApproval[];
+  /** Inbox rows removed by a live fold and the seq they died at (bounded, oldest first) — the approvals refetch filters through it. */
+  pipelineApprovalTombstones: Array<{ gateId: string; seq: number }>;
   /**
    * Approver context panel (slideover) — self-contained on run data: an
    * approver never enters the owner's project or definition surfaces.
@@ -237,7 +283,7 @@ export interface PipelineSliceActions {
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject', note?: string) => Promise<void>;
   /** Route one run's armed gate to a candidate (`null` = everyone) — a candidate's routing hint, never authority. */
   reassignPipelineGateTo: (approval: PipelinePendingApproval, userId: string | null) => Promise<void>;
-  answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
+  answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<PipelineClarifyAnswerOutcome>;
   /** The ONE reconnect refresh — re-reads every held projection (list → approvals, histories, live details, chat lock). */
   resyncPipelineProjections: () => void;
   setPipelinePanelView: (view: 'editor' | 'execution') => void;
@@ -318,6 +364,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineSealSeq: 0,
   pipelineSealedRuns: [],
   pipelineApprovals: [],
+  pipelineApprovalTombstones: [],
   approverPanel: null,
   approverPanelRun: null,
   activePipelineByProject: {},
@@ -680,9 +727,14 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   },
 
   loadPipelineApprovals: async () => {
+    const seqAtRequest = get().pipelineSealSeq;
     try {
       const { approvals } = await fetchPipelineApprovals();
-      set({ pipelineApprovals: approvals });
+      // The snapshot is the refill (a reconnect's only source of rows armed
+      // while offline) — never dropped; only rows folded out since the
+      // request began are filtered, so a stale response cannot resurrect them.
+      const dead = removedSince(get().pipelineApprovalTombstones, seqAtRequest);
+      set({ pipelineApprovals: approvals.filter((a) => !dead(a.gateId)) });
     } catch {
       /* keep last-good */
     }
@@ -695,13 +747,13 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       // 409 (someone else decided — S7) and 404 (authority revoked — S6) both
       // mean this row is dead: fold it, then rethrow so the surface can name why.
       if (e instanceof ApiError && (e.status === 409 || e.status === 404)) {
-        set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== gateId) });
+        set((s: PipelineSliceState) => foldApprovalsOut(s, (a) => a.gateId === gateId));
       }
       throw e;
     }
     // Success removal is NOT optimistic — the server resolved; the
     // approvalResolved SSE event is the durable fold for other surfaces.
-    set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== gateId) });
+    set((s: PipelineSliceState) => foldApprovalsOut(s, (a) => a.gateId === gateId));
     // A panel open on this gate refreshes to show the landed decision.
     const panel = get().approverPanel;
     if (panel?.gateId === gateId) {
@@ -761,7 +813,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     } catch (e) {
       // 409 (decided meanwhile) / 404 (gate gone or authority revoked): the row is dead.
       if (e instanceof ApiError && (e.status === 409 || e.status === 404)) {
-        set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== gateId) });
+        set((s: PipelineSliceState) => foldApprovalsOut(s, (a) => a.gateId === gateId));
       }
       throw e;
     }
@@ -777,10 +829,10 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   },
 
   answerPipelineClarifyById: async (clarifyId: string, runId: string, stepId: string, answer: string) => {
-    const fold = () =>
-      set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== clarifyId) });
+    const fold = () => set((s: PipelineSliceState) => foldApprovalsOut(s, (a) => a.gateId === clarifyId));
+    let outcome: PipelineClarifyAnswerOutcome;
     try {
-      await answerPipelineClarify(runId, stepId, answer);
+      ({ clarify: outcome } = await answerPipelineClarify(runId, stepId, answer));
     } catch (e) {
       // Gate parity: 409 (already answered / run cancelled) and 404 (run gone)
       // both mean this row is dead — fold it, then rethrow so the form names why.
@@ -790,6 +842,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     // Removal after the server accepted; the clarifyAnswered SSE event folds
     // every other surface, and the run's own runUpdate moves the canvas.
     fold();
+    return outcome;
   },
 
   resyncPipelineProjections: () => {
@@ -882,16 +935,24 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
           if (held || s.selectedPipelineId === event.pipelineId) {
             patch.pipelineRunDetails = { ...s.pipelineRunDetails, [run.runId]: mergeHeldAnswers(run, held) };
           }
+          // Inbox rows follow the STEP STATE on every runUpdate — the one
+          // durable publisher — so a lost best-effort clarifyAnswered /
+          // approvalResolved, or a stale approvals refetch, never leaves a row
+          // whose step already moved on. Approver rows ride another owner's
+          // run and never receive its runUpdate; a terminal run holds no row.
+          Object.assign(
+            patch,
+            foldApprovalsOut(s, (a) => a.role !== 'approver' && a.runId === run.runId && !stepHoldsRow(run, a)),
+          );
           if (terminal) {
-            // A terminal run can not hold gates, and leaves the selection so the
-            // next live run can open itself (`loadActivationRuns`).
-            patch.pipelineApprovals = s.pipelineApprovals.filter((a) => a.runId !== run.runId);
+            // A terminal run leaves the selection so the next live run can
+            // open itself (`loadActivationRuns`).
             if (s.pipelineSelectedRunByActivation[runsKey] === run.runId) {
               patch.pipelineSelectedRunByActivation = Object.fromEntries(
                 Object.entries(s.pipelineSelectedRunByActivation).filter(([k]) => k !== runsKey),
               );
             }
-            const seq = s.pipelineSealSeq + 1;
+            const seq = (patch.pipelineSealSeq ?? s.pipelineSealSeq) + 1;
             patch.pipelineSealSeq = seq;
             patch.pipelineSealedRuns = [...s.pipelineSealedRuns, { runId: run.runId, seq }].slice(-SEALED_RUNS_KEPT);
           }
@@ -913,7 +974,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
         break;
       }
       case 'approvalResolved': {
-        set({ pipelineApprovals: state.pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== event.gateId) });
+        set((s: PipelineSliceState) => foldApprovalsOut(s, (a) => a.gateId === event.gateId));
         // An open approver panel on this gate refreshes to show the decision.
         const panel = state.approverPanel;
         if (panel?.gateId === event.gateId) {
@@ -935,7 +996,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
         break;
       }
       case 'clarifyAnswered': {
-        set({ pipelineApprovals: state.pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== event.clarifyId) });
+        set((s: PipelineSliceState) => foldApprovalsOut(s, (a) => a.gateId === event.clarifyId));
         break;
       }
       case 'availabilityChanged': {

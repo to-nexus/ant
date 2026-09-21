@@ -460,3 +460,45 @@ describe('sendClarifyCards — customJobRef stamp', () => {
     expect('customJobRef' in metadata).toBe(false);
   });
 });
+
+// ── resume visibility: the child waits for the seal it must close ────────────
+// A clarify answer re-dispatches the step on whichever node takes the job; the
+// seal holding the dangling call was written by another node on a shared mount
+// that can answer ENOENT/stale for a while. Opening a fresh turn on that view
+// re-asks the question just answered (2026-09-21 cloud report, reproduced
+// locally by hiding the run session file) — so the restore re-reads, bounded.
+describe('waitForAwaitedToolUse — bounded re-read until the awaited dangling call is visible', () => {
+  const withCall = (id: string) => [{ role: 'assistant', content: [{ type: 'tool_use', id, name: CLARIFY_TOOL_NAME, input: { question: 'q' } }] }];
+
+  it('returns true once a re-load surfaces the call; every miss re-loads after one poll', async () => {
+    const { waitForAwaitedToolUse } = await import('../../src/agents/common/clarify/toolResume');
+    const views: Array<any[] | undefined> = [undefined, [{ role: 'user', content: 'stale' }], withCall('tu-1')];
+    let current: any[] | undefined = views.shift();
+    const loads: number[] = [];
+    const retries: number[] = [];
+    const ok = await waitForAwaitedToolUse(
+      async () => { loads.push(Date.now()); current = views.shift(); },
+      () => current,
+      'tu-1',
+      { waitMs: 10_000, pollMs: 1, sleep: async () => {}, onRetry: (n) => retries.push(n) },
+    );
+    expect(ok).toBe(true);
+    expect(loads).toHaveLength(2);
+    expect(retries).toEqual([1, 2]);
+  });
+
+  it('a different dangling call is not the awaited one; the deadline gives up with false and never opens the turn', async () => {
+    const { waitForAwaitedToolUse } = await import('../../src/agents/common/clarify/toolResume');
+    let loads = 0;
+    const ok = await waitForAwaitedToolUse(async () => { loads += 1; }, () => withCall('tu-other'), 'tu-1', { waitMs: 0, pollMs: 1, sleep: async () => {} });
+    expect(ok).toBe(false);
+    expect(loads).toBe(0);
+  });
+
+  it('the call already present needs no re-load', async () => {
+    const { waitForAwaitedToolUse } = await import('../../src/agents/common/clarify/toolResume');
+    let loads = 0;
+    expect(await waitForAwaitedToolUse(async () => { loads += 1; }, () => withCall('tu-1'), 'tu-1', { waitMs: 0, pollMs: 1 })).toBe(true);
+    expect(loads).toBe(0);
+  });
+});
