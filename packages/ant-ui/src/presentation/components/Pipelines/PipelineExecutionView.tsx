@@ -27,7 +27,7 @@ import { Badge, Button } from '../aurora';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { describeTrigger } from './cronDescribe';
-import { ActivationRunHistory } from './ActivationRunHistory';
+import { ActivationRunHistory, RunOriginChip } from './ActivationRunHistory';
 import { StepRunInspector } from './StepRunInspector';
 import { TRIGGER_NODE_ID } from './draft';
 import { ApproversEditor, type ApproverGateInfo } from './ApproversEditor';
@@ -588,6 +588,7 @@ function ActivationSection({
                     run={run}
                     selected={selectedRunId === run.runId}
                     onSelect={() => selectActivationRun(runsKey, selectedRunId === run.runId ? null : run.runId, view.projectId)}
+                    onSelectOrigin={(runId) => selectActivationRun(runsKey, runId, view.projectId)}
                     onCancel={() => void cancelPipelineRun(run.runId)}
                   />
                 ))}
@@ -634,7 +635,20 @@ function ActivationSection({
 }
 
 /** One live run: hue accent (its identity everywhere), trigger, label, state, started, cancel. */
-function LiveRunRow({ run, selected, onSelect, onCancel }: { run: PipelineLiveRun; selected: boolean; onSelect: () => void; onCancel: () => void }) {
+function LiveRunRow({
+  run,
+  selected,
+  onSelect,
+  onSelectOrigin,
+  onCancel,
+}: {
+  run: PipelineLiveRun;
+  selected: boolean;
+  onSelect: () => void;
+  /** Selects the discovery run a live case run was split from. */
+  onSelectOrigin: (runId: string) => void;
+  onCancel: () => void;
+}) {
   const { t } = useTranslation('pipelines');
   const hue = runHue(run.runId);
   const FiredIcon = FIRED_BY_ICON[run.firedBy];
@@ -666,6 +680,7 @@ function LiveRunRow({ run, selected, onSelect, onCancel }: { run: PipelineLiveRu
         {t(fired.key, fired.fallback)}
       </span>
       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{runLabel(run)}</span>
+      {run.discoveryRunId && <RunOriginChip discoveryRunId={run.discoveryRunId} onSelect={() => onSelectOrigin(run.discoveryRunId!)} />}
       <StatusPill state={awaiting ? 'warning' : 'checking'} label={awaiting ? t('runs.awaiting', 'Awaiting input') : t('runs.running', 'Running')} />
       <span style={{ color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{new Date(run.startedAt).toLocaleString()}</span>
       <div style={{ flex: 1 }} />

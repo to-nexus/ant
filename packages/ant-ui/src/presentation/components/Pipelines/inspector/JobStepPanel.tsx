@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { GENERAL_INTENT, parseCustomJobRef, type CustomAgentSummary, type JobStepDef, type PipelineAdvisory, type PipelineDef } from '@ant/shared';
-import { Bot, FileInput, Settings2, Waypoints, Wrench } from 'lucide-react';
+import { Bot, FileInput, Settings2, Split, Waypoints, Wrench } from 'lucide-react';
 import { AuroraInput, AuroraSelect, FieldHint, FieldLabel } from '../../ConfigEditor/aurora';
 import { NODE_KIND_STYLE } from '../canvas/nodes';
 import { HintBadge } from '../../common/HintBadge';
@@ -13,10 +13,11 @@ import { DependsOnField } from './fields/DependsOnField';
 import { EdgeConditionField } from './fields/EdgeConditionField';
 import { DirectiveField } from './fields/DirectiveField';
 import { ContextPinsField } from './fields/ContextPinsField';
+import { DiscoveryField } from './fields/DiscoveryField';
 import { AdvisoryHints } from './AdvisoryHints';
 
 /**
- * Job step — identity → wiring → work → inputs → policy. Cascade gotchas
+ * Job step — identity → wiring → work → inputs → policy → discovery. Cascade gotchas
  * honored: `jobs[].intents === undefined` means "catalog failed to parse"
  * (a warning, NOT "no intents"), and `CustomIntentDef.infer` is prompt text —
  * never used as UI copy.
@@ -182,6 +183,10 @@ export function JobStepPanel({
           <AdvisoryHints advisories={advisories} field="onMissingVerdict" />
         </div>
       )}
+      </InspectorSection>
+
+      <InspectorSection icon={Split} accent={accent} title={t('inspector.section.discovery', 'Discovery')} description={t('inspector.section.discoveryHint', 'Whether this step fans the steps after it out into one run per case it finds.')} data-section="step-discovery">
+        <DiscoveryField def={def} step={step} onChange={onChange} advisories={advisories} />
       </InspectorSection>
     </>
   );

@@ -161,6 +161,7 @@ function PipelineCanvasInner({ def, cronSummary, customAgents, liveRuns = NO_RUN
           caption: identity.caption,
           captionTitle: identity.captionTitle,
           agentId: identity.agentId,
+          discovers: !gate && step.discovers !== undefined,
           status: statusOf.get(step.id),
           runChips: chipsOf[step.id],
           selected: false,

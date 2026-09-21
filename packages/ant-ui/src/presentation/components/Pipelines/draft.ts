@@ -20,6 +20,7 @@
 import {
   type ApprovalStepDef,
   type JobStepDef,
+  type StepDiscoveryDef,
   type PipelineAdvisoryCode,
   fetchConnectionSource,
   type PipelineDef,
@@ -145,6 +146,27 @@ export function updateStep(def: PipelineDef, stepId: string, patch: Partial<Pipe
   return {
     ...def,
     steps: def.steps.map((s) => (s.id === stepId ? ({ ...s, ...patch } as PipelineStepDef) : s)),
+  };
+}
+
+/**
+ * Patch a job step's `discovers` contract; `null` drops the key (a step that no
+ * longer fans out). Empty `fields` are not written — an empty mapping already
+ * means "the key alone". Cross-step consequences (a second discovers step, a
+ * last-step discovers, per-case `needs`) are the validator's to report.
+ */
+export function setStepDiscovers(def: PipelineDef, stepId: string, patch: Partial<StepDiscoveryDef> | null): PipelineDef {
+  return {
+    ...def,
+    steps: def.steps.map((s) => {
+      if (s.id !== stepId || 'type' in s) return s;
+      const { discovers: prev, ...rest } = s;
+      if (patch === null) return rest as JobStepDef;
+      const next: StepDiscoveryDef = { ...prev, ...patch };
+      if (next.fields !== undefined && next.fields.length === 0) delete next.fields;
+      if (next.onMissing === undefined || next.onMissing === 'fail') delete next.onMissing;
+      return { ...rest, discovers: next } as JobStepDef;
+    }),
   };
 }
 

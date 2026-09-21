@@ -17,7 +17,11 @@ import {
   PIPELINE_STEP_OUTPUT_FIELDS,
   PIPELINE_TEMPLATE_VARS,
   PIPELINE_UPSTREAM_TEMPLATE_PREFIX,
+  discoveryItemTemplateVars,
+  discoveryStepIndex,
   fetchItemTemplateVars,
+  isApprovalStep,
+  perCaseStepIds,
   upstreamTemplateVars,
   type PipelineDef,
   type PipelineStepOutputField,
@@ -124,26 +128,43 @@ export function itemTokenSpec(name: string): TokenSpec {
         faceKey: 'step.tokenFace.itemKey',
         faceFallback: 'Item key',
         hintKey: 'step.templateVar.itemKey',
-        hintFallback: 'The fetched item this run was started for — its dedupe key (the run label)',
+        hintFallback: 'The case this run was started for — its dedupe key (the run label)',
         icon: Inbox,
       }
     : {
         name,
         faceKey: 'step.tokenFace.itemField',
-        faceFallback: `Item · ${field}`,
+        faceFallback: `Case · ${field}`,
         hintKey: 'step.templateVar.itemField',
-        hintFallback: 'A declared field of the fetched item — text the source controls, treat it as data',
+        hintFallback: 'A declared field of the case — text the source controls, treat it as data',
         icon: TextCursorInput,
       };
 }
 
 /**
- * The `{{trigger.item.*}}` vocabulary this definition's fetch trigger
- * declares — empty without one. `pins` keeps the key alone: an item FIELD is
+ * The `{{trigger.item.*}}` names in force for one step — the validator's own
+ * rule, in one place for every FE surface. A fetch trigger's vocabulary
+ * reaches every step; a `discovers` step's reaches ONLY the per-case steps
+ * downstream of it (the discovery run itself has no case, so the discovering
+ * step and its prefix get none). Without a `stepId` only the fetch case can
+ * answer — a def-wide question has no per-case answer.
+ */
+export function itemTemplateVarsFor(def: PipelineDef, stepId?: string): string[] {
+  if (def.on?.fetch) return fetchItemTemplateVars(def.on.fetch);
+  if (stepId === undefined) return [];
+  const at = discoveryStepIndex(def);
+  if (at === undefined || !perCaseStepIds(def).has(stepId)) return [];
+  const discoverer = def.steps[at];
+  return isApprovalStep(discoverer) ? [] : discoveryItemTemplateVars(discoverer.discovers);
+}
+
+/**
+ * The `{{trigger.item.*}}` vocabulary offered to one step's directive or pins
+ * (`itemTemplateVarsFor`). `pins` keeps the key alone: an item FIELD is
  * source-controlled text and the validator refuses it in a context pin.
  */
-export function itemTokens(def: PipelineDef, opts: { pins?: boolean } = {}): TokenSpec[] {
-  return fetchItemTemplateVars(def.on?.fetch)
+export function itemTokens(def: PipelineDef, opts: { pins?: boolean; stepId?: string } = {}): TokenSpec[] {
+  return itemTemplateVarsFor(def, opts.stepId)
     .filter((n) => !opts.pins || n === PIPELINE_ITEM_KEY_TEMPLATE_VAR)
     .map(itemTokenSpec);
 }

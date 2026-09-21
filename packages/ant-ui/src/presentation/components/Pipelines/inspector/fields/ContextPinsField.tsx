@@ -65,8 +65,8 @@ export function ContextPinsField({
   // `pinTemplateErrors` accepts the WHOLE static whitelist in a pin, so the
   // offer is the same gate the directive uses — a second local list is how the
   // `run.prevSuccess.*` pair went missing here while the validator took it.
-  // A pin may name the fetched item's KEY (`cases/{{trigger.item.key}}/**`), never a field — source text must not name a path.
-  const pinVars = [...availableStaticTokens(def), ...itemTokens(def, { pins: true })];
+  // A pin may name the case's KEY (`cases/{{trigger.item.key}}/**`), never a field — source text must not name a path.
+  const pinVars = [...availableStaticTokens(def), ...itemTokens(def, { pins: true, stepId: step.id })];
 
   return (
     <div>

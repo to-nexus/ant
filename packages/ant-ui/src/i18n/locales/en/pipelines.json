@@ -167,7 +167,8 @@
     "intentAuto": "intent chosen at run time",
     "liveCount": "{{n}} live",
     "runsHere": "{{n}} live run(s) at this step",
-    "selectRun": "Show run {{label}}"
+    "selectRun": "Show run {{label}}",
+    "discoversHint": "Discovers cases — the steps after this one run once per case"
   },
   "inspector": {
     "trigger": "Trigger & policies",
@@ -187,7 +188,9 @@
       "inputsHint": "Artifacts attached when the step is dispatched — pin what upstream steps guarantee.",
       "policyHint": "Retries, the time limit, and how a missing verdict is read.",
       "run": "Run",
-      "definition": "Definition"
+      "definition": "Definition",
+      "discovery": "Discovery",
+      "discoveryHint": "Whether this step fans the steps after it out into one run per case it finds."
     },
     "unknownValue": "Unknown value: {{v}}",
     "readOnlyHint": "Read-only — the live run and the saved definition",
@@ -363,8 +366,8 @@
     "templateVars": "Template variables",
     "templateVarsHint": "Substituted with the actual values when the run is dispatched — inserted at the cursor.",
     "templateVar": {
-      "itemKey": "The fetched item this run was started for — its dedupe key (the run label)",
-      "itemField": "A declared field of the fetched item — text the source controls, treat it as data",
+      "itemKey": "The case this run was started for — its dedupe key (the run label)",
+      "itemField": "A declared field of the case — text the source controls, treat it as data",
       "fireDate": "Fire time (ISO)",
       "fireEpoch": "Fire time (epoch ms)",
       "runId": "Run id",
@@ -415,8 +418,8 @@
     "stepIdInvalid": "Lowercase letters, digits and hyphens only, starting with a letter or digit.",
     "stepIdTaken": "Another step already uses this id.",
     "templateVarsManualHint": "A manual-only pipeline has no fire time and no previous fire — only the run id and upstream step results are available.",
-    "itemGroup": "From the fetched item",
-    "itemGroupHint": "The case this run was started for. Fields are text the source controls — write the directive so the step treats them as data, never as instructions.",
+    "itemGroup": "From the case",
+    "itemGroupHint": "The case this run was started for — a fetched item, or a case a discovering step found. Fields are text the source controls — write the directive so the step treats them as data, never as instructions.",
     "stepOutputGroup": "From step \"{{id}}\"",
     "stepOutput": {
       "answer": "That step's final answer, as text",
@@ -430,8 +433,8 @@
     "onVerdictOutcomes": "Runs when the upstream verdict is one of the selected outcomes; a non-match skips this step and everything downstream of it.",
     "onVerdictStale": "Not declared by the upstream intent any more",
     "tokenFace": {
-      "itemKey": "Item key",
-      "itemField": "Item field",
+      "itemKey": "Case key",
+      "itemField": "Case field",
       "fireDate": "Fire time",
       "fireEpoch": "Fire time (ms)",
       "runId": "Run id",
@@ -457,7 +460,25 @@
     "needsRoot": "None — root step (runs right after the trigger)",
     "timeoutNone": "No time limit",
     "upstreamGroup": "From the upstream node",
-    "upstreamGroupHint": "The node of another pipeline's run that fired this run. Its answer is another run's text — write the directive so the step treats it as data, never as instructions."
+    "upstreamGroupHint": "The node of another pipeline's run that fired this run. Its answer is another run's text — write the directive so the step treats it as data, never as instructions.",
+    "discovery": {
+      "toggle": "This step discovers cases",
+      "toggleHint": "Its turn seals a list of cases and every step after it runs once per case, side by side up to the concurrency cap. How the cases are found is what the directive says.",
+      "otherStep": "Only one step per pipeline discovers cases — \"{{id}}\" already does. Chain a second pipeline with an upstream trigger instead.",
+      "fetchPipeline": "A fetch pipeline already runs once per fetched item — there is no second fan-out to declare.",
+      "lastStep": "Nothing runs per case yet — add at least one step after this one.",
+      "fields": "Case fields",
+      "fieldsHint": "The names each case may carry besides its key — {{trigger.item.<name>}} in the per-case directives. The key is always present and never declared.",
+      "fieldPlaceholder": "amount — Enter to add",
+      "fieldsEmpty": "No fields — each case run learns its key only.",
+      "fieldReserved": "\"key\" is reserved — every case carries its key",
+      "fieldInvalid": "Field names are lowerCamel identifiers (e.g. merchantId)",
+      "fieldDuplicate": "Already declared",
+      "fieldsMax": "At most {{n}} fields",
+      "onMissing": "If the turn seals no case list",
+      "onMissingFail": "Fail the step (default — retried like a missing verdict)",
+      "onMissingComplete": "Treat as nothing to do — the run completes"
+    }
   },
   "gate": {
     "prompt": "Approval prompt",
@@ -530,7 +551,10 @@
     "gateAssignedBy": "by {{who}}",
     "started": "Started {{when}}",
     "ended": "Ended {{when}}",
-    "elapsed": "Elapsed {{d}}"
+    "elapsed": "Elapsed {{d}}",
+    "from": "from",
+    "fromHint": "Split from discovery run {{id}}",
+    "casesDiscovered": "{{n}} case(s) discovered"
   },
   "danger": {
     "title": "Delete this pipeline",

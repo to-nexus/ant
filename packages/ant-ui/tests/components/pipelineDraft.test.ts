@@ -20,6 +20,7 @@ import {
   materializeNeeds,
   removeStep,
   renameStep,
+  setStepDiscovers,
   setStepNeeds,
   updateSchedule,
   withAcknowledgement,
@@ -324,5 +325,33 @@ describe('trigger modes — fetch stands alone, and the mode is read from the on
     const rebound = updateFetchBinding(withHeaders, { customJobRef: 'ops/tickets', api: 'jira' });
     expect(rebound.on?.fetch).toMatchObject({ customJobRef: 'ops/tickets', api: 'jira' });
     expect('connection' in (rebound.on?.fetch as object)).toBe(false);
+  });
+});
+
+describe('setStepDiscovers — the fan-out contract is a job-step key with nothing implicit written out', () => {
+  const d = def([job('scan'), job('handle'), { id: 'gate', type: 'approval', prompt: '?' } as PipelineStepDef]);
+  const discoversOf = (x: PipelineDef, id: string) => (x.steps.find((s) => s.id === id) as { discovers?: unknown }).discovers;
+
+  it('an empty patch turns discovery on as an empty mapping (the key alone)', () => {
+    expect(discoversOf(setStepDiscovers(d, 'scan', {}), 'scan')).toEqual({});
+  });
+
+  it('null drops the key entirely; every other step is untouched', () => {
+    const on = setStepDiscovers(d, 'scan', { fields: ['amount'] });
+    const off = setStepDiscovers(on, 'scan', null);
+    expect('discovers' in off.steps[0]).toBe(false);
+    expect(off.steps.slice(1)).toEqual(d.steps.slice(1));
+  });
+
+  it('patches merge; empty fields and the default onMissing are never written (zero YAML churn)', () => {
+    const a = setStepDiscovers(d, 'scan', { fields: ['amount', 'merchantId'] });
+    const b = setStepDiscovers(a, 'scan', { onMissing: 'complete' });
+    expect(discoversOf(b, 'scan')).toEqual({ fields: ['amount', 'merchantId'], onMissing: 'complete' });
+    expect(discoversOf(setStepDiscovers(b, 'scan', { fields: [] }), 'scan')).toEqual({ onMissing: 'complete' });
+    expect(discoversOf(setStepDiscovers(b, 'scan', { onMissing: 'fail' }), 'scan')).toEqual({ fields: ['amount', 'merchantId'] });
+  });
+
+  it('a gate cannot discover — the def is returned unchanged for it', () => {
+    expect(setStepDiscovers(d, 'gate', {})).toEqual(d);
   });
 });

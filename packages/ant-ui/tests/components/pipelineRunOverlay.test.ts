@@ -4,7 +4,7 @@
  * identity vocabulary every surface shares (`runIdentity.ts`).
  */
 import { describe, it, expect } from 'vitest';
-import type { PipelineDef, PipelineFiredBy, PipelineLiveRun } from '@ant/shared';
+import { liveRunOf, type PipelineDef, type PipelineFiredBy, type PipelineLiveRun, type RunRecord } from '@ant/shared';
 import { focusRunId, selectedPath, stepRunChips, triggerBadge } from '../../src/presentation/components/Pipelines/canvas/runOverlay';
 import { FIRED_BY_ICON, FIRED_BY_LABEL, runHue, runLabel, sortAssignedFirst } from '../../src/presentation/components/Pipelines/runIdentity';
 
@@ -91,6 +91,12 @@ describe('runIdentity — one vocabulary for every surface', () => {
     expect(runHue('sandy-mending-cabin')).toBe(runHue('sandy-mending-cabin'));
     const hues = new Set(['a', 'b', 'c', 'd', 'e', 'f'].map(runHue));
     expect(hues.size).toBeGreaterThan(1);
+  });
+
+  it('a live view of a case run carries its discovery origin; every other run carries none', () => {
+    const base = { runId: 'c1', status: 'running', startedAt: 'now', firedBy: 'discovery', steps: [], item: { key: 'INV-7' } } as unknown as RunRecord;
+    expect(liveRunOf({ ...base, discoveryRunId: 'd1' })).toMatchObject({ itemKey: 'INV-7', discoveryRunId: 'd1' });
+    expect(liveRunOf(base)).not.toHaveProperty('discoveryRunId');
   });
 
   it('FIRED_BY tables are exhaustive over the trigger kinds', () => {

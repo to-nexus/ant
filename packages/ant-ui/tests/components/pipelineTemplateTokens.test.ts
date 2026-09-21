@@ -13,6 +13,7 @@ import {
   STEP_OUTPUT_TOKENS,
   availableStaticTokens,
   hasTokens,
+  itemTemplateVarsFor,
   itemTokens,
   segmentTemplate,
   upstreamTokens,
@@ -64,6 +65,32 @@ describe('availableStaticTokens gates on what the trigger actually provides', ()
     expect(itemTokens(def(FETCH), { pins: true }).map((s) => s.name)).toEqual(['trigger.item.key']);
     expect(itemTokens(def({ schedule: { cron: '0 9 * * 1' } } as PipelineDef['on']))).toEqual([]);
     expect(itemTokens(def(undefined))).toEqual([]);
+  });
+
+  it('itemTokens for a discovers def: the vocabulary reaches the per-case steps only — the discovering step, its prefix and the def-wide question get none', () => {
+    const fan = {
+      version: 2,
+      name: 'p',
+      on: { schedule: { cron: '0 9 * * 1' } },
+      steps: [
+        { id: 'prepare', customJobRef: 'x/a' },
+        { id: 'scan', customJobRef: 'x/a', discovers: { fields: ['amount'] } },
+        { id: 'handle', customJobRef: 'x/a' },
+        { id: 'gate', type: 'approval', prompt: '?' },
+        { id: 'record', customJobRef: 'x/a' },
+      ],
+    } as unknown as PipelineDef;
+    const vars = ['trigger.item.key', 'trigger.item.amount'];
+    expect(itemTokens(fan, { stepId: 'handle' }).map((s) => s.name)).toEqual(vars);
+    expect(itemTokens(fan, { stepId: 'record' }).map((s) => s.name)).toEqual(vars);
+    expect(itemTokens(fan, { stepId: 'handle', pins: true }).map((s) => s.name)).toEqual(['trigger.item.key']);
+    for (const id of ['prepare', 'scan']) expect(itemTokens(fan, { stepId: id })).toEqual([]);
+    expect(itemTokens(fan)).toEqual([]);
+    // The same gate feeds the preview's segmenter — one derivation for both surfaces.
+    expect(itemTemplateVarsFor(fan, 'handle')).toEqual(vars);
+    expect(itemTemplateVarsFor(fan, 'scan')).toEqual([]);
+    // A fetch vocabulary is def-wide and indifferent to the step asked about.
+    expect(itemTemplateVarsFor(def(FETCH), 'anything')).toEqual(['trigger.item.key', 'trigger.item.summary']);
   });
 
   it('upstreamTokens: run-level fields for a run-node edge, the step-bound ones only when a step is named, nothing without the trigger', () => {

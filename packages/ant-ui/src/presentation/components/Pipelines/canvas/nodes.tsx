@@ -9,7 +9,7 @@
 
 import { memo, useState, type ReactNode } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { Clock, Bot, ShieldCheck, Plus, Zap, Ban, Link2, Inbox, type LucideIcon } from 'lucide-react';
+import { Clock, Bot, ShieldCheck, Plus, Zap, Ban, Link2, Inbox, Split, type LucideIcon } from 'lucide-react';
 import { AgentIcon } from '@/presentation/components/AgentIcon';
 import { useTranslation } from 'react-i18next';
 import type { GateDecision, PipelineStepStatus } from '@ant/shared';
@@ -62,6 +62,8 @@ export interface PipelineNodeData {
   triggerMode?: TriggerMode;
   /** Job steps: whose agent runs it — the card draws that agent's mark. */
   agentId?: string;
+  /** Job steps: this step `discovers` cases — every step after it runs once per case (the split marker). */
+  discovers?: boolean;
   /** The "+" affordance: insert between / branch off. Absent = hidden. */
   onAdd?: (afterNodeId: string, kind: 'job' | 'gate', mode: 'insert' | 'branch') => void;
   /** First step that already depends on this node — names what an insert lands BEFORE, and gates the branch section. */
@@ -298,6 +300,40 @@ function AdvisoryDot({ data, kind }: { data: PipelineNodeData; kind: NodeKind })
   );
 }
 
+/**
+ * Split badge on the icon orb's corner — this step discovers cases, so the
+ * steps after it run once per case. Pinned to the orb, not the card: it never
+ * meets the wrapping name line and never adds a row (nodeMetrics).
+ */
+function DiscoveryMarker({ children }: { children: ReactNode }) {
+  const { t } = useTranslation('pipelines');
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      {children}
+      <span
+        data-discovers
+        title={t('canvas.discoversHint', 'Discovers cases — the steps after this one run once per case')}
+        style={{
+          position: 'absolute',
+          right: -10,
+          bottom: -10,
+          width: 15,
+          height: 15,
+          borderRadius: 8,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--violet-500)',
+          color: 'white',
+          border: '2px solid var(--bg-surface)',
+        }}
+      >
+        <Split size={8} />
+      </span>
+    </span>
+  );
+}
+
 /** Always rendered at a fixed height (nodeMetrics) — a status appearing never moves the card's rows. */
 function StatusChip({ status }: { status?: PipelineStepStatus }) {
   const { t } = useTranslation('pipelines');
@@ -477,11 +513,12 @@ export const TriggerNode = memo(function TriggerNode({ data }: NodeProps<Pipelin
 });
 
 export const StepNode = memo(function StepNode({ data }: NodeProps<PipelineNodeData>) {
+  const icon = data.invalid ? <Ban size={14} /> : <AgentIcon agentId={data.agentId} size={14} />;
   return (
     <CardShell kind="step" data={data}>
       <NodeHeader
         kind="step"
-        icon={data.invalid ? <Ban size={14} /> : <AgentIcon agentId={data.agentId} size={14} />}
+        icon={data.discovers ? <DiscoveryMarker>{icon}</DiscoveryMarker> : icon}
         primary={data.primary}
         caption={data.caption}
         captionTitle={data.captionTitle}

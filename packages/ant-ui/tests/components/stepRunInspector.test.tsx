@@ -132,6 +132,20 @@ describe('StepRunInspector — the run first, then the saved definition, nothing
     expect(runState(render({ liveRuns: [live('r1', ['calc'])], runDetails: { r1: detail('r1', 'pending') } }))).toBe('notReached');
   });
 
+  it('a discovering step: the record carries the discovered-cases badge and the definition lists key + declared fields; other steps carry neither', () => {
+    const fanDef = { ...DEF, steps: [{ ...DEF.steps[0], discovers: { fields: ['amount'] } }, ...DEF.steps.slice(1)] } as PipelineDef;
+    const withCases = detail('r1', 'running');
+    (withCases.steps[0] as any).cases = [{ key: 'INV-1' }, { key: 'INV-2', fields: { amount: '3' } }];
+    const tree = render({ def: fanDef, nodeId: 'calc', liveRuns: [live('r1', ['calc'])], runDetails: { r1: withCases } });
+    expect(JSON.stringify(tree.toJSON())).toContain('runs.casesDiscovered');
+    const fields = byProp(tree, 'data-discovery-fields');
+    expect(fields.length).toBe(1);
+    expect(fields[0].findAll((n) => n.type === 'button').map((n) => [n.props.children].flat().filter((c) => typeof c === 'string').join(''))).toEqual(['key', 'amount']);
+    const plain = render({ def: fanDef, nodeId: 'pay', runDetails: { r1: withCases } });
+    expect(JSON.stringify(plain.toJSON())).not.toContain('runs.casesDiscovered');
+    expect(byProp(plain, 'data-discovery-fields')).toEqual([]);
+  });
+
   it('the trigger node lists every live run as a chip and carries the live count, with no step record', () => {
     const tree = render({ nodeId: 'trigger', liveRuns: [live('r1', ['calc']), live('r2', ['pay'])] });
     expect(byProp(tree, 'data-run-chip').map((c) => c.props['data-run-chip'])).toEqual(['r1', 'r2']);

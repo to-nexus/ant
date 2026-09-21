@@ -169,7 +169,7 @@ function JobStepDefinition({ def, step, index, customAgents, t }: { def: Pipelin
       </Field>
       <Field label={t('step.directive', 'Directive')}>
         {directive ? <div style={block}>{directive}</div> : <span style={muted}>{t('step.directiveDefault', 'Default directive (none authored)')}</span>}
-        {directive && <TemplatePreview text={directive} def={def} agents={customAgents} />}
+        {directive && <TemplatePreview text={directive} def={def} agents={customAgents} stepId={step.id} />}
       </Field>
       <Field label={t('step.context', 'Context pins')}>
         {pins.length === 0 ? (
@@ -197,6 +197,18 @@ function JobStepDefinition({ def, step, index, customAgents, t }: { def: Pipelin
       {step.onMissingVerdict && (
         <Field label={t('step.onMissingVerdict', 'If the run seals no verdict')}>
           <span style={text}>{t('step.onMissingVerdictAssume', 'Assume "{{o}}"', { o: step.onMissingVerdict })}</span>
+        </Field>
+      )}
+      {step.discovers && (
+        <Field label={t('step.discovery.toggle', 'This step discovers cases')} hint={step.discovers.onMissing === 'complete' ? t('step.discovery.onMissingComplete', 'Treat as nothing to do — the run completes') : t('step.discovery.onMissingFail', 'Fail the step (default — retried like a missing verdict)')}>
+          <div data-discovery-fields style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <TokenChip disabled>key</TokenChip>
+            {(step.discovers.fields ?? []).map((f) => (
+              <TokenChip key={f} disabled>
+                {f}
+              </TokenChip>
+            ))}
+          </div>
         </Field>
       )}
     </>

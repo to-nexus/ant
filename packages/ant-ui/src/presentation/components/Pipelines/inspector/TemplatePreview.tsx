@@ -8,16 +8,17 @@
 
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { fetchItemTemplateVars, upstreamTemplateVars, type PipelineDef } from '@ant/shared';
+import { upstreamTemplateVars, type PipelineDef } from '@ant/shared';
 import { FieldHint } from '../../ConfigEditor/aurora';
 import { HintBadge } from '../../common/HintBadge';
 import { resolveStepIdentity, type IdentityAgentSummary } from '../stepIdentity';
-import { hasTokens, segmentTemplate } from '../templateTokens';
+import { hasTokens, itemTemplateVarsFor, segmentTemplate } from '../templateTokens';
 import { TokenPill } from './chips';
 
-export function TemplatePreview({ text, def, agents }: { text: string; def: PipelineDef; agents: IdentityAgentSummary[] | undefined }) {
+/** `stepId` is the step whose text this is — the case vocabulary is per step once a `discovers` step is in play. */
+export function TemplatePreview({ text, def, agents, stepId }: { text: string; def: PipelineDef; agents: IdentityAgentSummary[] | undefined; stepId?: string }) {
   const { t } = useTranslation('pipelines');
-  const itemVars = useMemo(() => fetchItemTemplateVars(def.on?.fetch), [def.on?.fetch]);
+  const itemVars = useMemo(() => itemTemplateVarsFor(def, stepId), [def, stepId]);
   const upstreamVars = useMemo(() => upstreamTemplateVars(def.on?.upstream), [def.on?.upstream]);
   const segments = useMemo(() => segmentTemplate(text, itemVars, upstreamVars), [text, itemVars, upstreamVars]);
   const stepIds = useMemo(() => new Set(def.steps.map((st) => st.id)), [def.steps]);

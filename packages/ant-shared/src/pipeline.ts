@@ -1168,6 +1168,8 @@ export interface PipelineLiveRun {
   startedAt: string;
   firedBy: PipelineFiredBy;
   itemKey?: string;
+  /** The discovery run this case run was split from (`firedBy: 'discovery'` ⇔ present) — the live row's origin link. */
+  discoveryRunId?: string;
   /** Steps in a live state — where this run's chips sit on the one canvas. */
   currentStepIds: string[];
 }
@@ -1176,7 +1178,7 @@ export type PipelineLiveState = 'waiting' | 'running' | 'awaiting_human';
 
 /** The ONE derivation of a live-run view from a run record; `null` for a terminal run. */
 export function liveRunOf(
-  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps' | 'item'>,
+  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps' | 'item' | 'discoveryRunId'>,
 ): PipelineLiveRun | null {
   if (run.status !== 'running' && run.status !== 'awaiting_human') return null;
   return {
@@ -1185,6 +1187,7 @@ export function liveRunOf(
     startedAt: run.startedAt,
     firedBy: run.firedBy,
     ...(run.item && { itemKey: run.item.key }),
+    ...(run.discoveryRunId && { discoveryRunId: run.discoveryRunId }),
     currentStepIds: run.steps.filter((s) => PIPELINE_LIVE_STEP_STATUSES.has(s.status)).map((s) => s.stepId),
   };
 }
@@ -1196,7 +1199,7 @@ export function liveRunOf(
  */
 export function foldLiveRun(
   liveRuns: readonly PipelineLiveRun[],
-  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps' | 'item'>,
+  run: Pick<RunRecord, 'runId' | 'status' | 'startedAt' | 'firedBy' | 'steps' | 'item' | 'discoveryRunId'>,
 ): PipelineLiveRun[] {
   const rest = liveRuns.filter((r) => r.runId !== run.runId);
   const live = liveRunOf(run);

@@ -44,7 +44,7 @@ export function DirectiveField({
   };
 
   const statics = availableStaticTokens(def);
-  const items = itemTokens(def);
+  const items = itemTokens(def, { stepId: step.id });
   const upstreams = upstreamTokens(def);
   const upstreamJobs = useMemo(() => upstreamStepIds(def, step.id, { jobsOnly: true }), [def, step.id]);
 
@@ -82,10 +82,10 @@ export function DirectiveField({
         )}
         {items.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)' }}>{t('step.itemGroup', 'From the fetched item')}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)' }}>{t('step.itemGroup', 'From the case')}</span>
             <HintBadge
               isCompact
-              label={t('step.itemGroup', 'From the fetched item')}
+              label={t('step.itemGroup', 'From the case')}
               tooltip={t('step.itemGroupHint', 'The case this run was started for. Fields are text the source controls — write the directive so the step treats them as data, never as instructions.')}
             />
             {items.map((spec) => (
@@ -136,7 +136,7 @@ export function DirectiveField({
           );
         })}
       </div>
-      <TemplatePreview text={directive} def={def} agents={customAgents} />
+      <TemplatePreview text={directive} def={def} agents={customAgents} stepId={step.id} />
       <AdvisoryHints advisories={advisories} field="directive" />
     </div>
   );

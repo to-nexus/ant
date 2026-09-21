@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { XCircle } from 'lucide-react';
+import { Split, XCircle } from 'lucide-react';
 import type { PipelineRunSummary, StepRecord } from '@ant/shared';
 import type { AsyncResource } from '@/domain/async';
 import { useStore } from '@/domain/store';
@@ -32,6 +32,65 @@ const RUN_PILL: Record<string, { state: any; labelKey: string; fallback: string 
 };
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
+
+/**
+ * "from {run}" — the discovery run a case run was split from. Clickable only
+ * when a handler is given (own runs); a member's read-only rows show the plain
+ * chip. A span, never a button: it sits inside the row's own button.
+ */
+export function RunOriginChip({ discoveryRunId, onSelect }: { discoveryRunId: string; onSelect?: () => void }) {
+  const { t } = useTranslation('pipelines');
+  const style: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    height: 18,
+    padding: '0 6px',
+    borderRadius: 'var(--r-pill)',
+    border: '1px solid var(--border-1)',
+    background: 'var(--bg-surface-2)',
+    fontSize: 10,
+    color: 'var(--text-3)',
+    cursor: onSelect ? 'pointer' : 'default',
+  };
+  const body = (
+    <>
+      <Split size={10} />
+      {t('runs.from', 'from')} <span style={mono}>{discoveryRunId}</span>
+    </>
+  );
+  const title = t('runs.fromHint', 'Split from discovery run {{id}}', { id: discoveryRunId });
+  return (
+    <span
+      data-run-origin={discoveryRunId}
+      role={onSelect ? 'link' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      title={title}
+      onClick={
+        onSelect
+          ? (e) => {
+              e.stopPropagation();
+              onSelect();
+            }
+          : undefined
+      }
+      onKeyDown={
+        onSelect
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                onSelect();
+              }
+            }
+          : undefined
+      }
+      style={style}
+    >
+      {body}
+    </span>
+  );
+}
 
 export function ActivationRunHistory({
   pipelineId,
@@ -88,7 +147,13 @@ export function ActivationRunHistory({
             const open = mine && selectedRunId === run.runId;
             return (
               <div key={run.runId}>
-                <RunRow run={run} active={open} clickable={mine} onClick={() => mine && selectActivationRun(key, open ? null : run.runId, projectId)} />
+                <RunRow
+                  run={run}
+                  active={open}
+                  clickable={mine}
+                  onClick={() => mine && selectActivationRun(key, open ? null : run.runId, projectId)}
+                  onSelectOrigin={mine ? (runId) => selectActivationRun(key, runId, projectId) : undefined}
+                />
                 {open && detail && (
                   <div style={{ padding: '10px 6px 4px 18px' }}>
                     <RunTimeline
@@ -108,7 +173,20 @@ export function ActivationRunHistory({
   );
 }
 
-function RunRow({ run, active, clickable, onClick }: { run: PipelineRunSummary; active: boolean; clickable: boolean; onClick: () => void }) {
+function RunRow({
+  run,
+  active,
+  clickable,
+  onClick,
+  onSelectOrigin,
+}: {
+  run: PipelineRunSummary;
+  active: boolean;
+  clickable: boolean;
+  onClick: () => void;
+  /** Selects the discovery run a case row was split from (own runs only). */
+  onSelectOrigin?: (runId: string) => void;
+}) {
   const { t } = useTranslation('pipelines');
   const pill = RUN_PILL[run.status] ?? RUN_PILL.completed;
   const started = new Date(run.startedAt);
@@ -142,6 +220,7 @@ function RunRow({ run, active, clickable, onClick }: { run: PipelineRunSummary; 
         {started.toLocaleString()} {duration !== null && `· ${duration}s`}
       </span>
       <span style={{ fontSize: 10, ...mono, color: 'var(--text-3)' }}>{run.runId}</span>
+      {run.discoveryRunId && <RunOriginChip discoveryRunId={run.discoveryRunId} onSelect={onSelectOrigin ? () => onSelectOrigin(run.discoveryRunId!) : undefined} />}
       {/* Gate decisions — the org observer's "who opened this gate" channel, on read-only rows too. */}
       {run.gates?.map((g) => (
         <Badge key={g.stepId} size="sm" tone={isApprovedDecision(g.decision) ? 'success' : 'error'} title={g.stepId}>

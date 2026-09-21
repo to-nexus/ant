@@ -47,6 +47,11 @@ export function StepRecordBody({ step, jobLink = true, onOpenArtifact, showStepI
             {t('runs.verdict', 'Verdict: {{v}}', { v: step.verdict })}
           </Badge>
         )}
+        {step.cases && (
+          <Badge size="sm" tone="info" title={step.cases.map((c) => c.key).join('\n')}>
+            {t('runs.casesDiscovered', '{{n}} case(s) discovered', { n: step.cases.length })}
+          </Badge>
+        )}
         {(step.retriesUsed ?? 0) > 0 && (
           <Badge size="sm" tone="warning" title={(step.attempts ?? []).map((a) => a.error).join('\n')}>
             {t('runs.retries', '{{n}} retr(y/ies)', { n: step.retriesUsed })}

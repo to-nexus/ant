@@ -10,7 +10,7 @@
 import { Clock, GitBranch, Inbox, Play, Split, type LucideIcon } from 'lucide-react';
 import type { PipelineFiredBy } from '@ant/shared';
 
-/** The case label when the trigger carries one (fetch), else the run id. */
+/** The case label when the run carries one (fetch / discovery), else the run id. */
 export function runLabel(run: { runId: string; itemKey?: string }): string {
   return run.itemKey ?? run.runId;
 }
