@@ -372,6 +372,31 @@ Fire semantics (`scheduling/pipelineRun/fire.ts::handleFire`, addressed by
 - `runNow` rides the same fire path with `firedBy: 'manual'` — the test
   button and the cron path cannot diverge.
 
+### Discovery — one run per case, two executors
+
+**Discovery** is "decide which cases need handling now, and fire one run per
+case". The per-case run is ONE thing whoever found the case — the same claim
+ledger (`items/{pipelineId}.jsonl` + `ant:pipe:item:*`), the same fire path,
+`RunRecord.item`, `{{trigger.item.*}}`, run label, inbox attribution — found
+by one of two executors:
+
+| | `on.fetch` — the DETERMINISTIC executor | `discovers` — the DELEGATED executor |
+|---|---|---|
+| Who finds the cases | the control-plane poller (no LLM, no credits) | the step's own agent turn (MCP, `apis`, files, judgment — whatever its definition and directive say) |
+| Where | before the run (a trigger) | any job step of the run |
+| Case list | a declared REST `request` + item-paths | the turn's sealed `<cases>` tag |
+| Cadence floor | 1 minute (`every`) | the pipeline's trigger (cron ≥ 5 min, run-now, upstream) |
+| Backpressure | the SOURCE is the queue — an item the activation has no room for stays unclaimed and is seen again next poll | ANT is the queue — every case is claimed at once, the ones without room wait as queued ledger lines and a drain fires them as slots free |
+
+The choice rule, one line: *if the source can be asked "what is open now" and
+its answer trusted as-is, `fetch`; if finding the cases takes judgment, a
+system with no REST queue (an MCP server, a database), or the output of an
+earlier step, `discovers`.* The two never coexist on one definition (a fetch
+pipeline already fires per item). The backpressure difference is the ONE
+invariant that separates them: **a re-askable source gets no queue; a list
+only Ant holds does** — dropping a discovered case for lack of room would
+lose work silently, because nothing re-discovers it.
+
 **`on.fetch` — the pull trigger (Phase C).** A DETERMINISTIC poller in the
 control plane (no LLM, no credits) calls a REST connection — a declared
 `apis` entry of one of the activator's jobs (the BOUND form) or the trigger's
@@ -479,6 +504,90 @@ discriminator every reader uses.
   is external (shared), and the request passes the connection's `allow`
   rules with the executor's own matcher (server). The inline form binds
   against nothing in the catalog.
+
+**`discovers` — the delegated executor (Phase E).** A job step declares
+`discovers: { fields?, onMissing? }` and its turn becomes a DISCOVERY: the
+steps downstream of it (its needs closure — `perCaseStepIds`, shared) run
+once per case the turn seals, each as an independent run. Nothing about HOW
+the cases are found is declared — the mechanism is the agent's prose and the
+step's directive (the universal doctrine: API knowledge is never a
+declaration); the only orchestration-visible artifact is the case list. The
+`fields` list is a VOCABULARY (the `outcomes` frontmatter precedent): what the
+per-case directives may reference and what the prompt band tells the model to
+fill; `key` is always carried, never declared.
+
+- **The seal**: the turn ends with one `<cases>[{"key","fields"?}, …]</cases>`
+  (registered canonical tag — `OutputTagRegistry`, doc 36; parse SSOT
+  `core/pipelines/cases.ts::parseCaseNominations`, the LAST tag, the fetch
+  item bounds: ≤200, key pattern, field cut 2k, first-wins). `respond` seals
+  the parsed list (`cases`) or the reason a present tag was unreadable
+  (`casesError`); `captureStepOutput` applies the step's declared fields
+  (`filterCaseFields`) and the contract: no tag → `missing-cases` (retryable,
+  like `missing-verdict`) unless `onMissing: complete` (= an empty list); an
+  explicit `<cases>[]</cases>` is "nothing to do this run". The model is told
+  all of this by the **Case Discovery** band (`nodes/agent/base.md`), gated
+  exactly like Reviewer Nomination (unattended ∧ not a plan turn) on
+  `UniversalTurnMeta.caseFields` — set by `dispatchJobStep` from
+  `step.discovers.fields`, structurally unreachable from an HTTP ingress.
+- **Two run kinds, ZERO executor change.** `planAdvance` advances `pending`
+  steps only and `deriveRunStatus` counts `skipped` as neither success nor
+  failure, so the split is a seeding (`ChainExecutor.ts`): a DISCOVERY run
+  (`buildDiscoveryRunSteps`) pre-skips the per-case steps and seals
+  `completed` once the discovering prefix does; a CASE run
+  (`buildCaseRunSteps`) copies the discovery run's sealed prefix (status,
+  `output`, `verdict` — what `{{steps.<id>.*}}` and edges read; job/turn/gate
+  identity and the case list stripped; a prefix step not yet sealed when the
+  case was queued arrives `skipped`) and runs only the per-case steps.
+  `RunRecord.discoveryRunId` / `discoveryStepId` name the split;
+  `firedBy: 'discovery'`; `run.item` is the case exactly as a fetch item is.
+- **Queue (at the seal, `pipelineRun/discovery.ts::queueDiscoveredCases`,
+  called from `applyOutcome` right after the upstream-edge publish, discovery
+  runs only)**: `ensureItemLedger` fail-CLOSED → every case `tryAcquireLock`
+  NX on `PIPE.ITEM` with a QUEUED value (`{claimedAt}`, no runId) + a queued
+  ledger line (`runId` absent, `queuedFrom` = the discovery run, `item` = the
+  case body) → `cases_claimed` audit line (`discovered / queued / skipped`) →
+  `case-drain` kicked. A key the ledger already holds (queued, running, done)
+  is skipped silently — the idempotency a retried discovering step, or a
+  source that keeps listing a handled case, relies on.
+- **Drain (`case-drain` control job, `handleCaseDrain`, never throws)**:
+  `loadFireAuthority('drain')` → `ant:lock:pipe-drain:*` holder-checked →
+  `ensureItemLedger` → fold the ledger newest-line-per-key
+  (`foldItemClaims`): queued lines in discovery order (FIFO) plus the heal —
+  a STARTED line whose run left no trace past the grace (`isDeadClaim`; the
+  poller's dead-claim heal) is RE-QUEUED (Redis value back to queued, a fresh
+  queued line) because here Ant holds the list — → `room = concurrency −
+  live` → per queued case `addNow({ kind: 'fire', firedBy: 'discovery',
+  item, discoveryRunId, discoveryStepId })` → cases still waiting re-arm the
+  drain (`case-drain-{org}-{user}-{projectId}`, 60s, the `#seq` arm rule).
+  Kicked by the queue leg and by `finalizeRun` of ANY run of a discovering
+  pipeline (a freed slot is room), re-kicked by the reconciler when queued
+  lines exist (the StaleJobRecovery net — a lost arm heals within 90s).
+  `concurrency` stays the ONE admission cap; there is no per-discovery knob
+  (`max` is refused as a key, the `batch` precedent).
+- **Fire (`handleFire`)**: refuses a discovery fire without `item` +
+  `discoveryRunId`; the FIRED NX identity is `discovery:{discoveryRunId}:{key}`
+  (epoch-free — two drains racing on one case fire it once); overlap is
+  `skip` (the case stays queued); after BOTH slots the queued claim is
+  PROMOTED (a started claim already holding a runId → skipped, slots and NX
+  given back; the Redis value is SET to `{runId, claimedAt}` and the ONE
+  `appendItemClaim` writes the started line with `queuedFrom` + `item`);
+  the case run is seeded from the parent (`getRun`, else `readRunFromDisk`);
+  a parent whose record is gone commits and finalizes a `failed` run
+  (`discovery-run-missing`) — a history row, never a silent drop. The
+  discovery run's `prevSuccessFireEpoch` stays a cron run's; a case run has
+  none (validator refuses `run.prevSuccess.*` on per-case steps).
+- **Validator (`validatePipelineDef`)**: one `discovers` per definition (two
+  would multiply cases into a product no cap paces — chain `on.upstream`
+  instead); job steps only; never beside `on.fetch`; at least one step
+  downstream; `fields` under the fetch field-name pattern, ≤20, `key`
+  reserved; `onMissing: fail | complete`; `{{trigger.item.*}}` legal ONLY on
+  per-case steps (the discovery run renders it blank everywhere else) with
+  the declared vocabulary (`discoveryItemTemplateVars`, the ONE derivation the
+  validator, the band and the FE token picker share); pins take the key alone;
+  a per-case step may `needs` only the discovering step or per-case steps (a
+  case run cannot wait on the discovery run's other branches). Advisories:
+  `discovery-no-case-channel` (the first per-case step reads no case),
+  `discovery-under-serial-concurrency` (legal — cases drain one at a time).
 
 Reconciliation (`PipelineReconciler`) is the StaleJobRecovery template
 verbatim: boot-time run + 90s `setInterval().unref()` in
@@ -1519,6 +1628,27 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
   operational surface.** It is user-editable and one save away from `* *` —
   and a pipeline-authoring agent is user-authored, so its `allow` is whatever
   its owner saved. The bound is the guard, never the list.
+- **Dropping a discovered case for lack of room.** `on.fetch` may leave an
+  item unclaimed because the SOURCE is the queue and the next poll re-asks
+  it; a `discovers` step's cases have no source to re-ask — Ant is the list's
+  only holder, so every case is claimed at the seal and waits as a queued
+  ledger line for the drain. The rule is the ownership, not the trigger:
+  a re-askable source gets no queue; a list only Ant holds does.
+- **Declaring HOW a discovering step finds its cases** (`items`, `key`, a
+  `request`, a connection under `discovers`). The mechanism is the agent's
+  prose and the step's directive; the declaration is the field vocabulary
+  and the missing-tag policy, nothing else. The moment a model is in the
+  loop, a declared mechanism is the wrong layer (the universal runtime's
+  "API knowledge is prose" rule) — `on.fetch.request` is a declaration
+  precisely because no model is.
+- **A second case vocabulary.** A fetch item and a discovered case are the
+  same per-case run; both render through `{{trigger.item.*}}` in
+  `renderStaticVars` (one site) and freeze onto `RunRecord.item`. Never a
+  `{{case.*}}`, never a second claim ledger, never a per-discovery pacing
+  knob beside `concurrency`.
+- **Teaching the executor about discovery.** `planAdvance` /
+  `deriveRunStatus` stay blind: a discovery run and a case run differ ONLY in
+  their seeded step set (`buildDiscoveryRunSteps` / `buildCaseRunSteps`).
 
 ### ✅ Correct
 
@@ -1542,6 +1672,11 @@ funnel, and answers the full `errors[]` on 400 like `POST /`.
 - New approval channels = a new outbound presenter + the SAME resolve funnel.
 - Extending caps = `PipelineCaps` + validator; enforcement stays at save
   (400/form-disable) and fire (skip + log).
+- A new way to FIND cases is a new executor over the SAME per-case run: it
+  lands its cases in the claim ledger (queued when Ant is the only holder),
+  fires them through `handleFire` with `item` set, and renders through the
+  one `{{trigger.item.*}}` site. `discovers` proved the shape a second time
+  after `on.fetch`; a webhook would be the third.
 
 ```bash
 rg -n "upsertJobScheduler|'ant-pipelines'" packages/ant-cli/src --glob '!**/infrastructure/scheduling/*'  # Expected: 0
@@ -1861,6 +1996,21 @@ The obligations live at authoring time, in the pipeline builder's contract:
   the candidate reassign route (`PUT …/runs/:runId/gates/:stepId/assignee`),
   `gate_reassigned`, and the FE: assigned-first inbox with badge + reassign
   select, panel/card/timeline/chip attribution. Authority is unchanged.
+- **Phase E — step discovery (`discovers`; shipped 2026-09-21)**: the
+  delegated executor beside `on.fetch` (§2 Discovery) — shared contract
+  (`StepDiscoveryDef` on `JobStepDef`, `firedBy: 'discovery'`,
+  `RunRecord.discoveryRunId / discoveryStepId`, `StepRecord.cases`,
+  `discoveryItemTemplateVars` / `discoveryStepIndex` / `perCaseStepIds`,
+  `UniversalTurnMeta.caseFields`, the queued claim shape on
+  `PipelineItemClaim`), the `<cases>` canonical tag + Case Discovery band,
+  the two run seedings, the queue leg at the seal, the `case-drain` control
+  job with the dead-claim re-queue heal, the reconciler re-drain, the
+  validator/advisory rows, and the FE `discovery` run kind. Track 3 F
+  ("dynamic per-item fan-out") lands here in a different shape than sketched:
+  sibling RUNS instead of dynamically expanded steps, so the "run.steps is a
+  projection of defSnapshot.steps" invariant holds and the executor is
+  untouched. FE authoring (inspector section, canvas split marker, token
+  picker) follows.
 - **Phase 3**: parallel branches/fan-in inside a run, free-DAG canvas editing,
   `cancelPrevious`, caps admin surface.
 - **Backlog (user-locked)**: Slack/email channels, webhook triggers.

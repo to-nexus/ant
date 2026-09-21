@@ -71,6 +71,8 @@ export interface UniversalRunnerParams {
   pipelineRunId?: string;
   /** One-turn approval grant (approve re-dispatch), by tool name. */
   approvalGrantTool?: string;
+  /** Discovering pipeline step: the `<cases>` field vocabulary (renders the Case Discovery band). */
+  caseFields?: string[];
   /**
    * The dangling tool_use this turn must close (clarify answer / approval
    * re-dispatch). The restore waits for the seal holding it to be visible
@@ -420,6 +422,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     restoredHookLedger: adoptedHookLedger,
     unattended: unattendedLane,
     approvalGrantTool: params.approvalGrantTool,
+    caseFields: params.caseFields,
     sessionChannel,
     sessionStem,
     carriedChannels,

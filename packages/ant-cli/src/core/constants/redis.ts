@@ -464,6 +464,9 @@ export const REDIS_KEYS = {
     /** One poll in flight per activation (replicas + control-queue retries). - ant:lock:pipe-fetch:{orgId}:{userId}:{projectId} */
     FETCH_LOCK: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.LOCK}:pipe-fetch:${org}:${user}:${projectId}`,
+    /** One case drain in flight per activation (replicas + control-queue retries + seal/finalize kicks). - ant:lock:pipe-drain:{orgId}:{userId}:{projectId} */
+    CASE_DRAIN_LOCK: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.LOCK}:pipe-drain:${org}:${user}:${projectId}`,
     /** Last poll telemetry (JSON PipelineFetchStatus) — a view, never a judgment input. - ant:pipe:fetch:{orgId}:{userId}:{projectId} */
     FETCH_STATUS: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.PIPE}:fetch:${org}:${user}:${projectId}`,

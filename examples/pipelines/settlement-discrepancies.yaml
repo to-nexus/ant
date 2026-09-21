@@ -1,0 +1,47 @@
+# Step discovery — one run per case the AGENT finds (doc 46 §2 Discovery).
+#
+# `on.fetch` is the deterministic executor: Ant's poller asks a REST queue
+# "what is open" and fires per item. This is the DELEGATED executor: a step's
+# own turn finds the cases (here: from an earlier step's output; equally an
+# MCP server, a database, files, judgment) and seals them as <cases>. The runs
+# either executor produces are the same per-case run.
+#
+# Illustrative only — `finance/settlement` is not one of the shipped example
+# agents; the intents named here are the shape a settlement agent would declare.
+version: 2
+name: Settlement discrepancies
+on:
+  schedule:
+    cron: '0 9 * * *'
+    tz: Asia/Seoul
+concurrency: 3            # live case runs at once; the rest wait as runs finish
+steps:
+  - id: reconcile
+    customJobRef: finance/settlement
+    intent: reconcile
+    directive: Reconcile yesterday's settlement batch and write the summary.
+  - id: scan
+    customJobRef: finance/settlement
+    intent: find-discrepancies
+    discovers:
+      fields: [merchant, amount]      # the case vocabulary — never the mechanism
+      onMissing: fail                 # a turn sealing no <cases> did not conclude
+    directive: >-
+      From the reconciled batch ({{steps.reconcile.answer}}) list every merchant
+      whose payout disagrees with the ledger. One case per merchant, keyed by
+      the settlement line id.
+  - id: handle                        # per case from here on
+    customJobRef: finance/settlement
+    intent: resolve
+    directive: >-
+      Resolve discrepancy {{trigger.item.key}} for {{trigger.item.merchant}}
+      ({{trigger.item.amount}}). The batch summary: {{steps.reconcile.answer}}
+    context:
+      - cases/{{trigger.item.key}}/**
+  - id: confirm
+    type: approval
+    prompt: Apply the correction for this discrepancy?
+    remindAfter: 4h
+  - id: record
+    customJobRef: finance/settlement
+    intent: record

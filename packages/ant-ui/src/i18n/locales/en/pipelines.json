@@ -491,6 +491,7 @@
     "manual": "Manual",
     "event": "Chained",
     "fetch": "Fetched",
+    "discovery": "Case",
     "running": "Running",
     "awaiting": "Awaiting input",
     "completed": "Completed",

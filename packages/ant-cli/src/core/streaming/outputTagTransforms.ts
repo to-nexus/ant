@@ -80,6 +80,30 @@ export function transformAssignee(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// <cases>
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `<cases>[…]</cases>` — a fan-out step's discovered cases. Chat shows the
+ * COUNT (the list rides the seal and the run record); a body that is not a
+ * JSON array renders nothing — the coordinator fails the step for it.
+ */
+export function transformCases(
+  match: RegExpMatchArray,
+  ctx: TransformContext,
+): TransformResult {
+  let count: number | undefined;
+  try {
+    const parsed = JSON.parse((match[1] ?? '').trim());
+    if (Array.isArray(parsed)) count = parsed.length;
+  } catch {
+    /* unparseable — consumed silently, the seal reader reports it */
+  }
+  if (count === undefined) return { consumed: true };
+  return { text: ctx.language === 'ko' ? `\n🧩 발견된 케이스: **${count}건**` : `\n🧩 Cases discovered: **${count}**`, consumed: true };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // <reply>
 // ────────────────────────────────────────────────────────────────────────────
 

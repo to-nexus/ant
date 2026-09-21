@@ -191,6 +191,9 @@ export async function dispatchJobStep(
         // Memory boundary: this run's steps share a conversation channel,
         // and no other run's.
         runId: run.runId,
+        // A discovering step's turn is told it fans out and which field
+        // vocabulary its <cases> may carry (the Case Discovery band).
+        ...(step.discovers && run.firedBy !== 'discovery' && { caseFields: step.discovers.fields ?? [] }),
       },
       firedBy: 'schedule',
       pipelineRunId: run.runId,
@@ -209,7 +212,9 @@ export async function dispatchJobStep(
         ? `🔗 선행 파이프라인 "${run.upstream?.pipelineId ?? '?'}"의 ${run.upstream?.step ? `스텝 "${run.upstream.step}"` : '실행'} ${run.upstream?.outcome === 'failed' ? '실패' : '완료'}로 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
         : run.firedBy === 'fetch'
           ? `📥 항목 "${run.item?.key ?? run.runId}"에 대해 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
-          : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
+          : run.firedBy === 'discovery'
+            ? `🧩 스텝 "${run.discoveryStepId ?? '?'}"이 발견한 케이스 "${run.item?.key ?? run.runId}"에 대해 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
+            : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
     ctx.deps.chatService
       .appendAssistantMessage(run.projectId, UNIVERSAL_FEATURE, startedText, {
         jobId,

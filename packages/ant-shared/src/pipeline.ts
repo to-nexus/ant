@@ -306,7 +306,30 @@ export interface JobStepDef {
    * name to assume. Meaningless without an outcome-declaring intent.
    */
   onMissingVerdict?: string;
+  /**
+   * This step's turn DISCOVERS cases: its sealed `<cases>` list fans the
+   * steps downstream of it out into one independent run per case (the same
+   * per-item run a fetch trigger fires — same claim ledger, same
+   * `{{trigger.item.*}}` channel). At most one step per definition declares
+   * it; HOW the cases are found is never declared — that is the agent's
+   * definition and this step's directive.
+   */
+  discovers?: StepDiscoveryDef;
 }
+
+/**
+ * Fan-out contract of a discovering step. `fields` is a VOCABULARY, not a
+ * mechanism — the names the per-case directives may reference (`outcomes`
+ * frontmatter precedent: the validator needs it, the model reads it from the
+ * prompt band and fills it). `key` is always carried and never declared.
+ */
+export interface StepDiscoveryDef {
+  fields?: string[];
+  /** The turn sealed no `<cases>` tag at all: `'fail'` (default — loud, retryable) or `'complete'` (nothing to do this run). */
+  onMissing?: StepDiscoveryMissingPolicy;
+}
+
+export type StepDiscoveryMissingPolicy = 'fail' | 'complete';
 
 export interface ApprovalStepDef {
   id: string;
@@ -699,6 +722,49 @@ export function fetchItemTemplateVars(fetch: PipelineFetchTrigger | undefined | 
   return [PIPELINE_ITEM_KEY_TEMPLATE_VAR, ...Object.keys(fetch.fields ?? {}).map((f) => `${PIPELINE_ITEM_TEMPLATE_PREFIX}${f}`)];
 }
 
+/**
+ * The `{{trigger.item.*}}` vocabulary a `discovers` step declares for the steps
+ * downstream of it — `fetchItemTemplateVars`'s sibling, the ONE derivation the
+ * validator, the prompt band and the editor's token picker share.
+ */
+export function discoveryItemTemplateVars(discovers: StepDiscoveryDef | undefined | null): string[] {
+  if (!discovers) return [];
+  return [PIPELINE_ITEM_KEY_TEMPLATE_VAR, ...(discovers.fields ?? []).map((f) => `${PIPELINE_ITEM_TEMPLATE_PREFIX}${f}`)];
+}
+
+/** Index of the ONE step declaring `discovers` (validator-bounded to at most one); undefined when none. */
+export function discoveryStepIndex(def: Pick<PipelineDef, 'steps'>): number | undefined {
+  const i = def.steps.findIndex((s) => !isApprovalStep(s) && s.discovers !== undefined);
+  return i >= 0 ? i : undefined;
+}
+
+/**
+ * The ids of the PER-CASE steps: everything whose needs chain passes through
+ * the fan-out step. A discovery run pre-skips them; a case run runs only
+ * them (its prefix arrives sealed from the parent). Empty when no step fans
+ * out. Needs are the effective ones (omitted = previous step in file order).
+ */
+export function perCaseStepIds(def: Pick<PipelineDef, 'steps'>): Set<string> {
+  const at = discoveryStepIndex(def);
+  const out = new Set<string>();
+  if (at === undefined) return out;
+  const discoversId = def.steps[at].id;
+  const needsOf = (i: number): string[] => def.steps[i].needs ?? (i > 0 ? [def.steps[i - 1].id] : []);
+  // Steps are validated acyclic; a fixpoint over file order converges.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    def.steps.forEach((s, i) => {
+      if (out.has(s.id) || s.id === discoversId) return;
+      if (needsOf(i).some((n) => n === discoversId || out.has(n))) {
+        out.add(s.id);
+        changed = true;
+      }
+    });
+  }
+  return out;
+}
+
 /** Template variable prefix of the upstream node an event run was fired by. */
 export const PIPELINE_UPSTREAM_TEMPLATE_PREFIX = 'trigger.upstream.';
 /** An upstream step's answer is cut here before it rides the fire — it is another run's text, not a record store. */
@@ -841,8 +907,12 @@ export type PipelineStepStatus =
   | 'skipped'
   | 'cancelled';
 
-/** `fetch` = one claimed item of a polled source (`RunRecord.item` carries which). */
-export type PipelineFiredBy = 'cron' | 'manual' | 'event' | 'fetch';
+/**
+ * `fetch` = one claimed item of a polled source; `discovery` = one case a
+ * discovering step's turn sealed (`RunRecord.item` carries which, either way —
+ * the item IS what this run was fired for, whoever found it).
+ */
+export type PipelineFiredBy = 'cron' | 'manual' | 'event' | 'fetch' | 'discovery';
 
 export type GateDecision = 'approved' | 'rejected' | 'expired_approve' | 'expired_reject';
 
@@ -950,6 +1020,12 @@ export interface StepRecord {
    * a candidate.
    */
   assignee?: string;
+  /**
+   * Sealed `<cases>` of a `discovers` step, normalized (declared fields only,
+   * bounded) — present ONLY on the discovery run's record; an explicit empty
+   * list means "nothing to do this run" and is distinct from no tag at all.
+   */
+  cases?: PipelineRunItem[];
   /** Retry rounds already consumed (`retry.max` bound). */
   retriesUsed?: number;
   /** Failed rounds that were retried — the terminal failure stays on `error`. */
@@ -982,10 +1058,18 @@ export interface RunRecord {
   prevSuccessFireEpoch?: number;
   /** Upstream chain position (0/absent = not event-fired). Bounded by MAX_CHAIN_DEPTH. */
   chainDepth?: number;
-  /** The claimed case of a fetch-fired run (`firedBy: 'fetch'` ⇔ present). */
+  /** The claimed case of a fetch- or discovery-fired run (`firedBy: 'fetch' | 'discovery'` ⇔ present). */
   item?: PipelineRunItem;
   /** The upstream node of an event-fired run (`firedBy: 'event'` ⇔ present). */
   upstream?: PipelineRunUpstream;
+  /**
+   * `firedBy: 'discovery'` ⇔ present: the discovery run whose sealed step
+   * produced this case. The prefix steps up to `discoveryStepId` are copied
+   * from it, sealed, so `{{steps.<prefix>.*}}` resolves here too.
+   */
+  discoveryRunId?: string;
+  /** The step that fanned out — the copy boundary and the canvas's split point (`firedBy: 'discovery'` ⇔ present). */
+  discoveryStepId?: string;
 }
 
 /** One approval-gate decision on a terminal run's summary line — the org observer's "who opened this gate" channel. */
@@ -1014,6 +1098,8 @@ export interface PipelineRunSummary {
   itemKey?: string;
   /** The upstream node that fired an event run — the history row's origin. */
   upstream?: Pick<PipelineRunUpstream, 'pipelineId' | 'step'>;
+  /** The discovery run a fanned-out case run was split from — the history row's origin. */
+  discoveryRunId?: string;
 }
 
 /**
@@ -1037,7 +1123,7 @@ export function summarizeRunGates(steps: readonly StepRecord[]): PipelineRunGate
  * changes shape between "live" and "sealed". Optional keys ride only when set.
  */
 export function runSummaryOf(
-  run: Pick<RunRecord, 'runId' | 'pipelineId' | 'projectId' | 'status' | 'firedBy' | 'fireEpoch' | 'startedAt' | 'endedAt' | 'error' | 'steps' | 'item' | 'upstream'>,
+  run: Pick<RunRecord, 'runId' | 'pipelineId' | 'projectId' | 'status' | 'firedBy' | 'fireEpoch' | 'startedAt' | 'endedAt' | 'error' | 'steps' | 'item' | 'upstream' | 'discoveryRunId'>,
 ): PipelineRunSummary {
   const gates = summarizeRunGates(run.steps);
   return {
@@ -1053,6 +1139,7 @@ export function runSummaryOf(
     ...(gates.length > 0 && { gates }),
     ...(run.item && { itemKey: run.item.key }),
     ...(run.upstream && { upstream: { pipelineId: run.upstream.pipelineId, ...(run.upstream.step && { step: run.upstream.step }) } }),
+    ...(run.discoveryRunId && { discoveryRunId: run.discoveryRunId }),
   };
 }
 
@@ -1129,6 +1216,7 @@ export interface PipelineRunEvent {
   event:
     | 'fired'
     | 'item_claimed'
+    | 'cases_claimed'
     | 'step_dispatched'
     | 'step_completed'
     | 'step_retry'
@@ -1286,7 +1374,19 @@ const FETCH_RESERVED_KEYS: Record<string, string> = {
   concurrency: '"concurrency" is a pipeline-level key (live runs per activation), not a fetch knob',
   batch: '"batch" was removed — a poll starts every unclaimed item the activation has room for under "concurrency"; delete the key',
 };
-const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout', 'onMissingVerdict'];
+const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on', 'retry', 'timeout', 'onMissingVerdict', 'discovers'];
+const DISCOVERS_KEYS = ['fields', 'onMissing'];
+/** Mechanism knobs an author may reach for on a fan-out — the discovery HOW is prose, never a declaration. */
+const DISCOVERS_RESERVED_KEYS: Record<string, string> = {
+  ...Object.fromEntries(
+    ['items', 'key', 'request', 'connection', 'api', 'every'].map((k) => [
+      k,
+      `"${k}" belongs to on.fetch — a discovers step's turn FINDS its cases (MCP, API, files, judgment) as its directive says and seals them as <cases>; only the field vocabulary is declared here`,
+    ]),
+  ),
+  concurrency: '"concurrency" is a pipeline-level key (live runs per activation) — the SAME cap admits fanned-out case runs',
+  max: '"max" is not a knob — every discovered case is claimed; "concurrency" paces how many run at once and the rest wait in the claim ledger',
+};
 const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', 'timeout', 'remindAfter'];
 /** Author-visible knobs that exist in the design but not in v1 — reject loudly, never ignore. */
 const RESERVED_STEP_KEYS: Record<string, string> = {
@@ -1301,6 +1401,7 @@ const JOB_ONLY_RESERVED: Record<string, string> = {
 const APPROVAL_ONLY_RESERVED: Record<string, string> = {
   ...RESERVED_STEP_KEYS,
   retry: '"retry" belongs to job steps (a gate is resolved by a person, not re-run)',
+  discovers: '"discovers" belongs to job steps — a gate decides, it discovers nothing',
 };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -1360,7 +1461,9 @@ interface StepOutputRef {
  * definition has no such trigger, so a reference names one that does not exist.
  */
 interface TriggerVars {
+  /** The case vocabulary in force for the step being judged — fetch: every step; discovers: the per-case steps only. */
   item: string[] | null;
+  itemFrom?: 'fetch' | 'discovery';
   upstream: string[] | null;
 }
 
@@ -1368,14 +1471,19 @@ interface TriggerVars {
 function staticVarError(name: string, vars: TriggerVars, allowFields: boolean): string | null {
   if ((PIPELINE_TEMPLATE_VARS as readonly string[]).includes(name)) {
     if (vars.item !== null && name.startsWith('run.prevSuccess.')) {
-      return `"{{${name}}}" is not defined on a fetch pipeline — runs are per item, there is no previous-run watermark`;
+      return vars.itemFrom === 'discovery'
+        ? `"{{${name}}}" is not defined on a per-case step — a fanned-out case run has no previous-run watermark`
+        : `"{{${name}}}" is not defined on a fetch pipeline — runs are per item, there is no previous-run watermark`;
     }
     return null;
   }
   if (name.startsWith(PIPELINE_ITEM_TEMPLATE_PREFIX)) {
-    if (vars.item === null) return `"{{${name}}}" needs an on.fetch trigger — there is no item without one`;
+    if (vars.item === null) {
+      return `"{{${name}}}" needs an on.fetch trigger, or a discovers step upstream of this one — there is no case without one`;
+    }
     if (!vars.item.includes(name)) {
-      return `unknown item field "{{${name}}}" (declared: ${vars.item.map((v) => `{{${v}}}`).join(', ')} — add it under on.fetch.fields)`;
+      const where = vars.itemFrom === 'discovery' ? "the discovers step's fields" : 'on.fetch.fields';
+      return `unknown item field "{{${name}}}" (declared: ${vars.item.map((v) => `{{${v}}}`).join(', ')} — add it under ${where})`;
     }
     if (!allowFields && name !== PIPELINE_ITEM_KEY_TEMPLATE_VAR) {
       return `"{{${name}}}" is not allowed in a context pin — item fields are source-controlled text; only {{${PIPELINE_ITEM_KEY_TEMPLATE_VAR}}} may name a path`;
@@ -1730,6 +1838,37 @@ export function validatePipelineDef(
     errors.push(`steps: at most ${caps.maxStepsPerPipeline} steps per pipeline (got: ${raw.steps.length})`);
   }
 
+  // Fan-out pre-pass: which steps are PER-CASE (downstream of the one discovers
+  // step) decides the case vocabulary in force for each step's templates —
+  // judged before the step loop so directives and pins see it. Lenient over
+  // raw shapes; the loop reports the shape errors themselves.
+  const preShaped = raw.steps.map((s, i) => {
+    const o = isPlainObject(s) ? s : {};
+    const id = typeof o.id === 'string' ? o.id : `#${i}`;
+    const needs = Array.isArray(o.needs) ? (o.needs as unknown[]).filter((n): n is string => typeof n === 'string') : undefined;
+    const discovers = o.type !== 'approval' && o.discovers !== undefined && o.discovers !== null ? (o.discovers as Record<string, unknown>) : undefined;
+    return { id, needs, discovers };
+  });
+  const discoverySteps = preShaped.filter((s) => s.discovers !== undefined);
+  const discoveryVars: string[] | null =
+    discoverySteps.length === 1
+      ? discoveryItemTemplateVars({
+          fields: Array.isArray(discoverySteps[0].discovers!.fields) ? (discoverySteps[0].discovers!.fields as unknown[]).filter((f): f is string => typeof f === 'string') : [],
+        })
+      : null;
+  const perCaseIds =
+    discoverySteps.length === 1
+      ? perCaseStepIds({ steps: preShaped.map((s) => ({ id: s.id, needs: s.needs, ...(s.discovers && { discovers: {} }) })) as PipelineStepDef[] })
+      : new Set<string>();
+  if (discoverySteps.length > 1) {
+    errors.push(
+      `discovers may be declared on ONE step only (got: ${discoverySteps.map((s) => `"${s.id}"`).join(', ')}) — two fan-outs would multiply cases into a product no concurrency cap can pace; chain a second pipeline with on.upstream instead`,
+    );
+  }
+  if (discoverySteps.length > 0 && isPlainObject(raw.on) && raw.on.fetch !== undefined) {
+    errors.push('discovers and on.fetch do not coexist — a fetch pipeline already fires one run per item; put the discovery in the fetched item\'s step or drop the trigger');
+  }
+
   const ids = new Set<string>();
   const shapedSteps: Array<{ id: string; needs?: string[]; isApproval: boolean }> = [];
   const stepOutputRefs: StepOutputRef[] = [];
@@ -1748,6 +1887,10 @@ export function validatePipelineDef(
       ids.add(id);
     }
     const stepId = typeof id === 'string' ? id : `#${index}`;
+    // The case vocabulary THIS step may reference: a fetch pipeline's on every
+    // step; a fan-out's on the per-case steps only (the discovery run renders
+    // `{{trigger.item.*}}` blank everywhere else, so it is refused there).
+    const stepVars: TriggerVars = discoveryVars !== null && perCaseIds.has(stepId) ? { ...vars, item: discoveryVars, itemFrom: 'discovery' } : vars;
 
     if (rawStep.needs !== undefined) {
       if (!Array.isArray(rawStep.needs) || rawStep.needs.some((n) => typeof n !== 'string')) {
@@ -1812,7 +1955,38 @@ export function validatePipelineDef(
           // time is the only place the author sees why (M-NEW-029).
           errors.push(`step "${stepId}": directive must be at most ${DIRECTIVE_MAX_CHARS} characters`);
         } else {
-          errors.push(...templateVarErrors(rawStep.directive, stepId, vars, stepOutputRefs));
+          errors.push(...templateVarErrors(rawStep.directive, stepId, stepVars, stepOutputRefs));
+        }
+      }
+      if (rawStep.discovers !== undefined) {
+        if (!isPlainObject(rawStep.discovers)) {
+          errors.push(`step "${stepId}": discovers must be a mapping { fields?, onMissing? } (an empty mapping fans out on the case key alone)`);
+        } else {
+          errors.push(...unknownKeyErrors(rawStep.discovers, DISCOVERS_KEYS, `step "${stepId}".discovers`, DISCOVERS_RESERVED_KEYS));
+          const fields = rawStep.discovers.fields;
+          if (fields !== undefined) {
+            if (!Array.isArray(fields) || fields.some((f) => typeof f !== 'string')) {
+              errors.push(`step "${stepId}": discovers.fields must be an array of field names`);
+            } else {
+              if (fields.length > PIPELINE_FETCH_MAX_FIELDS) {
+                errors.push(`step "${stepId}": discovers.fields declares at most ${PIPELINE_FETCH_MAX_FIELDS} fields (got: ${fields.length})`);
+              }
+              const seen = new Set<string>();
+              for (const f of fields as string[]) {
+                if (f === 'key') errors.push(`step "${stepId}": discovers.fields "key" is reserved — every case carries its key`);
+                else if (!PIPELINE_FETCH_FIELD_NAME_PATTERN.test(f)) errors.push(`step "${stepId}": discovers.fields "${f}" must be a lowerCamel identifier (e.g. "merchantId")`);
+                if (seen.has(f)) errors.push(`step "${stepId}": discovers.fields declares "${f}" twice`);
+                seen.add(f);
+              }
+            }
+          }
+          const missing = rawStep.discovers.onMissing;
+          if (missing !== undefined && missing !== 'fail' && missing !== 'complete') {
+            errors.push(`step "${stepId}": discovers.onMissing must be "fail" or "complete" (got: ${String(missing)})`);
+          }
+        }
+        if (!perCaseIds.size && discoverySteps.length === 1) {
+          errors.push(`step "${stepId}": discovers needs at least one step downstream of it — the steps that follow are what run once per case`);
         }
       }
       if (rawStep.intent !== undefined) {
@@ -1865,7 +2039,7 @@ export function validatePipelineDef(
           // structural glob check runs on a placeholder-substituted copy.
           for (const pin of rawStep.context as string[]) {
             const raw = pin.trim();
-            errors.push(...pinTemplateErrors(raw, stepId, vars));
+            errors.push(...pinTemplateErrors(raw, stepId, stepVars));
             const v = raw.replace(/\{\{\s*[^}]*?\s*\}\}/g, 'x');
             if (!v.includes('*')) continue;
             const globErr = validateArtifactGlob(v, `step "${stepId}": context`);
@@ -1891,6 +2065,24 @@ export function validatePipelineDef(
     for (const dep of step.needs ?? []) {
       if (!ids.has(dep)) errors.push(`step "${step.id}": needs references unknown step "${dep}"`);
     }
+  }
+  // Fan-out boundary: a per-case step waits only on the discovering step and
+  // on other per-case steps — a case run copies the discovery run's SEALED
+  // prefix and never waits for a branch still running there (it would arrive
+  // skipped and cascade the case's steps into skips).
+  if (discoverySteps.length === 1 && perCaseIds.size > 0) {
+    const discoveryId = discoverySteps[0].id;
+    shapedSteps.forEach((step, index) => {
+      if (!perCaseIds.has(step.id)) return;
+      const effective = step.needs ?? (index > 0 ? [shapedSteps[index - 1].id] : []);
+      for (const dep of effective) {
+        if (dep !== discoveryId && !perCaseIds.has(dep) && ids.has(dep)) {
+          errors.push(
+            `step "${step.id}" runs once per case but needs "${dep}", which is neither the discovering step "${discoveryId}" nor a per-case step — a case run cannot wait on the discovery run's other branches (move "${dep}" before "${discoveryId}", or make it per-case)`,
+          );
+        }
+      }
+    });
   }
   // Gate-anchor rule (pure structure — file order): an approval step's chat
   // card anchors to the producing job's turn, so a rootless gate has no home.
@@ -2118,7 +2310,7 @@ export function validatePipelineCatalogBinding(def: PipelineDef, agents: Pipelin
 }
 
 /** Field an advisory anchors to — an editor renders it under that field of the named step. */
-export type PipelineAdvisoryField = 'context' | 'directive' | 'timeout' | 'needs' | 'onMissingVerdict';
+export type PipelineAdvisoryField = 'context' | 'directive' | 'timeout' | 'needs' | 'onMissingVerdict' | 'discovers';
 
 /** The closed advisory vocabulary — the validator judges `acknowledged[].code` against it. */
 export const PIPELINE_ADVISORY_CODES = [
@@ -2132,6 +2324,8 @@ export const PIPELINE_ADVISORY_CODES = [
   'unrouted-verdict-no-fallback',
   'entry-no-case-channel',
   'prev-success-under-concurrency',
+  'discovery-no-case-channel',
+  'discovery-under-serial-concurrency',
 ] as const;
 export type PipelineAdvisoryCode = (typeof PIPELINE_ADVISORY_CODES)[number];
 
@@ -2218,6 +2412,33 @@ export function collectPipelineDefAdvisoryItems(def: PipelineDef): PipelineAdvis
         stepId: step.id,
         field,
         message: `step "${step.id}" reads {{run.prevSuccess.*}} while concurrency is ${resolveRunConcurrency(def)}: the watermark is the newest completed run at fire time, and sibling runs complete in any order — a run may see a watermark newer than the work it should follow. Keep concurrency at 1 for watermark-driven flows, or carry the case identity in the directive instead`,
+      });
+    }
+  }
+  // Fan-out: the first per-case step is the ONLY place a case run learns its
+  // case (`entry-no-case-channel`'s sibling); and under concurrency 1 the
+  // discovered cases drain one at a time — legal, but rarely what the author
+  // pictured when they fanned out.
+  const discoversAt = discoveryStepIndex(def);
+  if (discoversAt !== undefined) {
+    const discoversStep = def.steps[discoversAt] as JobStepDef;
+    const perCase = perCaseStepIds(def);
+    const refersItem = (s: string) => /\{\{\s*trigger\.item\./.test(s);
+    const firstPerCase = def.steps.find((s) => perCase.has(s.id) && !isApprovalStep(s)) as JobStepDef | undefined;
+    if (firstPerCase && !refersItem(firstPerCase.directive ?? '') && !(firstPerCase.context ?? []).some(refersItem)) {
+      out.push({
+        code: 'discovery-no-case-channel',
+        stepId: firstPerCase.id,
+        field: 'directive',
+        message: `step "${firstPerCase.id}" is the first step of every fanned-out case run but reads no {{trigger.item.*}} — it has no way to learn WHICH case it was fired for. Reference {{trigger.item.key}} (and the fields "${discoversStep.id}" declares) in its directive, or pin cases/{{trigger.item.key}}/**`,
+      });
+    }
+    if (resolveRunConcurrency(def) === 1) {
+      out.push({
+        code: 'discovery-under-serial-concurrency',
+        stepId: discoversStep.id,
+        field: 'discovers',
+        message: `step "${discoversStep.id}" fans out while concurrency is 1: every discovered case is claimed, but the case runs start ONE at a time as each finishes. Raise concurrency (up to ${DEFAULT_PIPELINE_CAPS.maxLiveRunsPerActivation}) if the cases should run side by side`,
       });
     }
   }

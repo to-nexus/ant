@@ -8,8 +8,10 @@ import {
   isApprovalStep,
   parseCustomJobRef,
   PIPELINE_STEP_OUTPUT_MAX_CHARS,
+  type PipelineRunItem,
   type StepOutputRecord,
 } from '@ant/shared';
+import { filterCaseFields } from '../../../core/pipelines/cases';
 import type { PipelineOwner } from '../../../core/ports/scheduler';
 import { getUniversalSessionFilePath, readSessionTextBounded } from '../../../core/utils/sessionPaths';
 import { selectSealedConversation } from '../../../core/customAgents/universalConversation';
@@ -97,6 +99,12 @@ export async function detectApprovalSeal(
  *   declared outcomes with the step's `onMissingVerdict` fallback applied.
  *   `missingVerdict` = the intent declares outcomes but no valid verdict
  *   resolved — the caller fails the step (retryable: a re-run can decide).
+ * - `cases` — a `discovers` step's sealed `<cases>`, filtered to the declared
+ *   field vocabulary. Same contract shape as the verdict: `missingCases` =
+ *   the step fans out but the run sealed no list (and `onMissing` is not
+ *   `complete`); `casesError` = a tag whose body was not a list. Both fail
+ *   the step (retryable). Only a DISCOVERY run captures cases — a case run's
+ *   fan-out step arrived sealed and never dispatches.
  */
 export async function captureStepOutput(
   deps: PipelineCoordinatorDeps,
@@ -104,7 +112,15 @@ export async function captureStepOutput(
   runId: string,
   stepId: string,
   jobId: string,
-): Promise<{ output?: StepOutputRecord; verdict?: string; missingVerdict?: boolean; assignee?: string }> {
+): Promise<{
+  output?: StepOutputRecord;
+  verdict?: string;
+  missingVerdict?: boolean;
+  assignee?: string;
+  cases?: PipelineRunItem[];
+  missingCases?: boolean;
+  casesError?: string;
+}> {
   const run = await getRun(deps, runId).catch(() => null);
   const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
   if (!run || !stepDef || isApprovalStep(stepDef)) return {};
@@ -117,6 +133,9 @@ export async function captureStepOutput(
   let sealVerdict: string | undefined;
   // Sealed reviewer nomination (raw; the gate validates it against candidates).
   let sealAssignee: string | undefined;
+  // Sealed fan-out cases (raw; filtered to the step's declared fields below).
+  let sealCases: PipelineRunItem[] | undefined;
+  let sealCasesError: string | undefined;
   // The seal's own write evidence — set only when the seal is this job's.
   let sealedArtifacts: string[] | undefined;
   try {
@@ -129,6 +148,8 @@ export async function captureStepOutput(
       if (state?.jobId === jobId) {
         if (typeof state.verdict === 'string') sealVerdict = state.verdict;
         if (typeof state.assignee === 'string' && state.assignee.length > 0) sealAssignee = state.assignee;
+        if (Array.isArray(state.cases)) sealCases = state.cases as PipelineRunItem[];
+        if (typeof state.casesError === 'string' && state.casesError.length > 0) sealCasesError = state.casesError;
         const main = selectSealedConversation<any>(state);
         if (Array.isArray(main)) {
           for (let i = main.length - 1; i >= 0; i -= 1) {
@@ -189,7 +210,18 @@ export async function captureStepOutput(
           capturedAt: new Date().toISOString(),
         };
 
-  const base = { ...(output && { output }), ...(sealAssignee && { assignee: sealAssignee }) };
+  // Fan-out contract — only on a discovery run's discovers step.
+  const discoveryCapture =
+    stepDef.discovers && run.firedBy !== 'discovery'
+      ? sealCasesError
+        ? { casesError: sealCasesError }
+        : sealCases
+          ? { cases: filterCaseFields(sealCases, stepDef.discovers) }
+          : stepDef.discovers.onMissing === 'complete'
+            ? { cases: [] as PipelineRunItem[] }
+            : { missingCases: true }
+      : {};
+  const base = { ...(output && { output }), ...(sealAssignee && { assignee: sealAssignee }), ...discoveryCapture };
   // Verdict contract — only when the pinned intent declares a vocabulary.
   if (declaredOutcomes.length === 0) return base;
   let verdict = sealVerdict && declaredOutcomes.includes(sealVerdict) ? sealVerdict : undefined;

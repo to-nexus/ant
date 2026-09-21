@@ -224,6 +224,12 @@ export interface UniversalGraphState extends ResolvableState {
    */
   _approvalGrantTool?: string;
   /**
+   * This turn is a discovering pipeline step: the field vocabulary its
+   * `<cases>` may carry (empty = key only) — renders the Case Discovery
+   * band. Per-run input (turn meta), never sealed.
+   */
+  _caseFields?: string[];
+  /**
    * Set by approvalPauseNode when THIS run ends awaiting a human tool
    * approval — routes tool→respond and shapes the seal. Per-run only.
    */
@@ -285,6 +291,7 @@ export const UniversalAnnotation = Annotation.Root({
   _clarifyPause: Annotation<{ toolUseId: string; question: string } | undefined>,
   _unattended: Annotation<boolean | undefined>,
   _approvalGrantTool: Annotation<string | undefined>,
+  _caseFields: Annotation<string[] | undefined>,
   _approvalPause: Annotation<{ toolUseId: string; toolName: string; argsSummary: string } | undefined>,
   _sessionChannel: Annotation<string | undefined>,
   _sessionStem: Annotation<string | undefined>,
@@ -319,6 +326,8 @@ export function createInitialUniversalState(params: {
   unattended?: boolean;
   /** One-turn approval grant (approve re-dispatch), by tool name. */
   approvalGrantTool?: string;
+  /** Discovering pipeline step: the `<cases>` field vocabulary (Case Discovery band). */
+  caseFields?: string[];
   /** Stored conversation channel for this turn (run-scoped under a pipeline). */
   sessionChannel?: string;
   /** Session file stem this turn seals into (run-scoped under a pipeline). */
@@ -363,6 +372,7 @@ export function createInitialUniversalState(params: {
     inheritedTurnContext: params.inheritedTurnContext,
     _unattended: params.unattended,
     _approvalGrantTool: params.approvalGrantTool,
+    _caseFields: params.caseFields,
     _sessionChannel: params.sessionChannel,
     _sessionStem: params.sessionStem,
     _carriedChannels: params.carriedChannels,

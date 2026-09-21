@@ -15,7 +15,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { INDIVIDUAL_ORG_ID, parsePipelineDuration, type OrganizationKind, type RunRecord } from '@ant/shared';
+import { INDIVIDUAL_ORG_ID, discoveryStepIndex, parsePipelineDuration, type OrganizationKind, type RunRecord } from '@ant/shared';
 import { logger } from '../../utils/logger';
 import type { StateStorePort } from '../../core/ports/stateStore';
 import type { ScheduleQueuePort, PipelineOwner, PipelineFireJobData, PipelineFetchPollJobData } from '../../core/ports/scheduler';
@@ -26,7 +26,7 @@ import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import { loadActivationByProject, loadAvailability, loadPipeline } from '../../core/pipelines/store';
 import { finishTombstonedDeactivation, indexActivationProjection, readDeactivationTombstone, tombstoneCovers } from './resolveActivation';
 import { pruneRunSessionFiles } from './pipelineRun/sessionRetention';
-import { ensureItemLedger } from './pipelineRun/itemLedger';
+import { ensureItemLedger, readQueuedCases } from './pipelineRun/itemLedger';
 
 const COMPONENT = 'PipelineReconciler';
 const RECONCILE_LOCK_KEY = 'ant:lock:pipeline-reconcile';
@@ -109,7 +109,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
     // scheduler upsert is cron-gated.
     const wanted = new Map<
       string,
-      { fire: PipelineFireJobData; schedule?: { cron: string; tz?: string }; fetchEveryMs?: number; activatedAt: string }
+      { fire: PipelineFireJobData; schedule?: { cron: string; tz?: string }; fetchEveryMs?: number; discovers?: boolean; activatedAt: string }
     >();
 
     // Approver-of discovery index rebuild — collected across the same scan,
@@ -154,6 +154,7 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
           },
           ...(def.on?.schedule && { schedule: { cron: def.on.schedule.cron, tz: def.on.schedule.tz } }),
           ...(def.on?.fetch && { fetchEveryMs: parsePipelineDuration(def.on.fetch.every) ?? undefined }),
+          ...(discoveryStepIndex(def) !== undefined && { discovers: true }),
           activatedAt: activation.activatedAt,
         });
       } catch (e) {
@@ -181,6 +182,20 @@ export async function reconcilePipelines(deps: PipelineReconcilerDeps): Promise<
           await ensureItemLedger(deps.stateStore, path.join(deps.workspacesPath, owner.organizationId, owner.userId, PIPELINE_ACTIVATIONS_DIRNAME), owner, projectId, pipelineId);
         } catch (e) {
           logger.warn(`[Pipeline] item ledger rebuild failed for ${projectId} (non-fatal)`, { component: COMPONENT }, e);
+        }
+      }
+      if (entry.discovers) {
+        // A discovering pipeline shares the claim ledger; cases still queued
+        // with no drain armed (a crash between seal and kick, a lost arm) are
+        // re-drained here — the StaleJobRecovery net for the case queue.
+        const actRoot = path.join(deps.workspacesPath, owner.organizationId, owner.userId, PIPELINE_ACTIVATIONS_DIRNAME);
+        try {
+          await ensureItemLedger(deps.stateStore, actRoot, owner, projectId, pipelineId);
+          if (readQueuedCases(actRoot, projectId, pipelineId).length > 0) {
+            await deps.scheduleQueue.addNow({ kind: 'case-drain', owner, pipelineId, pipelineScope: entry.fire.pipelineScope, projectId });
+          }
+        } catch (e) {
+          logger.warn(`[Pipeline] case-queue re-drain failed for ${projectId} (non-fatal)`, { component: COMPONENT }, e);
         }
       }
       // Refresh the activation projections — this is what keeps the job-start

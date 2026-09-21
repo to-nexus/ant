@@ -29,6 +29,7 @@
 
 import {
   isApprovalStep,
+  perCaseStepIds,
   verdictEdgeOutcomes,
   type PipelineDef,
   type PipelineRunStatus,
@@ -95,6 +96,37 @@ export function effectiveNeeds(def: PipelineDef, index: number): string[] {
 
 export function buildInitialSteps(def: PipelineDef): StepRecord[] {
   return def.steps.map((s) => ({ stepId: s.id, status: 'pending' as const }));
+}
+
+/**
+ * A DISCOVERY run's steps: the per-case steps (downstream of the `discovers`
+ * step) are pre-skipped — inert to `planAdvance`, neither success nor failure
+ * to `deriveRunStatus` — so the run seals `completed` once the discovering
+ * prefix does. They come back as case runs.
+ */
+export function buildDiscoveryRunSteps(def: PipelineDef): StepRecord[] {
+  const perCase = perCaseStepIds(def);
+  return def.steps.map((s) => ({ stepId: s.id, status: perCase.has(s.id) ? ('skipped' as const) : ('pending' as const) }));
+}
+
+/**
+ * A CASE run's steps: the discovery run's sealed prefix is copied over
+ * (status + output + verdict — what `{{steps.<id>.*}}` and edges read),
+ * stripped of the parent's job/turn/gate/clarify identity and of the case
+ * list itself; the per-case steps start pending. A prefix step the parent
+ * had not sealed when the case was queued did not happen for this case
+ * (`skipped`) — a case run never waits on the discovery run's other branches.
+ */
+export function buildCaseRunSteps(def: PipelineDef, parent: Pick<RunRecord, 'steps'>): StepRecord[] {
+  const perCase = perCaseStepIds(def);
+  const byId = new Map(parent.steps.map((s) => [s.stepId, s]));
+  return def.steps.map((s): StepRecord => {
+    if (perCase.has(s.id)) return { stepId: s.id, status: 'pending' };
+    const p = byId.get(s.id);
+    if (!p || !TERMINAL.has(p.status)) return { stepId: s.id, status: 'skipped' };
+    const { jobId: _j, turnId: _t, gate: _g, clarify: _c, attempts: _a, dispatch: _d, retriesUsed: _r, cases: _k, ...kept } = p;
+    return kept;
+  });
 }
 
 /**

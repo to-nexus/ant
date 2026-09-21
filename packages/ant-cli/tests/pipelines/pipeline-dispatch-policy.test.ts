@@ -795,7 +795,11 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
     expect(fetchPoll).not.toMatch(/appendItemClaim\(/);
     const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
     expect(fire.match(/appendItemClaim\(/g)?.length).toBe(1);
-    expect(coordinatorAll().match(/appendItemClaim\(/g)?.length).toBe(1);
+    // Three ledger writers, all after admission: the fire path (a started
+    // claim), the discovering step's seal (a queued claim) and the drain's
+    // dead-claim re-queue — never the poller.
+    expect(coordinatorAll().match(/appendItemClaim\(/g)?.length).toBe(3);
+    expect(read('infrastructure/scheduling/pipelineRun/discovery.ts').match(/appendItemClaim\(/g)?.length).toBe(2);
   });
 
   it('the poller is fail-CLOSED on the claim projection and serialized per activation', () => {
@@ -842,6 +846,70 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
     expect(dispatch).toMatch(/firedBy: run\.firedBy, \.\.\.\(run\.item && \{ itemKey: run\.item\.key \}\)/);
     const runStore = read('infrastructure/scheduling/pipelineRun/runStore.ts');
     expect(runStore.match(/itemKey: run\.item\.key/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
+ * Step discovery (`discovers`) — the delegated executor beside `on.fetch`'s
+ * deterministic one: the agent turn finds the cases, the coordinator queues
+ * them ALL into the same claim ledger and drains them as `concurrency`
+ * admits. The queue exists because Ant is this list's only holder.
+ */
+describe('step discovery — one case vocabulary, queue-then-drain, coordinator-only turn meta', () => {
+  const discovery = read('infrastructure/scheduling/pipelineRun/discovery.ts');
+  const fire = read('infrastructure/scheduling/pipelineRun/fire.ts');
+  const lifecycle = read('infrastructure/scheduling/pipelineRun/lifecycle.ts');
+
+  it('the queue leg claims every case at once and only ever enqueues fire / case-drain control jobs', () => {
+    expect(discovery).toMatch(/tryAcquireLock\(itemKey, value, REDIS_TTL\.PIPE\.ITEM\)/);
+    expect([...new Set([...discovery.matchAll(/kind: '([a-z-]+)'/g)].map((m) => m[1]))].sort()).toEqual(['case-drain', 'fire']);
+    // Drains and polls are both fail-CLOSED on the claim projection; the
+    // drain judges the folded ledger (newest line per key) and heals dead
+    // started claims by re-queueing, never by deleting the key alone.
+    expect(discovery.lastIndexOf('ensureItemLedger(')).toBeLessThan(discovery.indexOf('foldItemClaims(readItemClaims('));
+    expect(discovery).toMatch(/isDeadClaim\(ctx\.deps\.stateStore, actRoot, projectId, claim\)/);
+    expect(discovery).not.toMatch(/\bfetch\(|process\.env/);
+  });
+
+  it('the seal queues and finalize kicks — each exactly once, from lifecycle; a case run never re-queues', () => {
+    expect(lifecycle.match(/queueDiscoveredCases\(/g)?.length).toBe(1);
+    expect(lifecycle.match(/kickCaseDrain\(/g)?.length).toBe(1);
+    expect(lifecycle).toMatch(/result\.run\.firedBy !== 'discovery'/);
+  });
+
+  it('the fire path seeds every run through the executor\'s shapes and refuses a case fire without its identity', () => {
+    expect(fire).toMatch(/buildDiscoveryRunSteps\(def\)/);
+    expect(fire).toMatch(/buildCaseRunSteps\(def, parent\)/);
+    expect(fire).toMatch(/data\.firedBy === 'discovery' && \(!data\.item \|\| !data\.discoveryRunId\)/);
+    // A discovery fire's NX identity is (discovery run, case) — epoch-free, like an upstream node.
+    expect(fire).toMatch(/`discovery:\$\{data\.discoveryRunId\}:\$\{encodeURIComponent\(data\.item\.key\)\}`/);
+    expect(fire).toMatch(/firedBy === 'fetch' \|\| firedBy === 'discovery'\) return 'skip'/);
+  });
+
+  it('handleControlJob routes case-drain; the reconciler re-drains queued cases', () => {
+    expect(read('infrastructure/scheduling/PipelineRunCoordinator.ts')).toMatch(/case 'case-drain':\s*return handleCaseDrain\(/);
+    const reconciler = read('infrastructure/scheduling/PipelineReconciler.ts');
+    expect(reconciler).toMatch(/readQueuedCases\(actRoot, projectId, pipelineId\)\.length > 0/);
+    expect(reconciler).toMatch(/kind: 'case-drain'/);
+  });
+
+  it('the Case Discovery vocabulary rides turn meta from the coordinator ONLY — no HTTP ingress can mint it', () => {
+    const dispatch = read('infrastructure/scheduling/pipelineRun/dispatch.ts');
+    expect(dispatch).toMatch(/step\.discovers && run\.firedBy !== 'discovery' && \{ caseFields: step\.discovers\.fields \?\? \[\] \}/);
+    const http = walk(path.join(SRC, 'periphery/adapters/http')).map((f) => fs.readFileSync(f, 'utf-8')).join('\n');
+    expect(http).not.toMatch(/caseFields/);
+    // The band is gated exactly like Reviewer Nomination (unattended, not a plan turn).
+    const agent = read('agents/universal/graph/nodes/agent.ts');
+    expect(agent).toMatch(/state\._unattended === true && state\.turnContext\?\.planTurn !== true && state\._caseFields !== undefined/);
+  });
+
+  it('the <cases> tag is a registered canonical tag whose parse SSOT is core/pipelines/cases.ts', () => {
+    const registry = read('core/streaming/OutputTagRegistry.ts');
+    expect(registry).toMatch(/name: 'cases',/);
+    expect(registry).toMatch(/extract: \(text\) => parseCaseNominations\(text\)\?\.cases/);
+    expect(read('agents/universal/graph/nodes/respond.ts')).toMatch(/parseCaseNominations\(finalAssistantText\)/);
+    // The seal reader applies the declared field vocabulary — the ONE filter.
+    expect(read('infrastructure/scheduling/pipelineRun/seals.ts')).toMatch(/filterCaseFields\(sealCases, stepDef\.discovers\)/);
   });
 });
 

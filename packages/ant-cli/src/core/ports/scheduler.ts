@@ -39,6 +39,24 @@ export interface PipelineFireJobData {
   item?: PipelineRunItem;
   /** `firedBy: 'event'` — the upstream node that sealed (the fire path refuses an event fire without one). */
   upstream?: PipelineRunUpstream;
+  /** `firedBy: 'discovery'` — the discovery run whose sealed step queued this case; its sealed prefix seeds the case run (refused without one). */
+  discoveryRunId?: string;
+  /** `firedBy: 'discovery'` — the step that discovered the case (frozen onto the run). */
+  discoveryStepId?: string;
+}
+
+/**
+ * Fire queued cases of a discovering pipeline as `concurrency` admits —
+ * kicked after a step's seal queued cases and after any run of the
+ * activation seals (a freed slot); re-armed while cases remain. Deterministic
+ * control work: no LLM, no credits.
+ */
+export interface PipelineCaseDrainJobData {
+  kind: 'case-drain';
+  owner: PipelineOwner;
+  pipelineId: string;
+  pipelineScope: PipelineScope;
+  projectId: string;
 }
 
 /**
@@ -170,6 +188,7 @@ export interface PipelineGateRemindJobData {
 export type PipelineControlJobData =
   | PipelineFireJobData
   | PipelineFetchPollJobData
+  | PipelineCaseDrainJobData
   | PipelineGateTimeoutJobData
   | PipelineStepRetryJobData
   | PipelineOutcomeRetryJobData

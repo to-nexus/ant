@@ -25,6 +25,7 @@ import {
   type PipelineAvailability,
   type PipelineDef,
   type PipelineRunEvent,
+  type PipelineRunItem,
   type PipelineRunSummary,
 } from '@ant/shared';
 import { atomicWriteFile } from '../utils/atomicWriteFile';
@@ -340,14 +341,37 @@ export function readRunIndex(
 }
 
 // ============================================
-// Fetch-trigger claim ledger (append-only JSONL; the fire path is the single writer)
+// Case claim ledger (append-only JSONL) — fetch items AND fanned-out cases
 // ============================================
 
-/** One claimed item: which run took it and when. The Redis `ant:pipe:item:*` NX key is this line's projection. */
+/**
+ * One claimed case. The Redis `ant:pipe:item:*` NX key is this line's
+ * projection. Lines fold by key, newest wins:
+ * - fetch: written by the fire path once the run holds both slots —
+ *   `runId` set, the case is running.
+ * - discovers: the discovering step's seal QUEUES every case first (`runId`
+ *   absent, `queuedFrom` = the discovery run, `item` = the case body);
+ *   the fire path later appends the started line. A queued case is spoken
+ *   for (never re-claimed) but not yet running — the fan-out drain fires it
+ *   as `concurrency` admits. Ant is that queue's only holder, so a queued
+ *   line is never judged dead.
+ */
 export interface PipelineItemClaim {
   key: string;
-  runId: string;
   claimedAt: string;
+  /** The run that took the case; absent = queued (fan-out only). */
+  runId?: string;
+  /** Queued lines: the discovery run whose sealed prefix the case run copies. */
+  queuedFrom?: string;
+  /** Queued lines: the case body the fire will freeze onto the run. */
+  item?: PipelineRunItem;
+}
+
+/** One line per key, newest wins — the shape every ledger reader judges. */
+export function foldItemClaims(claims: readonly PipelineItemClaim[]): Map<string, PipelineItemClaim> {
+  const byKey = new Map<string, PipelineItemClaim>();
+  for (const c of claims) byKey.set(c.key, c);
+  return byKey;
 }
 
 /** Tail window a ledger rebuild reads — older claims have long since left the source's open set. */

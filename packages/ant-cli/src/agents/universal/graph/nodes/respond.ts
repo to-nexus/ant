@@ -16,6 +16,7 @@ import { requireActiveCustomJob } from '../../../../core/customAgents/activeCust
 import { isUnderPlanDir } from '../../../../core/customAgents/universalToolPolicy';
 import { hasConnectionFailures } from '../../../../core/customAgents/connectionReport';
 import { parseAssigneeNomination } from '../../../../core/pipelines/assignees';
+import { parseCaseNominations } from '../../../../core/pipelines/cases';
 import {
   activeStopHooksOf,
   buildStopHookLedger,
@@ -237,6 +238,11 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
       // Reviewer nomination — same lift shape; the pipeline gate that follows
       // validates it against its candidates (doc 46 §5a-ii).
       const assignee = parseAssigneeNomination(finalAssistantText);
+      // Fan-out cases — same lift shape; the coordinator applies the step's
+      // declared field vocabulary. An explicit empty list is sealed as such
+      // (it means "nothing to do"); no tag seals nothing (the fan-out's
+      // `onMissing` policy decides). A non-array body seals its reason.
+      const cases = parseCaseNominations(finalAssistantText);
       // The stored channel is run-scoped under a pipeline (F22) while the
       // graph works on session:main; siblings ride through untouched because
       // this state object replaces the file's whole state.
@@ -249,6 +255,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         conversationChannel: channel,
         ...(verdict && !state._clarifyPause && !state._approvalPause && { verdict }),
         ...(assignee && !state._clarifyPause && !state._approvalPause && { assignee }),
+        ...(cases && !state._clarifyPause && !state._approvalPause && { cases: cases.cases, ...(cases.error && { casesError: cases.error }) }),
         tokenUsage: state.tokenUsage,
         tokenUsageByModel: state.tokenUsageByModel,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,

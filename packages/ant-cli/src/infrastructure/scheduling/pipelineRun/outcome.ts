@@ -9,6 +9,7 @@ import {
   isApprovalStep,
   parsePipelineDuration,
   MAX_STEP_RETRY,
+  type PipelineRunItem,
   type StepOutputRecord,
   type StepRecord,
 } from '@ant/shared';
@@ -74,6 +75,7 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
   let output: StepOutputRecord | undefined;
   let verdict: string | undefined;
   let assignee: string | undefined;
+  let cases: PipelineRunItem[] | undefined;
   if (outcome === 'succeeded') {
     const clarify = await detectClarifySeal(ctx.deps, owner, runId, stepId, data.jobId);
     if (clarify) {
@@ -116,11 +118,21 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
     output = captured.output;
     verdict = captured.verdict;
     assignee = captured.assignee;
+    cases = captured.cases;
     // An outcome-declaring intent that sealed no valid verdict fails loudly
     // (retryable — a re-run can decide) unless onMissingVerdict fell back.
     if (captured.missingVerdict) {
       outcome = 'failed';
       error = 'missing-verdict: the intent declares outcomes but the run sealed no valid verdict';
+    }
+    // The fan-out contract is the same shape: a discovering step that sealed
+    // no list (or an unreadable one) did not conclude — retryable.
+    if (captured.casesError) {
+      outcome = 'failed';
+      error = `invalid-cases: ${captured.casesError}`;
+    } else if (captured.missingCases) {
+      outcome = 'failed';
+      error = 'missing-cases: the step declares discovers but the run sealed no <cases> list (emit <cases>[]</cases> for "nothing to do", or set discovers.onMissing: complete)';
     }
   }
 
@@ -162,7 +174,7 @@ export async function handleJobStatusUpdate(ctx: PipelineRunOps, data: {
     return;
   }
 
-  const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }), ...(assignee && { assignee }) };
+  const patch = { ...(error && { error }), ...(output && { output }), ...(verdict && { verdict }), ...(assignee && { assignee }), ...(cases && { cases }) };
   // The audit line rides `onOutcomeLanded` — written ONLY by the call that
   // actually sealed the step, and still before the step_dispatched /
   // run_finished fan-out. Appended ahead of the funnel it would be written by

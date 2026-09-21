@@ -94,7 +94,7 @@ describe('runIdentity — one vocabulary for every surface', () => {
   });
 
   it('FIRED_BY tables are exhaustive over the trigger kinds', () => {
-    const kinds: PipelineFiredBy[] = ['cron', 'manual', 'event', 'fetch'];
+    const kinds: PipelineFiredBy[] = ['cron', 'manual', 'event', 'fetch', 'discovery'];
     for (const k of kinds) {
       expect(FIRED_BY_ICON[k]).toBeDefined();
       expect(FIRED_BY_LABEL[k].key).toMatch(/^runs\./);

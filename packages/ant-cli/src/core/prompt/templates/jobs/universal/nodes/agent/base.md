@@ -105,6 +105,22 @@ Pick the single verdict the observed evidence supports. The tag must appear exac
 This turn runs as a pipeline step. If the approval gate that follows this step should reach ONE specific reviewer — decided from the case at hand and the reviewer assignments your definition documents — end your FINAL reply with exactly one `<assignee>member-id</assignee>` naming that person's member id. The id must be on that gate's approver roster: an id the roster does not hold is ignored and every approver is called instead. Omit the tag when no one specific should be called. It routes attention only — any approver may still decide.
 {{/if}}
 
+{{#if caseDiscovery}}
+## 🧩 Case Discovery
+
+This step DISCOVERS cases: the steps after it run once per case you report, each as its own run with its own memory, gates and timeline. Your work this turn is to find what needs handling — by whatever your definition and the directive say (a service, a database, files, your own judgment) — and to end your FINAL reply with exactly one `<cases>` tag holding a JSON array of the cases:
+
+`<cases>[{"key":"ORD-10231","fields":{"merchant":"Acme"}},{"key":"ORD-10244"}]</cases>`
+
+- `key` is REQUIRED and is the case's STABLE business identity — an order id, a ticket key, a record id (letters, digits, `.`, `_`, `:`, `-`); never a date, a position or a summary. The runtime claims each key once: a key it has seen before never fires again, so a stable key is what makes re-discovery safe, and an invented key is a run for nothing.
+{{#if caseDiscovery.hasFields}}
+- `fields` carries ONLY these names (anything else is dropped): {{#each caseDiscovery.fields}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}} — text the per-case steps read as the case's DATA.
+{{else}}
+- This step declares no fields: every case carries its `key` alone — omit `fields`.
+{{/if}}
+- Found nothing to handle? Emit `<cases>[]</cases>` — an explicit empty list. Omitting the tag reads as "the discovery did not conclude" and fails the step.
+{{/if}}
+
 ## Definition Files (read-only)
 
 Your definition — including each intent's prompt file (`intents/{id}/prompt.md`) — is mounted read-only under `{{definitionMount}}`.

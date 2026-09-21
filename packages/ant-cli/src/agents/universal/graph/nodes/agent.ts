@@ -136,6 +136,13 @@ async function buildSystemPrompt(
       // Reviewer-nomination band — pipeline (unattended) steps only: the gate
       // that follows reads the sealed `<assignee>` (doc 46 §5a-ii).
       pipelineStep: state._unattended === true && state.turnContext?.planTurn !== true,
+      // Case Discovery band — a pipeline step declaring `discovers`: the turn
+      // must seal a <cases> list; the coordinator fans the per-case steps out
+      // on it (doc 46 §2). Rendered only under the same unattended gate.
+      caseDiscovery:
+        state._unattended === true && state.turnContext?.planTurn !== true && state._caseFields !== undefined
+          ? { fields: state._caseFields, hasFields: state._caseFields.length > 0 }
+          : undefined,
     },
     // Custom definition rides as an inert system-suffix — after template injections,
     // before policy (guardrail-first / policy-last invariants intact).

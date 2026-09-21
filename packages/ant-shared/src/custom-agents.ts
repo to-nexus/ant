@@ -1123,6 +1123,13 @@ export interface UniversalTurnMeta {
    */
   runId?: string;
   /**
+   * This turn is a pipeline step that declares `discovers`: the field vocabulary
+   * its `<cases>` may carry (empty array = key only). Renders the Case
+   * Discovery band. Set ONLY by the pipeline coordinator — the HTTP accept
+   * gate cannot produce it.
+   */
+  caseFields?: string[];
+  /**
    * The dangling `tool_use` this turn MUST close (a clarify answer or a tool
    * approval re-dispatch). The runner refuses to open a fresh turn until the
    * restored transcript holds this call — the seal is another pod's write, and

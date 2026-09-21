@@ -9,6 +9,8 @@ import { randomUUID } from 'crypto';
 import {
   PIPELINE_UPSTREAM_ANSWER_MAX_CHARS,
   UNIVERSAL_FEATURE,
+  discoveryStepIndex,
+  isApprovalStep,
   runSummaryOf,
   type PipelineActivation,
   type PipelineRunUpstream,
@@ -27,6 +29,7 @@ import {
   loadPipeline,
 } from '../../../core/pipelines/store';
 import { listAccountActivationsResolved } from '../resolveActivation';
+import { kickCaseDrain, queueDiscoveredCases } from './discovery';
 import { appendEvent, getRun, isTerminal, listActiveRunIds, mutateRun, publicRun, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
@@ -86,6 +89,14 @@ export async function applyOutcome(
   // this run's own advance, so a last step's node fire precedes the run-node
   // fire finalize publishes.
   await fireUpstreamTriggers(ctx, owner, result.run, { step: stepId, node: sealed });
+  // A discovering step's seal QUEUES its cases before this run advances; the
+  // drain fires them as room allows (this run's own slot frees at finalize,
+  // which kicks the drain again). Only a DISCOVERY run fans out — a case
+  // run's discovering step arrived sealed and never reaches here.
+  const sealedDef = result.run.defSnapshot?.steps.find((s) => s.id === stepId);
+  if (sealed.status === 'succeeded' && sealed.cases && sealedDef && !isApprovalStep(sealedDef) && sealedDef.discovers && result.run.firedBy !== 'discovery') {
+    await queueDiscoveredCases(ctx, owner, result.run, stepId, sealed.cases);
+  }
 
   if (result.dispatches.length > 0) {
     const def = result.run.defSnapshot!;
@@ -256,6 +267,11 @@ export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run
   await ctx.deps.stateStore
     .releaseSlot(REDIS_KEYS.PIPE.RUN_SLOTS(organizationId, userId), REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(run.projectId, run.runId))
     .catch(() => {});
+  // A freed slot is room for a queued case: any run of a discovering pipeline
+  // (the discovery run itself, or a sibling case run) kicks the drain.
+  if (sealed.defSnapshot && discoveryStepIndex(sealed.defSnapshot) !== undefined) {
+    await kickCaseDrain(ctx, owner, sealed).catch((e) => logger.warn(`[Pipeline] drain kick failed: ${sealed.runId}`, { component: COMPONENT }, e));
+  }
   await emitRunFinishedNotice(ctx, owner, sealed);
   // The run's seal is itself a node; a cancelled run did not happen.
   const node = runNodeOf(sealed);

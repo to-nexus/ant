@@ -108,7 +108,28 @@ steps:
                                         # container are out of reach.
 ```
 
-## The fetch trigger — one run per item of an external queue
+## Discovery — one run per case
+
+A pipeline that handles CASES (tickets, orders, records — each with its own
+memory, gates and timeline) fires one run per case. Ant finds the cases in one
+of two ways; the runs they produce are identical (same `{{trigger.item.*}}`
+channel, same run label, same inbox attribution):
+
+| | `on.fetch` | a step with `discovers:` |
+|---|---|---|
+| Who finds the cases | Ant's poller — no agent, no credits | that step's agent turn, as its directive says (an MCP server, an API, a database, files, judgment) |
+| Where | before the run (a trigger) | any job step of the run — the steps after it run once per case |
+| How the list is read | a declared REST request + item-paths | the turn's `<cases>` tag |
+| Cadence floor | one minute | the pipeline's own trigger (cron: five minutes) |
+| When there is no room | the item stays in the source and is seen next poll | the case is claimed and WAITS; it starts when a run finishes |
+
+Choose `on.fetch` when the source can be asked "what is open right now" and
+the answer can be trusted as-is — it costs nothing per poll. Choose
+`discovers` when finding the cases needs judgment, a system without a REST
+queue, or the result of an earlier step. The two never coexist on one
+definition.
+
+### The fetch trigger — one run per item of an external queue
 
 `on.fetch` polls a REST source on an interval and fires ONE run per item that
 has not been claimed yet. The external system (a ticket tracker, an inbox API)
@@ -202,10 +223,92 @@ on:
   your token, so you verify the request shape and the item-paths from what
   you know of the source, and the report says the items were not previewed.
 
+### The `discovers` step — one run per case the agent finds
+
+Any job step may declare `discovers:`. Its turn then FINDS the cases — by
+whatever the agent's definition and this step's directive say — and ends its
+final reply with one `<cases>` tag (the runtime tells it so; you author
+nothing about the tag). Every step downstream of it runs once per case, each
+as an independent run; steps before it, and branches beside it, run once in
+the discovery run.
+
+```yaml
+version: 2
+name: Settlement discrepancies
+on:
+  schedule: { cron: '0 9 * * *', tz: Asia/Seoul }
+concurrency: 3                    # how many case runs may be live at once —
+                                  # the rest wait and start as runs finish
+steps:
+  - id: reconcile
+    customJobRef: finance/settlement
+    intent: reconcile
+    directive: Reconcile yesterday's settlement batch and write the summary.
+  - id: scan                      # the discovering step
+    customJobRef: finance/settlement
+    intent: find-discrepancies
+    discovers:
+      fields: [merchant, amount]  # the ONLY declaration: which case fields
+                                  # the per-case steps may read. Never how
+                                  # to find them — that is the intent's
+                                  # prose and this directive.
+      onMissing: fail             # fail (default) | complete — what a turn
+                                  # that seals no <cases> tag means
+    directive: >-
+      From the reconciled batch ({{steps.reconcile.answer}}) list every
+      merchant whose payout disagrees with the ledger. One case per merchant,
+      keyed by the settlement line id.
+  - id: handle                    # per case from here on
+    customJobRef: finance/settlement
+    intent: resolve
+    directive: >-
+      Resolve discrepancy {{trigger.item.key}} for {{trigger.item.merchant}}
+      ({{trigger.item.amount}}). The batch summary: {{steps.reconcile.answer}}
+    context:
+      - cases/{{trigger.item.key}}/**
+  - id: confirm
+    type: approval
+    prompt: Apply the correction for this discrepancy?
+    remindAfter: 4h
+  - id: record
+    customJobRef: finance/settlement
+    intent: record
+```
+
+- `discovers` is declared on at most ONE step per definition, on a job step
+  (never a gate), never beside `on.fetch`, and needs at least one step after
+  it. `fields` names are lowerCamel identifiers (at most 20; `key` is always
+  carried and cannot be declared). The mechanism keys of `on.fetch` (`items`,
+  `key`, `request`, a connection) are refused under `discovers` by name.
+- `{{trigger.item.key}}` and the declared `{{trigger.item.<field>}}` are the
+  case channel of the PER-CASE steps only — a step before the fan-out, or on
+  a branch beside it, has no case and may not reference them. The first
+  per-case step should read the channel (`discovery-no-case-channel` names
+  the omission), fields are directive-only, and a pin may use the key alone.
+  The per-case steps see the discovery run's finished prefix — `{{steps.
+  reconcile.answer}}` above resolves in every case run — and may `needs` only
+  the discovering step or other per-case steps.
+- The case `key` the agent seals is the case's stable business identity. Ant
+  claims each key once, so a key already claimed (waiting, running or done)
+  never fires again — that is what makes a daily re-discovery safe. Author
+  the intent so the key IS the business id (an order id, a settlement line),
+  never a date or a position in a list.
+- `concurrency` is the one pacing knob, the same one every trigger uses: the
+  seal claims every case at once; as many start as the activation has room
+  for, and the rest start as runs finish — nothing is dropped. Under
+  `concurrency: 1` the cases run one at a time
+  (`discovery-under-serial-concurrency` says so).
+- A turn that seals no `<cases>` tag fails the step (`missing-cases`,
+  retryable) unless `onMissing: complete`; an explicit `<cases>[]</cases>` is
+  "nothing to handle this run" and completes the discovery run quietly. The
+  discovery run itself appears in the run history once; each case run
+  appears with its case key as label and names the discovery run it came
+  from.
+
 ## Job steps
 
-`{ id, customJobRef, intent?, directive?, context?, needs?, on? }` — no
-`type` key.
+`{ id, customJobRef, intent?, directive?, context?, needs?, on?, discovers? }`
+— no `type` key.
 
 - `customJobRef` is `{agentId}/{jobId}`, and the pair plus the pinned `intent`
   must exist — a step addresses a finished agent's catalog, never work nobody
@@ -370,7 +473,10 @@ never concludes a silently ignored knob works:
 | `on.upstream.when: verdict:*` without `step` | a run seal carries no verdict — name the step whose intent declares the outcome |
 | `{{trigger.upstream.*}}` without `on.upstream`, `step` / `verdict` / `answer` on a run-node edge, or any of them in a context pin | the fields exist only with the trigger (the step-bound ones only with `step`), and another run's text never names a path in this project |
 | `{{run.prevSuccess.*}}` on a fetch pipeline | runs are per item — there is no previous-run watermark |
-| `{{trigger.item.*}}` without `on.fetch`, or an undeclared field | there is no item without a fetch trigger; declare fields under `on.fetch.fields` |
+| `{{trigger.item.*}}` without `on.fetch` or a `discovers` step upstream, or an undeclared field | there is no case without one of the two; declare fields under `on.fetch.fields` or the discovering step's `fields` |
+| `discovers` on a gate, on two steps, beside `on.fetch`, or on the last step | a gate decides, it discovers nothing; two fan-outs would multiply cases into a product; a fetch pipeline already fires per item; the steps AFTER the discovering step are what run per case |
+| `items` / `key` / `request` / a connection / `max` under `discovers` | the mechanism is the intent's prose and the directive, never a declaration; `concurrency` paces the case runs |
+| `{{run.prevSuccess.*}}` on a per-case step, or a per-case step that `needs` a step beside the fan-out | a case run has no watermark and never waits on the discovery run's other branches |
 | `{{steps.<id>.verdict}}` in a directive | reserved — a verdict routes edges (`on: verdict:<outcome>`), it is never substituted into directive text |
 
 ## Caps
@@ -379,8 +485,8 @@ At most 20 pipelines per account, 20 steps per pipeline, 3 concurrent runs per
 activator, `concurrency` at most 3 per activation, and no two fires closer than
 5 minutes — judged by sampling the next ten fires of the actual expression, so
 a clever expression is judged by what it does. A fetch trigger polls at most
-once a minute and admits at most 5 items per poll; a poll inspects at most 200
-items of the response.
+once a minute; a poll inspects at most 200 items of the response, and a
+discovering step's `<cases>` list is read up to 200 cases.
 
 ## The lifecycle you do not own
 

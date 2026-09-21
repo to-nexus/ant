@@ -1197,3 +1197,69 @@ describe('resolvePipelineAdvisories — open / acknowledged / stale, the one lif
     expect(r.stale).toHaveLength(1);
   });
 });
+
+describe('validatePipelineDef — step discovery (`discovers`): one per definition, per-case vocabulary, boundary rules', () => {
+  const job = (id: string, extra: Record<string, unknown> = {}) => ({ id, customJobRef: `ops/${id}`, directive: id, ...extra });
+  const discoveryDef = (steps: unknown[], extra: Record<string, unknown> = {}) => baseDef({ concurrency: 2, steps, ...extra });
+  const LINEAR = [
+    job('prepare'),
+    job('scan', { discovers: { fields: ['merchant'] } }),
+    job('handle', { directive: 'handle {{trigger.item.key}} for {{trigger.item.merchant}} after {{steps.prepare.answer}}', context: ['cases/{{trigger.item.key}}/**'] }),
+    { id: 'gate', type: 'approval', prompt: 'ok?' },
+    job('record'),
+  ];
+
+  it.each([
+    ['a linear discovery with the case channel in the first per-case step', discoveryDef(LINEAR)],
+    ['a discovering FIRST step (no prefix)', discoveryDef([job('scan', { discovers: {} }), job('handle', { directive: '{{trigger.item.key}}' })])],
+    ['an independent branch beside the fan-out', discoveryDef([...LINEAR, job('audit', { needs: ['prepare'] })])],
+    ['a per-case step needing only the discovering step and a per-case sibling', discoveryDef([job('scan', { discovers: {} }), job('a', { directive: '{{trigger.item.key}}' }), job('b', { needs: ['scan', 'a'] })])],
+  ])('accepts %s', (_label, def) => {
+    expect(validatePipelineDef(def)).toEqual([]);
+  });
+
+  it.each([
+    ['discovers on a gate', discoveryDef([job('scan'), { id: 'gate', type: 'approval', prompt: 'x', discovers: {} }]), /"discovers" belongs to job steps/],
+    ['two discovering steps', discoveryDef([job('a', { discovers: {} }), job('b', { discovers: {} }), job('c')]), /discovers may be declared on ONE step only \(got: "a", "b"\)/],
+    ['discovers beside on.fetch', discoveryDef([job('scan', { discovers: {} }), job('handle')], { on: { fetch: { connection: { baseUrl: 'https://q.example.com' }, request: { method: 'GET', path: '/x' }, items: '$.items', key: '$.key', every: '5m' } } }), /discovers and on\.fetch do not coexist/],
+    ['a discovering LAST step', discoveryDef([job('prepare'), job('scan', { discovers: {} })]), /discovers needs at least one step downstream/],
+    ['a non-mapping', discoveryDef([job('scan', { discovers: true }), job('handle')]), /discovers must be a mapping/],
+    ['a mechanism key', discoveryDef([job('scan', { discovers: { items: '$.x' } }), job('handle')]), /"items" belongs to on\.fetch/],
+    ['a pacing knob', discoveryDef([job('scan', { discovers: { max: 5 } }), job('handle')]), /"max" is not a knob/],
+    ['a reserved field name', discoveryDef([job('scan', { discovers: { fields: ['key'] } }), job('handle')]), /"key" is reserved/],
+    ['a field name outside the pattern', discoveryDef([job('scan', { discovers: { fields: ['Bad-Name'] } }), job('handle')]), /must be a lowerCamel identifier/],
+    ['a duplicate field', discoveryDef([job('scan', { discovers: { fields: ['a', 'a'] } }), job('handle')]), /declares "a" twice/],
+    ['too many fields', discoveryDef([job('scan', { discovers: { fields: Array.from({ length: PIPELINE_FETCH_MAX_FIELDS + 1 }, (_, i) => `f${i}`) } }), job('handle')]), /at most 20 fields/],
+    ['an unknown onMissing', discoveryDef([job('scan', { discovers: { onMissing: 'ignore' } }), job('handle')]), /onMissing must be "fail" or "complete"/],
+    ['the case channel on a step BEFORE the fan-out', discoveryDef([job('prepare', { directive: '{{trigger.item.key}}' }), job('scan', { discovers: {} }), job('handle')]), /needs an on\.fetch trigger, or a discovers step upstream/],
+    ['the case channel on an independent branch', discoveryDef([job('prepare'), job('scan', { discovers: {} }), job('handle'), job('audit', { needs: ['prepare'], directive: '{{trigger.item.key}}' })]), /needs an on\.fetch trigger, or a discovers step upstream/],
+    ['an undeclared field on a per-case step', discoveryDef([job('scan', { discovers: { fields: ['merchant'] } }), job('handle', { directive: '{{trigger.item.amount}}' })]), /unknown item field "\{\{trigger\.item\.amount\}\}" \(declared: \{\{trigger\.item\.key\}\}, \{\{trigger\.item\.merchant\}\} — add it under the discovers step's fields\)/],
+    ['a field in a per-case context pin', discoveryDef([job('scan', { discovers: { fields: ['merchant'] } }), job('handle', { context: ['x/{{trigger.item.merchant}}/**'] })]), /not allowed in a context pin/],
+    ['the watermark on a per-case step', discoveryDef([job('scan', { discovers: {} }), job('handle', { directive: '{{run.prevSuccess.fireDate}}' })]), /not defined on a per-case step/],
+    ['a per-case step waiting on the discovery run\'s other branch', discoveryDef([job('prepare'), job('scan', { discovers: {} }), job('audit', { needs: ['prepare'] }), job('handle', { needs: ['scan', 'audit'] })]), /cannot wait on the discovery run's other branches/],
+  ])('refuses %s', (_label, def, pattern) => {
+    expect(validatePipelineDef(def).join('\n')).toMatch(pattern);
+  });
+
+  it('the watermark stays legal on the discovering prefix (the discovery run has one)', () => {
+    expect(validatePipelineDef(discoveryDef([job('scan', { directive: 'since {{run.prevSuccess.fireDate}}', discovers: {} }), job('handle', { directive: '{{trigger.item.key}}' })]))).toEqual([]);
+  });
+
+  it('advises when the first per-case step reads no case channel, and when concurrency is 1', () => {
+    const noChannel = collectPipelineDefAdvisories(discoveryDef([job('scan', { discovers: {} }), job('handle'), job('record', { directive: '{{trigger.item.key}}' })]) as unknown as PipelineDef);
+    expect(noChannel.some((m) => /step "handle" is the first step of every fanned-out case run but reads no \{\{trigger\.item\.\*\}\}/.test(m))).toBe(true);
+    const serial = collectPipelineDefAdvisories(baseDef({ steps: [job('scan', { discovers: {} }), job('handle', { directive: '{{trigger.item.key}}' })] }) as unknown as PipelineDef);
+    expect(serial.some((m) => /fans out while concurrency is 1/.test(m))).toBe(true);
+    // A pin on the case key is a channel too; concurrency 2 silences the pacing note.
+    expect(collectPipelineDefAdvisories(discoveryDef([job('scan', { discovers: {} }), job('handle', { context: ['cases/{{trigger.item.key}}/**'] })]) as unknown as PipelineDef)).toEqual([]);
+    expect((PIPELINE_ADVISORY_CODES as readonly string[])).toEqual(expect.arrayContaining(['discovery-no-case-channel', 'discovery-under-serial-concurrency']));
+  });
+
+  it('a fetch pipeline\'s rules are untouched by the discovery axis (item vars on every step, add-under-on.fetch.fields hint)', () => {
+    const errors = validatePipelineDef(baseDef({
+      on: { fetch: { connection: { baseUrl: 'https://q.example.com' }, request: { method: 'GET', path: '/x' }, items: '$.items', key: '$.key', fields: { summary: '$.s' }, every: '5m' } },
+      steps: [job('a', { directive: '{{trigger.item.nope}}' })],
+    }));
+    expect(errors.join('\n')).toMatch(/add it under on\.fetch\.fields/);
+  });
+});

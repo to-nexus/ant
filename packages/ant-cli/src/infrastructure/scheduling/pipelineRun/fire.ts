@@ -7,6 +7,7 @@
 import {
   DEFAULT_PIPELINE_CAPS,
   MAX_CHAIN_DEPTH,
+  discoveryStepIndex,
   resolveRunConcurrency,
   type PipelineActivation,
   type PipelineDef,
@@ -18,13 +19,13 @@ import type { PipelineFireJobData, PipelineOwner } from '../../../core/ports/sch
 import { REDIS_KEYS, REDIS_TTL } from '../../../core/constants/redis';
 import { generateHumanId } from '../../../utils/humanId';
 import { logger } from '../../../utils/logger';
-import { buildInitialSteps, planAdvance } from '../../../core/pipelines/ChainExecutor';
+import { buildCaseRunSteps, buildDiscoveryRunSteps, buildInitialSteps, planAdvance } from '../../../core/pipelines/ChainExecutor';
 import { deriveActivationsRoot } from '../../../core/pipelines/paths';
 import { resolveDefRoot } from '../../../core/pipelines/scopeRoots';
 import { appendItemClaim, loadAvailability, loadPipeline, readRunIndex } from '../../../core/pipelines/store';
 import { resolveActivation } from '../resolveActivation';
-import { claimValue } from './itemLedger';
-import { appendEvent, commitRun, tenantCtx } from './runStore';
+import { claimValue, parseClaimValue } from './itemLedger';
+import { appendEvent, commitRun, getRun, readRunFromDisk, tenantCtx } from './runStore';
 import { COMPONENT, type PipelineRunOps } from './types';
 
 /** A cron fire older than this is "missed" (worker downtime) — `onMissed` decides. */
@@ -34,11 +35,12 @@ const MAX_OVERLAP_REQUEUES = 60; // 60 × 60s = 1h of queueing before giving up
 /**
  * The overlap knob belongs to the fire SOURCE: a cron or manual fire reads the
  * schedule's, an upstream fire the upstream trigger's. A fetch fire has none —
- * an unclaimed item is simply seen again by the next poll.
+ * an unclaimed item is simply seen again by the next poll; a discovery fire
+ * has none either — the case stays queued and the drain fires it again.
  */
 export function overlapPolicyOf(def: PipelineDef, firedBy: PipelineFiredBy): PipelineOverlap {
   if (firedBy === 'event') return def.on?.upstream?.overlap ?? 'skip';
-  if (firedBy === 'fetch') return 'skip';
+  if (firedBy === 'fetch' || firedBy === 'discovery') return 'skip';
   return def.on?.schedule?.overlap ?? 'skip';
 }
 
@@ -61,7 +63,7 @@ export async function loadFireAuthority(
   owner: PipelineOwner,
   pipelineId: string,
   projectId: string,
-  verb: 'fire' | 'poll' = 'fire',
+  verb: 'fire' | 'poll' | 'drain' = 'fire',
 ): Promise<FireAuthority | null> {
   const actRoot = deriveActivationsRoot(tenantCtx(ctx.deps, owner));
   // Disk, then the projection: the job pod's NFS view may still answer ENOENT
@@ -130,6 +132,11 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     logger.warn(`[Pipeline] upstream fire skipped — no upstream node: ${pipelineId} on ${projectId}`, { component: COMPONENT });
     return;
   }
+  // A discovery fire is one queued case of one discovery run — both are its identity.
+  if (data.firedBy === 'discovery' && (!data.item || !data.discoveryRunId)) {
+    logger.warn(`[Pipeline] case fire skipped — no case or no discovery run: ${pipelineId} on ${projectId}`, { component: COMPONENT });
+    return;
+  }
 
   const fireEpoch = data.fireEpoch ?? Math.floor(intendedFireAt / 60_000) * 60_000;
 
@@ -144,16 +151,20 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
   // Fire idempotency (attempts:3 on the control queue + multi-replica). A poll
   // fires N items in the same instant, so a fetch fire's identity is the item;
   // an upstream fire's identity is the NODE that sealed (epoch-free — one node
-  // fires an activation at most once, however many times its seal is replayed).
+  // fires an activation at most once, however many times its seal is replayed);
+  // a discovery fire's identity is (discovery run, case) — epoch-free too, so
+  // two drains racing on one queued case fire it once.
   const firedKey = REDIS_KEYS.PIPE.FIRED(
     owner.organizationId,
     owner.userId,
     projectId,
     data.upstream
       ? `upstream:${data.upstream.runId}:${data.upstream.step ?? 'run'}`
-      : data.item
-        ? `${fireEpoch}:${encodeURIComponent(data.item.key)}`
-        : fireEpoch,
+      : data.discoveryRunId && data.item
+        ? `discovery:${data.discoveryRunId}:${encodeURIComponent(data.item.key)}`
+        : data.item
+          ? `${fireEpoch}:${encodeURIComponent(data.item.key)}`
+          : fireEpoch,
   );
   if (!(await ctx.deps.stateStore.acquireLock(firedKey, REDIS_TTL.PIPE.FIRED))) return;
 
@@ -229,29 +240,73 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     return;
   }
 
-  // The item CLAIM — after both slots, so a full activation never claims what
-  // it cannot run (the item stays in the source for the next poll). Redis NX is
-  // the race arbiter; the disk ledger line is the record the projection is
-  // rebuilt from. Either failing gives everything back, in reverse.
+  // The case CLAIM — after both slots, so a full activation never claims what
+  // it cannot run. Two shapes, ONE ledger line:
+  // - fetch: the item is unclaimed until now — Redis NX is the race arbiter,
+  //   the disk line is the record the projection is rebuilt from (a losing
+  //   fire leaves the item in the source for the next poll).
+  // - discovery: the seal already QUEUED the case (NX held, no runId) — this
+  //   fire promotes it to started; a case another fire already promoted is
+  //   skipped (the fire NX above, keyed on discovery run + case, arbitrates).
+  // Either failing gives everything back, in reverse.
   const startedAt = new Date().toISOString();
   if (data.item) {
     const itemKey = REDIS_KEYS.PIPE.ITEM(owner.organizationId, owner.userId, projectId, pipelineId, data.item.key);
-    const claimed = await ctx.deps.stateStore.tryAcquireLock(itemKey, claimValue(runId, startedAt), REDIS_TTL.PIPE.ITEM);
-    if (!claimed) {
-      logger.info(`[Pipeline] fetch fire skipped — item already claimed: ${data.item.key} (${pipelineId})`, { component: COMPONENT });
+    const started = claimValue(runId, startedAt);
+    const giveBack = async () => {
       await ctx.deps.stateStore.releaseSlot(slotKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
       await releaseSlots();
-      return;
+    };
+    let restoreClaim: () => Promise<void>;
+    if (data.firedBy === 'discovery') {
+      const queuedRaw = await ctx.deps.stateStore.getKey(itemKey);
+      if (parseClaimValue(queuedRaw)?.runId) {
+        logger.info(`[Pipeline] case fire skipped — already started: ${data.item.key} (${pipelineId})`, { component: COMPONENT });
+        return void (await giveBack());
+      }
+      await ctx.deps.stateStore.setKeyWithTTL(itemKey, started, REDIS_TTL.PIPE.ITEM);
+      restoreClaim = async () => {
+        if (queuedRaw) await ctx.deps.stateStore.setKeyWithTTL(itemKey, queuedRaw, REDIS_TTL.PIPE.ITEM).catch(() => {});
+        else await ctx.deps.stateStore.releaseLockIfOwner(itemKey, started).catch(() => {});
+      };
+    } else {
+      if (!(await ctx.deps.stateStore.tryAcquireLock(itemKey, started, REDIS_TTL.PIPE.ITEM))) {
+        logger.info(`[Pipeline] fetch fire skipped — item already claimed: ${data.item.key} (${pipelineId})`, { component: COMPONENT });
+        return void (await giveBack());
+      }
+      restoreClaim = () => ctx.deps.stateStore.releaseLockIfOwner(itemKey, started).catch(() => {});
     }
     try {
-      await appendItemClaim(actRoot, projectId, pipelineId, { key: data.item.key, runId, claimedAt: startedAt });
+      // A discovery line keeps the case body: the drain re-queues a dead
+      // started claim from this line alone.
+      await appendItemClaim(actRoot, projectId, pipelineId, {
+        key: data.item.key,
+        runId,
+        claimedAt: startedAt,
+        ...(data.discoveryRunId && { queuedFrom: data.discoveryRunId, item: data.item }),
+      });
     } catch (e) {
-      logger.warn(`[Pipeline] fetch fire aborted — claim ledger append failed: ${data.item.key}`, { component: COMPONENT }, e);
-      await ctx.deps.stateStore.releaseLockIfOwner(itemKey, claimValue(runId, startedAt)).catch(() => {});
-      await ctx.deps.stateStore.releaseSlot(slotKey, REDIS_KEYS.PIPE.RUN_SLOT_MEMBER(projectId, runId)).catch(() => {});
-      await releaseSlots();
-      return;
+      logger.warn(`[Pipeline] ${data.firedBy} fire aborted — claim ledger append failed: ${data.item.key}`, { component: COMPONENT }, e);
+      await restoreClaim();
+      return void (await giveBack());
     }
+  }
+
+  // Step seeding — the ONE place a run's step set is shaped:
+  // - a definition with a `discovers` step fires DISCOVERY runs: the per-case
+  //   steps are pre-skipped (inert to the executor) and come back as case runs;
+  // - a case run copies the discovery run's sealed prefix and runs only the
+  //   per-case steps. The discovery run is read from its projection or its run
+  //   log; a parent that is gone fails the case run LOUDLY — a history row,
+  //   never a silent drop — so its queued claim does not spin forever.
+  let steps = buildInitialSteps(def);
+  let caseRunError: string | undefined;
+  if (data.firedBy === 'discovery') {
+    const parent = (await getRun(ctx.deps, data.discoveryRunId!)) ?? readRunFromDisk(ctx.deps, owner, projectId, data.discoveryRunId!);
+    if (parent) steps = buildCaseRunSteps(def, parent);
+    else caseRunError = `discovery-run-missing: case "${data.item!.key}" was queued by run ${data.discoveryRunId}, whose record is gone`;
+  } else if (discoveryStepIndex(def) !== undefined) {
+    steps = buildDiscoveryRunSteps(def);
   }
 
   const run: RunRecord = {
@@ -261,7 +316,7 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     firedBy: data.firedBy,
     fireEpoch,
     status: 'running',
-    steps: buildInitialSteps(def),
+    steps,
     startedAt,
     defSnapshot: def,
     activationSnapshot: activation,
@@ -269,7 +324,23 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     ...(data.chainDepth !== undefined && { chainDepth: data.chainDepth }),
     ...(data.item && { item: data.item }),
     ...(data.upstream && { upstream: data.upstream }),
+    ...(data.discoveryRunId && { discoveryRunId: data.discoveryRunId }),
+    ...(data.discoveryStepId && { discoveryStepId: data.discoveryStepId }),
   };
+
+  if (caseRunError) {
+    const failed: RunRecord = { ...run, status: 'failed', error: caseRunError, steps: steps.map((s) => ({ ...s, status: 'cancelled' as const })) };
+    await commitRun(ctx.deps, owner, failed);
+    await appendEvent(ctx.deps, owner, projectId, {
+      ts: startedAt,
+      event: 'fired',
+      runId,
+      detail: { firedBy: run.firedBy, fireEpoch, projectId, discoveryRunId: data.discoveryRunId },
+    });
+    logger.warn(`[Pipeline] ${caseRunError}`, { component: COMPONENT });
+    await ctx.finalizeRun(owner, failed);
+    return;
+  }
 
   // The run doc lands FIRST: the run log is what `isDeadClaim` reads as "this
   // fire produced a run", so a log line before a failed commit would make the
@@ -282,7 +353,13 @@ export async function handleFire(ctx: PipelineRunOps, data: PipelineFireJobData,
     ts: run.startedAt,
     event: 'fired',
     runId,
-    detail: { firedBy: run.firedBy, fireEpoch, projectId, ...(data.upstream && { upstream: upstreamRef }) },
+    detail: {
+      firedBy: run.firedBy,
+      fireEpoch,
+      projectId,
+      ...(data.upstream && { upstream: upstreamRef }),
+      ...(data.discoveryRunId && { discoveryRunId: data.discoveryRunId, discoveryStepId: data.discoveryStepId }),
+    },
   });
   if (data.item) {
     await appendEvent(ctx.deps, owner, projectId, { ts: run.startedAt, event: 'item_claimed', runId, detail: { key: data.item.key } });

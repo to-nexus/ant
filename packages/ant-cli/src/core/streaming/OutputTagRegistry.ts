@@ -48,8 +48,10 @@ import { parseExecutionTierTag } from '../executionTier/parseExecutionTierTag';
 import { parseChecklistTag } from '../customAgents/universalChecklist';
 import { parseContractDeferral } from '../customAgents/stopHooks';
 import { parseAssigneeNomination } from '../pipelines/assignees';
+import { parseCaseNominations } from '../pipelines/cases';
 import {
   transformAssignee,
+  transformCases,
   transformDone,
   transformVerdict,
   transformReply,
@@ -622,6 +624,22 @@ register({
   extract: (text) => parseAssigneeNomination(text),
   promptContract:
     'On an unattended pipeline step, when the approval gate that follows should reach one specific reviewer, end the turn\'s FINAL reply with exactly one `<assignee>member-id</assignee>` — the id must be on that gate\'s roster (an unknown id is ignored); omit it when no one specific should be called.',
+});
+
+register({
+  name: 'cases',
+  pattern: /<cases>\s*([\s\S]*?)\s*<\/cases>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['consumed-formatted', 'post-stream'],
+    persistence: ['chat-line', 'sealed-state'],
+    blocking: 'non-blocking',
+  },
+  chatLineKind: 'rendered_payload',
+  transform: transformCases,
+  extract: (text) => parseCaseNominations(text)?.cases,
+  promptContract:
+    'On a pipeline step that fans out (the Case Discovery band is present), end the turn\'s FINAL reply with exactly one `<cases>[{"key":"…","fields":{…}}, …]</cases>` — a JSON array of the cases found, each with its STABLE business key; `<cases>[]</cases>` when nothing needs handling. Never emit it on any other turn.',
 });
 
 register({

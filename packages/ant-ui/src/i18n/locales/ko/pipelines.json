@@ -491,6 +491,7 @@
     "manual": "수동",
     "event": "체인",
     "fetch": "수집",
+    "discovery": "케이스",
     "running": "실행 중",
     "awaiting": "사람 응답 대기",
     "completed": "완료",
