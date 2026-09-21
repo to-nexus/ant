@@ -144,6 +144,30 @@ describe('activatePipelineTo / deactivatePipelineById', () => {
     expect(s.pipelines[0].activations).toEqual([other]);
     expect(s.activePipelineByProject['proj-a']).toBeNull();
   });
+
+  // The control POSTs carry a client-side bound (`AbortSignal.timeout`): a
+  // request that never answers used to lock the execution view with no
+  // message. The bound firing is not a refusal — the server may have finished
+  // after we stopped waiting — so the rows are re-read, never assumed.
+  it('a deactivate that hits the client-side bound reports it and re-reads the rows', async () => {
+    const useStore = buildStore();
+    useStore.setState({
+      pipelines: [ENTRY({ activations: [ACTIVATION_VIEW] })],
+      activePipelineByProject: { 'proj-a': { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting' } },
+    });
+    api.deactivatePipeline.mockRejectedValue(Object.assign(new Error('signal timed out'), { name: 'TimeoutError' }));
+    const resync = vi.fn(async () => {});
+    useStore.setState({ resyncActivationViews: resync } as any);
+
+    const ok = await useStore.getState().deactivatePipelineById('p1', 'proj-a');
+
+    expect(ok).toBe(false);
+    expect(useStore.getState().pipelineActivationError).toMatch(/did not finish in time/);
+    expect(resync).toHaveBeenCalledWith('p1', 'proj-a');
+    // Nothing is folded locally on a timeout — the re-read is the authority.
+    expect(useStore.getState().pipelines[0].activations).toEqual([ACTIVATION_VIEW]);
+    expect(useStore.getState().activePipelineByProject['proj-a']).not.toBeNull();
+  });
 });
 
 describe('applyPipelineEvent — activation / availability folds', () => {

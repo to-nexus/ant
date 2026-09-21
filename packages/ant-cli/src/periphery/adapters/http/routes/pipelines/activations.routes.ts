@@ -20,6 +20,7 @@ import { REDIS_KEYS } from '../../../../../core/constants/redis';
 import { approverUnion, syncApproverIndexForActivation } from '../../../../../core/pipelines/approverIndex';
 import { extractUserContext } from '../helpers/userContext';
 import { sendErrorResponse } from '../helpers/errorResponse';
+import { logger } from '../../../../../utils/logger';
 import { validatePipelineCatalogServer } from '../../../../../core/pipelines/catalogBinding';
 import { deriveActivationsRoot } from '../../../../../core/pipelines/paths';
 import {
@@ -286,6 +287,9 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
         return;
       }
       if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
+      // Entry line: a deactivate that never answers is otherwise invisible in
+      // the logs (the binding logs its legs only once it completes).
+      logger.info(`[Pipeline] deactivate requested: ${projectId}/${pipelineId} by ${owner.userId}`, { component: 'PipelinesDeactivate' });
       // The only refusal is a REAL conflict: the project is bound to another
       // pipeline. "No record visible from this pod" is not one — the binding
       // authority is idempotent, and a record another pod wrote seconds ago
@@ -307,6 +311,7 @@ export function registerActivationRoutes(router: Router, ctx: PipelinesRouteCont
           scheduleQueue: deps.scheduleQueue,
           coordinator: deps.coordinator,
           stateStore: deps.stateStore,
+          ...(deps.schedulerLegTimeoutMs !== undefined && { schedulerLegTimeoutMs: deps.schedulerLegTimeoutMs }),
         },
         owner,
         projectId,

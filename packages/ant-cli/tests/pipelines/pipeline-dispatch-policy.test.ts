@@ -814,7 +814,9 @@ describe('fetch trigger — one egress owner, claim after slots, poller confinem
     expect(reconciler).toMatch(/isPipelineSchedulerId\(id\) && !scheduled\.has\(id\)/);
     expect(reconciler).toMatch(/upsertEvery\(fetchId,/);
     const deactivate = read('infrastructure/scheduling/deactivateBinding.ts');
-    expect(deactivate).toMatch(/removeCron\(fetchSchedulerIdFor\(owner, projectId\)\)/);
+    // Both ids ride the ONE bounded scheduler leg (the binding does not know which it had).
+    expect(deactivate).toMatch(/\[schedulerIdFor\(owner, projectId\), fetchSchedulerIdFor\(owner, projectId\)\]/);
+    expect(deactivate).toMatch(/ids\.map\(\(id\) => settleWithin\(deps\.scheduleQueue\.removeCron\(id\)/);
   });
 
   it('preview-fetch is a reserved literal the self-api pin refuses (an authenticated egress on a job-composed request)', () => {

@@ -204,6 +204,9 @@ export async function dispatchJobStep(
   } catch (e) {
     return void (await fail(`enqueue-failed: ${e instanceof Error ? e.message : String(e)}`, true));
   }
+  // The run id ↔ job id join in the logs: every other line of this job is
+  // keyed by jobId, so without this a search by run id finds nothing.
+  logger.info(`[Pipeline] step dispatched: ${run.runId}/${step.id} → job ${jobId} (round ${retries})`, { component: COMPONENT });
 
   if (isFirstTurn && ctx.deps.chatService) {
     const startedText = run.firedBy === 'cron'

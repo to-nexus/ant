@@ -365,10 +365,11 @@ export async function apiGet<T>(url: string): Promise<T> {
   return response.json();
 }
 
-export async function apiPost<T = void>(url: string, body?: unknown): Promise<T> {
+export async function apiPost<T = void>(url: string, body?: unknown, init?: Pick<RequestInit, 'signal'>): Promise<T> {
   const response = await authFetch(url, {
     method: 'POST',
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    ...(init?.signal ? { signal: init.signal } : {}),
   });
   if (!response.ok) {
     if (response.status === 401) await handle401Cascade(url);

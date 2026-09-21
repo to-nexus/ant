@@ -44,6 +44,7 @@
     "activationsCount": "프로젝트 {{n}}곳",
     "noActivations": "아직 어디에도 활성화되지 않았습니다.",
     "deactivate": "비활성화",
+    "deactivateTimedOut": "요청이 시간 내에 끝나지 않았습니다 — 활성화 상태를 다시 읽습니다.",
     "stateWaiting": "대기",
     "stateRunning": "작업 중",
     "stateAwaiting": "사람 응답 대기",

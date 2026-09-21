@@ -293,6 +293,10 @@ export interface PipelineSliceActions {
 
 export type PipelineSlice = PipelineSliceState & PipelineSliceActions;
 
+/** The client-side bound on a control POST fired (`AbortSignal.timeout`) — not a server refusal. */
+export const isControlTimeout = (e: unknown): boolean =>
+  e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+
 export const pipelineDraftIsDirty = (draft: PipelineDef | null, saved: PipelineDef | null): boolean => {
   if (!draft) return false;
   if (!saved) return true;
@@ -654,6 +658,17 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       void get().loadActivatableProjects();
       return true;
     } catch (e) {
+      if (isControlTimeout(e)) {
+        // The client-side bound fired: the server may have finished the
+        // deactivate after we stopped waiting — say so and re-read the rows.
+        set({
+          pipelineActivationError: i18next.isInitialized
+            ? i18next.t('pipelines:execution.deactivateTimedOut', 'The request did not finish in time — re-reading the activation state.')
+            : 'The request did not finish in time — re-reading the activation state.',
+        });
+        void get().resyncActivationViews(pipelineId, projectId);
+        return false;
+      }
       set({ pipelineActivationError: e instanceof Error ? e.message : String(e) });
       if (e instanceof ApiError && (e.status === 404 || e.status === 409)) void get().resyncActivationViews(pipelineId, projectId);
       return false;

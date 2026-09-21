@@ -177,19 +177,21 @@ export async function killStepJob(ctx: PipelineRunOps, jobId: string, projectId:
 }
 
 /**
- * Deactivation side effect owned by the coordinator: cancel the live run.
- * The kill legs live in cancelRun — ONE cancel authority, so the FE stop
+ * Deactivation side effect owned by the coordinator: cancel the live runs
+ * (returns how many). The kill legs live in cancelRun — ONE cancel authority, so the FE stop
  * button and the run-cancel route stop the running job exactly like
  * deactivation does. The activation file/keys/cron are the ROUTE's
  * responsibility — this method never touches activation state.
  */
-export async function deactivate(ctx: PipelineRunOps, owner: PipelineOwner, projectId: string): Promise<void> {
+export async function deactivate(ctx: PipelineRunOps, owner: PipelineOwner, projectId: string): Promise<number> {
+  let cancelled = 0;
   for (const runId of await listActiveRunIds(ctx.deps, owner, projectId)) {
     const run = await getRun(ctx.deps, runId);
     if (run && !isTerminal(run.status)) {
-      await cancelRun(ctx, owner, runId);
+      if (await cancelRun(ctx, owner, runId)) cancelled += 1;
     }
   }
+  return cancelled;
 }
 
 const INDEX_LOCK_RETRY_MS = 20;
@@ -248,6 +250,9 @@ export async function finalizeRun(ctx: PipelineRunOps, owner: PipelineOwner, run
   // A run whose record is gone has nothing to seal (mutateRun returns null).
   if (!result || !endedAt) return;
   const sealed = result.run;
+  // The run id's one happy-path log line — the step lines carry the job ids,
+  // so a search by run id now finds the whole run.
+  logger.info(`[Pipeline] run finished: ${sealed.runId} (${sealed.status}) on ${sealed.projectId}`, { component: COMPONENT });
   await appendEvent(ctx.deps, owner, sealed.projectId, {
     ts: endedAt,
     event: 'run_finished',

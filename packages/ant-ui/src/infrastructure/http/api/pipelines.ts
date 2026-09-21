@@ -40,6 +40,16 @@ export type {
 
 const base = () => `${API_BASE()}/definitions/pipelines`;
 
+/**
+ * Bound for the activation control POSTs (activate / deactivate / run-now).
+ * These requests gate the whole execution view behind one `busy` flag; a
+ * request that never settles (a stalled server leg, an edge holding the
+ * connection) used to lock the view with no message. The server keeps
+ * working past the bound — the caller re-reads state on a timeout.
+ */
+export const PIPELINE_CONTROL_TIMEOUT_MS = 20_000;
+const controlSignal = () => ({ signal: AbortSignal.timeout(PIPELINE_CONTROL_TIMEOUT_MS) });
+
 export function fetchPipelines(): Promise<{
   pipelines: PipelineListEntry[];
   invalid: Array<{ id: string; error: string; scope: PipelineScope }>;
@@ -144,7 +154,7 @@ export function activatePipeline(
   return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/activate`, {
     projectId,
     ...(approvers && Object.keys(approvers).length > 0 ? { approvers } : {}),
-  });
+  }, controlSignal());
 }
 
 /** Activator-only per-gate approver roster edit — live from the next resolve on (S9). */
@@ -156,7 +166,7 @@ export function updateActivationApprovers(
 }
 
 export function deactivatePipeline(pipelineId: string, projectId: string): Promise<{ success: boolean }> {
-  return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/deactivate`, { projectId });
+  return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/deactivate`, { projectId }, controlSignal());
 }
 
 export function fetchActivatableProjects(): Promise<{ projects: Array<{ id: string; name: string; activePipelineId: string | null }> }> {
@@ -173,7 +183,7 @@ export function previewPipelineFires(cron: string, tz?: string): Promise<{ ok: b
 
 /** On a fetch activation the server polls instead of starting a run (`polled: true`). */
 export function runPipelineNow(pipelineId: string, projectId: string): Promise<{ accepted: boolean; polled?: boolean }> {
-  return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/run-now`, { projectId });
+  return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/run-now`, { projectId }, controlSignal());
 }
 
 /** Dry-run a fetch trigger with the caller's own credentials — no claim, no fire. */

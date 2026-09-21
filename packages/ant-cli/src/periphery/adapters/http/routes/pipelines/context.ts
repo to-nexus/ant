@@ -64,6 +64,8 @@ export interface PipelinesRoutesDeps {
   };
   /** The caller's credential store view — `preview-fetch` polls with the caller's own secrets. */
   credentialResolverFor?(owner: PipelineOwner): McpCredentialResolver;
+  /** Test seam: bound on the deactivate binding's scheduler-removal legs (default 5s). */
+  schedulerLegTimeoutMs?: number;
 }
 
 export function ownerOf(req: Request): PipelineOwner {

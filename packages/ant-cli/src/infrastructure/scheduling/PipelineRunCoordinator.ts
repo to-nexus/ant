@@ -165,8 +165,8 @@ export class PipelineRunCoordinator {
     return cancelRun(this.ctx, owner, runId);
   }
 
-  /** Deactivation side effect owned by the coordinator: cancel the live run. */
-  async deactivate(owner: PipelineOwner, projectId: string): Promise<void> {
+  /** Deactivation side effect owned by the coordinator: cancel the live runs — returns how many. */
+  async deactivate(owner: PipelineOwner, projectId: string): Promise<number> {
     return deactivate(this.ctx, owner, projectId);
   }
 

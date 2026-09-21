@@ -44,6 +44,7 @@
     "activationsCount": "{{n}} project(s)",
     "noActivations": "Not activated anywhere yet.",
     "deactivate": "Deactivate",
+    "deactivateTimedOut": "The request did not finish in time — re-reading the activation state.",
     "stateWaiting": "Waiting",
     "stateRunning": "Working",
     "stateAwaiting": "Awaiting input",

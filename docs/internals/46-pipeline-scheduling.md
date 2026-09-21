@@ -101,6 +101,27 @@ corollaries:
   (`finishTombstonedDeactivation`) instead of re-arming its schedulers, and
   `resolveActivation` treats a record no newer than the tombstone as gone.
   Activate deletes the tombstone after it writes the new record.
+- **Deactivate runs its durable legs first and its scheduler legs last, bounded.**
+  Order: tombstone → live runs cancelled (`coordinator.deactivate`, returns the
+  count) → `activation.json` unlinked → approver index → Redis projections/index
+  → SSE `activationChanged` → `removeCron` ×2. The BullMQ queue connection has no
+  command timeout, so a stalled `removeJobScheduler` sitting in FRONT of the
+  unlink held the whole deactivate (record present, execution view locked,
+  nothing logged — the 2026-09-21 cloud report). Scheduler removal is not a
+  correctness condition: the reconciler's orphan sweep removes any
+  `pipe|`/`fetch|` id whose record is gone, and a fire landing in the window
+  re-reads the authority (tombstone) and skips. Both `removeCron` calls run in
+  parallel behind `SCHEDULER_LEG_TIMEOUT_MS` (5 s; `schedulerLegTimeoutMs` is
+  the test seam) and a miss is a `warn`, never a refusal.
+- **The deactivate path is logged, and the run id is searchable.** The route
+  logs `deactivate requested: {project}/{pipeline}` on entry and the binding
+  logs one line on completion with every leg's elapsed ms
+  (`resolve · tombstone · cancel (runs N) · unlink · approvers · projections ·
+  publish · cron`) and where the record was read from (`disk` / `projection` /
+  `none` / `unreadable`). Dispatch logs `step dispatched: {runId}/{stepId} → job
+  {jobId}` and the sealer logs `run finished: {runId} ({status})` — before these,
+  the happy path wrote no line carrying the run id, so a server-log search for a
+  run id found nothing (every other line is keyed by the step's job id).
 
 **Availability (`availability.json`, missing = disabled/draft)** gates
 ACTIVATABILITY, not execution, and binds the whole write surface:

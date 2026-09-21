@@ -203,8 +203,12 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
               onRunNow={async () => {
                 setBusy(true);
                 setRunNowNote(null);
-                const err = await runPipelineNowById(pipelineId, a.projectId);
-                setBusy(false);
+                let err: string | null;
+                try {
+                  err = await runPipelineNowById(pipelineId, a.projectId);
+                } finally {
+                  setBusy(false);
+                }
                 if (err) {
                   setRunNowNote(err);
                   return;
@@ -221,9 +225,14 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
                 window.setTimeout(() => setRunNowNote((cur) => (cur === null ? cur : null)), 4000);
               }}
               onDeactivate={async () => {
+                // `busy` locks every control in this view — it must release on
+                // every outcome, or a refused/timed-out request leaves the view dead.
                 setBusy(true);
-                await deactivatePipelineById(pipelineId, a.projectId);
-                setBusy(false);
+                try {
+                  await deactivatePipelineById(pipelineId, a.projectId);
+                } finally {
+                  setBusy(false);
+                }
               }}
             />
           ))}
@@ -273,8 +282,12 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry, unsa
                   onClick={async () => {
                     if (!selectedProject) return;
                     setBusy(true);
-                    const ok = await activatePipelineTo(pipelineId, selectedProject, draftApprovers);
-                    setBusy(false);
+                    let ok: boolean;
+                    try {
+                      ok = await activatePipelineTo(pipelineId, selectedProject, draftApprovers);
+                    } finally {
+                      setBusy(false);
+                    }
                     if (ok) {
                       setActivateOpen(false);
                       setDraftApprovers({});

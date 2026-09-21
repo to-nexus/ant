@@ -172,6 +172,49 @@ describe('deactivatePipelineBinding — the ONE deactivation authority (route + 
     });
   });
 
+  // Scheduler removal is the one leg with no bound of its own (BullMQ queue
+  // connection, no command timeout), so it runs LAST and behind a bound: the
+  // record is gone, the projections are cleared and the SSE is out before the
+  // binding even waits on it, and a removeCron that never settles cannot hold
+  // the deactivate — the reconciler's orphan sweep removes the scheduler.
+  it('scheduler removal is last and bounded — a removeCron that never settles does not hold the deactivate', async () => {
+    await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
+    const { deps, published, deletedKeys } = makeBindingDeps();
+    const order: string[] = [];
+    deps.scheduleQueue.removeCron = (id: string) => {
+      order.push(`cron:${id}`);
+      return new Promise<undefined>(() => {}); // never settles
+    };
+    const publish = deps.stateStore.publish;
+    deps.stateStore.publish = async (ch: string, msg: any) => {
+      order.push('publish');
+      return publish(ch, msg);
+    };
+    const started = Date.now();
+    const result = await deactivatePipelineBinding({ ...deps, schedulerLegTimeoutMs: 50 } as any, OWNER, 'proj-a');
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
+    expect(loadActivationByProject(actRoot(), 'proj-a')).toBeNull();
+    expect(deletedKeys).toHaveLength(4);
+    expect(published).toHaveLength(1);
+    // Durable legs precede the scheduler legs; both scheduler ids were still asked for.
+    expect(order[0]).toBe('publish');
+    expect(order.slice(1).sort()).toEqual(['cron:fetch|local|user|proj-a', 'cron:pipe|local|user|proj-a']);
+  });
+
+  it('a removeCron that rejects is swallowed — every other leg still ran', async () => {
+    await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
+    const { deps, published, deletedKeys } = makeBindingDeps();
+    deps.scheduleQueue.removeCron = async () => {
+      throw new Error('queue down');
+    };
+    const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a');
+    expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
+    expect(loadActivationByProject(actRoot(), 'proj-a')).toBeNull();
+    expect(deletedKeys).toHaveLength(4);
+    expect(published).toHaveLength(1);
+  });
+
   it('no activation = idempotent no-op success that still heals orphan cron/projections, no SSE', async () => {
     const { deps, removed, deletedKeys, published } = makeBindingDeps();
     const result = await deactivatePipelineBinding(deps as any, OWNER, 'ghost');

@@ -33,6 +33,8 @@ const redisKeys = new Map<string, string>();
 const redisSlots = new Map<string, Set<string>>();
 const cronUpserts: string[] = [];
 const cronRemoved: string[] = [];
+/** Swappable by a row (the stub object itself is scoped to beforeAll). */
+let removeCronImpl: (id: string) => Promise<void> = async (id: string) => void cronRemoved.push(id);
 const everyUpserts: Array<{ id: string; everyMs: number }> = [];
 const addedNow: any[] = [];
 
@@ -111,7 +113,7 @@ beforeAll(async () => {
   const scheduleQueue = {
     upsertCron: async (id: string) => void cronUpserts.push(id),
     upsertEvery: async (id: string, everyMs: number) => void everyUpserts.push({ id, everyMs }),
-    removeCron: async (id: string) => void cronRemoved.push(id),
+    removeCron: (id: string) => removeCronImpl(id),
     listCronIds: async () => [],
     armDelayed: async () => {},
     cancelDelayed: async () => {},
@@ -154,6 +156,7 @@ beforeAll(async () => {
       scheduleQueue: scheduleQueue as any,
       stateStore: stateStore as any,
       organizationRepository: fakeOrgRepo(new Map()),
+      schedulerLegTimeoutMs: 50,
     }),
   );
   server = http.createServer(app);
@@ -433,6 +436,31 @@ describe('activation — one per project, many per pipeline', () => {
     expect(mismatch.status).toBe(409);
     expect(await mismatch.json()).toMatchObject({ code: 'activation-mismatch', pipelineId: 'digest' });
     expect(fs.existsSync(path.join(userDir, '.ant/pipeline-activations/proj-a/activation.json'))).toBe(true);
+  });
+
+  // Scheduler removal has no bound of its own (BullMQ queue connection, no
+  // command timeout) and used to sit in front of the unlink — a stalled
+  // removeJobScheduler held the whole deactivate with nothing logged. It is
+  // now the LAST leg and bounded: the route answers, the record is gone, and
+  // the reconciler's orphan sweep removes the scheduler.
+  it('deactivate answers 200 and unlinks even when scheduler removal never settles', async () => {
+    await createPipeline();
+    await enable();
+    makeUniversalProject('proj-a');
+    await activate('digest', 'proj-a');
+    const original = removeCronImpl;
+    removeCronImpl = () => new Promise<void>(() => {});
+    try {
+      const started = Date.now();
+      const res = await api('/digest/deactivate', { method: 'POST', body: JSON.stringify({ projectId: 'proj-a' }) });
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ success: true, hadActivation: true });
+      expect(fs.existsSync(path.join(userDir, '.ant/pipeline-activations/proj-a/activation.json'))).toBe(false);
+      expect(redisKeys.has('ant:pipe:actv:localorg:localuser:proj-a')).toBe(false);
+    } finally {
+      removeCronImpl = original;
+    }
   });
 
   // The list and activatable-projects enumerate by readdir; a pod whose NFS
