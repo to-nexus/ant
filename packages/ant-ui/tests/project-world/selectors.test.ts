@@ -16,7 +16,7 @@ import {
   selectHasFeatures,
   type ProjectSnapshot,
 } from '../../src/domain/project-world/selectors';
-import { selectWizardProjectKinds } from '../../src/domain/store/selectors/projects';
+import { selectQuickStartAvailable, selectWizardProjectKinds } from '../../src/domain/store/selectors/projects';
 
 function feat(name: string): Feature {
   return { name } as Feature;
@@ -135,5 +135,12 @@ describe('selectWizardProjectKinds — the creation wizard follows the codespace
   });
   it('off: tabs hidden, universal pinned', () => {
     expect(selectWizardProjectKinds({ codespaceEnabled: false })).toEqual({ showTypeTabs: false, initialType: 'universal' });
+  });
+});
+
+describe('selectQuickStartAvailable — the onboarding page is a codespace surface', () => {
+  it('follows the codespace mirror', () => {
+    expect(selectQuickStartAvailable({ codespaceEnabled: true })).toBe(true);
+    expect(selectQuickStartAvailable({ codespaceEnabled: false })).toBe(false);
   });
 });

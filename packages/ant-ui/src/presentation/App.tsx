@@ -24,6 +24,7 @@ import { QuickStart } from '@/presentation/pages/QuickStart';
 import { ChevronRight } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { selectProjectsLoaded } from '@/domain/store/selectors';
+import { selectQuickStartAvailable } from '@/domain/store/selectors/projects';
 import {
   useIdeBaseUrl,
   useIdeOverlayMode,
@@ -293,9 +294,11 @@ function AppShell() {
   // user. While `serverMode` is null (config still loading), don't flash
   // the welcome — keep the app in its neutral state.
   const shouldShowWelcome = serverMode === 'cloud' && !userEmail;
-  // ✅ QuickStart: zero projects (auto) OR opt-in with existing project (quickStartProjectId set)
+  // ✅ QuickStart: zero projects (auto) OR opt-in with existing project (quickStartProjectId set).
+  // Never when codespace is off — the page creates a canonical project + plan job.
+  const quickStartAvailable = useStore(selectQuickStartAvailable);
   const shouldShowQuickStart = isAuthenticated && projectsLoaded && !onboardingSkipped
-    && (projects.length === 0 || !!quickStartProjectId);
+    && quickStartAvailable && (projects.length === 0 || !!quickStartProjectId);
   // Reset skip flag when projects appear (user created one via QuickStart or externally)
   useEffect(() => {
     if (projects.length > 0 && onboardingSkipped) setOnboardingSkipped(false);

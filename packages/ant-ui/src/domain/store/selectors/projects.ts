@@ -45,3 +45,13 @@ export function selectWizardProjectKinds(s: { codespaceEnabled: boolean }): Wiza
     ? { showTypeTabs: true, initialType: 'canonical' }
     : { showTypeTabs: false, initialType: 'universal' };
 }
+
+/**
+ * QuickStart (the zero-project onboarding page and its explorer CTA) creates a
+ * canonical project and starts a `plan` job — it IS the codespace, so it exists
+ * only while the BE reports the surface on. Off: a fresh workspace lands on the
+ * normal app shell and creates a universal project through the explorer.
+ */
+export function selectQuickStartAvailable(s: { codespaceEnabled: boolean }): boolean {
+  return s.codespaceEnabled;
+}

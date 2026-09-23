@@ -8,6 +8,7 @@ import { UniversalArtifactsPanel } from '../UniversalArtifactsPanel';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { useStore } from '@/domain/store';
 import { selectIsAuthenticated } from '@/domain/store/selectors/auth';
+import { selectQuickStartAvailable } from '@/domain/store/selectors/projects';
 import { useTranslation } from 'react-i18next';
 
 interface ExplorerPanelProps {
@@ -29,6 +30,7 @@ export function ExplorerPanel({
   const projects = useStore((state) => state.projects);
   const onboardingSkipped = useStore((state) => state.onboardingSkipped);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
+  const quickStartAvailable = useStore(selectQuickStartAvailable);
   // Universal projects swap the feature section + canonical artifacts panel
   // for the workspace artifacts tree. `projectType` mirrors config.json
   // (absent/canonical → 'canonical'), so canonical UX is untouched.
@@ -160,7 +162,7 @@ export function ExplorerPanel({
               </>
             )}
 
-            {onboardingSkipped && projects.length === 0 && (
+            {quickStartAvailable && onboardingSkipped && projects.length === 0 && (
               <div className="mt-4 mx-1 space-y-2">
                 <QuickStartCTA
                   variant="plan"
