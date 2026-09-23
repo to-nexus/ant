@@ -14,6 +14,7 @@ import * as path from 'path';
 import { featureSlugToName } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../core/types/user';
+import { isProjectKindEnabledAt } from '../../../../core/customAgents/universalContainer';
 
 export interface ReferenceCatalogEntry {
   project: string;
@@ -55,7 +56,7 @@ export function readBranchBase(projectPath: string): string {
   return 'main';
 }
 
-/** All project ids in the current tenant workspace (dirs, excludes hidden). */
+/** All project ids in the current tenant workspace (dirs, excludes hidden and disabled kinds). */
 export async function listTenantProjects(
   workspaceResolver: WorkspaceResolver,
   userContext: UserContext,
@@ -72,8 +73,9 @@ export async function listTenantProjects(
       .filter((p) => !p.startsWith('.'))
       .map(async (p) => {
         try {
-          const stat = await fs.promises.stat(path.join(workspacePath, p));
-          return stat.isDirectory() ? p : null;
+          const projectPath = path.join(workspacePath, p);
+          const stat = await fs.promises.stat(projectPath);
+          return stat.isDirectory() && isProjectKindEnabledAt(projectPath) ? p : null;
         } catch {
           return null;
         }

@@ -25,7 +25,7 @@ import {
   type ContainedDirent,
 } from '../config/containedIo';
 import type { ProjectKind } from '@ant/shared';
-import { PROJECT_KIND_DISABLED_CODE, enabledProjectKinds } from '../config/codespaceCapability';
+import { PROJECT_KIND_DISABLED_CODE, enabledProjectKinds, isProjectKindEnabled } from '../config/codespaceCapability';
 
 export const UNIVERSAL_DIRNAME = 'universal';
 export const UNIVERSAL_ARTIFACTS_DIRNAME = 'artifacts';
@@ -45,6 +45,20 @@ export function isUniversalProject(projectPath: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function readProjectKind(projectPath: string): ProjectKind {
+  return isUniversalProject(projectPath) ? 'universal' : 'canonical';
+}
+
+/**
+ * A project whose kind this deployment has disabled (`ANT_CODESPACE_ENABLED=false`
+ * → canonical) is invisible to every listing surface — the project list, the
+ * cross-project reference catalog. Account purge is the one enumerator that
+ * must still see it (it deletes, it does not expose).
+ */
+export function isProjectKindEnabledAt(projectPath: string): boolean {
+  return isProjectKindEnabled(readProjectKind(projectPath));
 }
 
 export function getUniversalContainerPathOf(projectPath: string): string {

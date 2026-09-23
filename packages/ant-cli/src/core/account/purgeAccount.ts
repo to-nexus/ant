@@ -71,7 +71,7 @@ export interface PurgeAccountDeps {
   /** Physical workspaces root (`WorkspacePathResolver.getPhysicalWorkspacesPath()`). */
   workspacesPath: string;
   projectService: {
-    listProjects(userContext: UserContext): Promise<string[]>;
+    listProjects(userContext: UserContext, opts?: { includeDisabledKinds?: boolean }): Promise<string[]>;
     deleteProject(id: string, userContext: UserContext, opts?: { force?: boolean }): Promise<void>;
   };
 }
@@ -157,7 +157,8 @@ export async function purgeAccount(
       const ctx = contextFor(orgId);
       let projects: string[] = [];
       try {
-        projects = await deps.projectService.listProjects(ctx);
+        // A purge deletes every project, including kinds the deployment hides.
+        projects = await deps.projectService.listProjects(ctx, { includeDisabledKinds: true });
       } catch {
         continue; // no tree for this scope
       }

@@ -9,6 +9,7 @@ import { GitHelper } from '../GitService/helper/GitHelper';
 import { DeletionVerificationError } from './errors';
 import { MODEL_REGISTRY, type Domain, type ProjectKind } from '@ant/shared';
 import { assertProjectKindEnabled, defaultProjectKind } from '../../../../../core/config/codespaceCapability';
+import { isProjectKindEnabledAt } from '../../../../../core/customAgents/universalContainer';
 import { getDefaultLlmModels } from '../../../../../core/config/defaultModels';
 import { isLocalServerMode } from '../../../../../core/config/serverMode';
 
@@ -27,7 +28,12 @@ export class ProjectCrudService {
   /**
    * List all projects for a user
    */
-  async listProjects(userContext: UserContext): Promise<string[]> {
+  /**
+   * `includeDisabledKinds` is for enumerators that act on every project
+   * (account purge); every user-facing list leaves it unset, so a canonical
+   * project on a codespace-off deployment is not exposed.
+   */
+  async listProjects(userContext: UserContext, opts?: { includeDisabledKinds?: boolean }): Promise<string[]> {
     try {
       const workspacePath = this.workspaceResolver.getWorkspacePath(userContext);
       
@@ -46,8 +52,11 @@ export class ProjectCrudService {
         projects
           .filter(p => !p.startsWith('.'))
           .map(async (p) => {
-            const stat = await fs.promises.stat(path.join(workspacePath, p));
-            return stat.isDirectory() ? p : null;
+            const projectPath = path.join(workspacePath, p);
+            const stat = await fs.promises.stat(projectPath);
+            if (!stat.isDirectory()) return null;
+            if (!opts?.includeDisabledKinds && !isProjectKindEnabledAt(projectPath)) return null;
+            return p;
           })
       );
       

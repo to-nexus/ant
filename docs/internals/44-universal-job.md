@@ -1600,8 +1600,11 @@ ALWAYS namespaced under `universal/` regardless. The gate is
 deployment's enabled kinds (`ANT_CODESPACE_ENABLED`, SSOT
 `core/config/codespaceCapability.ts`): with codespace off, only `universal`
 is enabled, so a canonical project — including one created before the switch
-— stays readable but answers 400 `project-kind-disabled` to every job, and a
-project create / config PUT naming `canonical` is refused with the same code.
+— is hidden from every listing surface (`listProjects`, the reference
+catalog; `isProjectKindEnabledAt`), answers 400 `project-kind-disabled` to
+every job, and a project create / config PUT naming `canonical` is refused
+with the same code. Account purge enumerates with `includeDisabledKinds` so a
+hidden project is still deleted with its owner.
 Enforcement points:
 
 - `/execute` universal branch: 400 `project-not-universal` on canonical

@@ -104,8 +104,8 @@ export class ProjectService {
   // Project CRUD (delegated)
   // =====================================
   
-  async listProjects(userContext: UserContext): Promise<string[]> {
-    return this.projectCrud.listProjects(userContext);
+  async listProjects(userContext: UserContext, opts?: { includeDisabledKinds?: boolean }): Promise<string[]> {
+    return this.projectCrud.listProjects(userContext, opts);
   }
 
   /**

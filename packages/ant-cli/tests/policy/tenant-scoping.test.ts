@@ -348,6 +348,36 @@ describe('project kind is decided at creation and re-typing, from the ONE codesp
     await expect(svc.updateProjectConfig('p1', { projectType: 'universal', description: 'ok' }, ALICE)).resolves.toBeUndefined();
   });
 
+  it('off: a canonical project created earlier is NOT listed; universal ones are; purge still sees all', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    const svcOn = await svcFor();
+    svcOn.workspaceResolver.getWorkspacePath = () => root;
+    await svcOn.createProject('legacy-code', ALICE, { projectType: 'canonical' });
+    await svcOn.createProject('agents', ALICE, { projectType: 'universal' });
+    expect((await svcOn.listProjects(ALICE)).sort()).toEqual(['agents', 'legacy-code']);
+
+    vi.stubEnv('ANT_CODESPACE_ENABLED', 'false');
+    vi.resetModules();
+    const svcOff = await svcFor();
+    svcOff.workspaceResolver.getWorkspacePath = () => root;
+    expect(await svcOff.listProjects(ALICE)).toEqual(['agents']);
+    expect((await svcOff.listProjects(ALICE, { includeDisabledKinds: true })).sort()).toEqual(['agents', 'legacy-code']);
+    // The directory is untouched — hidden, not deleted.
+    expect(fs.existsSync(path.join(root, 'legacy-code', 'config.json'))).toBe(true);
+  });
+
+  it('off: the cross-project reference catalog hides canonical projects too', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    const svc = await svcFor();
+    await svc.createProject('legacy-code', ALICE, { projectType: 'canonical' });
+    await svc.createProject('agents', ALICE, { projectType: 'universal' });
+    vi.stubEnv('ANT_CODESPACE_ENABLED', 'false');
+    vi.resetModules();
+    const { listTenantProjects } = await import('../../src/agents/common/tool/reference/catalog.js');
+    const resolver = { getWorkspacePath: () => root } as any;
+    expect(await listTenantProjects(resolver, ALICE as any)).toEqual(['agents']);
+  });
+
   it('HTTP: the refusal is a typed 400 { code } on POST /projects, never a 500', async () => {
     vi.stubEnv('ANT_SERVER_MODE', 'local');
     vi.stubEnv('ANT_CODESPACE_ENABLED', 'false');
