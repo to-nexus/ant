@@ -89,12 +89,43 @@ export interface VettedEgress {
 }
 
 /**
+ * `ANT_INTERNAL_EGRESS_HOSTS` — comma-separated hostnames a DECLARED
+ * connection (`apis.baseUrl`, a pipeline `on.fetch` connection) may reach even
+ * though they resolve to private addresses: an on-prem REST system on the
+ * corporate network. Entries are an exact hostname, a literal IP, or a
+ * `*.suffix` wildcard. Only definition-authored connections consult it — the
+ * model-chosen `fetch_url` / `download_asset` never do, so the SSRF surface of
+ * an agent reading arbitrary URLs is unchanged. Loopback is never admitted.
+ */
+export function isInternalEgressHostAllowed(hostname: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.ANT_INTERNAL_EGRESS_HOSTS;
+  if (!raw) return false;
+  const host = stripBrackets(hostname).toLowerCase();
+  for (const entry of raw.split(',')) {
+    const e = entry.trim().toLowerCase();
+    if (!e) continue;
+    if (e.startsWith('*.')) {
+      const suffix = e.slice(1); // ".corp.example"
+      if (host.endsWith(suffix) && host.length > suffix.length) return true;
+    } else if (host === e) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export interface EgressOptions {
+  /** Consult `ANT_INTERNAL_EGRESS_HOSTS` — declared connections only, never model-chosen URLs. */
+  allowInternalHosts?: boolean;
+}
+
+/**
  * Validate one http(s) URL and resolve it to a single vetted public address.
  * A literal-IP host is classified without DNS; a name has EVERY record
  * checked. Throws `EgressPolicyError` on a policy refusal; a DNS failure
  * propagates as an ordinary error.
  */
-export async function resolvePublicEgress(rawUrl: string): Promise<VettedEgress> {
+export async function resolvePublicEgress(rawUrl: string, opts: EgressOptions = {}): Promise<VettedEgress> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -105,16 +136,18 @@ export async function resolvePublicEgress(rawUrl: string): Promise<VettedEgress>
     throw new EgressPolicyError(`Unsupported URL scheme: ${parsed.protocol}`);
   }
   const host = stripBrackets(parsed.hostname);
+  if (isLoopbackHost(host)) throw new EgressPolicyError(`Blocked internal address for host: ${host}`);
+  const internalAllowed = opts.allowInternalHosts === true && isInternalEgressHostAllowed(host);
   const literalFamily = net.isIP(host);
   if (literalFamily !== 0) {
-    if (isPrivateAddress(host)) throw new EgressPolicyError(`Blocked internal address for host: ${host}`);
+    if (!internalAllowed && isPrivateAddress(host)) throw new EgressPolicyError(`Blocked internal address for host: ${host}`);
     return { url: parsed, address: host, family: literalFamily };
   }
-  if (isLoopbackHost(host)) throw new EgressPolicyError(`Blocked internal address for host: ${host}`);
 
   const { lookup } = await import('dns/promises');
   const resolved = await lookup(host, { all: true });
-  if (resolved.length === 0 || resolved.some((r) => isPrivateAddress(r.address))) {
+  if (resolved.length === 0) throw new EgressPolicyError(`Blocked internal address for host: ${host}`);
+  if (!internalAllowed && resolved.some((r) => isPrivateAddress(r.address))) {
     throw new EgressPolicyError(`Blocked internal address for host: ${host}`);
   }
   return { url: parsed, address: resolved[0].address, family: resolved[0].family };

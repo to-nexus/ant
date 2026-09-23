@@ -11,7 +11,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { wrapCustomJobContent } from '../../src/core/prompt/builder/InputSanitizer';
+import { wrapCustomJobContent, wrapExternalToolResult } from '../../src/core/prompt/builder/InputSanitizer';
+import { isExternalContentTool } from '../../src/core/customAgents/universalToolPolicy';
+import { activateCustomJob, _resetActiveCustomJobForTests } from '../../src/core/customAgents/activeCustomJob';
+import { logger } from '../../src/utils/logger';
+import { vi } from 'vitest';
 import { PromptBuilder } from '../../src/core/prompt/builder/PromptBuilder';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import { TEMPLATE_PATHS } from '../../src/core/prompt/builder/templatePaths';
@@ -641,5 +645,63 @@ describe('attachImageBlocksToLastUserMessage — outbound-only merge', () => {
   it('last message not user → untouched (never violates role alternation)', () => {
     const original = [{ role: 'assistant' as const, content: 'done' }];
     expect(attachImageBlocksToLastUserMessage(original, [block])).toBe(original);
+  });
+});
+
+// Gate truth table: which tool results cross into the model inside the
+// untrusted boundary. Externally-authored bodies ON, the job's own data OFF.
+describe('external tool results — untrusted boundary gate + audit line', () => {
+  it.each([
+    ['fetch_url', true],
+    ['search_web', true],
+    ['mcp__jira__search', true],
+    ['api__crm__get', true],
+    ['read_file', false],
+    ['list_files', false],
+    ['run_command', false],
+    ['create_file', false],
+  ])('%s → wrapped:%s', (tool, wrapped) => {
+    expect(isExternalContentTool(tool)).toBe(wrapped);
+  });
+
+  it('wrapExternalToolResult tags source/trust and escapes the tool name attribute', () => {
+    const w = wrapExternalToolResult('BODY', 'mcp__x"><evil');
+    expect(w.startsWith('<tool_result tool="mcp__x___evil" source="external" trust="untrusted">')).toBe(true);
+    expect(w).toContain('BODY');
+    expect(w.trimEnd().endsWith('</tool_result>')).toBe(true);
+    expect(wrapExternalToolResult('', 'fetch_url')).toBe('');
+  });
+
+  it('afterBatch: wraps external results only, leaves failures bare, and emits one [Audit] tool line per call with a digest (never the arguments)', async () => {
+    _resetActiveCustomJobForTests();
+    activateCustomJob({ agentId: 'ops', jobId: 'weekly' } as any);
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    try {
+      const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+      const SECRET_ARG = 'token-SUPER-SECRET-4711';
+      const events = [
+        { toolName: 'fetch_url', args: { url: 'https://x.example' }, result: { content: 'page body' } },
+        { toolName: 'read_file', args: { path: 'notes.md' }, result: { content: 'file body' } },
+        { toolName: 'mcp__jira__search', args: { q: SECRET_ARG }, result: { content: 'x', error: 'boom' } },
+      ] as any;
+      const state = { _httpJobId: 'job-1', projectId: 'p', _approvalGrantTool: 'fetch_url' } as any;
+      universalToolNodeConfig.hooks!.afterBatch!(state, events);
+
+      expect(events[0].result.content.startsWith('<tool_result tool="fetch_url" source="external" trust="untrusted">')).toBe(true);
+      expect(events[1].result.content).toBe('file body');
+      expect(events[2].result.content).toBe('x');
+
+      const audit = info.mock.calls.filter((c) => String(c[0]).startsWith('[Audit] tool'));
+      expect(audit).toHaveLength(3);
+      const metas = audit.map((c) => c[2] as Record<string, unknown>);
+      expect(metas.map((m) => m.tool)).toEqual(['fetch_url', 'read_file', 'mcp__jira__search']);
+      expect(metas[0]).toMatchObject({ jobId: 'job-1', project: 'p', agent: 'ops/weekly', approved: true, ok: true });
+      expect(metas[2]).toMatchObject({ approved: false, ok: false });
+      for (const m of metas) expect(String(m.argsDigest)).toMatch(/^[0-9a-f]{16}$/);
+      expect(JSON.stringify(audit)).not.toContain(SECRET_ARG);
+    } finally {
+      info.mockRestore();
+      _resetActiveCustomJobForTests();
+    }
   });
 });

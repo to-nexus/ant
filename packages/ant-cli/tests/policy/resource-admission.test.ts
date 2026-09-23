@@ -92,6 +92,30 @@ describe('unauthenticated requests cannot spend the full body budget (M-010)', (
     return { seq: order, app };
   };
 
+  // The `/ide/` lane (proxy auth + its own approval-guard mount) exists only
+  // with codespace on; off, the surface is absent rather than mounted-and-idle.
+  it('codespace on (default): the /ide/ lane is mounted and carries its own approval guard', async () => {
+    delete process.env.ANT_CODESPACE_ENABLED;
+    const { app, seq } = await configure();
+    const idePaths = (app.use as ReturnType<typeof vi.fn>).mock.calls.filter((c: unknown[]) => c[0] === '/ide/');
+    expect(idePaths.length).toBeGreaterThanOrEqual(2);
+    expect(seq.filter((s) => s === 'approval-guard')).toHaveLength(2);
+  });
+
+  it('codespace off: no /ide/ mount at all, and exactly the one whole-surface approval guard remains', async () => {
+    process.env.ANT_CODESPACE_ENABLED = 'false';
+    try {
+      const { app, seq } = await configure();
+      const idePaths = (app.use as ReturnType<typeof vi.fn>).mock.calls.filter((c: unknown[]) => c[0] === '/ide/');
+      expect(idePaths).toEqual([]);
+      expect(seq.filter((s) => s === 'approval-guard')).toHaveLength(1);
+      // The pre-auth budget ordering is untouched by the switch.
+      expect(seq.indexOf('json:100kb')).toBeLessThan(seq.indexOf('jwt-auth'));
+    } finally {
+      delete process.env.ANT_CODESPACE_ENABLED;
+    }
+  });
+
   it('mounts the small parser first, then auth, then the full-size parser', async () => {
     const { seq } = await configure();
     const small = seq.indexOf('json:100kb');

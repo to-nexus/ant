@@ -20,6 +20,8 @@ For deployment-specific recommendations, see
 | `ANT_WORKSPACE_BASE_PATH` | sibling `../ant-workspaces`, else `<cwd>/workspaces` | Where Ant stores per-feature data. EFS mount root in cloud. |
 | `ANT_CUSTOM_AGENTS_DIR` | — | Org-scope [custom-agent](../concepts/custom-agents.md) definitions root (self-host). Read-only for members; the user scope shadows it. |
 | `ANT_BUILD_SHA` | unset | Git SHA of the running build, baked in at image build time. Reported as `buildSha` by `GET /api/system/config` so a FE/BE version skew is observable. |
+| `ANT_CODESPACE_ENABLED` | `true` | The ONE switch for the code-generation surface. `false` (also `0`/`no`/`off`) applies two consequences together: the Cloud IDE is not mounted (no `/ide` proxy, no `/api/cloud-ide/*`, no orchestrator, no Docker-socket / K8s-client contact at boot) and only `universal` (custom-agent) projects can be created, re-typed, or run — a canonical create/PUT/job answers 400 `project-kind-disabled`. Canonical projects created before the switch stay readable. Reported as `capabilities.codespace`. There is deliberately no per-surface sibling (no IDE-only flag, no project-kind list). SSOT: `core/config/codespaceCapability.ts`. |
+| `ANT_INTERNAL_EGRESS_HOSTS` | unset | Comma-separated hostnames (exact, literal IP, or `*.suffix`) that a DECLARED connection — an `apis.baseUrl` or a pipeline `on.fetch` connection — may reach in cloud mode although they resolve to private addresses: an on-prem REST system. Only definition-authored connections consult it; the model-chosen `fetch_url` / `download_asset` still refuse every private address, and loopback is never admitted. SSOT: `core/config/urlPolicy.ts`. |
 
 ## LLM providers
 
@@ -171,6 +173,12 @@ projects under any other org/user directory are invisible to that server.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANT_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. |
+
+Audit lines: every login (success and failure), every admin approval change,
+and every universal tool call is one `[Audit] <event>` INFO line carrying
+who / job / agent / tool and a SHA-256 digest of the arguments — never the
+arguments themselves (they live in the session transcript). Retain that tag
+separately for the 1-year window; owner: `core/audit/auditLog.ts`.
 
 ## Job child process
 

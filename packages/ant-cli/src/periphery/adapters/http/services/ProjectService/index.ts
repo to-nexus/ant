@@ -12,6 +12,7 @@ import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
 import type { IDEOrchestratorPort } from '../../../../../core/ports/ideOrchestrator';
+import type { ProjectKind } from '@ant/shared';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { JobQueuePort } from '../../../../../core/ports/queue';
 import { logger } from '../../../../../utils/logger';
@@ -132,7 +133,7 @@ export class ProjectService {
   async createProject(
     id: string,
     userContext: UserContext,
-    opts?: { force?: boolean; domain?: Domain },
+    opts?: { force?: boolean; domain?: Domain; projectType?: ProjectKind },
   ): Promise<void> {
     if (opts?.force) {
       try {
@@ -141,7 +142,7 @@ export class ProjectService {
         if (e?.message !== 'Project not found') throw e;
       }
     }
-    return this.projectCrud.createProject(id, userContext, { domain: opts?.domain });
+    return this.projectCrud.createProject(id, userContext, { domain: opts?.domain, projectType: opts?.projectType });
   }
 
   /**

@@ -12,6 +12,7 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { validateBody, createProjectSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 import { GitOperationError } from '../services/GitService/errors';
+import { ProjectKindDisabledError } from '../../../../core/config/codespaceCapability';
 import { ProjectDeletionError } from '../services/ProjectService/errors';
 import type { GitStateBroadcaster } from '../../../../core/realtime/GitStateBroadcaster';
 import { randomBytes } from 'crypto';
@@ -117,7 +118,7 @@ export function createProjectsRoutes(deps: {
   // Create a new project
   router.post('/projects', validateBody(createProjectSchema), async (req: Request, res: Response) => {
     try {
-      const { id, domain } = req.body;
+      const { id, domain, projectType } = req.body;
 
       if (!id || typeof id !== 'string') {
         return res.status(400).json({ error: 'Project ID is required and must be a string' });
@@ -139,12 +140,15 @@ export function createProjectsRoutes(deps: {
         });
       }
 
-      // `domain` is accepted at creation (not only via a follow-up config PUT) so
-      // the workspace domain SSOT exists from the project's first job onward.
-      await deps.projectService.createProject(id, userContext, { force, domain });
+      // `domain` and `projectType` are accepted at creation (not only via a
+      // follow-up config PUT) so both project-level SSOTs exist from the
+      // project's first job onward.
+      await deps.projectService.createProject(id, userContext, { force, domain, projectType });
       res.json({ success: true, id });
     } catch (error: any) {
-      if (error.message === 'Project already exists') {
+      if (error instanceof ProjectKindDisabledError) {
+        res.status(400).json({ error: error.message, code: error.code });
+      } else if (error.message === 'Project already exists') {
         res.status(409).json({
           error: error.message,
           canForceCleanup: true,
@@ -259,7 +263,9 @@ export function createProjectsRoutes(deps: {
       const savedConfig = await deps.projectService.getProjectConfig(projectId, userContext);
       res.json(savedConfig);
     } catch (error: any) {
-      if (error instanceof GitOperationError) {
+      if (error instanceof ProjectKindDisabledError) {
+        res.status(400).json({ error: error.message, code: error.code });
+      } else if (error instanceof GitOperationError) {
         // branchBase lifecycle rejections (locked / not an existing feature)
         res.status(error.statusCode).json({ error: error.message });
       } else if (error.message.includes('Missing required fields') || error.message.startsWith('Invalid config:')) {

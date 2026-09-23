@@ -103,14 +103,24 @@ async function rejectCanonicalJobOnUniversalProject(
   const projectType: 'universal' | 'canonical' =
     (await isUniversalProjectOf(workspaceResolver, userContext, projectId)) ? 'universal' : 'canonical';
   const gate = decideProjectJobGate(projectType, jobType);
-  if (!gate.ok && gate.code === 'project-universal-requires-custom-job') {
-    return {
-      status: 400,
-      error: `Project "${projectId}" is a universal (workspace) project — only custom agent jobs (jobType 'universal') can run here (got: ${jobType})`,
-      code: gate.code,
-    };
+  if (gate.ok) return null;
+  switch (gate.code) {
+    case 'project-universal-requires-custom-job':
+      return {
+        status: 400,
+        error: `Project "${projectId}" is a universal (workspace) project — only custom agent jobs (jobType 'universal') can run here (got: ${jobType})`,
+        code: gate.code,
+      };
+    case 'project-kind-disabled':
+      return {
+        status: 400,
+        error: `Project "${projectId}" is a ${projectType} project, which this deployment has disabled (ANT_CODESPACE_ENABLED=false) — no job can run here`,
+        code: gate.code,
+      };
+    default:
+      // 'project-not-universal' is owned by the universal accept path (UniversalDispatchGate).
+      return null;
   }
-  return null;
 }
 
 /**
@@ -374,8 +384,11 @@ export function createJobRoutes(deps: {
         });
       }
 
-      // Reverse gate (D6): canonical job types never run on a workspace project.
-      if (jobType !== 'universal') {
+      // Project kind × jobType gate (D6 + codespace switch): canonical job
+      // types never run on a workspace project, and a disabled project kind
+      // runs nothing. Universal jobs pass through the same table — its
+      // 'project-not-universal' row is answered by the universal branch below.
+      {
         const rejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, jobType);
         if (rejected) {
           await emitConflictAssistantMessage(
@@ -384,7 +397,9 @@ export function createJobRoutes(deps: {
             effectiveTurnId,
             `gate-${effectiveTurnId ?? Date.now()}`,
             userContext,
-            '워크스페이스 프로젝트에서는 커스텀 에이전트 잡만 실행할 수 있습니다.',
+            rejected.code === 'project-kind-disabled'
+              ? '이 배포에서는 커스텀 에이전트(workspace) 프로젝트만 사용할 수 있습니다.'
+              : '워크스페이스 프로젝트에서는 커스텀 에이전트 잡만 실행할 수 있습니다.',
           );
           return res.status(rejected.status).json({ error: rejected.error, code: rejected.code });
         }

@@ -123,7 +123,7 @@ export class ExpressServerAdapter implements
       workspaceService: this.deps.workspaceService.constructor.name,
       portManager: this.deps.portManager.constructor.name,
       portRegistry: this.deps.portRegistry.constructor.name,
-      ideService: this.deps.ideService.constructor.name,
+      ideService: this.deps.ideService?.constructor.name ?? 'disabled',
       oidcEnabled: !!this.deps.oidcService
     });
     

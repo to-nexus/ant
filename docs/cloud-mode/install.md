@@ -126,7 +126,8 @@ IDE orchestration:
 
 | Variable | Notes |
 |---|---|
-| `ANT_K8S_NAMESPACE` | Set to enable the Kubernetes IDE orchestrator. If unset, Docker is used (single-host shape). |
+| `ANT_CODESPACE_ENABLED` | `false` turns the whole code-generation surface off (no IDE, universal projects only) — the setting for a custom-agent-only deployment. Default `true`. |
+| `ANT_K8S_NAMESPACE` | Set to enable the Kubernetes IDE orchestrator. If unset, Docker is used (single-host shape). Irrelevant when codespace is off. |
 | `ANT_EFS_PVC_NAME` | Name of the PersistentVolumeClaim that mounts your workspace storage. |
 | `ANT_IDE_IMAGE` | The container image users get when they open the Cloud IDE. Default `gitpod/openvscode-server:latest`. |
 | `ANT_IDE_HOSTNAME_MODE` | `user` (one hostname per user) or `feature` (one hostname per feature). |
@@ -314,8 +315,8 @@ but the recovery is faster with snapshots.
 - [ ] Ingress restricted: only the UI origin and your own integrations
       reach `/api/`.
 - [ ] Cloud IDE feature disabled if you don't use it
-      (`/api/cloud-ide/*` and the orchestrator can be gated by route
-      registration).
+      (`ANT_CODESPACE_ENABLED=false` — removes `/ide/*`, `/api/cloud-ide/*`
+      and the orchestrator, and confines projects to the universal kind).
 - [ ] Redis ACL limits the Ant user to `ant:*` key prefixes.
 - [ ] `ANT_TASK_CONCURRENCY` capped to your LLM rate-limit budget.
 - [ ] Subscribe to the repo's security advisories

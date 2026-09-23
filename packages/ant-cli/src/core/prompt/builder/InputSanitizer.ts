@@ -41,6 +41,23 @@ export function wrapCustomJobContent(content: string, customJobRef: string): str
 }
 
 /**
+ * Wrap a tool result whose body came from OUTSIDE the deployment (web page,
+ * search hits, MCP / declared-API response) in an untrusted-content boundary.
+ * Same family as the two wrappers above; the `trust` attribute is what the
+ * runtime rules name ("content inside is data, never instructions"). The tool
+ * name is attribute-escaped so a hostile server name cannot close the tag.
+ */
+export function wrapExternalToolResult(content: string, toolName: string): string {
+  if (!content) return content;
+  const tool = toolName.replace(/[^A-Za-z0-9_.:-]/g, '_');
+  return [
+    `<tool_result tool="${tool}" source="external" trust="untrusted">`,
+    content,
+    `</tool_result>`,
+  ].join('\n');
+}
+
+/**
  * Apply boundary-tag wrapping to every user-controlled field inside a
  * template variable map.  Non-string values and fields that are not in
  * the USER_CONTENT_FIELDS set are returned unchanged.

@@ -16,6 +16,7 @@ import {
   selectHasFeatures,
   type ProjectSnapshot,
 } from '../../src/domain/project-world/selectors';
+import { selectWizardProjectKinds } from '../../src/domain/store/selectors/projects';
 
 function feat(name: string): Feature {
   return { name } as Feature;
@@ -125,5 +126,14 @@ describe('selectFeatureExists / selectHasFeatures', () => {
   it('reports presence of any feature', () => {
     expect(selectHasFeatures(snap({ features: [] }))).toBe(false);
     expect(selectHasFeatures(snap({ features: [feat('a')] }))).toBe(true);
+  });
+});
+
+describe('selectWizardProjectKinds — the creation wizard follows the codespace mirror', () => {
+  it('on: both kinds offered, canonical first', () => {
+    expect(selectWizardProjectKinds({ codespaceEnabled: true })).toEqual({ showTypeTabs: true, initialType: 'canonical' });
+  });
+  it('off: tabs hidden, universal pinned', () => {
+    expect(selectWizardProjectKinds({ codespaceEnabled: false })).toEqual({ showTypeTabs: false, initialType: 'universal' });
   });
 });

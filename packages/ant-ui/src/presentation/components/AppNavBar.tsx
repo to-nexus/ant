@@ -58,7 +58,10 @@ export function AppNavBar({}: AppNavBarProps) {
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
   // Universal workspaces have no code IDE surface — the Editor toggle hides.
+  // The same applies deployment-wide when codespace is off.
   const isUniversalProject = useStore((state) => state.projectType) === 'universal';
+  const codespaceEnabled = useStore((state) => state.codespaceEnabled);
+  const ideAvailable = !isUniversalProject && codespaceEnabled;
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -69,10 +72,10 @@ export function AppNavBar({}: AppNavBarProps) {
   // (project switch), fall back to the agents view — the Editor toggle is
   // hidden, so codeIde would otherwise be unreachable-but-stuck.
   useEffect(() => {
-    if (isUniversalProject && mainView === 'codeIde') {
+    if (!ideAvailable && mainView === 'codeIde') {
       setMainView('agents');
     }
-  }, [isUniversalProject, mainView, setMainView]);
+  }, [ideAvailable, mainView, setMainView]);
 
   // Close language menu on outside click
   useEffect(() => {
@@ -220,8 +223,8 @@ export function AppNavBar({}: AppNavBarProps) {
                 <span className="hidden sm:inline">{t('viewMode.agents')}</span>
               </button>
 
-              {/* Editor Button — hidden for universal workspaces (no IDE) */}
-              {!isUniversalProject && (
+              {/* Editor Button — hidden for universal workspaces and when codespace is off (no IDE) */}
+              {ideAvailable && (
               <button
                 onClick={handleCodeIdeViewSwitch}
                 className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"

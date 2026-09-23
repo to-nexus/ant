@@ -51,6 +51,7 @@ import {
 } from './teams.routes';
 import type { Organization } from '../../../../core/auth/types';
 import { logger } from '../../../../utils/logger';
+import { auditLog } from '../../../../core/audit/auditLog';
 
 export interface AdminRoutesDeps {
   creditLedger: CreditLedgerPort;
@@ -303,6 +304,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       const adminEmail = (req as any).user?.email as string;
       await organizationRepository.setUserApproval(userId, status, adminEmail);
       logger.info(`[Admin] approval ${userId} → ${status} by ${adminEmail}`, { component: 'Admin' });
+      auditLog('approval', { userId, status, by: adminEmail });
       const u = await organizationRepository.getUser(userId);
       res.json(u ? { rows: await toRows(u, orgResolver()) } : { ok: true });
     } catch (err) {

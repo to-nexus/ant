@@ -25,6 +25,7 @@ import type { PipelineOwner } from '../../../../../core/ports/scheduler';
 import { parseCompositeUserEmail } from '../../../../../core/utils/compositeUserEmail';
 import { ensureCanonicalFeatureMiddleware } from '../../middleware/ensureCanonicalFeature';
 import { logger } from '../../../../../utils/logger';
+import { isIdeEnabled } from '../../../../../core/config/codespaceCapability';
 import { ServerConfig, ServerDependencies } from '../types';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { JobExecutionManager } from '../managers/JobExecutionManager';
@@ -80,8 +81,11 @@ export class RouteConfigurator {
     // mode registers no auth routes (no authService, FE never calls /auth/me).
     this.setupAuthRoutes(app);
     this.setupApiRoutes(app);
-    this.setupIDERoutes(app);
-    this.setupCloudIDERoutes(app);
+    // Codespace off → the IDE surface is absent (no routes, no orchestrator).
+    if (isIdeEnabled()) {
+      this.setupIDERoutes(app);
+      this.setupCloudIDERoutes(app);
+    }
     // Kanban GET lives in features.routes (single owner — dispatches on
     // ?jobId= vs ?job=). The legacy kanban.routes registration was shadowed
     // by it and has been removed.

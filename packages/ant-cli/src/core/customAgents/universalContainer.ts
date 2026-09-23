@@ -24,6 +24,8 @@ import {
   readTextContainedBase,
   type ContainedDirent,
 } from '../config/containedIo';
+import type { ProjectKind } from '@ant/shared';
+import { PROJECT_KIND_DISABLED_CODE, enabledProjectKinds } from '../config/codespaceCapability';
 
 export const UNIVERSAL_DIRNAME = 'universal';
 export const UNIVERSAL_ARTIFACTS_DIRNAME = 'artifacts';
@@ -676,17 +678,20 @@ export async function decorateUniversalTree(nodes: UniversalTreeNode[]): Promise
 
 export type ProjectJobGateResult =
   | { ok: true }
-  | { ok: false; code: 'project-not-universal' | 'project-universal-requires-custom-job' };
+  | { ok: false; code: 'project-not-universal' | 'project-universal-requires-custom-job' | typeof PROJECT_KIND_DISABLED_CODE };
 
 /**
- * The single truth table for the bidirectional project-type × jobType gate:
- * universal projects run ONLY `jobType='universal'` (custom jobs); canonical
- * projects run everything EXCEPT it.
+ * The single truth table for the project-type × jobType gate, three columns:
+ * the deployment's enabled kinds (codespace switch) decide whether the project
+ * may run anything at all; then universal projects run ONLY `jobType='universal'`
+ * (custom jobs) and canonical projects run everything EXCEPT it.
  */
 export function decideProjectJobGate(
-  projectType: 'canonical' | 'universal' | undefined,
+  projectType: ProjectKind | undefined,
   jobType: string,
+  enabledKinds: ReadonlySet<ProjectKind> = enabledProjectKinds(),
 ): ProjectJobGateResult {
+  if (!enabledKinds.has(projectType ?? 'canonical')) return { ok: false, code: PROJECT_KIND_DISABLED_CODE };
   const isUniversalJob = jobType === 'universal';
   const isUniversalType = projectType === 'universal';
   if (isUniversalJob && !isUniversalType) return { ok: false, code: 'project-not-universal' };

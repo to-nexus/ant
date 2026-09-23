@@ -601,6 +601,9 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   startIdeSession: async (projectId, featureName) => {
     const state = get();
+    // Single FE gate for every IDE entry point (NavBar, refresh reconnect,
+    // action view): codespace off means there is no `/ide` surface to reach.
+    if (!state.codespaceEnabled) return;
     const featureKeyPart = featureName || '';
     const sessionKey = `${projectId}:${featureKeyPart}`;
 

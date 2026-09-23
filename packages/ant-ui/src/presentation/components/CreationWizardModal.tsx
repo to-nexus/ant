@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles, FolderPlus, Bot, Package } from 'lucide-react';
 import { Modal } from './common/Modal';
 import { useStore } from '@/domain/store';
+import { selectWizardProjectKinds } from '@/domain/store/selectors/projects';
 import type { ProjectType } from '@/domain/store/slices/universalSlice';
 import { cn } from '@/shared/utils/design-system';
 
@@ -81,11 +82,13 @@ export function CreationWizardModal({
   const { t } = useTranslation('onboarding');
   const setQuickStartProjectId = useStore((s) => s.setQuickStartProjectId);
   const setProjectSetupConfig = useStore((s) => s.setProjectSetupConfig);
+  const kinds = useStore(selectWizardProjectKinds);
   // Project type is a creation-time decision (an existing project's type is
-  // fixed), so the tabs render only for brand-new projects.
-  const [projectType, setProjectType] = useState<ProjectType>('canonical');
-  const showTypeTabs = !existingProjectId;
-  const effectiveType: ProjectType = showTypeTabs ? projectType : 'canonical';
+  // fixed), so the tabs render only for brand-new projects — and only when the
+  // deployment offers more than one kind.
+  const [projectType, setProjectType] = useState<ProjectType>(kinds.initialType);
+  const showTypeTabs = !existingProjectId && kinds.showTypeTabs;
+  const effectiveType: ProjectType = existingProjectId ? 'canonical' : showTypeTabs ? projectType : kinds.initialType;
 
   const handleSelect = (id: 'plan' | 'design' | 'code') => {
     onClose();

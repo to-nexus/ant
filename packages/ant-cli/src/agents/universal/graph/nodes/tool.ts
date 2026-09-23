@@ -30,11 +30,15 @@ import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import {
   requiresApproval,
+  isExternalContentTool,
   isExtensionToolName,
   planTurnViolation,
   isClarifyEnabled,
   UNIVERSAL_CLARIFY_BUDGET,
 } from '../../../../core/customAgents/universalToolPolicy';
+import { argsDigest, auditLog } from '../../../../core/audit/auditLog';
+import { wrapExternalToolResult } from '../../../../core/prompt/builder/InputSanitizer';
+import { CHILD_PROCESS_ENV } from '../../../../core/types/processEnv';
 import { CLARIFY_TOOL_NAME, clarifyBlockFromArgs } from '../../../common/clarify/tool';
 import { getUniversalMcp, getUniversalRegistry, UNIVERSAL_RESULT_LIMITS } from '../runtime';
 import { projectHistoryTurns } from '../session/historyProjection';
@@ -257,6 +261,32 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
   },
 
   hooks: {
+    // Runs BEFORE the tool_result blocks are built (createToolNode), so an
+    // amended `event.result.content` is what the model reads.
+    afterBatch(state, events) {
+      const resolved = requireActiveCustomJob();
+      for (const e of events) {
+        auditLog('tool', {
+          user: process.env[CHILD_PROCESS_ENV.USER_ID] ?? null,
+          org: process.env[CHILD_PROCESS_ENV.ORG_ID] ?? null,
+          jobId: state._httpJobId ?? null,
+          project: state.projectId ?? null,
+          agent: `${resolved.agentId}/${resolved.jobId}`,
+          tool: e.toolName,
+          argsDigest: argsDigest(e.args),
+          approved: state._approvalGrantTool === e.toolName,
+          unattended: state._unattended === true,
+          ok: !e.result.error,
+        });
+        // Externally-authored bodies cross into the model inside an untrusted
+        // boundary; a failed call carries only the runtime's own error text.
+        if (!e.result.error && isExternalContentTool(e.toolName) && typeof e.result.content === 'string') {
+          e.result.content = wrapExternalToolResult(e.result.content, e.toolName);
+        }
+      }
+      return {};
+    },
+
     // Checklist recency nudge (clear-dotting-mouse): the checklist protocol is
     // sustained only by the model's own re-emission, and a long tool loop
     // starves it of recency — the contract lives in a static system band the

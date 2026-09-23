@@ -2,10 +2,24 @@ export type ServerMode = 'local' | 'cloud';
 
 export type IdeRuntime = 'kubernetes' | 'docker';
 
+/**
+ * Project kind — the workspace's runtime shape. `canonical` = code/design
+ * projects with features, git, IDE, preview; `universal` = custom-agent
+ * workspace (`config.json` `projectType`; absent = canonical).
+ */
+export type ProjectKind = 'canonical' | 'universal';
+
 export interface SystemConfigCapabilities {
   vectorDb: boolean;
   /** Commercial billing surface (credit ledger, plans, payment). OSS/local: false. */
   billing: boolean;
+  /**
+   * Codespace = canonical projects + Cloud IDE + their preview/deploy output.
+   * `ANT_CODESPACE_ENABLED=false` turns the whole surface off at once: IDE
+   * routes/proxy/orchestrator are not mounted and only `universal` projects
+   * can be created or run. SSOT: `core/config/codespaceCapability.ts`.
+   */
+  codespace: boolean;
 }
 
 export interface SystemConfigResponse {

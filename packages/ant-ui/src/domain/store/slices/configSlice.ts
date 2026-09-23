@@ -43,6 +43,7 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     // Billing is always-on at this stage; default true so the surface shows on
     // first paint (BE confirms via /system/config and never flips it off).
     billingEnabled: true,
+    codespaceEnabled: true,
 
     // ==================
     // Actions
@@ -80,6 +81,8 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
           recursionLimit: config.recursionLimit,
           systemConfigStatus: 'ready',
           billingEnabled: config.capabilities?.billing === true,
+          // An older BE without the field keeps the surface on (absent ≠ off).
+          codespaceEnabled: config.capabilities?.codespace !== false,
           serverMode: {
             status: 'ready',
             data: config.authMode,

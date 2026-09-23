@@ -11,6 +11,7 @@ import { authRateLimiter } from '../middleware/rateLimiter';
 import { resolveFrontendOrigin } from '../middleware/corsConfig';
 import { extractStartOrigin } from '../middleware/originHelper';
 import { logger } from '../../../../utils/logger';
+import { auditLog } from '../../../../core/audit/auditLog';
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { isSuperAdminEmail } from '../../../../core/auth/superAdmin';
 import { resolveDomainJoin, grantsAtLogin } from '../../../../core/auth/domainJoin';
@@ -365,6 +366,7 @@ export function createAuthRoutes(deps: {
 
     if (error) {
       logger.warn(`[Auth] Google OAuth error: ${error}`, { component: 'Auth' });
+      auditLog('login', { result: 'failed', reason: 'oauth_failed', ip: req.ip ?? null });
       return res.redirect(`${frontendUrl}${fallbackPath}?error=oauth_failed`);
     }
 
@@ -380,6 +382,7 @@ export function createAuthRoutes(deps: {
     const stateResult = await verifyAndConsumeOidcState(state);
     if (!stateResult.valid) {
       logger.warn('[Auth] Invalid or expired OIDC state parameter', { component: 'Auth' });
+      auditLog('login', { result: 'failed', reason: 'invalid_state', ip: req.ip ?? null });
       return res.redirect(`${frontendUrl}${fallbackPath}?error=invalid_state`);
     }
 
@@ -508,6 +511,7 @@ export function createAuthRoutes(deps: {
           name: oidcUser.name,
           picture: oidcUser.picture,
         });
+        auditLog('login', { result: 'ok', userId, email: oidcUser.email, org: activeOrgId, newAccount: isNewAccount, ip: req.ip ?? null });
 
         const redirectUrl = returnTo.startsWith('/app')
           ? `${frontendUrl}${returnTo}${returnTo.includes('?') ? '&' : '?'}auth=success`
@@ -534,6 +538,7 @@ export function createAuthRoutes(deps: {
         name: oidcUser.name,
         picture: oidcUser.picture,
       });
+      auditLog('login', { result: 'ok', userId: authContext.user.id, email: authContext.user.email, org: authContext.organization.id, ip: req.ip ?? null });
 
       const redirectUrl = returnTo.startsWith('/app')
         ? `${frontendUrl}${returnTo}${returnTo.includes('?') ? '&' : '?'}auth=success`
@@ -541,6 +546,7 @@ export function createAuthRoutes(deps: {
       res.redirect(redirectUrl);
     } catch (error: any) {
       logger.error('[Auth] Google callback error', { component: 'Auth' }, error);
+      auditLog('login', { result: 'failed', reason: 'auth_failed', ip: req.ip ?? null });
       return res.redirect(`${frontendUrl}${fallbackPath}?error=auth_failed`);
     }
   });

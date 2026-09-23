@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   isEgressPolicyError,
+  isInternalEgressHostAllowed,
   isLoopbackHost,
   isPrivateAddress,
   resolvePublicEgress,
@@ -76,5 +77,62 @@ describe('resolvePublicEgress — literal hosts decide without DNS', () => {
     expect(v.address).toBe('93.184.216.34');
     expect(v.family).toBe(4);
     expect(v.url.hostname).toBe('93.184.216.34');
+  });
+});
+
+// ANT_INTERNAL_EGRESS_HOSTS admits a DECLARED connection (apis.baseUrl,
+// on.fetch) to an on-prem host; a model-chosen URL never consults it.
+describe('isInternalEgressHostAllowed — the on-prem allowlist', () => {
+  const env = { ANT_INTERNAL_EGRESS_HOSTS: 'jira.corp.example, *.svc.corp.example,10.20.30.40' };
+  it.each([
+    ['jira.corp.example', true],
+    ['JIRA.corp.example', true],
+    ['wiki.svc.corp.example', true],
+    ['svc.corp.example', false], // wildcard needs a label in front
+    ['jira.corp.example.evil.com', false],
+    ['10.20.30.40', true],
+    ['10.20.30.41', false],
+    ['localhost', false],
+  ])('%s → %s', (host, expected) => {
+    expect(isInternalEgressHostAllowed(host, env)).toBe(expected);
+  });
+
+  it('unset → nothing is allowed', () => {
+    expect(isInternalEgressHostAllowed('jira.corp.example', {})).toBe(false);
+  });
+});
+
+describe('resolvePublicEgress — allowInternalHosts admits ONLY listed hosts, ONLY when asked', () => {
+  const saved = process.env.ANT_INTERNAL_EGRESS_HOSTS;
+  const restore = () => {
+    if (saved === undefined) delete process.env.ANT_INTERNAL_EGRESS_HOSTS;
+    else process.env.ANT_INTERNAL_EGRESS_HOSTS = saved;
+  };
+  afterEach(restore);
+
+  it('a listed private literal is admitted for a declared connection', async () => {
+    process.env.ANT_INTERNAL_EGRESS_HOSTS = '10.20.30.40';
+    const v = await resolvePublicEgress('http://10.20.30.40:8080/rest', { allowInternalHosts: true });
+    expect(v.address).toBe('10.20.30.40');
+  });
+
+  it('the same URL without the option (fetch_url path) is still refused', async () => {
+    process.env.ANT_INTERNAL_EGRESS_HOSTS = '10.20.30.40';
+    const err = await resolvePublicEgress('http://10.20.30.40:8080/rest').then(() => null, (e) => e);
+    expect(isEgressPolicyError(err)).toBe(true);
+  });
+
+  it('an unlisted private host is refused even with the option', async () => {
+    process.env.ANT_INTERNAL_EGRESS_HOSTS = '10.20.30.40';
+    const err = await resolvePublicEgress('http://10.20.30.41/', { allowInternalHosts: true }).then(() => null, (e) => e);
+    expect(isEgressPolicyError(err)).toBe(true);
+  });
+
+  it('loopback is never admitted, listed or not', async () => {
+    process.env.ANT_INTERNAL_EGRESS_HOSTS = 'localhost,127.0.0.1';
+    for (const url of ['http://localhost:4100/', 'http://127.0.0.1/']) {
+      const err = await resolvePublicEgress(url, { allowInternalHosts: true }).then(() => null, (e) => e);
+      expect(isEgressPolicyError(err), url).toBe(true);
+    }
   });
 });

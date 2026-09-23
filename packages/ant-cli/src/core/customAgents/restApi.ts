@@ -172,6 +172,9 @@ export function resolveSelfApiConfig(
  * synthesized tools into an internal pivot carrying declared headers. Local
  * mode is exempt — a private-range dev server is the normal target there. A
  * self entry never comes here: its origin is `ANT_API_URL`, not authored.
+ * An on-prem deployment names its internal REST systems in
+ * `ANT_INTERNAL_EGRESS_HOSTS` (urlPolicy) — the one place a declared
+ * connection may cross into private address space; `fetch_url` never does.
  * Throws McpConfigError so the definition is classified `config_invalid`.
  */
 export async function assertPublicApiBaseUrl(
@@ -181,12 +184,12 @@ export async function assertPublicApiBaseUrl(
 ): Promise<void> {
   if (env[CHILD_PROCESS_ENV.SERVER_MODE] !== 'cloud') return;
   try {
-    await resolvePublicEgress(baseUrl);
+    await resolvePublicEgress(baseUrl, { allowInternalHosts: true });
   } catch (e) {
     const detail = (e as Error).message ?? String(e);
     throw new McpConfigError(
       isEgressPolicyError(e)
-        ? `API server "${serverName}": baseUrl "${baseUrl}" points at an internal address (${detail}) — in cloud mode a declared API must be reachable on the public internet`
+        ? `API server "${serverName}": baseUrl "${baseUrl}" points at an internal address (${detail}) — in cloud mode a declared API must be reachable on the public internet, or its host listed in ANT_INTERNAL_EGRESS_HOSTS`
         : `API server "${serverName}": baseUrl "${baseUrl}" host could not be resolved (${detail})`,
       { serverName },
     );

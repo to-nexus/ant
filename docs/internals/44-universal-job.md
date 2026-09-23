@@ -489,6 +489,17 @@ The two-tool split is forced by mechanics, not taste: `gateCall` and
 `requiresApproval` read `readOnlyHint` statically per tool NAME, so a single
 tool could not be read-exempt and write-gated at once.
 
+Where a declared `baseUrl` may point is decided once, at connect
+(`assertPublicApiBaseUrl` → `resolvePublicEgress`, `core/config/urlPolicy.ts`):
+in cloud mode it must resolve to public addresses, because the pod sits on the
+cluster network and a `10.x` base would turn the two tools into an internal
+pivot carrying the declared headers. An on-prem deployment whose REST systems
+ARE on private addresses names them in `ANT_INTERNAL_EGRESS_HOSTS`
+(exact host, literal IP, or `*.suffix`) — the allowlist is consulted only by
+declared connections (`apis`, a pipeline `on.fetch`), never by the
+model-chosen `fetch_url` / `download_asset`, and loopback is refused either
+way. A host outside the list fails as `config_invalid`, as before.
+
 The API's **knowledge** (endpoints, fields, call sequences) is deliberately
 NOT declared — no per-endpoint tool schemas, no OpenAPI import. (The one
 declared request outside prose is a pipeline's `on.fetch.request`, executed
@@ -1585,7 +1596,13 @@ Two defects the WS-D end-to-end surfaced, both structural rather than cosmetic:
 canonical) decides which jobs a project exposes; the universal plane is
 ALWAYS namespaced under `universal/` regardless. The gate is
 **bidirectional** — truth table: `decideProjectJobGate`
-(`core/customAgents/universalContainer.ts`). Enforcement points:
+(`core/customAgents/universalContainer.ts`). Its third column is the
+deployment's enabled kinds (`ANT_CODESPACE_ENABLED`, SSOT
+`core/config/codespaceCapability.ts`): with codespace off, only `universal`
+is enabled, so a canonical project — including one created before the switch
+— stays readable but answers 400 `project-kind-disabled` to every job, and a
+project create / config PUT naming `canonical` is refused with the same code.
+Enforcement points:
 
 - `/execute` universal branch: 400 `project-not-universal` on canonical
   projects (`resolveUniversalExecuteContext`); 400 `invalid-universal-feature`

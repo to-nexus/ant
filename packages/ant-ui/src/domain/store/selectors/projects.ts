@@ -28,3 +28,20 @@ export function selectProjectsLoaded(s: WithProjectsStatus): boolean {
 export function selectProjectsSettled(s: WithProjectsStatus): boolean {
   return s.projectsStatus === 'ready' || s.projectsStatus === 'empty';
 }
+
+export interface WizardProjectKinds {
+  /** Offer the canonical/universal tabs — false pins the wizard to universal. */
+  showTypeTabs: boolean;
+  initialType: 'canonical' | 'universal';
+}
+
+/**
+ * Which project kinds the creation wizard may offer. One input — the BE's
+ * `capabilities.codespace` mirror — so the tabs and the default follow the
+ * deployment's single switch, never a second FE knob.
+ */
+export function selectWizardProjectKinds(s: { codespaceEnabled: boolean }): WizardProjectKinds {
+  return s.codespaceEnabled
+    ? { showTypeTabs: true, initialType: 'canonical' }
+    : { showTypeTabs: false, initialType: 'universal' };
+}

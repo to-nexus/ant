@@ -192,6 +192,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intentId, actionMetadata.domain]);
 
+  const codespaceEnabled = useStore((s) => s.codespaceEnabled);
   const handleOpenIde = useCallback(() => {
     setMainView('codeIde');
   }, [setMainView]);
@@ -507,7 +508,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                 targetExisting={targetExisting}
                 onToggleSpotlight={handleToggleSpotlight}
                 spotlightPath={spotlightTarget?.path}
-                onOpenIde={handleOpenIde}
+                onOpenIde={codespaceEnabled ? handleOpenIde : undefined}
                 codebaseHasFiles={codebaseHasFiles}
                 codebaseRequired={codebaseRequired}
                 lang={lang}

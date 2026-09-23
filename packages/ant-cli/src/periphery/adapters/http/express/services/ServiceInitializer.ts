@@ -18,6 +18,7 @@ import type { AuthPort } from '../../../../../core/ports/auth';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { IDEOrchestratorPort } from '../../../../../core/ports/ideOrchestrator';
 import { logger } from '../../../../../utils/logger';
+import { isIdeEnabled } from '../../../../../core/config/codespaceCapability';
 import { ServerConfig, ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
@@ -49,11 +50,18 @@ export function initializeServices(
   logger.info('Using RedisStateStore as PortRegistry', { component: 'ServiceInitializer' });
   
   // Use IDEOrchestratorPort: K8s mode → KubernetesIDEOrchestrator, local → LocalIDEOrchestrator (Docker)
-  // This avoids Docker socket access in K8s pods where /var/run/docker.sock doesn't exist
-  factory.setDependencies(portManager, portRegistry);
-  const ideOrchestrator: IDEOrchestratorPort = factory.getIDEOrchestrator();
-  ideOrchestrator.startIdleCheck();
-  logger.info(`IDE Orchestrator: ${ideOrchestrator.constructor.name}`, { component: 'ServiceInitializer' });
+  // This avoids Docker socket access in K8s pods where /var/run/docker.sock doesn't exist.
+  // Codespace off → no orchestrator at all: neither the Docker socket nor the
+  // K8s client is touched, and ProjectService's IDE cleanup steps are skipped.
+  let ideOrchestrator: IDEOrchestratorPort | undefined;
+  if (isIdeEnabled()) {
+    factory.setDependencies(portManager, portRegistry);
+    ideOrchestrator = factory.getIDEOrchestrator();
+    ideOrchestrator.startIdleCheck();
+    logger.info(`IDE Orchestrator: ${ideOrchestrator.constructor.name}`, { component: 'ServiceInitializer' });
+  } else {
+    logger.info('IDE Orchestrator: disabled (ANT_CODESPACE_ENABLED=false)', { component: 'ServiceInitializer' });
+  }
   
   // Cloud-mode auth wiring — OSS core (identity is not a commercial surface).
   // `createJwtServiceFromEnv()` returns undefined when ANT_JWT_PUBLIC_KEY is

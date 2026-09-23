@@ -73,6 +73,17 @@ export function planTurnViolation(toolName: string, args: Record<string, unknown
  * Clarify-tool session budget — pauses per (agent, job) session. Once spent,
  * the tool disappears from the advertised list (enforcement-by-absence).
  */
+/**
+ * Tools whose RESULT is content authored outside this deployment — a web page,
+ * search hits, an MCP server's or a declared API's response. Those bodies are
+ * wrapped in the untrusted `<tool_result>` boundary before they reach the
+ * model; artifact reads, directory listings and shell output are the job's
+ * own data and are not.
+ */
+export function isExternalContentTool(name: string): boolean {
+  return name === 'fetch_url' || name === 'search_web' || isExtensionToolName(name);
+}
+
 export const UNIVERSAL_CLARIFY_BUDGET = 3;
 
 /**

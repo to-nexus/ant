@@ -94,6 +94,37 @@ describe('decideProjectJobGate — bidirectional truth table', () => {
   });
 });
 
+describe('decideProjectJobGate — enabled-kinds column (ANT_CODESPACE_ENABLED)', () => {
+  const ALL = new Set(['canonical', 'universal'] as const);
+  const UNIVERSAL_ONLY = new Set(['universal'] as const);
+  it.each([
+    ['canonical × code, universal-only', 'canonical', 'code', UNIVERSAL_ONLY, 'project-kind-disabled'],
+    ['absent (canonical) × code, universal-only', undefined, 'code', UNIVERSAL_ONLY, 'project-kind-disabled'],
+    ['canonical × universal, universal-only — kind refused before the jobType row', 'canonical', 'universal', UNIVERSAL_ONLY, 'project-kind-disabled'],
+    ['universal × universal, universal-only', 'universal', 'universal', UNIVERSAL_ONLY, null],
+    ['universal × code, universal-only — jobType row still answers', 'universal', 'code', UNIVERSAL_ONLY, 'project-universal-requires-custom-job'],
+    ['canonical × code, all kinds (default) — unchanged', 'canonical', 'code', ALL, null],
+  ] as const)('%s', (_label, projectType, jobType, kinds, expectedCode) => {
+    const gate = decideProjectJobGate(projectType, jobType, kinds as ReadonlySet<'canonical' | 'universal'>);
+    if (expectedCode === null) expect(gate).toEqual({ ok: true });
+    else expect(gate).toEqual({ ok: false, code: expectedCode });
+  });
+
+  it('the default column follows the switch: off → canonical projects run nothing', () => {
+    const saved = process.env.ANT_CODESPACE_ENABLED;
+    try {
+      process.env.ANT_CODESPACE_ENABLED = 'false';
+      expect(decideProjectJobGate('canonical', 'code')).toEqual({ ok: false, code: 'project-kind-disabled' });
+      expect(decideProjectJobGate('universal', 'universal')).toEqual({ ok: true });
+      delete process.env.ANT_CODESPACE_ENABLED;
+      expect(decideProjectJobGate('canonical', 'code')).toEqual({ ok: true });
+    } finally {
+      if (saved === undefined) delete process.env.ANT_CODESPACE_ENABLED;
+      else process.env.ANT_CODESPACE_ENABLED = saved;
+    }
+  });
+});
+
 describe('ensureUniversalContainer', () => {
   it('materializes artifacts/ (+ canonical dirs) + sessions/ and is idempotent', () => {
     ensureUniversalContainer(projectPath);

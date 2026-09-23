@@ -180,6 +180,8 @@ export const createProjectSchema = z.object({
   description: z.string().max(5000).optional(),
   /** Workspace domain — persisted into `config.json` at creation; defaults to 'service'. */
   domain: z.enum(['service', 'game']).optional(),
+  /** Project kind — persisted at creation; defaults to the deployment's `defaultProjectKind()`. */
+  projectType: z.enum(['canonical', 'universal']).optional(),
 }).passthrough();
 
 /**

@@ -378,7 +378,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         try {
           // Domain rides the create call so the project is never persisted
           // without one (the config PUT below still records the rest).
-          await createProject(projectId, { domain });
+          await createProject(projectId, { domain, projectType: isUniversal ? 'universal' : 'canonical' });
         } catch (createErr) {
           // Server returns 409 + canForceCleanup when stale state survives a
           // failed delete. Surface a confirm dialog so the user can opt-in
@@ -404,7 +404,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
             if (!confirmed) {
               throw createErr;
             }
-            await createProject(projectId, { force: true, domain });
+            await createProject(projectId, { force: true, domain, projectType: isUniversal ? 'universal' : 'canonical' });
           } else {
             throw createErr;
           }
@@ -423,11 +423,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
           serverConfig = await createProjectConfig(projectId);
         }
         const updates: Record<string, any> = {};
-        if (isUniversal) {
-          // Universal workspace: record the projectType SSOT; git/domain are
-          // canonical-project concerns and stay untouched.
-          updates.projectType = 'universal';
-        } else {
+        // projectType was recorded by the create call; git/domain are
+        // canonical-project concerns and stay untouched for universal.
+        if (!isUniversal) {
           if (repositoryName) updates.repositoryName = repositoryName;
           if (gitUrl.trim()) updates.githubRepo = gitUrl.trim();
           // Domain is always written so the project-level SSOT is explicit from

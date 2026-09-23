@@ -115,7 +115,8 @@ Two project-scoped routes sit beside them:
 
 ## Cloud IDE
 
-Available only when `ANT_K8S_NAMESPACE` is set.
+Absent when `ANT_CODESPACE_ENABLED=false` (the routes are not mounted — 404).
+Kubernetes-backed when `ANT_K8S_NAMESPACE` is set, Docker otherwise.
 
 | Verb | Path                                                | Notes                          |
 |------|-----------------------------------------------------|--------------------------------|

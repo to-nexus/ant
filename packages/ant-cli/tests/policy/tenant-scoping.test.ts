@@ -294,6 +294,103 @@ describe("repoType 'local' is honoured in local mode only (C-004)", () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// Project kind follows the codespace switch (ANT_CODESPACE_ENABLED)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('project kind is decided at creation and re-typing, from the ONE codespace switch', () => {
+  let root: string;
+  const svcFor = async () => {
+    const { ProjectCrudService } = await import('../../src/periphery/adapters/http/services/ProjectService/ProjectCrudService.js');
+    const svc = Object.create(ProjectCrudService.prototype) as any;
+    svc.workspaceResolver = {
+      getProjectPath: (_u: unknown, id: string) => path.join(root, id),
+      getGitAnchorPath: (_u: unknown, id: string) => path.join(root, id),
+      getPhysicalWorkspacesPath: () => root,
+    };
+    return svc;
+  };
+  const readKind = (id: string) => JSON.parse(fs.readFileSync(path.join(root, id, 'config.json'), 'utf8')).projectType;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-kind-'));
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('unset: a project with no stated kind is canonical, and both kinds are creatable', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    const svc = await svcFor();
+    await svc.createProject('p1', ALICE);
+    expect(readKind('p1')).toBe('canonical');
+    await svc.createProject('p2', ALICE, { projectType: 'universal' });
+    expect(readKind('p2')).toBe('universal');
+  });
+
+  it('off: the default kind is universal, a canonical create is refused BEFORE any directory exists', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    vi.stubEnv('ANT_CODESPACE_ENABLED', 'false');
+    const svc = await svcFor();
+    await svc.createProject('p1', ALICE);
+    expect(readKind('p1')).toBe('universal');
+    await expect(svc.createProject('p2', ALICE, { projectType: 'canonical' })).rejects.toMatchObject({ code: 'project-kind-disabled' });
+    expect(fs.existsSync(path.join(root, 'p2'))).toBe(false);
+  });
+
+  it('off: a config PUT cannot re-type a project to canonical; other fields still save', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    vi.stubEnv('ANT_CODESPACE_ENABLED', 'false');
+    const svc = await svcFor();
+    await svc.createProject('p1', ALICE);
+    await expect(svc.updateProjectConfig('p1', { projectType: 'canonical' }, ALICE)).rejects.toMatchObject({ code: 'project-kind-disabled' });
+    await expect(svc.updateProjectConfig('p1', { projectType: 'universal', description: 'ok' }, ALICE)).resolves.toBeUndefined();
+  });
+
+  it('HTTP: the refusal is a typed 400 { code } on POST /projects, never a 500', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    vi.stubEnv('ANT_CODESPACE_ENABLED', 'false');
+    vi.stubEnv('ANT_LOCAL_ORG', 'acme');
+    vi.stubEnv('ANT_LOCAL_USER', 'alice');
+    const { createProjectsRoutes } = await import('../../src/periphery/adapters/http/routes/projects.routes.js');
+    const { ProjectKindDisabledError } = await import('../../src/core/config/codespaceCapability.js');
+    const express = (await import('express')).default;
+    const http = await import('node:http');
+    const app = express();
+    app.use(express.json());
+    app.use('/api', createProjectsRoutes({
+      projectService: {
+        createProject: async (_id: string, _u: unknown, opts: { projectType?: 'canonical' | 'universal' }) => {
+          if (opts.projectType === 'canonical') throw new ProjectKindDisabledError('canonical');
+        },
+      } as any,
+    }));
+    const server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const addr = server.address();
+    if (!addr || typeof addr === 'string') throw new Error('no port');
+    try {
+      const res = await fetch(`http://127.0.0.1:${addr.port}/api/projects`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: 'p9', projectType: 'canonical' }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 'project-kind-disabled' });
+      const ok = await fetch(`http://127.0.0.1:${addr.port}/api/projects`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: 'p10', projectType: 'universal' }),
+      });
+      expect(ok.status).toBe(200);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // Vector memory collections (M-006)
 // ────────────────────────────────────────────────────────────────────────────
 

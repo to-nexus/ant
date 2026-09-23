@@ -26,6 +26,7 @@ import { JwtService } from '../../../../../infrastructure/auth/JwtService';
 import { parseIDEKey } from '../../../../../infrastructure/state/redisKeyUtils';
 import { assertProxyOwnership } from '../../middleware/proxyOwnership';
 import { logger } from '../../../../../utils/logger';
+import { isIdeEnabled } from '../../../../../core/config/codespaceCapability';
 import { ServerConfig, ServerDependencies } from '../types';
 
 /**
@@ -83,7 +84,7 @@ export class ServerConfigurator {
    * 1. CORS + security headers
    * 2. Favicon (avoid noisy 401s)
    * 3. Cookie parser (needed by IDE proxy auth)
-   * 4. IDE proxy auth (JWT check before proxy intercepts)
+   * 4. IDE proxy auth (JWT check before proxy intercepts) — 4–6 only when codespace is on
    * 5. IDE stub interceptors (short-circuit cosmetic-noise paths; after JWT, before proxy)
    * 6. Proxy middleware (intercepts /ide/ requests, no next())
    * 6b. Workspace preview lane (ticket-authorized static browse, no next())
@@ -99,9 +100,12 @@ export class ServerConfigurator {
     this.setupSecurityHeaders(app);
     this.setupFaviconHandler(app);
     this.setupCookieParser(app);
-    this.setupIdeProxyAuth(app);
-    this.setupIdeStubInterceptors(app);
-    this.setupProxyMiddleware(app);
+    // 4–6 are the IDE lane; codespace off leaves no `/ide/` surface at all.
+    if (isIdeEnabled()) {
+      this.setupIdeProxyAuth(app);
+      this.setupIdeStubInterceptors(app);
+      this.setupProxyMiddleware(app);
+    }
     this.setupWorkspaceLane(app);
     this.setupPublicBodyParser(app);
     this.setupAuthentication(app);

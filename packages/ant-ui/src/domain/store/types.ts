@@ -488,6 +488,13 @@ export interface ConfigState {
    * turns it off in an OSS build (package absent), not a runtime env var.
    */
   billingEnabled: boolean;
+  /**
+   * Codespace surface flag (from `/system/config` `capabilities.codespace`).
+   * `false` = `ANT_CODESPACE_ENABLED=false` on the BE: no IDE, and only
+   * universal (custom-agent) projects can be created. Default true so the
+   * surface renders on first paint; the BE answer is authoritative.
+   */
+  codespaceEnabled: boolean;
 }
 
 // ==================

@@ -101,6 +101,20 @@ describe('serverMode SSOT — source-level guards', () => {
     expect(slice).toMatch(/data:\s*config\.authMode/);
   });
 
+  it('configSlice mirrors `capabilities.codespace` into `codespaceEnabled` — absent keeps the surface on', async () => {
+    const slice = await readFile(
+      path.join(SRC_ROOT, 'domain', 'store', 'slices', 'configSlice.ts'),
+      'utf8',
+    );
+    expect(slice).toMatch(/codespaceEnabled:\s*config\.capabilities\?\.codespace !== false/);
+    // No FE-side switch of its own: the field is the BE mirror and nothing else.
+    const files = await walk(SRC_ROOT);
+    for (const f of files) {
+      const body = await readFile(f, 'utf8');
+      expect(body, path.relative(SRC_ROOT, f)).not.toMatch(/VITE_CODESPACE|ANT_IDE_ENABLED|ANT_PROJECT_KINDS/);
+    }
+  });
+
   it('@ant/shared exports SystemConfigResponse with authMode: ServerMode', async () => {
     const shape = await readFile(SHARED_INDEX, 'utf8');
     expect(shape).toMatch(/export\s+type\s+ServerMode\s*=\s*'local'\s*\|\s*'cloud'/);

@@ -172,3 +172,47 @@ describe('P2 — cloud overlay source is absent from the OSS tree on disk', () =
     expect(existsSync(join(REPO_ROOT, rel))).toBe(false);
   });
 });
+
+describe('Codespace switch — the IDE surface exists only inside isIdeEnabled()', () => {
+  const inside = (code: string, marker: string) => {
+    // The marker must appear AFTER an `if (isIdeEnabled())` opener and before
+    // that block closes — a sibling call outside the branch is the offense.
+    const re = new RegExp(String.raw`if \(isIdeEnabled\(\)\) \{[^}]*${marker}`);
+    return re.test(code);
+  };
+
+  it('RouteConfigurator mounts IDE + Cloud IDE routes inside the branch', () => {
+    const code = stripComments(read('periphery/adapters/http/express/config/RouteConfigurator.ts'));
+    expect(inside(code, 'setupIDERoutes\\(app\\)')).toBe(true);
+    expect(inside(code, 'setupCloudIDERoutes\\(app\\)')).toBe(true);
+  });
+
+  it('ServerConfigurator mounts proxy auth, stubs and the /ide proxy inside the branch', () => {
+    const code = stripComments(read('periphery/adapters/http/express/config/ServerConfigurator.ts'));
+    for (const m of ['setupIdeProxyAuth\\(app\\)', 'setupIdeStubInterceptors\\(app\\)', 'setupProxyMiddleware\\(app\\)']) {
+      expect(inside(code, m), m).toBe(true);
+    }
+  });
+
+  it('ServiceInitializer creates the orchestrator (Docker socket / K8s client) inside the branch', () => {
+    const code = stripComments(read('periphery/adapters/http/express/services/ServiceInitializer.ts'));
+    expect(inside(code, 'getIDEOrchestrator\\(\\)')).toBe(true);
+    expect(inside(code, 'startIdleCheck\\(\\)')).toBe(true);
+  });
+
+  it('the env var has ONE reader and no per-surface sibling switch exists', () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (e.name.endsWith('.ts')) files.push(full);
+      }
+    };
+    walk(SRC);
+    const readers = files.filter((f) => /process\.env\.ANT_CODESPACE_ENABLED/.test(readFileSync(f, 'utf8')));
+    expect(readers.map((f) => f.slice(SRC.length + 1))).toEqual(['core/config/codespaceCapability.ts']);
+    const siblings = files.filter((f) => /ANT_IDE_ENABLED|ANT_PROJECT_KINDS/.test(readFileSync(f, 'utf8')));
+    expect(siblings).toEqual([]);
+  });
+});

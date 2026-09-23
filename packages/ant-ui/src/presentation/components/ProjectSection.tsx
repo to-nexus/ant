@@ -5,7 +5,6 @@ import { useStore } from '@/domain/store';
 import {
   createProject,
   fetchProjectConfig as apiFetchProjectConfig,
-  createProjectConfig as apiCreateProjectConfig,
 } from '@/infrastructure/http/api';
 import type { ProjectType } from '@/domain/store/slices/universalSlice';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
@@ -40,7 +39,6 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     openMainPanelTab,
     fetchProjectConfig,
     createProjectConfig,
-    updateProjectConfig,
   } = useStore();
   const projectConfigMissing = useStore(selectProjectConfigMissing);
   // Live domain mirror for the ACTIVE project. `actionMetadata.domain` is the
@@ -94,27 +92,12 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     projectType: ProjectType = 'canonical',
     domain: Domain = 'service',
   ) => {
-    // Domain rides the create call itself — a project must never exist without a
-    // persisted domain, since that is what every job's triage reads.
-    await createProject(projectName, { domain });
+    // Domain and projectType ride the create call itself — a project must never
+    // exist without either SSOT, and the server refuses a disabled kind before
+    // creating anything. `setSelectedProject` → `fetchProjectConfig` →
+    // `syncProjectTypeFromConfig` flips the sidebar/toolbar gates.
+    await createProject(projectName, { domain, projectType });
     setSelectedProject(projectName);
-    if (projectType === 'universal') {
-      // Record the projectType SSOT (same fetch→merge→PUT sequence as the
-      // project wizard; git/domain are canonical-project concerns and stay
-      // untouched). Saved via the store slice so `syncProjectTypeFromConfig`
-      // flips the sidebar/toolbar gates immediately.
-      let serverConfig = await apiFetchProjectConfig(projectName);
-      if (!serverConfig) {
-        serverConfig = await apiCreateProjectConfig(projectName);
-      }
-      const result = await updateProjectConfig(projectName, {
-        ...serverConfig,
-        projectType: 'universal',
-      });
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to persist projectType');
-      }
-    }
   };
 
   const handleConfigClick = async () => {

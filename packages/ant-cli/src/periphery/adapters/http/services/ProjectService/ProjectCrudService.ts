@@ -7,7 +7,8 @@ import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/
 import { logger } from '../../../../../utils/logger';
 import { GitHelper } from '../GitService/helper/GitHelper';
 import { DeletionVerificationError } from './errors';
-import { MODEL_REGISTRY, type Domain } from '@ant/shared';
+import { MODEL_REGISTRY, type Domain, type ProjectKind } from '@ant/shared';
+import { assertProjectKindEnabled, defaultProjectKind } from '../../../../../core/config/codespaceCapability';
 import { getDefaultLlmModels } from '../../../../../core/config/defaultModels';
 import { isLocalServerMode } from '../../../../../core/config/serverMode';
 
@@ -90,12 +91,16 @@ export class ProjectCrudService {
   async createProject(
     id: string,
     userContext: UserContext,
-    opts?: { domain?: Domain },
+    opts?: { domain?: Domain; projectType?: ProjectKind },
   ): Promise<void> {
     // Validate project ID (no special characters except hyphens and underscores)
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
       throw new Error('Project ID can only contain letters, numbers, hyphens, and underscores');
     }
+    // Project kind is decided before any directory exists: a disabled kind
+    // must not leave a half-created project behind.
+    const projectType: ProjectKind = opts?.projectType ?? defaultProjectKind();
+    assertProjectKindEnabled(projectType);
     
     const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
     
@@ -147,6 +152,7 @@ export class ProjectCrudService {
       ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
       llmModels,
       domain: opts?.domain ?? 'service',
+      projectType,
     };
 
     // branchBase is intentionally omitted — a fresh project has NO git and NO
@@ -491,6 +497,10 @@ export class ProjectCrudService {
       if (config.repoType === 'local' || config.localPath) {
         throw new Error("Invalid config: 'repoType: local' / 'localPath' is not available in cloud mode");
       }
+    }
+    // A PUT may not re-type a project into a kind this deployment has disabled.
+    if (config?.projectType === 'canonical' || config?.projectType === 'universal') {
+      assertProjectKindEnabled(config.projectType);
     }
 
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);

@@ -1,4 +1,4 @@
-import type { Domain } from '@ant/shared';
+import type { Domain, ProjectKind } from '@ant/shared';
 import type { Session } from '@/domain/models/session';
 import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -29,13 +29,20 @@ export function fetchReferenceCatalog(exclude?: string): Promise<ReferenceCatalo
  * `opts.domain` is the workspace domain, sent in the SAME request rather than a
  * follow-up config PUT: domain is the SSOT every job's triage reads, so a project
  * must never exist without one. Omitting it defaults to `'service'` server-side.
+ * `opts.projectType` rides the same call for the same reason — and because the
+ * server refuses a disabled kind (400 `project-kind-disabled`) before creating
+ * anything, which a follow-up PUT could not.
  */
 export function createProject(
   projectId: string,
-  opts?: { force?: boolean; domain?: Domain },
+  opts?: { force?: boolean; domain?: Domain; projectType?: ProjectKind },
 ): Promise<void> {
   const url = `${API_BASE()}/projects${opts?.force ? '?force=true' : ''}`;
-  return apiPost(url, { id: projectId, ...(opts?.domain ? { domain: opts.domain } : {}) });
+  return apiPost(url, {
+    id: projectId,
+    ...(opts?.domain ? { domain: opts.domain } : {}),
+    ...(opts?.projectType ? { projectType: opts.projectType } : {}),
+  });
 }
 
 export function renameProject(oldId: string, newId: string): Promise<{ success: boolean; oldId: string; newId: string }> {

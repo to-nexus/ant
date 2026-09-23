@@ -48,7 +48,8 @@ export interface ServerDependencies {
   jwtService?: any;
   portManager: any;
   portRegistry: any;
-  ideService: any;
+  /** IDE orchestrator — absent when `ANT_CODESPACE_ENABLED=false`. */
+  ideService?: any;
   kanbanService: any;
   sessionService: any;
   gitWatcherService: any;

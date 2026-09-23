@@ -90,3 +90,46 @@ describe('GET /system/config — build identity', () => {
     );
   });
 });
+
+describe('GET /system/config — capabilities.codespace (ANT_CODESPACE_ENABLED)', () => {
+  let server: http.Server;
+  let base: string;
+  const saved = process.env.ANT_CODESPACE_ENABLED;
+  const restore = () => {
+    if (saved === undefined) delete process.env.ANT_CODESPACE_ENABLED;
+    else process.env.ANT_CODESPACE_ENABLED = saved;
+  };
+
+  beforeAll(async () => {
+    const app = express();
+    app.use('/api', createHealthRoutes());
+    server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const addr = server.address();
+    if (!addr || typeof addr === 'string') throw new Error('no port');
+    base = `http://127.0.0.1:${addr.port}`;
+  });
+  afterAll(async () => {
+    restore();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  afterEach(restore);
+
+  const capabilities = async () => {
+    const res = await fetch(`${base}/api/system/config`);
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { capabilities: Record<string, unknown> }).capabilities;
+  };
+
+  it.each([
+    ['unset', undefined, true],
+    ['false', 'false', false],
+    ['0', '0', false],
+    ['off', 'off', false],
+    ['true', 'true', true],
+  ])('ANT_CODESPACE_ENABLED=%s → codespace:%s', async (_label, value, expected) => {
+    if (value === undefined) delete process.env.ANT_CODESPACE_ENABLED;
+    else process.env.ANT_CODESPACE_ENABLED = value;
+    expect((await capabilities()).codespace).toBe(expected);
+  });
+});
