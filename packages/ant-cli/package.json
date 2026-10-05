@@ -38,7 +38,7 @@
   "author": "",
   "dependencies": {
     "@ant/shared": "workspace:^",
-    "@anthropic-ai/sdk": "^0.127.0",
+    "@anthropic-ai/sdk": "^0.131.0",
     "@google/genai": "^1.52.0",
     "@langchain/langgraph": "^1.4.16",
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -70,7 +70,7 @@
     "pngjs": "^7.0.0",
     "rate-limit-redis": "^4.3.1",
     "semver": "^7.8.5",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "simple-git": "^3.36.0",
     "undici": "^7.29.1",
     "uuid": "^11.1.1",
