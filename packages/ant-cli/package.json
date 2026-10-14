@@ -93,7 +93,7 @@
     "@types/semver": "^7.8.0",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
-    "concurrently": "^9.2.4",
+    "concurrently": "^9.2.5",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
